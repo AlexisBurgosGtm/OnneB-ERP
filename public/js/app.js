@@ -20,6 +20,32 @@
   let socket = null;
   let currentView = 'login';
 
+  /** Siempre inicia en login al cargar o recargar la página (F5). */
+  function ensureLoginView() {
+    F.clearSession('user');
+    window.OnnebContext = {};
+    if (!views.login || !views.main) return;
+
+    views.main.classList.remove(
+      'view-active',
+      'view-exit-left',
+      'view-exit-right',
+      'view-enter-from-right',
+      'view-start-left'
+    );
+    views.main.classList.add('view-next');
+    views.login.classList.remove(
+      'view-next',
+      'view-exit-left',
+      'view-exit-right',
+      'view-enter-from-right',
+      'view-start-left'
+    );
+    views.login.classList.add('view-active');
+    currentView = 'login';
+    updateFabVisibility();
+  }
+
   function updateFabVisibility() {
     if (!btnMenuFab) return;
     btnMenuFab.classList.toggle('is-visible', currentView === 'main');
@@ -79,6 +105,7 @@
   }
 
   async function loadBuildCounter() {
+    if (!buildCounterEl) return;
     try {
       const meta = await F.fetchJson(`/api/build-meta?_=${Date.now()}`, { cache: 'no-store' });
       const n = meta.buildCount ?? 0;
@@ -118,17 +145,84 @@
     });
   }
 
-  loginForm.addEventListener('submit', (e) => {
+  function escapeOptionText(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function normEmpNit(value) {
+    return String(value ?? '').trim();
+  }
+
+  async function fetchEmpresasForLogin() {
+    const qs = `?_=${Date.now()}`;
+    try {
+      return await F.fetchJson(`/api/empresas/combo${qs}`, { cache: 'no-store' });
+    } catch (comboErr) {
+      console.warn('[Login] /empresas/combo:', comboErr.message);
+      return F.fetchJson(`/api/empresas${qs}`, { cache: 'no-store' });
+    }
+  }
+
+  async function loadLoginEmpresas(selectedNit = '') {
+    const select = document.getElementById('login-empresa');
+    if (!select) return;
+    const nitGuardado = normEmpNit(selectedNit);
+    try {
+      const data = await fetchEmpresasForLogin();
+      const rows = (data.rows || [])
+        .map((e) => ({
+          EMPNIT: normEmpNit(e.EMPNIT),
+          EMPNOMBRE: String(e.EMPNOMBRE ?? '').trim() || normEmpNit(e.EMPNIT),
+        }))
+        .filter((e) => e.EMPNIT);
+      if (!rows.length) {
+        select.innerHTML = '<option value="">Sin empresas disponibles</option>';
+        select.disabled = true;
+        return;
+      }
+      select.disabled = false;
+      select.innerHTML = rows
+        .map((e) => {
+          const nit = escapeOptionText(e.EMPNIT);
+          const nombre = escapeOptionText(e.EMPNOMBRE);
+          return `<option value="${nit}">${nombre}</option>`;
+        })
+        .join('');
+      const existe = nitGuardado && rows.some((r) => r.EMPNIT === nitGuardado);
+      select.value = existe ? nitGuardado : rows[0].EMPNIT;
+    } catch (err) {
+      console.warn('[Login] Empresas:', err);
+      select.innerHTML = '<option value="">Error al cargar empresas</option>';
+      select.disabled = true;
+    }
+  }
+
+  if (loginForm) loginForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    const empresaSelect = document.getElementById('login-empresa');
+    const empNit = empresaSelect?.value?.trim();
+    if (!empNit || empresaSelect?.disabled) {
+      F.toast('No hay empresa disponible', 'warning');
+      return;
+    }
+    const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
     if (window.OnnebPace) OnnebPace.start();
     const username = document.getElementById('username').value.trim() || 'invitado';
-    F.session('user', {
+    const sessionData = {
       username,
+      empNit,
+      empNombre,
       at: new Date().toISOString(),
-    });
+    };
+    F.session('user', sessionData);
+    F.setEmpresaGlobal(empNit, empNombre);
     document.getElementById('password').value = '';
     navigateTo('main');
-    F.toast('Bienvenido a OnneB POS', 'success');
+    F.toast(`Bienvenido — ${empNombre}`, 'success');
   });
 
   function setMenuExpanded(expanded) {
@@ -189,6 +283,16 @@
 
       if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
         EmpresasView.load(mainContent);
+      } else if (key === 'marcas' && typeof MarcasView !== 'undefined') {
+        MarcasView.load(mainContent);
+      } else if (key === 'medidas' && typeof MedidasView !== 'undefined') {
+        MedidasView.load(mainContent);
+      } else if (key === 'rutas' && typeof RutasView !== 'undefined') {
+        RutasView.load(mainContent);
+      } else if (key === 'fabricantes' && typeof FabricantesView !== 'undefined') {
+        FabricantesView.load(mainContent);
+      } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
+        ProveedoresView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
       } else {
@@ -210,29 +314,43 @@
       text: 'Se cerrará la sesión y volverá al inicio de sesión.',
     });
     if (!salir) return;
-    sessionStorage.removeItem('user');
+    F.clearSession('user');
+    window.OnnebContext = {};
     const userInput = document.getElementById('username');
     const passInput = document.getElementById('password');
+    const empresaSelect = document.getElementById('login-empresa');
     if (userInput) userInput.value = '';
     if (passInput) passInput.value = '';
     closeSidebar();
     navigateTo('login');
+    await loadLoginEmpresas();
   });
 
-  document.addEventListener('DOMContentLoaded', async () => {
-    await loadBuildCounter();
-    startBuildCounterPoll();
-    await OnnebDb.init();
-    initSocket();
+  async function bootApp() {
+    ensureLoginView();
+    await loadLoginEmpresas('');
 
-    const saved = F.session('user');
-    if (saved) {
-      views.login.classList.remove('view-active');
-      views.login.classList.add('view-next');
-      views.main.classList.remove('view-next');
-      views.main.classList.add('view-active');
-      currentView = 'main';
+    if (buildCounterEl) {
+      await loadBuildCounter();
+      startBuildCounterPoll();
     }
-    updateFabVisibility();
-  });
+
+    try {
+      await OnnebDb.init();
+    } catch (err) {
+      console.warn('[DB] init:', err);
+    }
+
+    initSocket();
+  }
+
+  ensureLoginView();
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      bootApp().catch((err) => console.error('[App] boot:', err));
+    });
+  } else {
+    bootApp().catch((err) => console.error('[App] boot:', err));
+  }
 })();

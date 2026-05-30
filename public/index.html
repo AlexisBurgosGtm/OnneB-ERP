@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/pace.css">
   <link rel="stylesheet" href="/css/empresas.css">
+  <link rel="stylesheet" href="/css/marcas.css">
   <link rel="stylesheet" href="/css/catalogos.css">
   <link rel="stylesheet" href="/css/config-general.css">
 </head>
@@ -42,6 +43,12 @@
           <h1 class="h4 mb-1 fw-semibold">OnneB POS</h1>
           <p class="text-muted small mb-4">Ingresa para continuar</p>
           <form id="login-form" class="text-start" novalidate autocomplete="off">
+            <div class="mb-3">
+              <label for="login-empresa" class="form-label small">Empresa</label>
+              <select class="form-select form-select-lg login-input" id="login-empresa" name="onneb-empresa" required>
+                <option value="">Cargando…</option>
+              </select>
+            </div>
             <div class="mb-3">
               <label for="username" class="form-label small">Usuario</label>
               <input type="text" class="form-control form-control-lg login-input" id="username" name="onneb-user"
@@ -141,7 +148,13 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/F.js"></script>
   <script src="/js/catalogos.js"></script>
+  <script src="/js/catalogo-empresa-view.js"></script>
   <script src="/js/views/empresas.js"></script>
+  <script src="/js/views/marcas.js"></script>
+  <script src="/js/views/medidas.js"></script>
+  <script src="/js/views/rutas.js"></script>
+  <script src="/js/views/fabricantes.js"></script>
+  <script src="/js/views/proveedores.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>

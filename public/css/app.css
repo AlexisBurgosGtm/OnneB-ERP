@@ -125,6 +125,10 @@ body {
   box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--onneb-color-secondary) 25%, transparent) !important;
 }
 
+#login-empresa.login-input {
+  cursor: pointer;
+}
+
 .btn-login {
   background: var(--login-btn-bg);
   border: 1px solid var(--login-btn-bg);

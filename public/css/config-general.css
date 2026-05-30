@@ -2,6 +2,9 @@
   width: 100%;
   max-width: 640px;
   align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .config-general-panel .card {

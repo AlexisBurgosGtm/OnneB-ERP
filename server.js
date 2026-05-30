@@ -18,6 +18,11 @@ const io = new Server(server, {
 let dbPool = null;
 
 const empresasRouter = require('./routes/empresas');
+const marcasRouter = require('./routes/marcas');
+const medidasRouter = require('./routes/medidas');
+const rutasRouter = require('./routes/rutas');
+const fabricantesRouter = require('./routes/fabricantes');
+const proveedoresRouter = require('./routes/proveedores');
 const { router: configRouter } = require('./routes/config');
 
 async function getDbPool() {
@@ -83,6 +88,11 @@ function watchBuildMetaBroadcast() {
 }
 
 app.use('/api/empresas', empresasRouter);
+app.use('/api/marcas', marcasRouter);
+app.use('/api/medidas', medidasRouter);
+app.use('/api/rutas', rutasRouter);
+app.use('/api/fabricantes', fabricantesRouter);
+app.use('/api/proveedores', proveedoresRouter);
 app.use('/api/config', configRouter);
 
 app.get('/api/health', async (_req, res) => {

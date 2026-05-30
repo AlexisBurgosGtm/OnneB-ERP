@@ -90,15 +90,65 @@ let F = {
   },
 
   /**
-   * Guardar / leer JSON en sessionStorage
+   * Guardar / leer JSON en localStorage (sesión de trabajo; se limpia al recargar la página).
+   * Migra datos previos de sessionStorage.
    */
   session(key, value) {
-    if (value === undefined) {
-      const raw = sessionStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
+    try {
+      if (value === undefined) {
+        let raw = localStorage.getItem(key);
+        if (!raw) {
+          raw = sessionStorage.getItem(key);
+          if (raw) {
+            localStorage.setItem(key, raw);
+            sessionStorage.removeItem(key);
+          }
+        }
+        return raw ? JSON.parse(raw) : null;
+      }
+      const json = JSON.stringify(value);
+      localStorage.setItem(key, json);
+      sessionStorage.setItem(key, json);
+      return value;
+    } catch (err) {
+      console.warn('[Session]', err);
+      return value === undefined ? null : value;
     }
-    sessionStorage.setItem(key, JSON.stringify(value));
-    return value;
+  },
+
+  clearSession(key) {
+    try {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    } catch (err) {
+      console.warn('[Session] clear:', err);
+    }
+  },
+
+  isLoggedIn() {
+    const user = this.session('user');
+    return Boolean(user?.empNit);
+  },
+
+  /** EMPNIT de la empresa activa (sesión global) */
+  getEmpNit() {
+    const user = this.session('user');
+    return user?.empNit ?? window.OnnebContext?.empNit ?? null;
+  },
+
+  getEmpNitNombre() {
+    const user = this.session('user');
+    return user?.empNombre ?? window.OnnebContext?.empNombre ?? '';
+  },
+
+  setEmpresaGlobal(empNit, empNombre = '') {
+    window.OnnebContext = {
+      ...(window.OnnebContext || {}),
+      empNit,
+      empNombre,
+    };
+    const user = this.session('user') || {};
+    this.session('user', { ...user, empNit, empNombre });
   },
 
   /**

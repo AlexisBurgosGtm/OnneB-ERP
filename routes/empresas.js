@@ -48,6 +48,24 @@ function bindFields(request, data, prefix = '') {
   }
 }
 
+/** Lista para combo de login: EMPNIT + EMPNOMBRE desde dbo.Empresas */
+router.get('/combo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .query('SELECT EMPNIT, EMPNOMBRE FROM app.Empresas ORDER BY EMPNOMBRE');
+    res.json({ rows: result.recordset, total: result.recordset.length });
+  } catch (err) {
+    console.warn('[API GET /empresas/combo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {

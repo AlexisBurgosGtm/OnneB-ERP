@@ -4,6 +4,7 @@ const { isDbConfigured } = require('../config/database');
 
 const router = express.Router();
 const ADMIN_CONFIG_ID = 2;
+const INVENTARIO_NEGATIVO_CONFIG_ID = 3;
 
 router.get('/:id/pass', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -65,4 +66,65 @@ router.put('/:id/pass', async (req, res) => {
   }
 });
 
-module.exports = { router, ADMIN_CONFIG_ID };
+router.get('/:id/sino', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('ID', sql.Int, id)
+      .query('SELECT ID, SINO, DESCRIPCION, CONFIG FROM Config WHERE ID = @ID');
+    if (!result.recordset.length) {
+      return res.status(404).json({ error: 'Configuración no encontrada' });
+    }
+    const row = result.recordset[0];
+    const sino = (row.SINO ?? '').toString().trim().toUpperCase();
+    res.json({
+      id: row.ID,
+      sino: sino === 'SI' || sino === 'NO' ? sino : 'NO',
+      descripcion: row.DESCRIPCION ?? '',
+      config: row.CONFIG ?? '',
+    });
+  } catch (err) {
+    console.warn('[API GET /config/:id/sino]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/:id/sino', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const raw = (req.body?.sino ?? '').toString().trim().toUpperCase();
+  if (raw !== 'SI' && raw !== 'NO') {
+    return res.status(400).json({ error: 'El valor debe ser SI o NO' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('ID', sql.Int, id)
+      .input('SINO', sql.NVarChar(2), raw)
+      .query('UPDATE Config SET SINO = @SINO WHERE ID = @ID');
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Configuración no encontrada' });
+    }
+    res.json({ ok: true, id, sino: raw });
+  } catch (err) {
+    console.warn('[API PUT /config/:id/sino]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = { router, ADMIN_CONFIG_ID, INVENTARIO_NEGATIVO_CONFIG_ID };

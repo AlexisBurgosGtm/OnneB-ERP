@@ -17,8 +17,8 @@ const CatalogosUI = {
     `;
   },
 
-  btnEditar(empnit) {
-    const attr = empnit ? `data-empnit="${this.escapeAttr(empnit)}"` : '';
+  btnEditar(id, dataKey = 'empnit') {
+    const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
     return `
       <button type="button" class="btn btn-catalogo-editar" ${attr} aria-label="Editar" title="Editar">
         <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
@@ -26,8 +26,8 @@ const CatalogosUI = {
     `;
   },
 
-  btnEliminar(empnit) {
-    const attr = empnit ? `data-empnit="${this.escapeAttr(empnit)}"` : '';
+  btnEliminar(id, dataKey = 'empnit') {
+    const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
     return `
       <button type="button" class="btn btn-catalogo-eliminar" ${attr} aria-label="Eliminar" title="Eliminar">
         <i class="fa-solid fa-trash" aria-hidden="true"></i> Eliminar
@@ -35,8 +35,8 @@ const CatalogosUI = {
     `;
   },
 
-  accionesRow(empnit) {
-    return `<div class="catalogo-acciones">${this.btnEditar(empnit)}${this.btnEliminar(empnit)}</div>`;
+  accionesRow(id, dataKey = 'empnit') {
+    return `<div class="catalogo-acciones">${this.btnEditar(id, dataKey)}${this.btnEliminar(id, dataKey)}</div>`;
   },
 
   /** Opciones base modales: Cancelar izquierda, confirmar derecha */
