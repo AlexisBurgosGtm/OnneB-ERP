@@ -253,6 +253,11 @@
 
   const menuLabels = {
     'productos-precios': 'Productos y precios',
+    inventario: 'Inventario',
+    'inventario-retroactivo': 'Inventario Retroactivo',
+    empleados: 'Empleados',
+    municipios: 'Municipios',
+    departamentos: 'Departamentos',
     marcas: 'Marcas',
     medidas: 'Medidas',
     clientes: 'Clientes',
@@ -293,6 +298,14 @@
         FabricantesView.load(mainContent);
       } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
         ProveedoresView.load(mainContent);
+      } else if (key === 'municipios' && typeof MunicipiosView !== 'undefined') {
+        MunicipiosView.load(mainContent);
+      } else if (key === 'departamentos' && typeof DepartamentosView !== 'undefined') {
+        DepartamentosView.load(mainContent);
+      } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
+        EmpleadosView.load(mainContent);
+      } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
+        TipoDocumentosView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
       } else {

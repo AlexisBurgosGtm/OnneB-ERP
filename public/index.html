@@ -83,19 +83,48 @@
           <div class="accordion sidebar-accordion" id="sidebarAccordion">
             <div class="accordion-item">
               <h2 class="accordion-header">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCatalogos" aria-expanded="true" aria-controls="collapseCatalogos">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInventarios" aria-expanded="true" aria-controls="collapseInventarios">
+                  <i class="fa-solid fa-boxes-stacked sidebar-icon" aria-hidden="true"></i>
+                  <span>INVENTARIOS</span>
+                </button>
+              </h2>
+              <div id="collapseInventarios" class="accordion-collapse collapse show">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-warehouse" aria-hidden="true"></i> Inventario</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="inventario-retroactivo"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Inventario Retroactivo</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRh" aria-expanded="false" aria-controls="collapseRh">
+                  <i class="fa-solid fa-people-group sidebar-icon" aria-hidden="true"></i>
+                  <span>RECURSOS HUMANOS</span>
+                </button>
+              </h2>
+              <div id="collapseRh" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="empleados"><i class="fa-solid fa-user-tie" aria-hidden="true"></i> Empleados</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCatalogos" aria-expanded="false" aria-controls="collapseCatalogos">
                   <i class="fa-solid fa-folder-open sidebar-icon" aria-hidden="true"></i>
                   <span>CATALOGOS</span>
                 </button>
               </h2>
-              <div id="collapseCatalogos" class="accordion-collapse collapse show">
+              <div id="collapseCatalogos" class="accordion-collapse collapse">
                 <ul class="sidebar-submenu list-unstyled mb-0">
-                  <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="marcas"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Marcas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="medidas"><i class="fa-solid fa-ruler-combined" aria-hidden="true"></i> Medidas</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="clientes"><i class="fa-solid fa-users" aria-hidden="true"></i> Clientes</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="rutas"><i class="fa-solid fa-route" aria-hidden="true"></i> Rutas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="proveedores"><i class="fa-solid fa-truck" aria-hidden="true"></i> Proveedores</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="clientes"><i class="fa-solid fa-users" aria-hidden="true"></i> Clientes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="municipios"><i class="fa-solid fa-city" aria-hidden="true"></i> Municipios</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="departamentos"><i class="fa-solid fa-map" aria-hidden="true"></i> Departamentos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="rutas"><i class="fa-solid fa-route" aria-hidden="true"></i> Rutas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="fabricantes"><i class="fa-solid fa-industry" aria-hidden="true"></i> Fabricantes</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="ubicaciones"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> Ubicaciones</a></li>
                 </ul>
@@ -155,6 +184,10 @@
   <script src="/js/views/rutas.js"></script>
   <script src="/js/views/fabricantes.js"></script>
   <script src="/js/views/proveedores.js"></script>
+  <script src="/js/views/municipios.js"></script>
+  <script src="/js/views/departamentos.js"></script>
+  <script src="/js/views/empleados.js"></script>
+  <script src="/js/views/tipo-documentos.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>

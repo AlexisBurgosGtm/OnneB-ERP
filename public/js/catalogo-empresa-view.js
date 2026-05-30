@@ -17,11 +17,13 @@ function createCatalogoEmpresaView(cfg) {
     },
 
     apiBase(path = '') {
+      const requireEmpresa = cfg.requireEmpresa !== false;
+      const base = `${cfg.apiPath}${path}`;
+      if (!requireEmpresa) return base;
       const empNit = F.getEmpNit();
       if (!empNit) {
         throw new Error('No hay empresa activa. Cierre sesión e ingrese de nuevo.');
       }
-      const base = `${cfg.apiPath}${path}`;
       const sep = base.includes('?') ? '&' : '?';
       return `${base}${sep}empnit=${encodeURIComponent(empNit)}`;
     },
@@ -42,6 +44,25 @@ function createCatalogoEmpresaView(cfg) {
       const ro = f.readonlyOnEdit && isEdit ? 'readonly' : '';
       const val = row[f.key] ?? '';
       const step = f.step ? `step="${f.step}"` : '';
+
+      if (f.type === 'select') {
+        const options = f.options || [];
+        const strVal = val !== null && val !== undefined ? String(val) : '';
+        const optsHtml = options
+          .map(
+            (o) =>
+              `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+          )
+          .join('');
+        return `
+          <label class="form-label small mb-0">${this.escapeHtml(f.label)}</label>
+          <select class="form-select form-select-sm" name="${f.key}" ${req} ${ro}>
+            <option value="">— Seleccione —</option>
+            ${optsHtml}
+          </select>
+        `;
+      }
+
       return `
         <label class="form-label small mb-0">${this.escapeHtml(f.label)}</label>
         <input type="${f.type || 'text'}" class="form-control form-control-sm" name="${f.key}"
@@ -127,7 +148,8 @@ function createCatalogoEmpresaView(cfg) {
     },
 
     badgeText(filteredCount, totalCount) {
-      const empNombre = F.getEmpNitNombre();
+      const requireEmpresa = cfg.requireEmpresa !== false;
+      const empNombre = requireEmpresa ? F.getEmpNitNombre() : '';
       const badgeExtra = empNombre ? ` · ${empNombre}` : '';
       const q = this._filterQuery.trim();
       let countLabel;
@@ -298,7 +320,7 @@ function createCatalogoEmpresaView(cfg) {
       container.classList.remove('align-items-center', 'justify-content-center');
       container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
 
-      if (!F.getEmpNit()) {
+      if (cfg.requireEmpresa !== false && !F.getEmpNit()) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100" role="alert">
             <i class="fa-solid fa-triangle-exclamation me-2"></i>
@@ -315,7 +337,9 @@ function createCatalogoEmpresaView(cfg) {
       `;
 
       try {
-        const data = await F.fetchJson(`${this.apiBase()}&_=${Date.now()}`, { cache: 'no-store' });
+        const baseUrl = this.apiBase();
+        const cacheSep = baseUrl.includes('?') ? '&' : '?';
+        const data = await F.fetchJson(`${baseUrl}${cacheSep}_=${Date.now()}`, { cache: 'no-store' });
         this._rows = data.rows || [];
         container.innerHTML = this.renderTable();
         this.bindEvents();

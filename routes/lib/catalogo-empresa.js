@@ -18,16 +18,17 @@ function requireEmpNit(req, res) {
 function sqlTypeFor(field) {
   if (field.type === 'int') return sql.Int;
   if (field.type === 'float') return sql.Float;
+  if (field.type === 'numeric') return sql.Decimal(18, 0);
   return sql.VarChar;
 }
 
 function parseValue(field, raw) {
   if (raw === undefined || raw === '') {
-    if (field.type === 'int' || field.type === 'float') return null;
+    if (field.type === 'int' || field.type === 'float' || field.type === 'numeric') return null;
     return null;
   }
   if (field.type === 'int') return Number(raw);
-  if (field.type === 'float') return Number(raw);
+  if (field.type === 'float' || field.type === 'numeric') return Number(raw);
   return String(raw).trim();
 }
 
@@ -44,18 +45,20 @@ function parseValue(field, raw) {
  * @param {Array<{name:string,type:'varchar'|'int'|'float',required?:boolean}>} cfg.fields
  * @param {string[]} cfg.insertFields - sin idColumn si autoId
  * @param {string[]} cfg.updateFields
+ * @param {boolean} [cfg.scopedByEmpresa=true] — filtra por EMPNIT
  */
 function createCatalogoRouter(cfg) {
   const router = express.Router();
+  const scoped = cfg.scopedByEmpresa !== false;
   const fieldMap = Object.fromEntries(cfg.fields.map((f) => [f.name, f]));
 
   async function nextAutoId(pool, empnit) {
-    const result = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .query(
-        `SELECT ISNULL(MAX(${cfg.idColumn}), 0) + 1 AS nextId FROM dbo.[${cfg.table}] WHERE EMPNIT = @EMPNIT`
-      );
+    const request = pool.request();
+    const whereEmp = scoped ? ' WHERE EMPNIT = @EMPNIT' : '';
+    if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
+    const result = await request.query(
+      `SELECT ISNULL(MAX(${cfg.idColumn}), 0) + 1 AS nextId FROM dbo.[${cfg.table}]${whereEmp}`
+    );
     return result.recordset[0].nextId;
   }
 
@@ -100,21 +103,21 @@ function createCatalogoRouter(cfg) {
     if (!isDbConfigured()) {
       return res.status(503).json({ error: 'Base de datos no configurada' });
     }
-    const empnit = requireEmpNit(req, res);
-    if (!empnit) return;
+    const empnit = scoped ? requireEmpNit(req, res) : null;
+    if (scoped && !empnit) return;
     const cols = cfg.listColumns.join(', ');
+    const where = scoped ? ' WHERE EMPNIT = @EMPNIT' : '';
     try {
       const pool = await req.app.locals.getDbPool();
-      const result = await pool
-        .request()
-        .input('EMPNIT', sql.VarChar, empnit)
-        .query(`
+      const request = pool.request();
+      if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
+      const result = await request.query(`
           SELECT ${cols}
           FROM dbo.[${cfg.table}]
-          WHERE EMPNIT = @EMPNIT
+          ${where}
           ORDER BY ${cfg.orderBy}
         `);
-      res.json({ rows: result.recordset, total: result.recordset.length, empnit });
+      res.json({ rows: result.recordset, total: result.recordset.length, ...(scoped ? { empnit } : {}) });
     } catch (err) {
       console.warn(`[API GET /${cfg.logName}]`, err.message);
       res.status(500).json({ error: err.message });
@@ -125,8 +128,8 @@ function createCatalogoRouter(cfg) {
     if (!isDbConfigured()) {
       return res.status(503).json({ error: 'Base de datos no configurada' });
     }
-    const empnit = requireEmpNit(req, res);
-    if (!empnit) return;
+    const empnit = scoped ? requireEmpNit(req, res) : null;
+    if (scoped && !empnit) return;
 
     const postFields = cfg.insertFields;
     const data = readBody(req, postFields);
@@ -140,12 +143,16 @@ function createCatalogoRouter(cfg) {
         return res.status(400).json({ error: `${cfg.idColumn} es obligatorio` });
       }
 
-      const insertCols = cfg.autoId
-        ? ['EMPNIT', cfg.idColumn, ...cfg.insertFields]
-        : ['EMPNIT', ...cfg.insertFields];
+      const insertCols = scoped
+        ? cfg.autoId
+          ? ['EMPNIT', cfg.idColumn, ...cfg.insertFields]
+          : ['EMPNIT', ...cfg.insertFields]
+        : cfg.autoId
+          ? [cfg.idColumn, ...cfg.insertFields]
+          : [...cfg.insertFields];
       const insertParams = insertCols.map((c) => `@${c}`);
       const request = pool.request();
-      request.input('EMPNIT', sql.VarChar, empnit);
+      if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
       if (cfg.autoId) {
         request.input(cfg.idColumn, sqlTypeFor({ type: cfg.idType }), idValue);
         bindBody(request, data, cfg.insertFields);
@@ -168,8 +175,8 @@ function createCatalogoRouter(cfg) {
     if (!isDbConfigured()) {
       return res.status(503).json({ error: 'Base de datos no configurada' });
     }
-    const empnit = requireEmpNit(req, res);
-    if (!empnit) return;
+    const empnit = scoped ? requireEmpNit(req, res) : null;
+    if (scoped && !empnit) return;
     const idValue = parseIdParam(req.params[cfg.idRouteParam]);
     if (idValue === null) {
       return res.status(400).json({ error: `${cfg.idColumn} inválido` });
@@ -182,14 +189,17 @@ function createCatalogoRouter(cfg) {
     try {
       const pool = await req.app.locals.getDbPool();
       const setClause = cfg.updateFields.map((n) => `${n} = @${n}`).join(', ');
+      const where = scoped
+        ? `WHERE EMPNIT = @EMPNIT AND ${cfg.idColumn} = @ID_KEY`
+        : `WHERE ${cfg.idColumn} = @ID_KEY`;
       const request = pool.request();
-      request.input('EMPNIT', sql.VarChar, empnit);
+      if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
       request.input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue);
       bindBody(request, data, cfg.updateFields);
 
       const result = await request.query(`
         UPDATE dbo.[${cfg.table}] SET ${setClause}
-        WHERE EMPNIT = @EMPNIT AND ${cfg.idColumn} = @ID_KEY
+        ${where}
       `);
       if (result.rowsAffected[0] === 0) {
         return res.status(404).json({ error: `${cfg.entityLabel} no encontrado(a)` });
@@ -205,22 +215,20 @@ function createCatalogoRouter(cfg) {
     if (!isDbConfigured()) {
       return res.status(503).json({ error: 'Base de datos no configurada' });
     }
-    const empnit = requireEmpNit(req, res);
-    if (!empnit) return;
+    const empnit = scoped ? requireEmpNit(req, res) : null;
+    if (scoped && !empnit) return;
     const idValue = parseIdParam(req.params[cfg.idRouteParam]);
     if (idValue === null) {
       return res.status(400).json({ error: `${cfg.idColumn} inválido` });
     }
     try {
       const pool = await req.app.locals.getDbPool();
-      const result = await pool
-        .request()
-        .input('EMPNIT', sql.VarChar, empnit)
-        .input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue)
-        .query(`
-          DELETE FROM dbo.[${cfg.table}]
-          WHERE EMPNIT = @EMPNIT AND ${cfg.idColumn} = @ID_KEY
-        `);
+      const request = pool.request().input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue);
+      if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
+      const where = scoped
+        ? `WHERE EMPNIT = @EMPNIT AND ${cfg.idColumn} = @ID_KEY`
+        : `WHERE ${cfg.idColumn} = @ID_KEY`;
+      const result = await request.query(`DELETE FROM dbo.[${cfg.table}] ${where}`);
       if (result.rowsAffected[0] === 0) {
         return res.status(404).json({ error: `${cfg.entityLabel} no encontrado(a)` });
       }

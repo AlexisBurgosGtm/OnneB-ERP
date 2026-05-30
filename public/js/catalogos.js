@@ -76,6 +76,11 @@ const CatalogosUI = {
       cancelButtonText: this.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
       preConfirm,
+      didOpen: () => {
+        const popup = Swal.getPopup();
+        const form = popup?.querySelector('form');
+        if (form) form.setAttribute('novalidate', 'novalidate');
+      },
     });
     return result.isConfirmed ? result.value : null;
   },

@@ -23,6 +23,10 @@ const medidasRouter = require('./routes/medidas');
 const rutasRouter = require('./routes/rutas');
 const fabricantesRouter = require('./routes/fabricantes');
 const proveedoresRouter = require('./routes/proveedores');
+const municipiosRouter = require('./routes/municipios');
+const departamentosRouter = require('./routes/departamentos');
+const empleadosRouter = require('./routes/empleados');
+const tipoDocumentosRouter = require('./routes/tipo-documentos');
 const { router: configRouter } = require('./routes/config');
 
 async function getDbPool() {
@@ -93,6 +97,10 @@ app.use('/api/medidas', medidasRouter);
 app.use('/api/rutas', rutasRouter);
 app.use('/api/fabricantes', fabricantesRouter);
 app.use('/api/proveedores', proveedoresRouter);
+app.use('/api/municipios', municipiosRouter);
+app.use('/api/departamentos', departamentosRouter);
+app.use('/api/empleados', empleadosRouter);
+app.use('/api/tipo-documentos', tipoDocumentosRouter);
 app.use('/api/config', configRouter);
 
 app.get('/api/health', async (_req, res) => {
