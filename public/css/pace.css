@@ -1,0 +1,91 @@
+/* Pace.js — barra superior + overlay con porcentaje */
+.pace {
+  pointer-events: none;
+  z-index: 10001;
+}
+
+.pace-inactive {
+  display: none;
+}
+
+.pace .pace-progress {
+  background: color-mix(in srgb, var(--onneb-base-black) 8%, var(--onneb-base-white));
+  position: fixed;
+  z-index: 10001;
+  top: 0;
+  right: 100%;
+  width: 100%;
+  height: 3px;
+}
+
+.pace .pace-progress-inner {
+  display: block;
+  position: absolute;
+  right: 0;
+  width: 100px;
+  height: 100%;
+  box-shadow:
+    0 0 12px var(--onneb-color-secondary),
+    0 0 6px var(--onneb-color-secondary);
+  opacity: 1;
+  transform: rotate(3deg) translate(0, -4px);
+}
+
+.pace .pace-activity {
+  display: none;
+}
+
+.onneb-pace-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: color-mix(in srgb, #ffffff 94%, transparent);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.28s ease, visibility 0.28s ease;
+  pointer-events: none;
+}
+
+.onneb-pace-overlay.is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.onneb-pace-ring {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--onneb-color-secondary) 25%, transparent);
+  border-top-color: var(--onneb-color-secondary);
+  animation: onneb-pace-spin 0.75s linear infinite;
+}
+
+.onneb-pace-percent {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--onneb-color-primary);
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+  text-align: center;
+}
+
+.onneb-pace-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--onneb-text-muted, #666);
+}
+
+@keyframes onneb-pace-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "OnneB_pos",
+  "version": "1.0.0",
+  "description": "SPA POS OnneB - vanilla JS, Socket.IO, MSSQL",
+  "main": "server.js",
+  "scripts": {
+    "prestart": "node scripts/bump-build.js",
+    "start": "node server.js",
+    "predev": "node scripts/bump-build.js",
+    "dev": "node server.js",
+    "build": "node scripts/bump-build.js",
+    "watch:build": "node scripts/watch-build.js",
+    "postinstall": "node scripts/generate-icons.js",
+    "test": "nodemon server.js"
+  },
+  "keywords": ["pos", "spa", "vanilla"],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mssql": "^11.0.1",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "pace-js": "^1.2.4"
+  }
+}

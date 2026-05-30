@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="OnneB POS - Punto de venta">
+  <title>OnneB POS</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-72.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css" crossorigin="anonymous">
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/sidebar.css">
+  <link rel="stylesheet" href="/css/pace.css">
+  <link rel="stylesheet" href="/css/empresas.css">
+  <link rel="stylesheet" href="/css/catalogos.css">
+  <link rel="stylesheet" href="/css/config-general.css">
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script>
+  <script src="/js/pace-init.js"></script>
+  <div id="app" class="app-shell">
+    <section id="view-login" class="view view-active" data-view="login">
+      <div class="login-backdrop"></div>
+      <div class="login-glass card border-0 shadow-lg">
+        <div class="card-body p-4 p-md-5 text-center">
+          <div class="logo-wrap mx-auto mb-4" aria-hidden="true">
+            <svg class="logo-generic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:var(--onneb-color-primary)"/>
+                  <stop offset="100%" style="stop-color:var(--onneb-color-secondary)"/>
+                </linearGradient>
+              </defs>
+              <circle cx="60" cy="60" r="52" fill="url(#logoGrad)" opacity="0.9"/>
+              <text x="60" y="72" text-anchor="middle" fill="var(--onneb-color-accent)" font-size="36" font-weight="700" font-family="system-ui,sans-serif">OB</text>
+            </svg>
+          </div>
+          <h1 class="h4 mb-1 fw-semibold">OnneB POS</h1>
+          <p class="text-muted small mb-4">Ingresa para continuar</p>
+          <form id="login-form" class="text-start" novalidate autocomplete="off">
+            <div class="mb-3">
+              <label for="username" class="form-label small">Usuario</label>
+              <input type="text" class="form-control form-control-lg login-input" id="username" name="onneb-user"
+                placeholder="usuario" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
+            </div>
+            <div class="mb-4">
+              <label for="password" class="form-label small">Contraseña</label>
+              <input type="password" class="form-control form-control-lg login-input" id="password" name="onneb-pass"
+                placeholder="••••••••" autocomplete="off" data-lpignore="true" data-form-type="other">
+            </div>
+            <button type="submit" class="btn btn-lg w-100 btn-login">
+              <i class="fa-solid fa-right-to-bracket me-2" aria-hidden="true"></i>Iniciar sesión
+            </button>
+          </form>
+        </div>
+      </div>
+      <div id="build-counter" class="build-counter" aria-live="polite">
+        <span class="build-count">Compilación #0</span>
+        <span class="build-date">—</span>
+      </div>
+    </section>
+
+    <section id="view-main" class="view view-next" data-view="main">
+      <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
+      <aside id="sidebar" class="sidebar" aria-label="Menú principal">
+        <div class="sidebar-brand">
+          <img src="/icons/icon-72.png" width="32" height="32" alt="" class="sidebar-favicon">
+          <span class="sidebar-brand-text">OnneB POS</span>
+        </div>
+        <nav class="sidebar-nav">
+          <div class="accordion sidebar-accordion" id="sidebarAccordion">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCatalogos" aria-expanded="true" aria-controls="collapseCatalogos">
+                  <i class="fa-solid fa-folder-open sidebar-icon" aria-hidden="true"></i>
+                  <span>CATALOGOS</span>
+                </button>
+              </h2>
+              <div id="collapseCatalogos" class="accordion-collapse collapse show">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="marcas"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Marcas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="medidas"><i class="fa-solid fa-ruler-combined" aria-hidden="true"></i> Medidas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="clientes"><i class="fa-solid fa-users" aria-hidden="true"></i> Clientes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="rutas"><i class="fa-solid fa-route" aria-hidden="true"></i> Rutas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="proveedores"><i class="fa-solid fa-truck" aria-hidden="true"></i> Proveedores</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="fabricantes"><i class="fa-solid fa-industry" aria-hidden="true"></i> Fabricantes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="ubicaciones"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> Ubicaciones</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseConfig" aria-expanded="false" aria-controls="collapseConfig">
+                  <i class="fa-solid fa-sliders sidebar-icon" aria-hidden="true"></i>
+                  <span>CONFIGURACIONES</span>
+                </button>
+              </h2>
+              <div id="collapseConfig" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="empresas"><i class="fa-solid fa-building" aria-hidden="true"></i> Empresas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="config-general"><i class="fa-solid fa-gear" aria-hidden="true"></i> Config general</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="tipo-documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Tipo documentos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="credenciales-fel"><i class="fa-solid fa-key" aria-hidden="true"></i> Credenciales FEL</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <div class="main-layout">
+        <header class="main-header d-flex align-items-center gap-2 px-3 py-2">
+          <button type="button" id="btn-menu-toggle" class="btn btn-icon" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+          </button>
+          <span class="fw-semibold flex-grow-1" id="main-title">OnneB POS</span>
+          <button type="button" id="btn-logout" class="btn btn-sm btn-outline-secondary">
+            <i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i>Salir
+          </button>
+        </header>
+        <main id="main-content" class="main-content flex-grow-1 d-flex align-items-center justify-content-center">
+          <p class="text-muted mb-0">Seleccione una opción del menú</p>
+        </main>
+      </div>
+    </section>
+  </div>
+
+  <button type="button" id="btn-menu-fab" class="btn-menu-fab" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsstore/dist/jsstore.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/F.js"></script>
+  <script src="/js/catalogos.js"></script>
+  <script src="/js/views/empresas.js"></script>
+  <script src="/js/views/config-general.js"></script>
+  <script src="/js/db.js"></script>
+  <script src="/js/manifest.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

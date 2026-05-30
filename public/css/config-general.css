@@ -1,0 +1,54 @@
+.config-general-panel {
+  width: 100%;
+  max-width: 640px;
+  align-self: flex-start;
+}
+
+.config-general-panel .card {
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--onneb-base-black) 6%, transparent);
+}
+
+.config-general-panel .card-title {
+  color: var(--app-text, #1a1a1a);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.config-general-panel .card-text {
+  color: var(--app-text-muted, #666);
+  font-size: 0.82rem;
+}
+
+.config-general-panel .input-group .form-control {
+  border-color: var(--app-border, #ddd);
+  color: var(--app-text, #1a1a1a);
+}
+
+.config-general-panel .btn-toggle-pass {
+  border-color: var(--app-border, #ddd);
+  color: var(--app-text-muted, #666);
+  background: var(--app-surface, #fafafa);
+}
+
+.config-general-panel .btn-toggle-pass:hover {
+  background: #f0f0f0;
+  color: var(--app-text, #1a1a1a);
+}
+
+.config-general-panel .btn-actualizar-pass {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
+  border: 1px solid #2563eb !important;
+  white-space: nowrap;
+}
+
+.config-general-panel .btn-actualizar-pass:hover {
+  color: #ffffff !important;
+  opacity: 0.92;
+}

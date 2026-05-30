@@ -1,0 +1,25 @@
+-- Vista Empresas (esquema app) basada en dbo.Empresas
+-- Excluye EMPLOGO (image) para consultas y listados
+
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'app')
+  EXEC(N'CREATE SCHEMA app');
+GO
+
+CREATE OR ALTER VIEW app.Empresas AS
+SELECT
+  EMPNIT,
+  EMPNOMBRE,
+  EMPRAZONSOCIAL,
+  EMPDIRECCION,
+  EMPTELEFONO,
+  EMPEMAIL,
+  EMPCONTACTO,
+  EMPTELCONTACTO,
+  EMPEMAILCONTACTO,
+  EMPMESPROCESO,
+  EMPANIOPROCESO,
+  CODTIPOEMPRESA,
+  OBJETIVO,
+  PRESUPUESTO
+FROM dbo.Empresas;
+GO

@@ -1,0 +1,174 @@
+/**
+ * Botones globales para catálogos — OnneB POS
+ */
+
+/* Nuevo: FAB verde, esquina inferior derecha */
+.btn-catalogo-nuevo {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 9998;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  color: #ffffff;
+  background: linear-gradient(145deg, #22c55e, #16a34a);
+  box-shadow:
+    0 4px 16px rgba(22, 163, 74, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-catalogo-nuevo:hover {
+  transform: translateY(-2px) scale(1.05);
+  color: #ffffff;
+  box-shadow:
+    0 8px 24px rgba(22, 163, 74, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.btn-catalogo-nuevo:active {
+  transform: scale(0.96);
+}
+
+/* Editar: azul + icono */
+.btn-catalogo-editar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
+  border: 1px solid #2563eb !important;
+  border-radius: 0.375rem;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.btn-catalogo-editar:hover {
+  color: #ffffff !important;
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+/* Eliminar: rojo + trash + leyenda "Eliminar" */
+.btn-catalogo-eliminar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #ef4444, #dc2626) !important;
+  border: 1px solid #dc2626 !important;
+  border-radius: 0.375rem;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.btn-catalogo-eliminar:hover {
+  color: #ffffff !important;
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.catalogo-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.catalogo-vista-wrap {
+  padding-bottom: 5rem;
+}
+
+/* Modal — Cancelar izquierda | Guardar / Aceptar / Eliminar derecha */
+.swal2-popup.modal-catalogo .swal2-actions,
+.swal2-popup.modal-catalogo .swal2-actions.modal-catalogo-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  gap: 0.75rem !important;
+  padding: 0 0.25rem 0.25rem !important;
+  box-sizing: border-box !important;
+}
+
+.swal2-popup.modal-catalogo .swal2-actions .swal2-cancel,
+.swal2-popup.modal-catalogo .swal2-actions .btn-modal-cancelar {
+  order: 1 !important;
+  margin: 0 !important;
+  margin-right: auto !important;
+}
+
+.swal2-popup.modal-catalogo .swal2-actions .swal2-confirm,
+.swal2-popup.modal-catalogo .swal2-actions .btn-modal-guardar,
+.swal2-popup.modal-catalogo .swal2-actions .btn-catalogo-eliminar {
+  order: 2 !important;
+  margin: 0 !important;
+  margin-left: auto !important;
+}
+
+/* Un solo botón (Aceptar) también a la derecha */
+.swal2-popup.modal-catalogo .swal2-actions:not(:has(.swal2-cancel)) .swal2-confirm {
+  margin-left: auto !important;
+}
+
+.btn-modal-cancelar {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem !important;
+  font-weight: 600 !important;
+  color: #374151 !important;
+  background: #f3f4f6 !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 0.375rem !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.btn-modal-cancelar:hover {
+  background: #e5e7eb !important;
+  color: #1f2937 !important;
+}
+
+.btn-modal-guardar {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
+  border: 1px solid #2563eb !important;
+  border-radius: 0.375rem !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.btn-modal-guardar:hover {
+  color: #ffffff !important;
+  opacity: 0.92;
+}
+
+.catalogo-form .form-label {
+  color: var(--app-text-muted, #666);
+}
+
+.catalogo-form .form-control {
+  border-color: var(--app-border, #ddd);
+  color: var(--app-text, #1a1a1a);
+}

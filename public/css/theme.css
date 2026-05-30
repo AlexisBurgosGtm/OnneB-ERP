@@ -1,0 +1,44 @@
+/**
+ * OnneB POS — 3 colores principales (modificables)
+ * Basados en negro (#000) y blanco (#fff)
+ */
+:root {
+  /* Base de negro y blanco — cambiar aquí para re-tematizar */
+  --onneb-base-black: #0d0d0d;
+  --onneb-base-white: #f5f5f5;
+
+  /* Color 1: primario (fondo oscuro / marca) */
+  --onneb-color-primary: color-mix(in srgb, var(--onneb-base-black) 88%, var(--onneb-base-white) 12%);
+
+  /* Color 2: secundario (acento / gradientes) */
+  --onneb-color-secondary: color-mix(in srgb, var(--onneb-base-black) 45%, var(--onneb-base-white) 55%);
+
+  /* Color 3: acento (texto destacado / contraste) */
+  --onneb-color-accent: color-mix(in srgb, var(--onneb-base-white) 92%, var(--onneb-base-black) 8%);
+
+  /* Derivados para UI */
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-base-white) 12%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-base-white) 28%, transparent);
+  --onneb-text-muted: color-mix(in srgb, var(--onneb-color-accent) 65%, var(--onneb-base-black));
+}
+
+/* Login — colores invertidos (fondos blancos) */
+#view-login {
+  --login-bg: #ffffff;
+  --login-surface: #fafafa;
+  --login-text: color-mix(in srgb, var(--onneb-base-black) 90%, var(--onneb-base-white));
+  --login-text-muted: color-mix(in srgb, var(--onneb-base-black) 50%, var(--onneb-base-white));
+  --login-border: color-mix(in srgb, var(--onneb-base-black) 12%, var(--onneb-base-white));
+  --login-input-bg: #ffffff;
+  --login-btn-bg: color-mix(in srgb, var(--onneb-base-black) 88%, var(--onneb-base-white));
+  --login-btn-text: #ffffff;
+}
+
+/* Vistas generales — mismo esquema claro que login */
+#view-main {
+  --app-bg: #ffffff;
+  --app-surface: #fafafa;
+  --app-text: color-mix(in srgb, var(--onneb-base-black) 90%, var(--onneb-base-white));
+  --app-text-muted: color-mix(in srgb, var(--onneb-base-black) 50%, var(--onneb-base-white));
+  --app-border: color-mix(in srgb, var(--onneb-base-black) 12%, var(--onneb-base-white));
+}

@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js"],
+  "ext": "js",
+  "ignore": ["node_modules", "build-counter.json", "public/build-meta.json", "scripts/bump-build.js"],
+  "exec": "node server.js"
+}
