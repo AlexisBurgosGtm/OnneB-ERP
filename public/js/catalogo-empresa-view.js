@@ -182,8 +182,13 @@ function createCatalogoEmpresaView(cfg) {
       const filtered = this.getFilteredRows();
       const panelClass = cfg.panelClass || 'catalogo-empresa-panel';
 
+      const titleBlock = cfg.viewTitle
+        ? `<h2 class="catalogo-vista-title h5 mb-2 px-1">${this.escapeHtml(cfg.viewTitle)}</h2>`
+        : '';
+
       return `
         <div class="${panelClass} catalogo-vista-wrap">
+          ${titleBlock}
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
             <span class="catalogo-empresa-badge" id="${cfg.slug}-count">${this.badgeText(filtered.length, this._rows.length)}</span>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-${cfg.slug}-refresh">

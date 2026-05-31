@@ -68,6 +68,21 @@ body {
   z-index: 2;
 }
 
+/* Cambio de vista sin animación (logout / login) */
+.view-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#view-login.view-active {
+  z-index: 10;
+}
+
+#view-main.view-active {
+  z-index: 5;
+}
+
 /* Login */
 #view-login {
   align-items: center;

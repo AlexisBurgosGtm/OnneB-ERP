@@ -22,11 +22,17 @@ const marcasRouter = require('./routes/marcas');
 const medidasRouter = require('./routes/medidas');
 const rutasRouter = require('./routes/rutas');
 const fabricantesRouter = require('./routes/fabricantes');
+const ubicacionesRouter = require('./routes/ubicaciones');
+const clientesRouter = require('./routes/clientes');
+const tipoNegociosRouter = require('./routes/tipo-negocios');
 const proveedoresRouter = require('./routes/proveedores');
 const municipiosRouter = require('./routes/municipios');
 const departamentosRouter = require('./routes/departamentos');
 const empleadosRouter = require('./routes/empleados');
 const tipoDocumentosRouter = require('./routes/tipo-documentos');
+const cajasRouter = require('./routes/cajas');
+const authRouter = require('./routes/auth');
+const usuariosRouter = require('./routes/usuarios');
 const { router: configRouter } = require('./routes/config');
 
 async function getDbPool() {
@@ -96,11 +102,17 @@ app.use('/api/marcas', marcasRouter);
 app.use('/api/medidas', medidasRouter);
 app.use('/api/rutas', rutasRouter);
 app.use('/api/fabricantes', fabricantesRouter);
+app.use('/api/ubicaciones', ubicacionesRouter);
+app.use('/api/clientes', clientesRouter);
+app.use('/api/tipo-negocios', tipoNegociosRouter);
 app.use('/api/proveedores', proveedoresRouter);
 app.use('/api/municipios', municipiosRouter);
 app.use('/api/departamentos', departamentosRouter);
 app.use('/api/empleados', empleadosRouter);
 app.use('/api/tipo-documentos', tipoDocumentosRouter);
+app.use('/api/cajas', cajasRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/usuarios', usuariosRouter);
 app.use('/api/config', configRouter);
 
 app.get('/api/health', async (_req, res) => {

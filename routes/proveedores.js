@@ -9,7 +9,7 @@ module.exports = createCatalogoRouter({
   idType: 'int',
   idRouteParam: 'codprov',
   autoId: true,
-  listColumns: ['CODPROV', 'EMPRESA', 'RAZONSOCIAL', 'TELEMPRESA', 'NIT', 'CONTACTO'],
+  listColumns: ['CODPROV', 'NIT', 'EMPRESA', 'RAZONSOCIAL', 'TELEMPRESA', 'CONTACTO'],
   fields: [
     { name: 'EMPRESA', type: 'varchar', required: true },
     { name: 'RAZONSOCIAL', type: 'varchar' },
@@ -20,6 +20,6 @@ module.exports = createCatalogoRouter({
     { name: 'NIT', type: 'varchar' },
     { name: 'SALDO', type: 'float' },
   ],
-  insertFields: ['EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO', 'NIT', 'SALDO'],
-  updateFields: ['EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO', 'NIT', 'SALDO'],
+  insertFields: ['NIT', 'EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO'],
+  updateFields: ['NIT', 'EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO'],
 });

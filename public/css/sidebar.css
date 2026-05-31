@@ -14,6 +14,7 @@
   background: color-mix(in srgb, var(--onneb-base-black) 55%, transparent);
   opacity: 0;
   visibility: hidden;
+  pointer-events: none;
   transition: opacity 0.3s ease, visibility 0.3s ease;
   z-index: 1040;
 }
@@ -21,6 +22,7 @@
 .sidebar-overlay.is-visible {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 
 .sidebar {

@@ -73,6 +73,36 @@
   box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--onneb-color-primary, #1a1a1a) 18%, transparent);
 }
 
+/* Botón SI/NO — columna Activo en Empleados */
+.btn-empleado-activo {
+  min-width: 3rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  border: none;
+  color: #fff;
+}
+
+.btn-empleado-activo--si {
+  background-color: #16a34a;
+}
+
+.btn-empleado-activo--si:hover,
+.btn-empleado-activo--si:focus {
+  background-color: #15803d;
+  color: #fff;
+}
+
+.btn-empleado-activo--no {
+  background-color: #dc2626;
+}
+
+.btn-empleado-activo--no:hover,
+.btn-empleado-activo--no:focus {
+  background-color: #b91c1c;
+  color: #fff;
+}
+
 /* Nuevo: FAB verde, esquina inferior derecha */
 .btn-catalogo-nuevo {
   position: fixed;
@@ -106,6 +136,28 @@
 
 .btn-catalogo-nuevo:active {
   transform: scale(0.96);
+}
+
+/* Ver: gris + ojo */
+.btn-catalogo-ver {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background: linear-gradient(145deg, #64748b, #475569) !important;
+  border: 1px solid #475569 !important;
+  border-radius: 0.375rem;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.btn-catalogo-ver:hover {
+  color: #ffffff !important;
+  opacity: 0.92;
+  transform: translateY(-1px);
 }
 
 /* Editar: azul + icono */

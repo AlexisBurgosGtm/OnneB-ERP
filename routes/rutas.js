@@ -9,12 +9,11 @@ module.exports = createCatalogoRouter({
   idType: 'int',
   idRouteParam: 'codruta',
   autoId: true,
-  listColumns: ['CODRUTA', 'DESRUTA', 'RUTEO', 'CODEMPLEADO'],
+  listColumns: ['CODRUTA', 'DESRUTA', 'RUTEO'],
   fields: [
     { name: 'DESRUTA', type: 'varchar', required: true },
     { name: 'RUTEO', type: 'varchar' },
-    { name: 'CODEMPLEADO', type: 'int' },
   ],
-  insertFields: ['DESRUTA', 'RUTEO', 'CODEMPLEADO'],
-  updateFields: ['DESRUTA', 'RUTEO', 'CODEMPLEADO'],
+  insertFields: ['DESRUTA', 'RUTEO'],
+  updateFields: ['DESRUTA', 'RUTEO'],
 });

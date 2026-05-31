@@ -20,30 +20,93 @@
   let socket = null;
   let currentView = 'login';
 
-  /** Siempre inicia en login al cargar o recargar la página (F5). */
-  function ensureLoginView() {
-    F.clearSession('user');
-    window.OnnebContext = {};
+  const VIEW_CLASSES = [
+    'view-active',
+    'view-next',
+    'view-exit-left',
+    'view-exit-right',
+    'view-enter-from-right',
+    'view-enter-from-left',
+    'view-start-left',
+  ];
+
+  /** Cambio de vista sin animación (evita pantalla congelada al salir). */
+  function setViewImmediate(showLogin) {
     if (!views.login || !views.main) return;
 
-    views.main.classList.remove(
-      'view-active',
-      'view-exit-left',
-      'view-exit-right',
-      'view-enter-from-right',
-      'view-start-left'
-    );
-    views.main.classList.add('view-next');
-    views.login.classList.remove(
-      'view-next',
-      'view-exit-left',
-      'view-exit-right',
-      'view-enter-from-right',
-      'view-start-left'
-    );
-    views.login.classList.add('view-active');
-    currentView = 'login';
+    [views.login, views.main].forEach((el) => {
+      VIEW_CLASSES.forEach((c) => el.classList.remove(c));
+      el.classList.remove('view-hidden');
+      el.style.transition = 'none';
+    });
+
+    if (showLogin) {
+      views.main.classList.add('view-hidden');
+      views.login.classList.add('view-active');
+      views.login.classList.remove('view-hidden', 'view-next');
+      views.main.classList.remove('view-active');
+      currentView = 'login';
+    } else {
+      views.login.classList.add('view-hidden');
+      views.main.classList.add('view-active');
+      views.main.classList.remove('view-hidden', 'view-next');
+      views.login.classList.remove('view-active');
+      currentView = 'main';
+    }
+
+    void views.main.offsetHeight;
+    [views.login, views.main].forEach((el) => {
+      el.style.transition = '';
+    });
     updateFabVisibility();
+  }
+
+  function stopLoadingOverlays() {
+    if (window.OnnebPace) OnnebPace.stop();
+    if (typeof Pace !== 'undefined' && Pace.running) Pace.stop();
+    const paceOverlay = document.getElementById('onneb-pace-overlay');
+    if (paceOverlay) {
+      paceOverlay.classList.remove('is-active');
+      paceOverlay.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  function dismissBlockingLayers() {
+    stopLoadingOverlays();
+    if (typeof Swal !== 'undefined' && Swal.isVisible()) Swal.close();
+    closeSidebar();
+  }
+
+  /** Muestra la pantalla de login y oculta la vista principal. */
+  function ensureLoginView(clearSession = true) {
+    if (clearSession) {
+      F.clearSession('user');
+      window.OnnebContext = {};
+    }
+    setViewImmediate(true);
+  }
+
+  /** Cerrar sesión y volver al login (botón Salir). */
+  function goToLogin() {
+    dismissBlockingLayers();
+
+    F.clearSession('user');
+    window.OnnebContext = {};
+
+    const userInput = document.getElementById('username');
+    const passInput = document.getElementById('password');
+    if (userInput) userInput.value = '';
+    if (passInput) passInput.value = '';
+
+    if (mainTitle) mainTitle.textContent = 'OnneB POS';
+    if (mainContent) {
+      mainContent.className = 'main-content flex-grow-1 d-flex align-items-center justify-content-center';
+      mainContent.innerHTML = '<p class="text-muted mb-0">Seleccione una opción del menú</p>';
+    }
+    document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
+
+    setViewImmediate(true);
+    loadLoginEmpresas('');
   }
 
   function updateFabVisibility() {
@@ -158,13 +221,7 @@
   }
 
   async function fetchEmpresasForLogin() {
-    const qs = `?_=${Date.now()}`;
-    try {
-      return await F.fetchJson(`/api/empresas/combo${qs}`, { cache: 'no-store' });
-    } catch (comboErr) {
-      console.warn('[Login] /empresas/combo:', comboErr.message);
-      return F.fetchJson(`/api/empresas${qs}`, { cache: 'no-store' });
-    }
+    return F.fetchJson(`/api/empresas/combo?_=${Date.now()}`, { cache: 'no-store' });
   }
 
   async function loadLoginEmpresas(selectedNit = '') {
@@ -201,43 +258,66 @@
     }
   }
 
-  if (loginForm) loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const empresaSelect = document.getElementById('login-empresa');
-    const empNit = empresaSelect?.value?.trim();
-    if (!empNit || empresaSelect?.disabled) {
-      F.toast('No hay empresa disponible', 'warning');
-      return;
-    }
-    const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
-    if (window.OnnebPace) OnnebPace.start();
-    const username = document.getElementById('username').value.trim() || 'invitado';
-    const sessionData = {
-      username,
-      empNit,
-      empNombre,
-      at: new Date().toISOString(),
-    };
-    F.session('user', sessionData);
-    F.setEmpresaGlobal(empNit, empNombre);
-    document.getElementById('password').value = '';
-    navigateTo('main');
-    F.toast(`Bienvenido — ${empNombre}`, 'success');
-  });
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const empresaSelect = document.getElementById('login-empresa');
+      const empNit = empresaSelect?.value?.trim();
+      if (!empNit || empresaSelect?.disabled) {
+        F.toast('No hay empresa disponible', 'warning');
+        return;
+      }
+      const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
+      const username = document.getElementById('username').value.trim() || 'invitado';
+      const password = document.getElementById('password').value;
+      if (window.OnnebPace) OnnebPace.start();
+      try {
+        let authUser = null;
+        if (password) {
+          const auth = await F.fetchJson('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usuario: username, password }),
+          });
+          authUser = auth.user;
+        }
+        const sessionData = {
+          username: authUser?.usuario || username,
+          userId: authUser?.id ?? null,
+          nivel: authUser?.nivel ?? null,
+          email: authUser?.email ?? '',
+          empNit,
+          empNombre,
+          at: new Date().toISOString(),
+        };
+        F.session('user', sessionData);
+        F.setEmpresaGlobal(empNit, empNombre);
+        document.getElementById('password').value = '';
+        stopLoadingOverlays();
+        setViewImmediate(false);
+        F.toast(`Bienvenido — ${empNombre}`, 'success');
+      } catch (err) {
+        stopLoadingOverlays();
+        F.toast(err.message || 'Error al iniciar sesión', 'error');
+      }
+    });
+  }
 
   function setMenuExpanded(expanded) {
     const value = expanded ? 'true' : 'false';
-    btnMenuToggle.setAttribute('aria-expanded', value);
+    if (btnMenuToggle) btnMenuToggle.setAttribute('aria-expanded', value);
     if (btnMenuFab) btnMenuFab.setAttribute('aria-expanded', value);
   }
 
   function openSidebar() {
+    if (!sidebar || !sidebarOverlay) return;
     sidebar.classList.add('is-open');
     sidebarOverlay.classList.add('is-visible');
     setMenuExpanded(true);
   }
 
   function closeSidebar() {
+    if (!sidebar || !sidebarOverlay) return;
     sidebar.classList.remove('is-open');
     sidebarOverlay.classList.remove('is-visible');
     setMenuExpanded(false);
@@ -269,11 +349,13 @@
     'config-general': 'Config general',
     'tipo-documentos': 'Tipo documentos',
     'credenciales-fel': 'Credenciales FEL',
+    cajas: 'Cajas',
+    usuarios: 'Usuarios',
   };
 
-  btnMenuToggle.addEventListener('click', toggleSidebar);
+  if (btnMenuToggle) btnMenuToggle.addEventListener('click', toggleSidebar);
   if (btnMenuFab) btnMenuFab.addEventListener('click', toggleSidebar);
-  sidebarOverlay.addEventListener('click', closeSidebar);
+  if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
   document.querySelectorAll('.sidebar-link').forEach((link) => {
     link.addEventListener('click', (e) => {
@@ -296,6 +378,10 @@
         RutasView.load(mainContent);
       } else if (key === 'fabricantes' && typeof FabricantesView !== 'undefined') {
         FabricantesView.load(mainContent);
+      } else if (key === 'ubicaciones' && typeof UbicacionesView !== 'undefined') {
+        UbicacionesView.load(mainContent);
+      } else if (key === 'clientes' && typeof ClientesView !== 'undefined') {
+        ClientesView.load(mainContent);
       } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
         ProveedoresView.load(mainContent);
       } else if (key === 'municipios' && typeof MunicipiosView !== 'undefined') {
@@ -306,6 +392,10 @@
         EmpleadosView.load(mainContent);
       } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
         TipoDocumentosView.load(mainContent);
+      } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
+        CajasView.load(mainContent);
+      } else if (key === 'usuarios' && typeof UsuariosView !== 'undefined') {
+        UsuariosView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
       } else {
@@ -321,22 +411,30 @@
     });
   });
 
-  btnLogout.addEventListener('click', async () => {
-    const salir = await CatalogosUI.confirmSalir({
-      title: '¿Cerrar sesión?',
-      text: 'Se cerrará la sesión y volverá al inicio de sesión.',
-    });
+  async function handleLogoutClick() {
+    if (currentView !== 'main') return;
+
+    dismissBlockingLayers();
+
+    let salir = true;
+    if (typeof CatalogosUI !== 'undefined' && CatalogosUI.confirmSalir) {
+      salir = await CatalogosUI.confirmSalir({
+        title: '¿Cerrar sesión?',
+        text: 'Se cerrará la sesión y volverá al inicio de sesión.',
+      });
+    }
     if (!salir) return;
-    F.clearSession('user');
-    window.OnnebContext = {};
-    const userInput = document.getElementById('username');
-    const passInput = document.getElementById('password');
-    const empresaSelect = document.getElementById('login-empresa');
-    if (userInput) userInput.value = '';
-    if (passInput) passInput.value = '';
-    closeSidebar();
-    navigateTo('login');
-    await loadLoginEmpresas();
+
+    dismissBlockingLayers();
+    goToLogin();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-logout')) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleLogoutClick();
+    }
   });
 
   async function bootApp() {

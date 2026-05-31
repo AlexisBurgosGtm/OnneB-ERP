@@ -1,0 +1,25 @@
+-- Catálogo de tipos de negocio (campo TIPONEGOCIO en CLIENTES)
+IF NOT EXISTS (
+  SELECT 1 FROM sys.tables t
+  INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+  WHERE s.name = N'dbo' AND t.name = N'TIPONEGOCIOS'
+)
+BEGIN
+  CREATE TABLE dbo.TIPONEGOCIOS (
+    TIPO varchar(250) NOT NULL,
+    CONSTRAINT PK_TIPONEGOCIOS PRIMARY KEY (TIPO)
+  );
+END
+GO
+
+-- Semilla desde valores ya usados en CLIENTES
+INSERT INTO dbo.TIPONEGOCIOS (TIPO)
+SELECT DISTINCT LTRIM(RTRIM(c.TIPONEGOCIO))
+FROM dbo.CLIENTES c
+WHERE c.TIPONEGOCIO IS NOT NULL
+  AND LTRIM(RTRIM(c.TIPONEGOCIO)) <> ''
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.TIPONEGOCIOS t
+    WHERE t.TIPO = LTRIM(RTRIM(c.TIPONEGOCIO))
+  );
+GO

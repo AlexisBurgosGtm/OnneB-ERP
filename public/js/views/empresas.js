@@ -1,5 +1,5 @@
 /**
- * Vista Empresas — CRUD sobre app.Empresas / dbo.Empresas
+ * Vista Empresas — CRUD sobre dbo.Empresas
  */
 const EmpresasView = {
   _container: null,
@@ -55,9 +55,11 @@ const EmpresasView = {
 
   formatCell(value, key) {
     if (key === 'CODTIPOEMPRESA') return this.escapeHtml(this.labelTipoEmpresa(value));
-    if (value === null || value === undefined) return '—';
+    if (value === null || value === undefined || value === '') return '—';
     if (typeof value === 'number') {
-      return Number.isInteger(value) ? value : value.toLocaleString('es-GT', { maximumFractionDigits: 2 });
+      return Number.isInteger(value)
+        ? value
+        : value.toLocaleString('es-GT', { maximumFractionDigits: 2 });
     }
     return this.escapeHtml(value);
   },
@@ -136,6 +138,7 @@ const EmpresasView = {
     return CatalogosUI.fireForm({
       title,
       html: this.buildFormHtml(row, isEdit),
+      width: 520,
       preConfirm: () => {
         const data = this.readFormData();
         if (!data.EMPNIT) {

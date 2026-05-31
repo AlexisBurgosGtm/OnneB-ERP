@@ -1,6 +1,9 @@
+const express = require('express');
+const sql = require('mssql');
 const { createCatalogoRouter } = require('./lib/catalogo-empresa');
+const { isDbConfigured } = require('../config/database');
 
-module.exports = createCatalogoRouter({
+const router = createCatalogoRouter({
   logName: 'empleados',
   entityLabel: 'Empleado',
   table: 'Empleados',
@@ -78,7 +81,6 @@ module.exports = createCatalogoRouter({
     'TELEFONOS',
     'WHATSAPP',
     'EMAIL',
-    'ACTIVO',
     'CLAVE',
     'LATITUD',
     'LONGITUD',
@@ -87,3 +89,48 @@ module.exports = createCatalogoRouter({
     'CODDOC_REC',
   ],
 });
+
+function getEmpNitFromReq(req) {
+  return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
+}
+
+router.patch('/:codempleado/activo', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = getEmpNitFromReq(req);
+  if (!empnit) {
+    return res.status(400).json({ error: 'EMPNIT requerido (empresa de la sesión)' });
+  }
+  const id = parseInt(req.params.codempleado, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'CODEMPLEADO inválido' });
+  }
+  const raw = String(req.body?.ACTIVO ?? req.body?.activo ?? '')
+    .trim()
+    .toUpperCase();
+  if (raw !== 'SI' && raw !== 'NO') {
+    return res.status(400).json({ error: 'ACTIVO debe ser SI o NO' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODEMPLEADO', sql.Int, id)
+      .input('ACTIVO', sql.VarChar, raw)
+      .query(`
+        UPDATE dbo.Empleados SET ACTIVO = @ACTIVO
+        WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
+      `);
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
+    res.json({ ok: true, CODEMPLEADO: id, ACTIVO: raw });
+  } catch (err) {
+    console.warn('[API PATCH /empleados/:codempleado/activo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

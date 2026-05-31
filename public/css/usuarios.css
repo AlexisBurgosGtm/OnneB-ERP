@@ -1,0 +1,69 @@
+.usuarios-panel {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.5rem 0;
+  align-self: stretch;
+}
+
+.usuarios-panel.catalogo-vista-wrap {
+  padding-bottom: 5rem;
+}
+
+.usuarios-panel .table-responsive {
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--app-border, #e0e0e0);
+  background: #ffffff;
+}
+
+.usuarios-panel .table {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  color: var(--app-text, #1a1a1a);
+}
+
+.usuarios-panel .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--app-surface, #f5f5f5);
+  color: var(--app-text, #1a1a1a);
+  border-color: var(--app-border, #e0e0e0);
+  white-space: nowrap;
+}
+
+.usuarios-panel .table td,
+.usuarios-panel .table th {
+  border-color: var(--app-border, #e0e0e0);
+  vertical-align: middle;
+}
+
+.usuarios-panel .table tbody tr:hover {
+  background: color-mix(in srgb, var(--onneb-base-black) 4%, #ffffff);
+}
+
+.usuarios-badge {
+  font-size: 0.75rem;
+  color: var(--app-text-muted, #666);
+}
+
+.usuarios-search-wrap {
+  width: 100%;
+  max-width: 22rem;
+}
+
+.usuarios-search .input-group-text {
+  background: var(--app-surface, #f5f5f5);
+  border-color: var(--app-border, #e0e0e0);
+  color: var(--app-text-muted, #666);
+}
+
+.usuarios-search .form-control {
+  border-color: var(--app-border, #e0e0e0);
+}
+
+.usuarios-search .form-control:focus {
+  border-color: var(--onneb-color-primary, #1a1a1a);
+  box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--onneb-color-primary, #1a1a1a) 18%, transparent);
+}

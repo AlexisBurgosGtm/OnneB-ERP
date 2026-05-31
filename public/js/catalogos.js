@@ -17,6 +17,15 @@ const CatalogosUI = {
     `;
   },
 
+  btnVer(id, dataKey = 'empnit') {
+    const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
+    return `
+      <button type="button" class="btn btn-catalogo-ver" ${attr} aria-label="Ver detalle" title="Ver detalle">
+        <i class="fa-solid fa-eye" aria-hidden="true"></i>
+      </button>
+    `;
+  },
+
   btnEditar(id, dataKey = 'empnit') {
     const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
     return `
@@ -104,12 +113,10 @@ const CatalogosUI = {
       showCancelButton: true,
       confirmButtonText:
         confirmClass === 'btn-catalogo-eliminar'
-          ? `<i class="fa-solid fa-trash"></i> ${confirmText}`
+          ? 'Eliminar'
           : confirmText === 'Guardar'
-            ? this.guardarButtonHtml(confirmText)
-            : confirmText === 'Salir'
-              ? `<i class="fa-solid fa-right-from-bracket"></i> ${confirmText}`
-              : `<i class="fa-solid fa-check"></i> ${confirmText}`,
+            ? 'Guardar'
+            : confirmText,
       cancelButtonText: this.cancelButtonHtml(cancelText),
     });
     return result.isConfirmed;

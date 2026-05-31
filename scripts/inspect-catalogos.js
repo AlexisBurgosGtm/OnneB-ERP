@@ -2,7 +2,7 @@ require('dotenv').config();
 const sql = require('mssql');
 const { getDbConfig } = require('../config/database');
 
-const TABLES = ['TIPODOCUMENTOS'];
+const TABLES = ['Cajas'];
 
 async function main() {
   const pool = await sql.connect(getDbConfig());
