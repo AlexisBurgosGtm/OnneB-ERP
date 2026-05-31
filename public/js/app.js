@@ -295,6 +295,7 @@
         document.getElementById('password').value = '';
         stopLoadingOverlays();
         setViewImmediate(false);
+        loadDeveloperHome();
         F.toast(`Bienvenido — ${empNombre}`, 'success');
       } catch (err) {
         stopLoadingOverlays();
@@ -331,10 +332,28 @@
     }
   }
 
+  function loadDeveloperHome() {
+    if (!mainContent || typeof DeveloperView === 'undefined') return;
+    if (mainTitle) mainTitle.textContent = 'Inicio';
+    document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
+    document.querySelector('.sidebar-link[data-menu="inicio"]')?.classList.add('is-active');
+    mainContent.className = 'main-content flex-grow-1 d-flex p-3';
+    DeveloperView.load(mainContent);
+  }
+
   const menuLabels = {
+    inicio: 'Inicio',
+    'pedidos-mostrador': 'Pedidos de Mostrador',
+    facturacion: 'Facturación',
+    'notas-credito': 'Notas de Crédito',
+    compras: 'Compras',
+    'notas-debito': 'Notas de Débito',
+    gastos: 'Gastos',
+    developer: 'Developer',
     'productos-precios': 'Productos y precios',
     inventario: 'Inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
+    documentos: 'Documentos',
     empleados: 'Empleados',
     municipios: 'Municipios',
     departamentos: 'Departamentos',
@@ -368,7 +387,15 @@
       mainTitle.textContent = label;
       mainContent.className = 'main-content flex-grow-1 d-flex p-3';
 
-      if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
+      if (key === 'inicio') {
+        loadDeveloperHome();
+      } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
+        PosView.load(mainContent);
+      } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
+        DocumentosView.load(mainContent);
+      } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
+        DeveloperView.load(mainContent);
+      } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
         EmpresasView.load(mainContent);
       } else if (key === 'marcas' && typeof MarcasView !== 'undefined') {
         MarcasView.load(mainContent);

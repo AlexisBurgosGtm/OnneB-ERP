@@ -1,0 +1,64 @@
+.documentos-vista-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.documentos-filters-card .card-body {
+  padding: 0.85rem 1rem;
+}
+
+.documentos-filters-row {
+  width: 100%;
+}
+
+.documentos-filter-mes {
+  min-width: 9.5rem;
+}
+
+.documentos-filter-anio {
+  min-width: 5.5rem;
+}
+
+.documentos-filter-tipodoc {
+  min-width: 12rem;
+}
+
+.documentos-filter-search {
+  min-width: 10rem;
+}
+
+.documentos-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.documentos-table-card .table {
+  font-size: 0.814625rem;
+}
+
+.documentos-table-card .table-responsive {
+  max-height: calc(100vh - 220px);
+}
+
+.documentos-col-vendedor {
+  min-width: 7rem;
+  max-width: 12rem;
+  white-space: normal;
+}
+
+.documentos-col-desc {
+  min-width: 8rem;
+  max-width: 14rem;
+  white-space: normal;
+}
+
+.documentos-badge {
+  font-size: 0.8rem;
+  color: var(--onneb-text-muted, #6c757d);
+}
+
+.documentos-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}

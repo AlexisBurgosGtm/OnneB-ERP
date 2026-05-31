@@ -20,6 +20,9 @@
   <link rel="stylesheet" href="/css/usuarios.css">
   <link rel="stylesheet" href="/css/catalogos.css">
   <link rel="stylesheet" href="/css/config-general.css">
+  <link rel="stylesheet" href="/css/developer.css">
+  <link rel="stylesheet" href="/css/pos.css">
+  <link rel="stylesheet" href="/css/documentos.css">
 </head>
 <body>
   <script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script>
@@ -81,7 +84,32 @@
           <span class="sidebar-brand-text">OnneB POS</span>
         </div>
         <nav class="sidebar-nav">
+          <ul class="sidebar-top-menu list-unstyled mb-2">
+            <li>
+              <a href="#" class="sidebar-link" data-menu="inicio">
+                <i class="fa-solid fa-house" aria-hidden="true"></i> Inicio
+              </a>
+            </li>
+          </ul>
           <div class="accordion sidebar-accordion" id="sidebarAccordion">
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="false" aria-controls="collapseOperaciones">
+                  <i class="fa-solid fa-cart-shopping sidebar-icon" aria-hidden="true"></i>
+                  <span>OPERACIONES</span>
+                </button>
+              </h2>
+              <div id="collapseOperaciones" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="notas-credito"><i class="fa-solid fa-file-circle-minus" aria-hidden="true"></i> Notas de Crédito</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="notas-debito"><i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i> Notas de Débito</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="gastos"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Gastos</a></li>
+                </ul>
+              </div>
+            </div>
             <div class="accordion-item">
               <h2 class="accordion-header">
                 <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInventarios" aria-expanded="true" aria-controls="collapseInventarios">
@@ -94,6 +122,19 @@
                   <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-warehouse" aria-hidden="true"></i> Inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario-retroactivo"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Inventario Retroactivo</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseArchivo" aria-expanded="false" aria-controls="collapseArchivo">
+                  <i class="fa-solid fa-folder-tree sidebar-icon" aria-hidden="true"></i>
+                  <span>ARCHIVO</span>
+                </button>
+              </h2>
+              <div id="collapseArchivo" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
                 </ul>
               </div>
             </div>
@@ -196,6 +237,9 @@
   <script src="/js/views/cajas.js"></script>
   <script src="/js/views/usuarios.js"></script>
   <script src="/js/views/config-general.js"></script>
+  <script src="/js/views/developer.js"></script>
+  <script src="/js/views/pos.js"></script>
+  <script src="/js/views/documentos.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>
   <script src="/js/app.js"></script>

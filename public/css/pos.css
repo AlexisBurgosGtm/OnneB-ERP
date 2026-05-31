@@ -1,0 +1,126 @@
+.pos-vista-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pos-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pos-toolbar .pos-doc-badge {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.pos-main {
+  display: grid;
+  grid-template-columns: 1fr  minmax(320px, 38%);
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 992px) {
+  .pos-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pos-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+  overflow: hidden;
+}
+
+.pos-panel .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem;
+}
+
+.pos-product-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.pos-product-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--onneb-glass-border, rgba(0, 0, 0, 0.08));
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pos-product-item:hover,
+.pos-product-item:focus {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.pos-product-item .pos-prod-code {
+  font-size: 0.72rem;
+  color: var(--onneb-text-muted, #6c757d);
+}
+
+.pos-product-item .pos-prod-price {
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-cart-table {
+  font-size: 0.82rem;
+}
+
+.pos-cart-table .table-responsive {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 220px;
+}
+
+.pos-totals {
+  border-top: 1px solid var(--onneb-glass-border, rgba(0, 0, 0, 0.1));
+  padding-top: 0.65rem;
+  margin-top: auto;
+}
+
+.pos-totals .pos-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.pos-totals .pos-grand-total {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--onneb-primary, #2563eb);
+}
+
+.pos-cliente-wrap input {
+  font-size: 0.85rem;
+}
+
+.pos-qty-btn {
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.pos-pedidos-select {
+  min-width: 11rem;
+  max-width: 16rem;
+}

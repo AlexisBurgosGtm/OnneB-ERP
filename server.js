@@ -34,6 +34,9 @@ const cajasRouter = require('./routes/cajas');
 const authRouter = require('./routes/auth');
 const usuariosRouter = require('./routes/usuarios');
 const { router: configRouter } = require('./routes/config');
+const developerRouter = require('./routes/developer');
+const posRouter = require('./routes/pos');
+const documentosRouter = require('./routes/documentos');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -114,6 +117,9 @@ app.use('/api/cajas', cajasRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/usuarios', usuariosRouter);
 app.use('/api/config', configRouter);
+app.use('/api/developer', developerRouter);
+app.use('/api/pos', posRouter);
+app.use('/api/documentos', documentosRouter);
 
 app.get('/api/health', async (_req, res) => {
   let dbStatus = 'not_configured';

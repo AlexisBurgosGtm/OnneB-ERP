@@ -1,0 +1,96 @@
+.developer-vista-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.developer-filters-card .card-body {
+  padding: 0.85rem 1rem;
+}
+
+.developer-filters-row {
+  width: 100%;
+}
+
+.developer-filter-mes {
+  min-width: 9.5rem;
+}
+
+.developer-filter-anio {
+  min-width: 5.5rem;
+}
+
+.developer-filter-concre {
+  min-width: 8rem;
+}
+
+.developer-filter-search {
+  min-width: 10rem;
+}
+
+.developer-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.developer-table-card .card-body {
+  padding: 0;
+}
+
+.developer-table-card .table {
+  font-size: 0.814625rem; /* 2% menos que 0.83125rem */
+}
+
+.developer-table-card .table-responsive {
+  max-height: calc(100vh - 220px);
+}
+
+.developer-col-vendedor {
+  min-width: 7rem;
+  max-width: 12rem;
+  white-space: normal;
+}
+
+.developer-badge {
+  font-size: 0.8rem;
+  color: var(--onneb-text-muted, #6c757d);
+}
+
+.developer-col-pago {
+  width: 4.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.btn-developer-concre {
+  min-width: 2.75rem;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.35rem;
+  border: none;
+  color: #fff;
+}
+
+.btn-developer-con {
+  background-color: #198754;
+}
+
+.btn-developer-con:hover,
+.btn-developer-con:focus {
+  background-color: #157347;
+  color: #fff;
+}
+
+.btn-developer-cre {
+  background-color: #dc3545;
+}
+
+.btn-developer-cre:hover,
+.btn-developer-cre:focus {
+  background-color: #bb2d3b;
+  color: #fff;
+}
+
+.btn-developer-concre:disabled {
+  opacity: 0.65;
+}
