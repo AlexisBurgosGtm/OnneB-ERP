@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="/css/developer.css">
   <link rel="stylesheet" href="/css/pos.css">
   <link rel="stylesheet" href="/css/documentos.css">
+  <link rel="stylesheet" href="/css/productos.css">
 </head>
 <body>
   <script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script>
@@ -94,12 +95,12 @@
           <div class="accordion sidebar-accordion" id="sidebarAccordion">
             <div class="accordion-item">
               <h2 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="false" aria-controls="collapseOperaciones">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="true" aria-controls="collapseOperaciones">
                   <i class="fa-solid fa-cart-shopping sidebar-icon" aria-hidden="true"></i>
                   <span>OPERACIONES</span>
                 </button>
               </h2>
-              <div id="collapseOperaciones" class="accordion-collapse collapse">
+              <div id="collapseOperaciones" class="accordion-collapse collapse show">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
@@ -112,12 +113,12 @@
             </div>
             <div class="accordion-item">
               <h2 class="accordion-header">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInventarios" aria-expanded="true" aria-controls="collapseInventarios">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseInventarios" aria-expanded="false" aria-controls="collapseInventarios">
                   <i class="fa-solid fa-boxes-stacked sidebar-icon" aria-hidden="true"></i>
                   <span>INVENTARIOS</span>
                 </button>
               </h2>
-              <div id="collapseInventarios" class="accordion-collapse collapse show">
+              <div id="collapseInventarios" class="accordion-collapse collapse">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-warehouse" aria-hidden="true"></i> Inventario</a></li>
@@ -240,6 +241,7 @@
   <script src="/js/views/developer.js"></script>
   <script src="/js/views/pos.js"></script>
   <script src="/js/views/documentos.js"></script>
+  <script src="/js/views/productos.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>
   <script src="/js/app.js"></script>

@@ -393,6 +393,11 @@
         PosView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
+      } else if (
+        (key === 'productos-precios' || key === 'productos') &&
+        typeof ProductosView !== 'undefined'
+      ) {
+        ProductosView.load(mainContent);
       } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
         DeveloperView.load(mainContent);
       } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {

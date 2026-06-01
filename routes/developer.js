@@ -2,6 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
+const { allocateNocorte } = require('../lib/developer-nocorte-seq');
 
 const router = express.Router();
 
@@ -118,7 +119,8 @@ const LIST_SELECT = `
   c.NOMBRECLIENTE,
   c.DIRCLIENTE,
   d.TOTALPRECIO,
-  d.CONCRE
+  d.CONCRE,
+  ISNULL(d.NOCORTE, 0) AS NOCORTE
 `;
 
 const LIST_WHERE = `
@@ -164,6 +166,7 @@ function mapDocumentoRow(r) {
     DIRCLIENTE: r.DIRCLIENTE ?? null,
     TOTALPRECIO: r.TOTALPRECIO ?? null,
     CONCRE: r.CONCRE ?? null,
+    NOCORTE: r.NOCORTE ?? 0,
   };
 }
 
@@ -183,6 +186,7 @@ function mapDocumentoExportRow(r) {
     MONTO: row.TOTALPRECIO ?? null,
     FECHA_DOC: row.FECHA ?? null,
     FECHA_EMBARQUE: row.FECHA_EMBARQUE ?? null,
+    CORRELATIVO: row.NOCORTE ?? 0,
   };
 }
 
@@ -204,7 +208,7 @@ router.get('/documentos-fac/export', async (req, res) => {
       SELECT ${LIST_SELECT}
       ${LIST_FROM}
       ${LIST_WHERE}
-      ORDER BY d.FECHA DESC, d.CORRELATIVO DESC
+      ORDER BY ISNULL(d.NOCORTE, 0) ASC, d.FECHA DESC, d.CORRELATIVO DESC
     `);
 
     const workbook = new ExcelJS.Workbook();
@@ -216,6 +220,7 @@ router.get('/documentos-fac/export', async (req, res) => {
       { header: 'MONTO', key: 'MONTO', width: 14 },
       { header: 'FECHA DOC', key: 'FECHA_DOC', width: 14 },
       { header: 'FECHA EMBARQUE', key: 'FECHA_EMBARQUE', width: 14 },
+      { header: 'CORRELATIVO', key: 'CORRELATIVO', width: 12 },
     ];
     sheet.getRow(1).font = { bold: true };
 
@@ -267,15 +272,18 @@ router.patch('/documentos-fac/concre', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    const nocorte = concre === 'CRE' ? await allocateNocorte(pool, empnit) : 0;
+
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Int, correlativo)
       .input('CONCRE', sql.VarChar, concre)
+      .input('NOCORTE', sql.Int, nocorte)
       .query(`
         UPDATE dbo.DOCUMENTOS
-        SET CONCRE = @CONCRE
+        SET CONCRE = @CONCRE, NOCORTE = @NOCORTE
         WHERE EMPNIT = @EMPNIT
           AND CODDOC = @CODDOC
           AND CORRELATIVO = @CORRELATIVO
@@ -284,7 +292,13 @@ router.patch('/documentos-fac/concre', async (req, res) => {
     if (result.rowsAffected[0] === 0) {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
-    res.json({ ok: true, CODDOC: coddoc, CORRELATIVO: correlativo, CONCRE: concre });
+    res.json({
+      ok: true,
+      CODDOC: coddoc,
+      CORRELATIVO: correlativo,
+      CONCRE: concre,
+      NOCORTE: nocorte,
+    });
   } catch (err) {
     console.warn('[API PATCH /developer/documentos-fac/concre]', err.message);
     res.status(500).json({ error: err.message });

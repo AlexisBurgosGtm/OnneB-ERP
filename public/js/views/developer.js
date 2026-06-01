@@ -382,7 +382,7 @@ const DeveloperView = {
 
     btn.disabled = true;
     try {
-      await F.fetchJson(`/api/developer/documentos-fac/concre?empnit=${encodeURIComponent(empNit)}`, {
+      const data = await F.fetchJson(`/api/developer/documentos-fac/concre?empnit=${encodeURIComponent(empNit)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -394,12 +394,19 @@ const DeveloperView = {
       const idx = this.findRowIndex(coddoc, correlativo);
       if (idx >= 0) {
         this._rows[idx].CONCRE = next;
+        this._rows[idx].NOCORTE = data.NOCORTE ?? 0;
       }
       btn.setAttribute('data-concre', next);
       btn.textContent = next;
       btn.classList.remove('btn-developer-con', 'btn-developer-cre');
       btn.classList.add(next === 'CRE' ? 'btn-developer-cre' : 'btn-developer-con');
-      F.toast(`Pago actualizado a ${next}`, 'success');
+      const nocorteMsg =
+        next === 'CRE' && data.NOCORTE
+          ? ` — No. corte ${data.NOCORTE}`
+          : next === 'CON'
+            ? ' — No. corte 0'
+            : '';
+      F.toast(`Pago actualizado a ${next}${nocorteMsg}`, 'success');
     } catch (err) {
       F.alert('Error', err.message, 'error');
     } finally {

@@ -234,3 +234,8 @@ body {
   background: var(--app-bg, #ffffff);
   color: var(--app-text);
 }
+
+.inicio-blank {
+  min-height: 100%;
+  background: var(--app-bg, #ffffff);
+}

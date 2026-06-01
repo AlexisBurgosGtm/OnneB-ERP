@@ -74,7 +74,7 @@ const CatalogosUI = {
   },
 
   /** Modal formulario — Guardar a la derecha */
-  async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar' }) {
+  async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen } = {}) {
     const result = await Swal.fire({
       ...this.modalBase(),
       title,
@@ -89,6 +89,7 @@ const CatalogosUI = {
         const popup = Swal.getPopup();
         const form = popup?.querySelector('form');
         if (form) form.setAttribute('novalidate', 'novalidate');
+        if (typeof didOpen === 'function') didOpen();
       },
     });
     return result.isConfirmed ? result.value : null;
