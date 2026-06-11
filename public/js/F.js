@@ -152,25 +152,70 @@ let F = {
   },
 
   /**
+   * Bloqueo global durante POST/PUT/PATCH/DELETE (evita doble envío).
+   */
+  _mutationDepth: 0,
+
+  beginMutation() {
+    this._mutationDepth += 1;
+    if (this._mutationDepth === 1) {
+      document.body.classList.add('onneb-mutation-busy');
+      document.body.setAttribute('aria-busy', 'true');
+    }
+  },
+
+  endMutation() {
+    if (this._mutationDepth <= 0) return;
+    this._mutationDepth -= 1;
+    if (this._mutationDepth === 0) {
+      document.body.classList.remove('onneb-mutation-busy');
+      document.body.removeAttribute('aria-busy');
+    }
+  },
+
+  async runMutation(fn) {
+    this.beginMutation();
+    try {
+      return await fn();
+    } finally {
+      this.endMutation();
+    }
+  },
+
+  isMutationMethod(method) {
+    return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || 'GET').toUpperCase());
+  },
+
+  /**
    * Petición fetch con JSON
    */
   async fetchJson(url, options = {}) {
-    const res = await fetch(url, {
-      cache: options.cache ?? 'no-store',
-      headers: { Accept: 'application/json', ...options.headers },
-      ...options,
-    });
-    if (!res.ok) {
-      let message = `HTTP ${res.status}`;
-      try {
-        const errBody = await res.json();
-        if (errBody.error) message = errBody.error;
-      } catch {
-        /* respuesta no JSON */
+    const isMutation = this.isMutationMethod(options.method);
+    if (isMutation) this.beginMutation();
+    try {
+      const res = await fetch(url, {
+        cache: options.cache ?? 'no-store',
+        headers: { Accept: 'application/json', ...options.headers },
+        ...options,
+      });
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`;
+        let payload = null;
+        try {
+          const errBody = await res.json();
+          payload = errBody;
+          if (errBody.error) message = errBody.error;
+        } catch {
+          /* respuesta no JSON */
+        }
+        const err = new Error(message);
+        if (payload) err.payload = payload;
+        throw err;
       }
-      throw new Error(message);
+      if (res.status === 204) return null;
+      return res.json();
+    } finally {
+      if (isMutation) this.endMutation();
     }
-    if (res.status === 204) return null;
-    return res.json();
   },
 };

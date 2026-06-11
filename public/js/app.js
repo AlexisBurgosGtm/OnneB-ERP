@@ -17,6 +17,61 @@
   const mainContent = document.getElementById('main-content');
   const mainTitle = document.getElementById('main-title');
 
+  const LOGIN_REMEMBER_KEY = 'onneb-login-remember';
+
+  function getLoginRemember() {
+    try {
+      const raw = localStorage.getItem(LOGIN_REMEMBER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLoginRemember({ username, empNit, enabled }) {
+    try {
+      if (!enabled) {
+        localStorage.removeItem(LOGIN_REMEMBER_KEY);
+        return;
+      }
+      localStorage.setItem(
+        LOGIN_REMEMBER_KEY,
+        JSON.stringify({ username: username || '', empNit: empNit || '' }),
+      );
+    } catch (err) {
+      console.warn('[Login] Recordarme:', err);
+    }
+  }
+
+  function applyLoginRememberFields() {
+    const saved = getLoginRemember();
+    const rememberCheck = document.getElementById('login-remember');
+    const userInput = document.getElementById('username');
+    if (!saved) {
+      if (rememberCheck) rememberCheck.checked = false;
+      return '';
+    }
+    if (rememberCheck) rememberCheck.checked = true;
+    if (userInput && saved.username) userInput.value = saved.username;
+    return saved.empNit || '';
+  }
+
+  function restoreLoginFieldsAfterLogout() {
+    const saved = getLoginRemember();
+    const userInput = document.getElementById('username');
+    const passInput = document.getElementById('password');
+    const rememberCheck = document.getElementById('login-remember');
+    if (passInput) passInput.value = '';
+    if (saved?.username && userInput) {
+      userInput.value = saved.username;
+      if (rememberCheck) rememberCheck.checked = true;
+      return saved.empNit || '';
+    }
+    if (userInput) userInput.value = '';
+    if (rememberCheck) rememberCheck.checked = false;
+    return '';
+  }
+
   let socket = null;
   let currentView = 'login';
 
@@ -82,6 +137,7 @@
     if (clearSession) {
       F.clearSession('user');
       window.OnnebContext = {};
+      if (typeof EmpresaLogo !== 'undefined') EmpresaLogo.clearSession();
     }
     setViewImmediate(true);
   }
@@ -92,13 +148,15 @@
 
     F.clearSession('user');
     window.OnnebContext = {};
+    if (typeof EmpresaLogo !== 'undefined') EmpresaLogo.clearSession();
 
     const userInput = document.getElementById('username');
     const passInput = document.getElementById('password');
-    if (userInput) userInput.value = '';
     if (passInput) passInput.value = '';
+    if (userInput && !getLoginRemember()?.username) userInput.value = '';
 
     if (mainTitle) mainTitle.textContent = 'OnneB POS';
+    clearHeaderSessionInfo();
     if (mainContent) {
       mainContent.className = 'main-content flex-grow-1 d-flex align-items-center justify-content-center';
       mainContent.innerHTML = '<p class="text-muted mb-0">Seleccione una opción del menú</p>';
@@ -106,12 +164,34 @@
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
 
     setViewImmediate(true);
-    loadLoginEmpresas('');
+    loadLoginEmpresas(restoreLoginFieldsAfterLogout());
   }
 
   function updateFabVisibility() {
     if (!btnMenuFab) return;
     btnMenuFab.classList.toggle('is-visible', currentView === 'main');
+  }
+
+  function updateHeaderSessionInfo() {
+    const empNameEl = document.getElementById('header-empresa-name');
+    const userNameEl = document.getElementById('header-user-name');
+    const empBadge = document.getElementById('header-empresa');
+    const userBadge = document.getElementById('header-user');
+    const user = F.session('user');
+    const empNombre = user?.empNombre || F.getEmpNitNombre() || '—';
+    const username = user?.username || '—';
+
+    if (empNameEl) empNameEl.textContent = empNombre;
+    if (userNameEl) userNameEl.textContent = username;
+    if (empBadge) empBadge.title = empNombre !== '—' ? `Empresa: ${empNombre}` : 'Empresa activa';
+    if (userBadge) userBadge.title = username !== '—' ? `Usuario: ${username}` : 'Usuario activo';
+  }
+
+  function clearHeaderSessionInfo() {
+    const empNameEl = document.getElementById('header-empresa-name');
+    const userNameEl = document.getElementById('header-user-name');
+    if (empNameEl) empNameEl.textContent = '—';
+    if (userNameEl) userNameEl.textContent = '—';
   }
 
   function navigateTo(target) {
@@ -260,6 +340,7 @@
 
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
+
       e.preventDefault();
       const empresaSelect = document.getElementById('login-empresa');
       const empNit = empresaSelect?.value?.trim();
@@ -292,17 +373,30 @@
         };
         F.session('user', sessionData);
         F.setEmpresaGlobal(empNit, empNombre);
+        saveLoginRemember({
+          username,
+          empNit,
+          enabled: Boolean(document.getElementById('login-remember')?.checked),
+        });
         document.getElementById('password').value = '';
         stopLoadingOverlays();
         setViewImmediate(false);
-        loadDeveloperHome();
+        updateHeaderSessionInfo();
+        loadInicio();
         F.toast(`Bienvenido — ${empNombre}`, 'success');
+        if (typeof EmpresaLogo !== 'undefined') {
+          EmpresaLogo.loadForSession(empNit).catch(() => {});
+        }
       } catch (err) {
         stopLoadingOverlays();
         F.toast(err.message || 'Error al iniciar sesión', 'error');
       }
     });
   }
+
+  document.getElementById('btn-login-forgot')?.addEventListener('click', () => {
+    F.toast('Contacte al administrador del sistema para restablecer su contraseña.', 'info');
+  });
 
   function setMenuExpanded(expanded) {
     const value = expanded ? 'true' : 'false';
@@ -332,26 +426,30 @@
     }
   }
 
-  function loadDeveloperHome() {
-    if (!mainContent || typeof DeveloperView === 'undefined') return;
+  function loadInicio() {
+    if (!mainContent || typeof PosView === 'undefined') return;
     if (mainTitle) mainTitle.textContent = 'Inicio';
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
     document.querySelector('.sidebar-link[data-menu="inicio"]')?.classList.add('is-active');
     mainContent.className = 'main-content flex-grow-1 d-flex p-3';
-    DeveloperView.load(mainContent);
+    PosView.load(mainContent);
   }
 
   const menuLabels = {
     inicio: 'Inicio',
     'pedidos-mostrador': 'Pedidos de Mostrador',
+    suscripciones: 'Suscripciones',
     facturacion: 'Facturación',
     'notas-credito': 'Notas de Crédito',
     compras: 'Compras',
     'notas-debito': 'Notas de Débito',
     gastos: 'Gastos',
     developer: 'Developer',
+    updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
     inventario: 'Inventario',
+    'entradas-inventario': 'Entradas de inventario',
+    'salidas-inventario': 'Salidas de inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
     documentos: 'Documentos',
     empleados: 'Empleados',
@@ -388,9 +486,15 @@
       mainContent.className = 'main-content flex-grow-1 d-flex p-3';
 
       if (key === 'inicio') {
-        loadDeveloperHome();
+        loadInicio();
       } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
         PosView.load(mainContent);
+      } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
+        EntradasInventarioView.load(mainContent);
+      } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
+        SalidasInventarioView.load(mainContent);
+      } else if (key === 'suscripciones' && typeof SuscripcionesView !== 'undefined') {
+        SuscripcionesView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
       } else if (
@@ -400,6 +504,8 @@
         ProductosView.load(mainContent);
       } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
         DeveloperView.load(mainContent);
+      } else if (key === 'updater' && typeof UpdaterView !== 'undefined') {
+        UpdaterView.load(mainContent);
       } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
         EmpresasView.load(mainContent);
       } else if (key === 'marcas' && typeof MarcasView !== 'undefined') {
@@ -470,8 +576,14 @@
   });
 
   async function bootApp() {
+    if (typeof OnnebThemes !== 'undefined') OnnebThemes.init();
+
     ensureLoginView();
-    await loadLoginEmpresas('');
+    await loadLoginEmpresas(applyLoginRememberFields());
+
+    if (F.isLoggedIn()) {
+      updateHeaderSessionInfo();
+    }
 
     if (buildCounterEl) {
       await loadBuildCounter();

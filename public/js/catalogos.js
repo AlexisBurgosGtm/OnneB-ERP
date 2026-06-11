@@ -11,7 +11,7 @@ const CatalogosUI = {
 
   btnNuevoFab(id = 'btn-catalogo-nuevo') {
     return `
-      <button type="button" class="btn-catalogo-nuevo" id="${id}" aria-label="Nuevo registro" title="Nuevo">
+      <button type="button" class="btn-catalogo-nuevo btn-onneb-nuevo-fab" id="${id}" aria-label="Nuevo registro" title="Nuevo">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
       </button>
     `;
@@ -113,10 +113,10 @@ const CatalogosUI = {
       icon,
       showCancelButton: true,
       confirmButtonText:
-        confirmClass === 'btn-catalogo-eliminar'
+        confirmClass === 'btn-catalogo-eliminar' && (confirmText === 'Aceptar' || !confirmText)
           ? 'Eliminar'
           : confirmText === 'Guardar'
-            ? 'Guardar'
+            ? this.guardarButtonHtml('Guardar')
             : confirmText,
       cancelButtonText: this.cancelButtonHtml(cancelText),
     });
@@ -126,4 +126,129 @@ const CatalogosUI = {
   async confirmSalir({ title = '¿Cerrar sesión?', text = 'Volverá a la pantalla de inicio de sesión' }) {
     return this.fireConfirm({ title, text, icon: 'question', confirmText: 'Salir' });
   },
+
+  /** ID Config PASS — clave de administrador (movimientos / autorización). */
+  ADMIN_PASS_CONFIG_ID: 2,
+
+  async verifyConfigPass(pass, configId = 2) {
+    const data = await F.fetchJson(`/api/config/${encodeURIComponent(configId)}/verify-pass`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pass: String(pass ?? '') }),
+    });
+    return Boolean(data?.ok);
+  },
+
+  /**
+   * Modal con input tipo password; valida contra Config.PASS (ID=2 por defecto).
+   * @returns {Promise<boolean>} true si la clave es correcta y el usuario confirmó.
+   */
+  async solicitarClaveAdmin({
+    title = 'Clave requerida',
+    text = 'Ingrese la clave de administrador para continuar.',
+    configId = 2,
+    confirmText = 'Aceptar',
+    cancelText = 'Cancelar',
+    verificarEnTiempoReal = true,
+  } = {}) {
+    let lastVerifyOk = false;
+    let verifySeq = 0;
+
+    const setFeedback = (el, ok, message) => {
+      if (!el) return;
+      el.textContent = message;
+      el.classList.remove('text-success', 'text-danger', 'text-muted');
+      el.classList.add(ok ? 'text-success' : message ? 'text-danger' : 'text-muted');
+    };
+
+    const runVerify = async (pass, feedbackEl) => {
+      const seq = ++verifySeq;
+      if (!pass) {
+        lastVerifyOk = false;
+        setFeedback(feedbackEl, false, '');
+        return false;
+      }
+      try {
+        const ok = await this.verifyConfigPass(pass, configId);
+        if (seq !== verifySeq) return ok;
+        lastVerifyOk = ok;
+        setFeedback(feedbackEl, ok, ok ? 'Clave correcta' : 'Clave incorrecta');
+        return ok;
+      } catch (err) {
+        if (seq !== verifySeq) return false;
+        lastVerifyOk = false;
+        setFeedback(feedbackEl, false, err.message || 'Clave incorrecta');
+        return false;
+      }
+    };
+
+    const debouncedVerify = F.debounce((pass, feedbackEl) => {
+      runVerify(pass, feedbackEl);
+    }, 350);
+
+    const result = await Swal.fire({
+      ...this.modalBase(),
+      title,
+      html: `
+        <div class="catalogo-form text-start config-pass-modal">
+          <p class="small text-muted mb-2 mb-sm-3">${text}</p>
+          <label for="config-pass-input" class="form-label small mb-0">Clave</label>
+          <input
+            type="password"
+            id="config-pass-input"
+            class="form-control form-control-sm"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Clave de administrador"
+          >
+          <div id="config-pass-feedback" class="small mt-1 config-pass-feedback" aria-live="polite"></div>
+        </div>
+      `,
+      width: 420,
+      showCancelButton: true,
+      confirmButtonText: this.guardarButtonHtml(confirmText),
+      cancelButtonText: this.cancelButtonHtml(cancelText),
+      focusConfirm: false,
+      didOpen: () => {
+        const input = document.getElementById('config-pass-input');
+        const feedback = document.getElementById('config-pass-feedback');
+        input?.focus();
+        if (verificarEnTiempoReal && input) {
+          input.addEventListener('input', () => {
+            debouncedVerify(input.value, feedback);
+          });
+        }
+        input?.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            Swal.clickConfirm();
+          }
+        });
+      },
+      preConfirm: async () => {
+        const input = document.getElementById('config-pass-input');
+        const feedback = document.getElementById('config-pass-feedback');
+        const pass = input?.value ?? '';
+        if (!pass) {
+          Swal.showValidationMessage('Ingrese la clave');
+          return false;
+        }
+        const ok = verificarEnTiempoReal && lastVerifyOk
+          ? true
+          : await runVerify(pass, feedback);
+        if (!ok) {
+          Swal.showValidationMessage('Clave incorrecta');
+          return false;
+        }
+        return true;
+      },
+    });
+    return result.isConfirmed;
+  },
 };
+
+if (typeof F !== 'undefined') {
+  F.solicitarClaveAdmin = (opts) => CatalogosUI.solicitarClaveAdmin(opts);
+  F.verifyConfigPass = (pass, configId) => CatalogosUI.verifyConfigPass(pass, configId);
+  F.ADMIN_PASS_CONFIG_ID = CatalogosUI.ADMIN_PASS_CONFIG_ID;
+}

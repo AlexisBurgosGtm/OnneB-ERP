@@ -1,0 +1,885 @@
+/**
+ * Factory — movimientos de inventario (ENT / SAL), similar a POS sin cliente ni precios de venta.
+ */
+function createInventarioMovView(cfg) {
+  const NS = cfg.slug || 'inv-mov';
+  const apiBase = cfg.apiBase || '/api/inventario/ent';
+
+  return {
+    _container: null,
+    _config: null,
+    _documento: null,
+    _productos: [],
+    _docsList: [],
+    _listFilter: '',
+    _listMes: new Date().getMonth() + 1,
+    _listAnio: new Date().getFullYear(),
+    _screen: 'list',
+    _loadingProducts: false,
+    _searchTimer: null,
+    _cartBusy: false,
+
+    escapeHtml(value) {
+      if (value === null || value === undefined) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    },
+
+    apiUrl(path, extraParams = {}) {
+      const emp = F.getEmpNit();
+      if (!emp) throw new Error('No hay empresa activa');
+      const segment = path ? (path.startsWith('/') ? path : `/${path}`) : '';
+      const params = new URLSearchParams({ empnit: emp, ...extraParams });
+      return `${apiBase}${segment}?${params}`;
+    },
+
+    formatMoney(value) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return 'Q 0.00';
+      return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+    },
+
+    formatFecha(row) {
+      if (!row?.FECHA) return '—';
+      const s = String(row.FECHA).slice(0, 10);
+      const [y, m, d] = s.split('-');
+      if (d && m && y) return `${d}/${m}/${y}`;
+      return s;
+    },
+
+    docKey() {
+      if (!this._documento?.header) return null;
+      const h = this._documento.header;
+      return { coddoc: h.CODDOC, correlativo: Number(h.CORRELATIVO) };
+    },
+
+    docLabel() {
+      const h = this._documento?.header;
+      if (!h) return 'Sin documento';
+      return `${h.CODDOC} #${h.CORRELATIVO}`;
+    },
+
+    lineId(ln) {
+      return ln?.ID ?? ln?.Id ?? null;
+    },
+
+    findLineById(id) {
+      const n = Number(id);
+      if (Number.isNaN(n)) return null;
+      return (this._documento?.lines || []).find((l) => Number(this.lineId(l)) === n) || null;
+    },
+
+    usuario() {
+      const u = F.session('user');
+      return u?.username || 'INV';
+    },
+
+    mesOptions() {
+      const names = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+      ];
+      return names.map((label, i) => ({
+        value: i + 1,
+        label,
+      }));
+    },
+
+    anioOptions() {
+      const y = new Date().getFullYear();
+      return [y, y - 1, y - 2, y - 3].map((v) => ({ value: v, label: String(v) }));
+    },
+
+    async fetchConfig() {
+      return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
+    },
+
+    async fetchProductos(q) {
+      const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40' });
+      if (q) params.set('q', q);
+      params.set('_', String(Date.now()));
+      return F.fetchJson(`${apiBase}/productos?${params}`);
+    },
+
+    async fetchDocsList() {
+      const coddoc = this._config?.coddocDefault || '';
+      const params = {
+        empnit: F.getEmpNit(),
+        status: 'O',
+        mes: String(this._listMes),
+        anio: String(this._listAnio),
+      };
+      if (coddoc) params.coddoc = coddoc;
+      params._ = String(Date.now());
+      const data = await F.fetchJson(this.apiUrl('/documentos', params));
+      this._docsList = data.rows || [];
+      return this._docsList;
+    },
+
+    formatMedidaLine(lnOrMedida, equivale) {
+      if (lnOrMedida && typeof lnOrMedida === 'object') {
+        const m = lnOrMedida.CODMEDIDA || '';
+        const eq = lnOrMedida.EQUIVALE;
+        if (eq != null && eq !== '') return `${m} · eq. ${eq}`;
+        return m;
+      }
+      const m = String(lnOrMedida || '');
+      if (equivale != null && equivale !== '') return `${m} · eq. ${equivale}`;
+      return m;
+    },
+
+    docEditable(header) {
+      return DocFecha.editableStatus(header?.STATUS);
+    },
+
+    async guardarFechaDocumento(fecha) {
+      const key = this.docKey();
+      if (!key || !this.docEditable(this._documento?.header)) return;
+      const actual = DocFecha.inputValueFromHeader(this._documento.header);
+      if (fecha === actual) return;
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`
+      );
+      this._documento = await F.fetchJson(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ FECHA: fecha }),
+      });
+      this.syncFechaInput();
+      F.toast('Fecha actualizada', 'success');
+    },
+
+    syncFechaInput() {
+      const inp = this._container?.querySelector(`#${NS}-doc-fecha`);
+      const h = this._documento?.header;
+      if (inp && h && !inp.matches(':focus')) {
+        inp.value = DocFecha.inputValueFromHeader(h);
+      }
+    },
+
+    filteredDocsList() {
+      const q = this._listFilter.trim().toLowerCase();
+      if (!q) return this._docsList;
+      return this._docsList.filter((r) => {
+        const hay = [r.CODDOC, r.CORRELATIVO, r.OBS, r.USUARIO]
+          .map((v) => String(v ?? '').toLowerCase())
+          .join(' ');
+        return hay.includes(q);
+      });
+    },
+
+    async loadDocumento(coddoc, correlativo) {
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(coddoc)}/${correlativo}`,
+        { _: Date.now() }
+      );
+      this._documento = await F.fetchJson(url);
+      if (this._screen === 'editor') this.renderAll();
+      return this._documento;
+    },
+
+    async crearDocumento() {
+      const body = {
+        CODDOC: this._config?.coddocDefault,
+        USUARIO: this.usuario(),
+      };
+      this._documento = await F.fetchJson(this.apiUrl('/documentos'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      F.toast('Nuevo documento creado', 'success');
+    },
+
+    async finalizarDocumento() {
+      const key = this.docKey();
+      if (!key) return;
+      const h = this._documento?.header;
+      if (!this.docEditable(h)) {
+        F.toast('El documento no está operado', 'warning');
+        return;
+      }
+      if (!(this._documento?.lines || []).length) {
+        F.toast('Agregue al menos un producto', 'warning');
+        return;
+      }
+
+      const obsVal = this.escapeHtml(h.OBS || '');
+      const { isConfirmed, value } = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: cfg.finalizarTitle || 'Finalizar documento',
+        html: `
+          <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())}</p>
+          <div class="text-start">
+            <label class="form-label small mb-0" for="${NS}-finalizar-obs">Observaciones</label>
+            <textarea id="${NS}-finalizar-obs" class="form-control form-control-sm" rows="3"
+              placeholder="Observaciones…">${obsVal}</textarea>
+          </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+        focusConfirm: false,
+        didOpen: () => document.getElementById(`${NS}-finalizar-obs`)?.focus(),
+        preConfirm: () => document.getElementById(`${NS}-finalizar-obs`)?.value?.trim() || '',
+      });
+
+      if (!isConfirmed) return;
+
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar`
+      );
+      await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ OBS: value }),
+      });
+      F.toast('Documento finalizado', 'success');
+      this._documento = null;
+      await this.showList();
+    },
+
+    async bloquearDocumento(coddoc, correlativo) {
+      const row = this._docsList.find(
+        (r) => String(r.CODDOC) === String(coddoc) && Number(r.CORRELATIVO) === Number(correlativo)
+      );
+      const label = row ? `${coddoc} #${correlativo}` : `${coddoc} #${correlativo}`;
+      const confirm = await CatalogosUI.fireConfirm({
+        title: '¿Bloquear documento?',
+        html: `<p class="mb-0">El documento <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse en el listado de operados.</p>`,
+        icon: 'warning',
+        confirmText: 'BLOQUEAR',
+        confirmClass: 'btn-catalogo-bloquear',
+      });
+      if (!confirm) return;
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(coddoc)}/${correlativo}/bloquear`
+      );
+      await F.fetchJson(url, { method: 'POST' });
+      F.toast('Documento bloqueado', 'success');
+      await this.fetchDocsList();
+      this.refreshListDom();
+    },
+
+    async imprimirDocumento(coddoc, correlativo) {
+      try {
+        const doc = await this.loadDocumento(coddoc, correlativo);
+        const h = doc.header;
+        const lines = doc.lines || [];
+        const rows = lines
+          .map(
+            (ln) => `<tr>
+              <td>${this.escapeHtml(ln.CODPROD)}</td>
+              <td>${this.escapeHtml(ln.DESPROD)}</td>
+              <td>${this.escapeHtml(this.formatMedidaLine(ln))}</td>
+              <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
+              <td class="text-end">${Number(ln.TOTALUNIDADES) || 0}</td>
+            </tr>`
+          )
+          .join('');
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${this.escapeHtml(cfg.printTitle || 'Inventario')}</title>
+          <style>body{font-family:Segoe UI,sans-serif;padding:1.5rem;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:1rem}
+          th,td{border:1px solid #ccc;padding:4px 6px}th{background:#f5f5f5;text-align:left}.text-end{text-align:right}h1{font-size:1.1rem;margin:0}</style></head>
+          <body><h1>${this.escapeHtml(cfg.printTitle || 'Movimiento inventario')}</h1>
+          <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFecha(h)} · ${this.escapeHtml(h.USUARIO || '')}</p>
+          ${h.OBS ? `<p><em>${this.escapeHtml(h.OBS)}</em></p>` : ''}
+          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Unidades</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
+          </body></html>`;
+        const w = window.open('', '_blank', 'width=800,height=600');
+        if (!w) {
+          F.toast('Permita ventanas emergentes para imprimir', 'warning');
+          return;
+        }
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+      } catch (err) {
+        F.toast(err.message || 'Error al imprimir', 'error');
+      }
+    },
+
+    async agregarLinea(codprod, codmedida, cantidad = 1) {
+      const key = this.docKey();
+      if (!key) {
+        F.toast('No hay documento activo', 'warning');
+        return;
+      }
+      if (!this.docEditable(this._documento?.header)) {
+        F.toast('El documento no está en edición', 'warning');
+        return;
+      }
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`
+      );
+      const res = await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ CODPROD: codprod, CODMEDIDA: codmedida, CANTIDAD: cantidad }),
+      });
+      this._documento = res.documento;
+      this.renderCart();
+      this.renderOrderSummary();
+      F.toast('Producto agregado', 'success');
+    },
+
+    setCartBusy(busy) {
+      this._cartBusy = busy;
+      const tbody = this._container?.querySelector(`#${NS}-cart-tbody`);
+      tbody?.classList.toggle('pos-cart-busy', busy);
+      const fab = this._container?.querySelector(`#${NS}-btn-finalizar`);
+      if (fab) fab.disabled = busy;
+    },
+
+    async actualizarCantidad(lineId, cantidad) {
+      const key = this.docKey();
+      if (!key) return;
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+      );
+      const res = await F.fetchJson(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ CANTIDAD: cantidad }),
+      });
+      this._documento = res.documento;
+      this.renderCart();
+      this.renderOrderSummary();
+    },
+
+    async eliminarLinea(lineId) {
+      const key = this.docKey();
+      if (!key) return;
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+      );
+      const res = await F.fetchJson(url, { method: 'DELETE' });
+      this._documento = res.documento;
+      this.renderCart();
+      this.renderOrderSummary();
+    },
+
+    async onProductClick(row) {
+      if (!row?.CODPROD) {
+        F.toast('Producto no disponible', 'warning');
+        return;
+      }
+      const precios = this._productos.filter((p) => String(p.CODPROD) === String(row.CODPROD));
+      if (!precios.length) {
+        F.toast('Sin medidas habilitadas', 'warning');
+        return;
+      }
+      const defaultMedida = row.CODMEDIDA || precios[0].CODMEDIDA;
+      const options = precios
+        .map((p) => {
+          const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
+          return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))}</option>`;
+        })
+        .join('');
+      const { value: picked } = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: row.DESPROD || row.CODPROD,
+        html: `
+          <label class="form-label small">Medida</label>
+          <select id="${NS}-swal-medida" class="form-select form-select-sm">${options}</select>
+          <label class="form-label small mt-2">Cantidad</label>
+          <input type="number" id="${NS}-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
+        `,
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+        focusConfirm: false,
+        preConfirm: () => {
+          const cant = Number(document.getElementById(`${NS}-swal-cant`)?.value);
+          if (!cant || cant <= 0) {
+            Swal.showValidationMessage('Cantidad inválida');
+            return false;
+          }
+          const medida = document.getElementById(`${NS}-swal-medida`)?.value;
+          if (!medida) {
+            Swal.showValidationMessage('Seleccione una medida');
+            return false;
+          }
+          return { medida, cantidad: cant };
+        },
+      });
+      if (picked?.medida) {
+        await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad);
+      }
+    },
+
+    renderProductList() {
+      const el = this._container?.querySelector(`#${NS}-product-list`);
+      if (!el) return;
+      if (!this._productos.length) {
+        el.innerHTML = '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+        return;
+      }
+      el.innerHTML = this._productos
+        .map(
+          (p) => `
+          <div class="pos-product-item" tabindex="0" role="button"
+            data-codprod="${this.escapeHtml(p.CODPROD)}"
+            data-codmedida="${this.escapeHtml(p.CODMEDIDA)}">
+            <div>
+              <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))}</div>
+              <div>${this.escapeHtml(p.DESPROD)}</div>
+            </div>
+          </div>`
+        )
+        .join('');
+    },
+
+    renderCart() {
+      const tbody = this._container?.querySelector(`#${NS}-cart-tbody`);
+      if (!tbody) return;
+      const lines = this._documento?.lines || [];
+      const h = this._documento?.header;
+      const editable = this.docEditable(h);
+      if (!lines.length) {
+        tbody.innerHTML =
+          '<tr><td colspan="4" class="text-center text-muted py-3">Sin productos</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lines
+        .map((ln) => {
+          const lineId = this.lineId(ln);
+          const qty = Number(ln.CANTIDAD) || 0;
+          const qtyControls = editable
+            ? `<div class="d-flex align-items-center gap-1 justify-content-center">
+              <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>−</button>
+              <span class="px-1">${qty}</span>
+              <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>
+            </div>`
+            : `<span>${qty}</span>`;
+          const delBtn = editable
+            ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
+            : '';
+          return `<tr>
+          <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
+          <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(this.formatMedidaLine(ln))}</span></td>
+          <td class="text-center">${qtyControls}</td>
+          <td class="text-end">${delBtn}</td>
+        </tr>`;
+        })
+        .join('');
+    },
+
+    renderOrderSummary() {
+      const totalEl = this._container?.querySelector(`#${NS}-header-total`);
+      const itemsEl = this._container?.querySelector(`#${NS}-header-items`);
+      const docEl = this._container?.querySelector(`#${NS}-header-doc`);
+      const h = this._documento?.header;
+      const lines = this._documento?.lines || [];
+      const totalUnidades = lines.reduce((sum, ln) => sum + (Number(ln.TOTALUNIDADES) || 0), 0);
+      const itemCount = lines.reduce((sum, ln) => sum + (Number(ln.CANTIDAD) || 0), 0);
+      if (totalEl) {
+        totalEl.textContent = totalUnidades === 1 ? '1 u.' : `${totalUnidades} u.`;
+      }
+      if (itemsEl) {
+        itemsEl.textContent = itemCount === 1 ? '1 item' : `${itemCount} items`;
+      }
+      if (docEl && h) docEl.textContent = this.docLabel();
+    },
+
+    renderAll() {
+      this.syncFechaInput();
+      this.renderCart();
+      this.renderOrderSummary();
+      this.syncEditorControls();
+    },
+
+    syncEditorControls() {
+      const editable = this.docEditable(this._documento?.header);
+      const search = this._container?.querySelector(`#${NS}-product-search`);
+      if (search) search.disabled = !editable;
+      const fecha = this._container?.querySelector(`#${NS}-doc-fecha`);
+      if (fecha) fecha.disabled = !editable;
+      const fab = this._container?.querySelector(`#${NS}-btn-finalizar`);
+      if (fab) fab.style.display = editable ? '' : 'none';
+    },
+
+    renderListCardsHtml() {
+      const rows = this.filteredDocsList();
+      if (!rows.length) {
+        return `<div class="pos-list-empty text-muted text-center py-5">No hay documentos en ${this._listMes}/${this._listAnio}</div>`;
+      }
+      return rows
+        .map((r) => {
+          const label = `${r.CODDOC} #${r.CORRELATIVO}`;
+          return `
+          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
+            data-correlativo="${r.CORRELATIVO}">
+            <div class="pos-pedido-card-top">
+              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
+            </div>
+            <div class="pos-pedido-card-meta">${this.escapeHtml(r.USUARIO || '—')} · ${this.escapeHtml(this.formatFecha(r))}</div>
+            <div class="pos-pedido-card-footer">
+              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
+              ${r.OBS ? `<span class="text-truncate ms-2" title="${this.escapeHtml(r.OBS)}">${this.escapeHtml(r.OBS)}</span>` : ''}
+            </div>
+            <div class="inv-card-actions">
+              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
+                <i class="fa-solid fa-pen me-1"></i>Editar
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
+                <i class="fa-solid fa-print me-1"></i>Imprimir
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
+                <i class="fa-solid fa-lock me-1"></i>Bloquear
+              </button>
+            </div>
+          </div>`;
+        })
+        .join('');
+    },
+
+    renderListToolbar() {
+      const mesOpts = this.mesOptions()
+        .map(
+          (o) =>
+            `<option value="${o.value}"${this._listMes === o.value ? ' selected' : ''}>${o.label}</option>`
+        )
+        .join('');
+      const anioOpts = this.anioOptions()
+        .map(
+          (o) =>
+            `<option value="${o.value}"${this._listAnio === o.value ? ' selected' : ''}>${o.label}</option>`
+        )
+        .join('');
+      return `
+        <div class="inv-list-toolbar mb-3">
+          <div class="inv-list-periods">
+            <div class="inv-list-period">
+              <label class="small text-muted mb-0" for="${NS}-list-mes">Mes</label>
+              <select class="form-select form-select-sm" id="${NS}-list-mes">${mesOpts}</select>
+            </div>
+            <div class="inv-list-period">
+              <label class="small text-muted mb-0" for="${NS}-list-anio">Año</label>
+              <select class="form-select form-select-sm" id="${NS}-list-anio">${anioOpts}</select>
+            </div>
+          </div>
+          <div class="input-group inv-list-search">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="search" class="form-control pos-search-glow" id="${NS}-list-search"
+              placeholder="Buscar documento, usuario, observaciones…"
+              value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+          </div>
+        </div>`;
+    },
+
+    renderListScreen() {
+      const count = this.filteredDocsList().length;
+      return `
+      <div class="pos-list-wrap">
+        <div class="pos-list-header">
+          <h2 class="pos-list-title">${this.escapeHtml(cfg.listTitle || 'Movimientos de inventario')}</h2>
+          <p class="pos-list-sub text-muted mb-0">${count} documento(s) operados · ${this._listMes}/${this._listAnio}</p>
+        </div>
+        ${this.renderListToolbar()}
+        <div class="pos-pedido-cards" id="${NS}-doc-cards">${this.renderListCardsHtml()}</div>
+        <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="${NS}-btn-nuevo"
+          aria-label="Nuevo documento" title="Nuevo documento">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        </button>
+      </div>`;
+    },
+
+    renderEditorShell() {
+      const tipoLabel = this._config?.tiposDocumento?.[0]?.DESDOC || cfg.listTitle || 'Inventario';
+      const editable = this.docEditable(this._documento?.header);
+      return `
+      <div class="pos-vista-wrap">
+        <div class="pos-header card shadow-sm">
+          <div class="card-body pos-header-body">
+            <div class="pos-header-top d-flex flex-wrap align-items-center gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary pos-btn-atras" id="${NS}-btn-atras">
+                <i class="fa-solid fa-arrow-left me-1"></i>Atrás
+              </button>
+              <div class="pos-header-brand">
+                <img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="pos-header-logo">
+              </div>
+              <div class="pos-header-doc-label small fw-semibold" id="${NS}-header-doc">${this.escapeHtml(this.docLabel())}</div>
+              ${DocFecha.renderField(`${NS}-doc-fecha`, this._documento?.header)}
+              <div class="pos-header-summary ms-auto text-end">
+                <h3 class="pos-header-total mb-0" id="${NS}-header-total">0 u.</h3>
+                <div class="pos-header-items" id="${NS}-header-items">0 items</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pos-main">
+          <div class="pos-panel card shadow-sm">
+            <div class="card-header py-2 d-flex align-items-center gap-2">
+              <i class="fa-solid fa-box"></i>
+              <span class="fw-semibold">Productos</span>
+              <span class="small text-muted">(${this.escapeHtml(tipoLabel)})</span>
+            </div>
+            <div class="card-body">
+              <div class="input-group input-group-sm mb-2 pos-search-group">
+                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="search" class="form-control pos-search-glow" id="${NS}-product-search"
+                  placeholder="Código o descripción…" autocomplete="off"${editable ? '' : ' disabled'}>
+              </div>
+              <div class="pos-product-list" id="${NS}-product-list"></div>
+            </div>
+          </div>
+          <div class="pos-panel card shadow-sm">
+            <div class="card-header py-2">
+              <i class="fa-solid fa-receipt me-1"></i>
+              <span class="fw-semibold">Documento actual</span>
+            </div>
+            <div class="card-body">
+              <div class="pos-cart-table flex-grow-1 d-flex flex-column">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Cód.</th>
+                        <th>Producto</th>
+                        <th class="text-center">Cant.</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="${NS}-cart-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${editable ? `
+        <button type="button" class="pos-fab-finalizar" id="${NS}-btn-finalizar">
+          <i class="fa-solid fa-check me-2"></i>Finalizar
+        </button>` : ''}
+      </div>`;
+    },
+
+    refreshListDom() {
+      const grid = this._container?.querySelector(`#${NS}-doc-cards`);
+      if (grid) grid.innerHTML = this.renderListCardsHtml();
+      const sub = this._container?.querySelector('.pos-list-sub');
+      if (sub) {
+        sub.textContent = `${this.filteredDocsList().length} documento(s) operados · ${this._listMes}/${this._listAnio}`;
+      }
+    },
+
+    bindListEvents() {
+      const search = this._container?.querySelector(`#${NS}-list-search`);
+      search?.addEventListener('input', () => {
+        this._listFilter = search.value;
+        this.refreshListDom();
+      });
+
+      const mesSel = this._container?.querySelector(`#${NS}-list-mes`);
+      const anioSel = this._container?.querySelector(`#${NS}-list-anio`);
+      const reloadPeriod = async () => {
+        if (mesSel) this._listMes = parseInt(mesSel.value, 10) || this._listMes;
+        if (anioSel) this._listAnio = parseInt(anioSel.value, 10) || this._listAnio;
+        await this.fetchDocsList();
+        this.refreshListDom();
+      };
+      mesSel?.addEventListener('change', () => {
+        reloadPeriod().catch((err) => F.toast(err.message, 'error'));
+      });
+      anioSel?.addEventListener('change', () => {
+        reloadPeriod().catch((err) => F.toast(err.message, 'error'));
+      });
+
+      this._container?.querySelector(`#${NS}-doc-cards`)?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.inv-card-btn');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const card = btn.closest('.inv-doc-card');
+        if (!card) return;
+        const coddoc = card.getAttribute('data-coddoc');
+        const correlativo = card.getAttribute('data-correlativo');
+        const action = btn.getAttribute('data-action');
+        try {
+          if (action === 'editar') await this.showEditor(coddoc, correlativo);
+          else if (action === 'imprimir') await this.imprimirDocumento(coddoc, correlativo);
+          else if (action === 'bloquear') await this.bloquearDocumento(coddoc, correlativo);
+        } catch (err) {
+          F.toast(err.message || 'Error', 'error');
+        }
+      });
+
+      this._container?.querySelector(`#${NS}-btn-nuevo`)?.addEventListener('click', () => this.onNuevo());
+    },
+
+    bindEditorEvents() {
+      const searchProd = this._container?.querySelector(`#${NS}-product-search`);
+      if (searchProd) {
+        const run = F.debounce(() => this.buscarProductos(searchProd.value.trim()), 300);
+        searchProd.addEventListener('input', run);
+        searchProd.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.buscarProductos(searchProd.value.trim());
+          }
+        });
+      }
+
+      this._container?.querySelector(`#${NS}-product-list`)?.addEventListener('click', (e) => {
+        const item = e.target.closest('.pos-product-item');
+        if (!item) return;
+        const cod = item.getAttribute('data-codprod');
+        const med = item.getAttribute('data-codmedida');
+        const row = this._productos.find(
+          (p) => String(p.CODPROD) === String(cod) && String(p.CODMEDIDA) === String(med)
+        );
+        if (row) this.onProductClick(row);
+      });
+
+      this._container?.querySelector(`#${NS}-cart-tbody`)?.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn || btn.disabled || this._cartBusy) return;
+        e.preventDefault();
+        const id = Number(btn.getAttribute('data-id'));
+        const line = this.findLineById(id);
+        if (!line) {
+          F.toast('No se encontró la línea', 'warning');
+          return;
+        }
+        const action = btn.getAttribute('data-action');
+        this.setCartBusy(true);
+        this.renderCart();
+        try {
+          if (action === 'line-del') {
+            await this.eliminarLinea(id);
+            return;
+          }
+          const qty = Number(line.CANTIDAD) || 1;
+          if (action === 'qty-plus') await this.actualizarCantidad(id, qty + 1);
+          else if (action === 'qty-minus') {
+            if (qty <= 1) await this.eliminarLinea(id);
+            else await this.actualizarCantidad(id, qty - 1);
+          }
+        } catch (err) {
+          F.toast(err.message || 'Error al actualizar', 'error');
+        } finally {
+          this.setCartBusy(false);
+          this.renderCart();
+        }
+      });
+
+      this._container?.querySelector(`#${NS}-btn-atras`)?.addEventListener('click', () => this.showList());
+      this._container?.querySelector(`#${NS}-btn-finalizar`)?.addEventListener('click', () => {
+        this.finalizarDocumento().catch((err) => F.toast(err.message, 'error'));
+      });
+
+      const fechaInp = this._container?.querySelector(`#${NS}-doc-fecha`);
+      if (fechaInp) {
+        fechaInp.addEventListener('change', () => {
+          if (fechaInp.disabled) return;
+          const val = fechaInp.value?.trim();
+          if (!val) return;
+          this.guardarFechaDocumento(val).catch((err) => F.toast(err.message, 'error'));
+        });
+      }
+    },
+
+    async buscarProductos(q) {
+      if (this._loadingProducts) return;
+      this._loadingProducts = true;
+      const list = this._container?.querySelector(`#${NS}-product-list`);
+      if (list) list.innerHTML = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+      try {
+        const data = await this.fetchProductos(q);
+        this._productos = data.rows || [];
+        this.renderProductList();
+      } catch (err) {
+        if (list) list.innerHTML = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
+      } finally {
+        this._loadingProducts = false;
+      }
+    },
+
+    async showList() {
+      this._screen = 'list';
+      this._documento = null;
+      await this.fetchDocsList();
+      this._container.innerHTML = this.renderListScreen();
+      this.bindListEvents();
+    },
+
+    async showEditor(coddoc, correlativo) {
+      this._screen = 'editor';
+      this._container.innerHTML = this.renderEditorShell();
+      this.bindEditorEvents();
+      if (coddoc && correlativo) {
+        await this.loadDocumento(coddoc, correlativo);
+      }
+      await this.buscarProductos('');
+      this.renderAll();
+    },
+
+    async onNuevo() {
+      try {
+        await this.crearDocumento();
+        const key = this.docKey();
+        if (key) await this.showEditor(key.coddoc, key.correlativo);
+      } catch (err) {
+        F.toast(err.message || 'Error al crear documento', 'error');
+      }
+    },
+
+    async load(container) {
+      this._container = container;
+      container.classList.remove('align-items-center', 'justify-content-center');
+      container.classList.add('align-items-stretch', 'justify-content-start', 'p-2', 'p-md-3');
+
+      if (!F.getEmpNit()) {
+        container.innerHTML = `
+        <div class="alert alert-warning m-3 w-100">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i>
+          No hay empresa activa. Cierre sesión e ingrese de nuevo.
+        </div>`;
+        return;
+      }
+
+      container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</div>`;
+
+      try {
+        this._config = await this.fetchConfig();
+        if (!this._config.coddocDefault) {
+          container.innerHTML = `
+          <div class="alert alert-warning m-3 w-100">
+            Configure un tipo de documento <strong>${this.escapeHtml(cfg.tipodoc || '')}</strong> activo para esta empresa.
+          </div>`;
+          return;
+        }
+        await this.showList();
+      } catch (err) {
+        container.innerHTML = `
+        <div class="alert alert-danger m-3 w-100">
+          <i class="fa-solid fa-circle-exclamation me-2"></i>${this.escapeHtml(err.message)}
+        </div>`;
+      }
+    },
+  };
+}
+
+const EntradasInventarioView = createInventarioMovView({
+  slug: 'inv-ent',
+  apiBase: '/api/inventario/ent',
+  tipodoc: 'ENT',
+  listTitle: 'Entradas de inventario',
+  finalizarTitle: 'Finalizar entrada de inventario',
+  printTitle: 'Entrada de inventario',
+});
+
+const SalidasInventarioView = createInventarioMovView({
+  slug: 'inv-sal',
+  apiBase: '/api/inventario/sal',
+  tipodoc: 'SAL',
+  listTitle: 'Salidas de inventario',
+  finalizarTitle: 'Finalizar salida de inventario',
+  printTitle: 'Salida de inventario',
+});

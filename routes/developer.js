@@ -102,6 +102,8 @@ const LIST_FROM = `
     ON d.CODVEN = emp.CODEMPLEADO AND d.EMPNIT = emp.EMPNIT
   LEFT OUTER JOIN dbo.EMBARQUES e
     ON d.CODEMBARQUE = e.CODEMBARQUE AND d.EMPNIT = e.EMPNIT
+  LEFT OUTER JOIN dbo.REPARTIDORES rep
+    ON e.EMPNIT = rep.EMPNIT AND e.CODREP = rep.CODREP
   LEFT OUTER JOIN dbo.CLIENTES c
     ON d.EMPNIT = c.EMPNIT AND d.CODCLIENTE = c.CODCLIENTE
   LEFT OUTER JOIN dbo.TIPODOCUMENTOS t
@@ -110,6 +112,7 @@ const LIST_FROM = `
 
 const LIST_SELECT = `
   d.CODEMBARQUE,
+  ISNULL(rep.DESREP, '') AS REPARTIDOR,
   ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
   e.FECHA AS FECHA_EMBARQUE,
   d.FECHA,
@@ -124,7 +127,7 @@ const LIST_SELECT = `
 `;
 
 const LIST_WHERE = `
-  WHERE d.STATUS <> 'A'
+  WHERE d.STATUS = 'O'
     AND t.TIPODOC = 'FAC'
     AND d.EMPNIT = @EMPNIT
     AND d.MES = @MES
@@ -139,6 +142,7 @@ const LIST_WHERE = `
       OR c.NOMBRECLIENTE LIKE @qLike
       OR c.DIRCLIENTE LIKE @qLike
       OR e.DESCRIPCION LIKE @qLike
+      OR rep.DESREP LIKE @qLike
       OR emp.NOMEMPLEADO LIKE @qLike
     )
 `;
@@ -179,6 +183,7 @@ function formatNombreClienteExport(negocio, nombreCliente) {
 
 function mapDocumentoExportRow(r) {
   const row = mapDocumentoRow(r);
+  const repartidor = r.REPARTIDOR ?? r.repartidor ?? '';
   return {
     VENDEDOR: row.VENDEDOR,
     NOMBRE_CLIENTE: formatNombreClienteExport(row.NEGOCIO, row.NOMBRECLIENTE),
@@ -187,6 +192,8 @@ function mapDocumentoExportRow(r) {
     FECHA_DOC: row.FECHA ?? null,
     FECHA_EMBARQUE: row.FECHA_EMBARQUE ?? null,
     CORRELATIVO: row.NOCORTE ?? 0,
+    CODEMBARQUE: row.CODEMBARQUE ?? null,
+    REPARTIDOR: String(repartidor).trim(),
   };
 }
 
@@ -221,6 +228,8 @@ router.get('/documentos-fac/export', async (req, res) => {
       { header: 'FECHA DOC', key: 'FECHA_DOC', width: 14 },
       { header: 'FECHA EMBARQUE', key: 'FECHA_EMBARQUE', width: 14 },
       { header: 'CORRELATIVO', key: 'CORRELATIVO', width: 12 },
+      { header: 'CODEMBARQUE', key: 'CODEMBARQUE', width: 14 },
+      { header: 'REPARTIDOR', key: 'REPARTIDOR', width: 24 },
     ];
     sheet.getRow(1).font = { bold: true };
 

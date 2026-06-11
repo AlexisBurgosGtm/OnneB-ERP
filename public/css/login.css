@@ -1,0 +1,359 @@
+/**
+ * Login — glassmorphism estilo referencia, colores del tema activo
+ */
+#view-login {
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  overflow: hidden;
+  background-color: var(--login-bg-base, var(--login-bg));
+  background-image: var(--login-bg-gradient);
+  color: var(--login-glass-fg, var(--login-text));
+}
+
+.login-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(88px);
+  opacity: 0.75;
+  will-change: transform;
+}
+
+.login-orb-a {
+  width: min(560px, 75vw);
+  height: min(560px, 75vw);
+  top: -15%;
+  left: -12%;
+  background: var(--login-orb-a);
+  animation: login-orb-drift-a 20s ease-in-out infinite;
+}
+
+.login-orb-b {
+  width: min(480px, 65vw);
+  height: min(480px, 65vw);
+  bottom: -12%;
+  right: -10%;
+  background: var(--login-orb-b);
+  animation: login-orb-drift-b 24s ease-in-out infinite;
+}
+
+.login-orb-c {
+  width: min(340px, 50vw);
+  height: min(340px, 50vw);
+  top: 35%;
+  left: 55%;
+  background: var(--login-orb-c);
+  animation: login-orb-drift-c 28s ease-in-out infinite;
+}
+
+.login-grid {
+  display: none;
+}
+
+.login-theme-corner {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 3;
+}
+
+.login-theme-corner .theme-picker-panel {
+  background: color-mix(in srgb, var(--login-glass-card) 95%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-color: var(--login-glass-border);
+}
+
+.login-theme-corner .theme-picker-title,
+.login-theme-corner .theme-option {
+  color: var(--login-glass-fg, #fff);
+}
+
+.login-theme-corner .theme-picker-title {
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.7));
+}
+
+.login-theme-corner .theme-option:hover {
+  background: color-mix(in srgb, var(--onneb-brand) 22%, transparent);
+}
+
+.login-theme-corner .theme-option.is-active {
+  background: color-mix(in srgb, var(--onneb-brand) 32%, transparent);
+}
+
+/* Tarjeta glass central */
+.login-glass-card {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 380px;
+  padding: 2.25rem 2rem 2rem;
+  border-radius: 2rem;
+  background: var(--login-glass-card, rgba(255, 255, 255, 0.11)) !important;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--login-glass-border, rgba(255, 255, 255, 0.22)) !important;
+  box-shadow:
+    0 28px 56px var(--login-glass-shadow, rgba(0, 0, 0, 0.35)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+  animation: login-card-enter 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-logo-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.75rem;
+}
+
+.logo-app {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  animation: logo-float 5s ease-in-out infinite;
+  filter: drop-shadow(0 10px 24px color-mix(in srgb, var(--login-glow) 35%, transparent));
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Campos con línea inferior (estilo referencia) */
+.login-field-line {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--login-field-line, rgba(255, 255, 255, 0.45));
+  transition: border-color 0.2s ease;
+}
+
+.login-field-line:focus-within {
+  border-bottom-color: color-mix(in srgb, var(--login-glow) 75%, #fff);
+}
+
+.login-field-icon {
+  flex-shrink: 0;
+  width: 1.1rem;
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.7));
+}
+
+.login-input-line {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+  padding: 0.35rem 0 !important;
+  font-size: 0.92rem;
+  color: var(--login-glass-fg, #fff) !important;
+}
+
+.login-input-line::placeholder {
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.55));
+  opacity: 1;
+}
+
+.login-input-line option {
+  background: var(--login-bg-base, #1a0a2e);
+  color: var(--login-glass-fg, #fff);
+}
+
+select.login-input-line {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='rgba(255,255,255,0.65)' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0 center !important;
+  padding-right: 1.25rem !important;
+}
+
+/* Fila recordarme / olvidó contraseña */
+.login-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1rem 0 1.35rem;
+  font-size: 0.78rem;
+}
+
+.login-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.75));
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-remember-check {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--onneb-brand-light, #a78bfa);
+  cursor: pointer;
+}
+
+.login-forgot {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.75));
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.login-forgot:hover {
+  color: var(--login-glass-fg, #fff);
+}
+
+/* Botón gradiente */
+.btn-login {
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.25rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--login-btn-text) !important;
+  background: var(--login-btn-bg) !important;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--login-glow) 32%, transparent);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-login::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: login-btn-shine 5s ease-in-out infinite;
+}
+
+.btn-login:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--login-glow) 42%, transparent);
+  color: var(--login-btn-text) !important;
+}
+
+.btn-login:active {
+  transform: translateY(0);
+}
+
+.build-counter {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--login-glass-fg-muted, rgba(255, 255, 255, 0.65));
+  background: var(--login-glass-card, rgba(255, 255, 255, 0.09));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--login-glass-border);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.build-counter .build-count {
+  font-weight: 600;
+}
+
+.build-counter .build-date {
+  font-size: 0.65rem;
+  opacity: 0.9;
+}
+
+@keyframes login-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-orb-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(5%, 7%) scale(1.06); }
+}
+
+@keyframes login-orb-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-6%, -4%) scale(1.05); }
+}
+
+@keyframes login-orb-drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3%, 5%) scale(1.08); }
+}
+
+@keyframes logo-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.02); }
+}
+
+@keyframes login-btn-shine {
+  0%, 72%, 100% { transform: translateX(-120%); }
+  85% { transform: translateX(120%); }
+}
+
+@media (max-width: 480px) {
+  .login-glass-card {
+    padding: 1.75rem 1.35rem 1.5rem;
+    border-radius: 1.65rem;
+  }
+
+  .logo-app {
+    width: 100px;
+    height: 100px;
+  }
+
+  .login-theme-corner {
+    top: 0.65rem;
+    right: 0.65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-orb,
+  .logo-app,
+  .login-glass-card,
+  .btn-login::after {
+    animation: none !important;
+  }
+}

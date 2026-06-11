@@ -6,6 +6,35 @@ const router = express.Router();
 const ADMIN_CONFIG_ID = 2;
 const INVENTARIO_NEGATIVO_CONFIG_ID = 3;
 
+router.post('/:id/verify-pass', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('ID', sql.Int, id)
+      .query('SELECT PASS FROM Config WHERE ID = @ID');
+    if (!result.recordset.length) {
+      return res.status(404).json({ error: 'Configuración no encontrada' });
+    }
+    const stored = String(result.recordset[0].PASS ?? '');
+    if (pass !== stored) {
+      return res.status(401).json({ ok: false, error: 'Clave incorrecta' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[API POST /config/:id/verify-pass]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id/pass', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {

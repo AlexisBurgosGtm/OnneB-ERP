@@ -835,7 +835,7 @@ const ProductosView = {
     panel.innerHTML = `
       <div class="productos-precios-panel-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span><i class="fa-solid fa-tags me-1"></i>Precios — <strong>${this.escapeHtml(this.activeCodprod())}</strong></span>
-        <button type="button" class="btn btn-sm btn-primary" id="btn-productos-precio-nuevo">
+        <button type="button" class="btn btn-sm btn-onneb-nuevo" id="btn-productos-precio-nuevo">
           <i class="fa-solid fa-plus me-1"></i>Agregar
         </button>
       </div>

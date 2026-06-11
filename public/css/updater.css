@@ -1,0 +1,36 @@
+.updater-vista-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.updater-filters-card .card-body {
+  padding: 0.75rem 1rem;
+}
+
+.updater-qry-cell {
+  max-width: 28rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.updater-table-card .table-responsive {
+  max-height: calc(100vh - 16rem);
+}
+
+.updater-result-log {
+  max-height: min(420px, 55vh);
+  overflow: auto;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  background: color-mix(in srgb, var(--app-surface, #f8f9fa) 90%, transparent);
+  border: 1px solid var(--app-border, #dee2e6);
+  border-radius: 0.5rem;
+  text-align: left;
+}

@@ -94,6 +94,7 @@ const DocumentosView = {
     const empNit = F.getEmpNit();
     if (!empNit) throw new Error('No hay empresa activa. Cierre sesión e ingrese de nuevo.');
     const params = this.buildListParams();
+    params.set('limit', '500');
     params.set('_', String(Date.now()));
     return `/api/documentos/lista?${params.toString()}`;
   },
@@ -158,7 +159,11 @@ const DocumentosView = {
 
   tipodocLabel() {
     const found = this._tipos.find((t) => String(t.TIPODOC).toUpperCase() === String(this._tipodoc).toUpperCase());
-    if (found) return `${found.TIPODOC} — ${found.ETIQUETA || found.TIPODOC}`;
+    if (found) {
+      const code = String(found.TIPODOC || '').toUpperCase();
+      const desc = found.DESCRIPCION || '';
+      return desc ? `${code} — ${desc}` : code;
+    }
     return this._tipodoc || '—';
   },
 
@@ -188,7 +193,8 @@ const DocumentosView = {
     const tipoOpts = this._tipos
       .map((t) => {
         const code = String(t.TIPODOC || '').toUpperCase();
-        const label = t.ETIQUETA ? `${code} — ${t.ETIQUETA}` : code;
+        const desc = String(t.DESCRIPCION || '').trim();
+        const label = desc ? `${code} — ${desc}` : code;
         return `<option value="${this.escapeHtml(code)}"${this._tipodoc === code ? ' selected' : ''}>${this.escapeHtml(label)}</option>`;
       })
       .join('');

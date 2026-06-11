@@ -4,7 +4,7 @@ const { isDbConfigured } = require('../config/database');
 
 const router = express.Router();
 
-const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 500;
 const SEARCH_LIMIT = 500;
 
 function getEmpNitFromReq(req) {
@@ -159,15 +159,16 @@ router.get('/tipos', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const result = await pool.request().input('EMPNIT', sql.VarChar, empnit).query(`
-      SELECT t.TIPODOC, MIN(t.DESDOC) AS ETIQUETA, COUNT(*) AS CANT_CODDOC
-      FROM dbo.TIPODOCUMENTOS t
-      WHERE t.EMPNIT = @EMPNIT
-        AND (t.ACTIVO = 'SI' OR t.ACTIVO IS NULL)
-      GROUP BY t.TIPODOC
-      ORDER BY t.TIPODOC
+    const result = await pool.request().query(`
+      SELECT TIPODOC, DESCRIPCION
+      FROM dbo.CONFIG_TIPODOCUMENTOS
+      ORDER BY DESCRIPCION, TIPODOC
     `);
-    res.json({ rows: result.recordset, empnit });
+    const rows = result.recordset.map((r) => ({
+      TIPODOC: String(r.TIPODOC ?? '').trim().toUpperCase(),
+      DESCRIPCION: String(r.DESCRIPCION ?? r.TIPODOC ?? '').trim(),
+    }));
+    res.json({ rows, empnit });
   } catch (err) {
     console.warn('[API GET /documentos/tipos]', err.message);
     res.status(500).json({ error: err.message });

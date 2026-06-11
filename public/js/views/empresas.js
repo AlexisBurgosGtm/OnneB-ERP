@@ -121,7 +121,102 @@ const EmpresasView = {
       ${pair('EMPCONTACTO', 'EMPTELCONTACTO')}
       ${single('CODTIPOEMPRESA')}
       ${pair('OBJETIVO', 'PRESUPUESTO')}
+      ${this.logoFieldHtml()}
     `;
+  },
+
+  logoFieldHtml() {
+    return `
+      <div class="mb-2 empresa-logo-field">
+        <label class="form-label small mb-0" for="empresa-logo-file">Logo empresa</label>
+        <input type="file" class="form-control form-control-sm" id="empresa-logo-file"
+          accept="image/png,image/jpeg,image/gif,image/webp">
+        <input type="hidden" name="LOGO" id="empresa-logo-hex" value="">
+        <div class="empresa-logo-preview mt-2" id="empresa-logo-preview" aria-live="polite"></div>
+        <div class="form-check mt-1 d-none" id="empresa-logo-clear-wrap">
+          <input type="checkbox" class="form-check-input" id="empresa-logo-clear">
+          <label class="form-check-label small" for="empresa-logo-clear">Quitar logo</label>
+        </div>
+      </div>
+    `;
+  },
+
+  renderLogoPreview(hex) {
+    const preview = document.getElementById('empresa-logo-preview');
+    const clearWrap = document.getElementById('empresa-logo-clear-wrap');
+    const hexInput = document.getElementById('empresa-logo-hex');
+    const clearCheck = document.getElementById('empresa-logo-clear');
+    if (!preview) return;
+    if (clearCheck) clearCheck.checked = false;
+    if (!hex) {
+      preview.innerHTML = '<span class="small text-muted">Sin logo</span>';
+      if (hexInput) hexInput.value = '';
+      if (clearWrap) clearWrap.classList.add('d-none');
+      return;
+    }
+    const dataUrl = EmpresaLogo.hexToDataUrl(hex, EmpresaLogo.detectMime(hex));
+    if (!dataUrl) {
+      preview.innerHTML = '<span class="small text-muted">Logo no válido</span>';
+      return;
+    }
+    preview.innerHTML = `<img src="${dataUrl}" alt="Vista previa logo" class="empresa-logo-preview-img">`;
+    if (hexInput) hexInput.value = hex;
+    if (clearWrap) clearWrap.classList.remove('d-none');
+  },
+
+  async fileToHex(file) {
+    const maxBytes = 512 * 1024;
+    if (file.size > maxBytes) {
+      throw new Error('La imagen no debe superar 512 KB');
+    }
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      hex += bytes[i].toString(16).padStart(2, '0');
+    }
+    return hex.toUpperCase();
+  },
+
+  bindLogoField(existingHex = '') {
+    const fileInput = document.getElementById('empresa-logo-file');
+    const clearCheck = document.getElementById('empresa-logo-clear');
+    if (existingHex) this.renderLogoPreview(String(existingHex));
+    else this.renderLogoPreview('');
+
+    fileInput?.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const hex = await this.fileToHex(file);
+        this.renderLogoPreview(hex);
+      } catch (err) {
+        fileInput.value = '';
+        Swal.showValidationMessage(err.message || 'No se pudo leer la imagen');
+      }
+    });
+
+    clearCheck?.addEventListener('change', () => {
+      if (clearCheck.checked) {
+        if (fileInput) fileInput.value = '';
+        this.renderLogoPreview('');
+        const hexInput = document.getElementById('empresa-logo-hex');
+        if (hexInput) hexInput.value = '';
+      }
+    });
+  },
+
+  readLogoFromForm(data, isEdit) {
+    const clearCheck = document.getElementById('empresa-logo-clear');
+    const hexInput = document.getElementById('empresa-logo-hex');
+    if (clearCheck?.checked) {
+      data.LOGO = '';
+      return data;
+    }
+    const hex = hexInput?.value?.trim();
+    if (hex) data.LOGO = hex;
+    else if (!isEdit) delete data.LOGO;
+    return data;
   },
 
   readFormData() {
@@ -135,17 +230,19 @@ const EmpresasView = {
   },
 
   async showForm(title, row = {}, isEdit = false) {
+    const existingHex = row.LOGO || row.EMPLOGO || '';
     return CatalogosUI.fireForm({
       title,
       html: this.buildFormHtml(row, isEdit),
       width: 520,
+      didOpen: () => this.bindLogoField(existingHex),
       preConfirm: () => {
         const data = this.readFormData();
         if (!data.EMPNIT) {
           Swal.showValidationMessage('El NIT es obligatorio');
           return false;
         }
-        return data;
+        return this.readLogoFromForm(data, isEdit);
       },
     });
   },
@@ -209,8 +306,13 @@ const EmpresasView = {
   },
 
   async onEditar(empnit) {
-    const row = this.findRow(empnit);
-    if (!row) return;
+    let row = this.findRow(empnit);
+    try {
+      row = await F.fetchJson(`/api/empresas/${encodeURIComponent(empnit)}?_=${Date.now()}`);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+      return;
+    }
     const data = await this.showForm('Editar empresa', row, true);
     if (!data) return;
     try {

@@ -47,3 +47,23 @@
   font-size: 0.75rem;
   color: var(--app-text-muted, #666);
 }
+
+.empresa-logo-field .empresa-logo-preview {
+  min-height: 2.5rem;
+}
+
+.empresa-logo-preview-img {
+  max-width: 120px;
+  max-height: 80px;
+  object-fit: contain;
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: 0.35rem;
+  padding: 0.25rem;
+  background: #fff;
+}
+
+.empresa-logo-img {
+  max-height: 40px;
+  max-width: 120px;
+  object-fit: contain;
+}

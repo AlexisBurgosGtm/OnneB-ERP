@@ -1,106 +1,113 @@
 /**
- * Genera iconos PNG genéricos para PWA (medidas estándar)
+ * Genera iconos PWA, favicons y apple-touch desde logo.png (fondo transparente).
  */
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
+const sharp = require('sharp');
 
-const SIZES = [72, 96, 128, 144, 152, 192, 384, 512];
-const outDir = path.join(__dirname, '..', 'public', 'icons');
+const ROOT = path.join(__dirname, '..');
+const SOURCE = path.join(ROOT, 'logo.png');
+const OUT_DIR = path.join(ROOT, 'public', 'icons');
+const PUBLIC_LOGO = path.join(ROOT, 'public', 'logo.png');
 
-function crc32(buf) {
-  let c = 0xffffffff;
-  const table = crc32.table || (crc32.table = (() => {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-      t[n] = c;
-    }
-    return t;
-  })());
-  for (let i = 0; i < buf.length; i++) {
-    c = table[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+/** Tamaños estándar PWA + favicons */
+const ICON_SIZES = [16, 32, 72, 96, 128, 144, 152, 180, 192, 384, 512];
+const MASKABLE_SIZES = [192, 512];
+const MASKABLE_SCALE = 0.82;
+
+/** Píxeles casi negros → transparentes (elimina bandas del fondo del PNG). */
+const BLACK_THRESHOLD = 32;
+
+let preparedLogo = null;
+
+async function ensureSource() {
+  if (!fs.existsSync(SOURCE)) {
+    throw new Error(`No se encontró logo.png en ${SOURCE}`);
   }
-  return (c ^ 0xffffffff) >>> 0;
 }
 
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const typeBuf = Buffer.from(type, 'ascii');
-  const crcBuf = Buffer.alloc(4);
-  const crcData = Buffer.concat([typeBuf, data]);
-  crcBuf.writeUInt32BE(crc32(crcData), 0);
-  return Buffer.concat([len, typeBuf, data, crcBuf]);
-}
+async function prepareLogoBuffer() {
+  if (preparedLogo) return preparedLogo;
 
-function createPng(size) {
-  const width = size;
-  const height = size;
-  const raw = Buffer.alloc((width * 4 + 1) * height);
-  const bgR = 26;
-  const bgG = 26;
-  const bgB = 30;
-  const accentR = 245;
-  const accentG = 245;
-  const accentB = 245;
-  const cx = width / 2;
-  const cy = height / 2;
-  const r = width * 0.38;
+  const { data, info } = await sharp(SOURCE).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
-  for (let y = 0; y < height; y++) {
-    const rowStart = y * (width * 4 + 1);
-    raw[rowStart] = 0;
-    for (let x = 0; x < width; x++) {
-      const i = rowStart + 1 + x * 4;
-      const dx = x - cx;
-      const dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const inCircle = dist <= r;
-      const letter =
-        (x > cx - width * 0.12 && x < cx + width * 0.12 && y > cy - height * 0.08 && y < cy + height * 0.1);
-      if (inCircle && !letter) {
-        raw[i] = 80;
-        raw[i + 1] = 80;
-        raw[i + 2] = 88;
-        raw[i + 3] = 255;
-      } else if (letter && inCircle) {
-        raw[i] = accentR;
-        raw[i + 1] = accentG;
-        raw[i + 2] = accentB;
-        raw[i + 3] = 255;
-      } else {
-        raw[i] = bgR;
-        raw[i + 1] = bgG;
-        raw[i + 2] = bgB;
-        raw[i + 3] = 255;
-      }
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    if (r <= BLACK_THRESHOLD && g <= BLACK_THRESHOLD && b <= BLACK_THRESHOLD) {
+      data[i + 3] = 0;
     }
   }
 
-  const compressed = zlib.deflateSync(raw, { level: 9 });
-  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
+  preparedLogo = await sharp(data, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .trim({ threshold: 1 })
+    .png()
+    .toBuffer();
 
-  return Buffer.concat([
-    signature,
-    chunk('IHDR', ihdr),
-    chunk('IDAT', compressed),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
+  return preparedLogo;
 }
 
-fs.mkdirSync(outDir, { recursive: true });
-for (const size of SIZES) {
-  const file = path.join(outDir, `icon-${size}.png`);
-  fs.writeFileSync(file, createPng(size));
-  console.log(`Icono: ${file}`);
+async function writeSquareIcon(logoBuf, size, outFile, { maskable = false } = {}) {
+  const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
+
+  if (maskable) {
+    const inner = Math.round(size * MASKABLE_SCALE);
+    const scaled = await sharp(logoBuf)
+      .resize(inner, inner, { fit: 'contain', background: transparent })
+      .png()
+      .toBuffer();
+
+    await sharp({
+      create: {
+        width: size,
+        height: size,
+        channels: 4,
+        background: transparent,
+      },
+    })
+      .composite([{ input: scaled, gravity: 'centre' }])
+      .png()
+      .toFile(outFile);
+    return;
+  }
+
+  await sharp(logoBuf)
+    .resize(size, size, { fit: 'contain', background: transparent })
+    .png()
+    .toFile(outFile);
 }
+
+async function main() {
+  await ensureSource();
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  const logoBuf = await prepareLogoBuffer();
+  await sharp(logoBuf).png().toFile(PUBLIC_LOGO);
+
+  for (const size of ICON_SIZES) {
+    const file = path.join(OUT_DIR, `icon-${size}.png`);
+    await writeSquareIcon(logoBuf, size, file);
+    console.log(`Icono: ${file}`);
+  }
+
+  await writeSquareIcon(logoBuf, 16, path.join(OUT_DIR, 'favicon-16.png'));
+  await writeSquareIcon(logoBuf, 32, path.join(OUT_DIR, 'favicon-32.png'));
+  await writeSquareIcon(logoBuf, 180, path.join(OUT_DIR, 'apple-touch-icon.png'));
+  console.log('Favicons: favicon-16.png, favicon-32.png, apple-touch-icon.png');
+
+  for (const size of MASKABLE_SIZES) {
+    const file = path.join(OUT_DIR, `icon-${size}-maskable.png`);
+    await writeSquareIcon(logoBuf, size, file, { maskable: true });
+    console.log(`Maskable: ${file}`);
+  }
+
+  console.log('Listo — iconos con fondo transparente');
+}
+
+main().catch((err) => {
+  console.error(err.message || err);
+  process.exit(1);
+});

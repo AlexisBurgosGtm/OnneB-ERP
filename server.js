@@ -36,8 +36,11 @@ const usuariosRouter = require('./routes/usuarios');
 const { router: configRouter } = require('./routes/config');
 const developerRouter = require('./routes/developer');
 const posRouter = require('./routes/pos');
+const { entradasRouter, salidasRouter } = require('./routes/inventario-docs');
 const documentosRouter = require('./routes/documentos');
 const productosRouter = require('./routes/productos');
+const suscripcionesRouter = require('./routes/suscripciones');
+const updaterRouter = require('./routes/updater');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -120,8 +123,12 @@ app.use('/api/usuarios', usuariosRouter);
 app.use('/api/config', configRouter);
 app.use('/api/developer', developerRouter);
 app.use('/api/pos', posRouter);
+app.use('/api/inventario/ent', entradasRouter);
+app.use('/api/inventario/sal', salidasRouter);
 app.use('/api/documentos', documentosRouter);
 app.use('/api/productos', productosRouter);
+app.use('/api/suscripciones', suscripcionesRouter);
+app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {
   let dbStatus = 'not_configured';

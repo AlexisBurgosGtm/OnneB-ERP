@@ -9,6 +9,7 @@
     "predev": "node scripts/bump-build.js",
     "dev": "node server.js",
     "build": "node scripts/bump-build.js",
+    "icons": "node scripts/generate-icons.js",
     "watch:build": "node scripts/watch-build.js",
     "postinstall": "node scripts/generate-icons.js",
     "test": "nodemon server.js"
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.9",
-    "pace-js": "^1.2.4"
+    "pace-js": "^1.2.4",
+    "sharp": "^0.35.1"
   }
 }

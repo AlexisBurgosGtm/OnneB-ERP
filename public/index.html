@@ -3,16 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#7c3aed">
   <meta name="description" content="OnneB POS - Punto de venta">
   <title>OnneB POS</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-72.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css" crossorigin="anonymous">
   <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/themes-ui.css">
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/login.css">
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/pace.css">
   <link rel="stylesheet" href="/css/empresas.css">
@@ -21,54 +26,75 @@
   <link rel="stylesheet" href="/css/catalogos.css">
   <link rel="stylesheet" href="/css/config-general.css">
   <link rel="stylesheet" href="/css/developer.css">
+  <link rel="stylesheet" href="/css/suscripciones.css">
+  <link rel="stylesheet" href="/css/updater.css">
   <link rel="stylesheet" href="/css/pos.css">
   <link rel="stylesheet" href="/css/documentos.css">
   <link rel="stylesheet" href="/css/productos.css">
 </head>
 <body>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('onneb-theme') || 'purple';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'purple');
+      }
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script>
   <script src="/js/pace-init.js"></script>
   <div id="app" class="app-shell">
     <section id="view-login" class="view view-active" data-view="login">
-      <div class="login-backdrop"></div>
-      <div class="login-glass card border-0 shadow-lg">
-        <div class="card-body p-4 p-md-5 text-center">
-          <div class="logo-wrap mx-auto mb-4" aria-hidden="true">
-            <svg class="logo-generic" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style="stop-color:var(--onneb-color-primary)"/>
-                  <stop offset="100%" style="stop-color:var(--onneb-color-secondary)"/>
-                </linearGradient>
-              </defs>
-              <circle cx="60" cy="60" r="52" fill="url(#logoGrad)" opacity="0.9"/>
-              <text x="60" y="72" text-anchor="middle" fill="var(--onneb-color-accent)" font-size="36" font-weight="700" font-family="system-ui,sans-serif">OB</text>
-            </svg>
-          </div>
-          <h1 class="h4 mb-1 fw-semibold">OnneB POS</h1>
-          <p class="text-muted small mb-4">Ingresa para continuar</p>
-          <form id="login-form" class="text-start" novalidate autocomplete="off">
-            <div class="mb-3">
-              <label for="login-empresa" class="form-label small">Empresa</label>
-              <select class="form-select form-select-lg login-input" id="login-empresa" name="onneb-empresa" required>
-                <option value="">Cargando…</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label for="username" class="form-label small">Usuario</label>
-              <input type="text" class="form-control form-control-lg login-input" id="username" name="onneb-user"
-                placeholder="usuario" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
-            </div>
-            <div class="mb-4">
-              <label for="password" class="form-label small">Contraseña</label>
-              <input type="password" class="form-control form-control-lg login-input" id="password" name="onneb-pass"
-                placeholder="••••••••" autocomplete="off" data-lpignore="true" data-form-type="other">
-            </div>
-            <button type="submit" class="btn btn-lg w-100 btn-login">
-              <i class="fa-solid fa-right-to-bracket me-2" aria-hidden="true"></i>Iniciar sesión
-            </button>
-          </form>
+      <div class="login-scene" aria-hidden="true">
+        <div class="login-orb login-orb-a"></div>
+        <div class="login-orb login-orb-b"></div>
+        <div class="login-orb login-orb-c"></div>
+        <div class="login-grid"></div>
+      </div>
+
+      <div class="login-theme-corner theme-picker-wrap">
+        <button type="button" id="btn-theme-toggle-login" class="btn-theme-fab"
+          aria-label="Cambiar tema visual" aria-expanded="false" aria-haspopup="true">
+          <i class="fa-solid fa-palette" aria-hidden="true"></i>
+        </button>
+        <div id="theme-picker-panel-login" class="theme-picker-panel" role="menu" aria-label="Temas visuales"></div>
+      </div>
+
+      <div class="login-glass login-glass-card">
+        <div class="login-logo-wrap">
+          <img src="/logo.png" alt="OnneB" class="logo-app" width="120" height="120">
         </div>
+        <form id="login-form" class="login-form" novalidate autocomplete="off">
+          <div class="login-field-line">
+            <i class="fa-solid fa-building login-field-icon" aria-hidden="true"></i>
+            <select class="login-input login-input-line" id="login-empresa" name="onneb-empresa" required>
+              <option value="">Empresa</option>
+            </select>
+          </div>
+          <div class="login-field-line">
+            <i class="fa-solid fa-user login-field-icon" aria-hidden="true"></i>
+            <input type="text" class="login-input login-input-line" id="username" name="onneb-user"
+              placeholder="Usuario" autocomplete="off" autocapitalize="off" spellcheck="false"
+              data-lpignore="true" data-form-type="other">
+          </div>
+          <div class="login-field-line">
+            <i class="fa-solid fa-lock login-field-icon" aria-hidden="true"></i>
+            <input type="password" class="login-input login-input-line" id="password" name="onneb-pass"
+              placeholder="Contraseña" autocomplete="off" data-lpignore="true" data-form-type="other">
+          </div>
+          <div class="login-options-row">
+            <label class="login-remember">
+              <input type="checkbox" id="login-remember" class="login-remember-check">
+              <span>Recordarme</span>
+            </label>
+            <button type="button" class="login-forgot" id="btn-login-forgot">¿Olvidó contraseña?</button>
+          </div>
+          <button type="submit" class="btn btn-login w-100">
+            INICIAR SESIÓN
+          </button>
+        </form>
       </div>
       <div id="build-counter" class="build-counter" aria-live="polite">
         <span class="build-count">Compilación #0</span>
@@ -81,7 +107,7 @@
 
       <aside id="sidebar" class="sidebar" aria-label="Menú principal">
         <div class="sidebar-brand">
-          <img src="/icons/icon-72.png" width="32" height="32" alt="" class="sidebar-favicon">
+          <img src="/icons/icon-72.png" width="32" height="32" alt="OnneB" class="sidebar-favicon">
           <span class="sidebar-brand-text">OnneB POS</span>
         </div>
         <nav class="sidebar-nav">
@@ -103,6 +129,7 @@
               <div id="collapseOperaciones" class="accordion-collapse collapse show">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="suscripciones"><i class="fa-solid fa-repeat" aria-hidden="true"></i> Suscripciones</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-credito"><i class="fa-solid fa-file-circle-minus" aria-hidden="true"></i> Notas de Crédito</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
@@ -121,7 +148,8 @@
               <div id="collapseInventarios" class="accordion-collapse collapse">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-warehouse" aria-hidden="true"></i> Inventario</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="entradas-inventario"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i> Entradas de inventario</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="salidas-inventario"><i class="fa-solid fa-arrow-up-wide-short" aria-hidden="true"></i> Salidas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario-retroactivo"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Inventario Retroactivo</a></li>
                 </ul>
               </div>
@@ -188,6 +216,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="tipo-documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Tipo documentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="credenciales-fel"><i class="fa-solid fa-key" aria-hidden="true"></i> Credenciales FEL</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="usuarios"><i class="fa-solid fa-users" aria-hidden="true"></i> Usuarios</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="updater"><i class="fa-solid fa-database" aria-hidden="true"></i> Actualizador BD</a></li>
                 </ul>
               </div>
             </div>
@@ -196,14 +225,33 @@
       </aside>
 
       <div class="main-layout">
-        <header class="main-header d-flex align-items-center gap-2 px-3 py-2">
-          <button type="button" id="btn-menu-toggle" class="btn btn-icon" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
-            <i class="fa-solid fa-bars" aria-hidden="true"></i>
-          </button>
-          <span class="fw-semibold flex-grow-1" id="main-title">OnneB POS</span>
-          <button type="button" id="btn-logout" class="btn btn-sm btn-outline-secondary">
-            <i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i>Salir
-          </button>
+        <header class="main-header d-flex align-items-center px-3 py-2">
+          <div class="main-header-start">
+            <button type="button" id="btn-menu-toggle" class="btn btn-icon" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
+              <i class="fa-solid fa-bars" aria-hidden="true"></i>
+            </button>
+            <div class="header-empresa-badge" id="header-empresa" title="Empresa activa">
+              <i class="fa-solid fa-building" aria-hidden="true"></i>
+              <span id="header-empresa-name">—</span>
+            </div>
+          </div>
+          <span class="main-title fw-semibold flex-grow-1 text-center text-md-start" id="main-title">OnneB POS</span>
+          <div class="main-header-end">
+            <div class="header-user-badge" id="header-user" title="Usuario activo">
+              <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+              <span id="header-user-name">—</span>
+            </div>
+            <div class="theme-picker-wrap">
+              <button type="button" id="btn-theme-toggle" class="btn-theme-fab"
+                aria-label="Cambiar tema visual" aria-expanded="false" aria-haspopup="true">
+                <i class="fa-solid fa-palette" aria-hidden="true"></i>
+              </button>
+              <div id="theme-picker-panel" class="theme-picker-panel" role="menu" aria-label="Temas visuales"></div>
+            </div>
+            <button type="button" id="btn-logout" class="btn btn-sm btn-outline-secondary">
+              <i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i>Salir
+            </button>
+          </div>
         </header>
         <main id="main-content" class="main-content flex-grow-1 d-flex align-items-center justify-content-center">
           <p class="text-muted mb-0">Seleccione una opción del menú</p>
@@ -221,6 +269,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsstore/dist/jsstore.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/F.js"></script>
+  <script src="/js/themes.js"></script>
   <script src="/js/catalogos.js"></script>
   <script src="/js/catalogo-empresa-view.js"></script>
   <script src="/js/views/empresas.js"></script>
@@ -239,11 +288,16 @@
   <script src="/js/views/usuarios.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/views/developer.js"></script>
+  <script src="/js/views/suscripciones.js"></script>
+  <script src="/js/views/updater.js"></script>
+  <script src="/js/doc-fecha.js"></script>
   <script src="/js/views/pos.js"></script>
+  <script src="/js/views/inventario-mov-view.js"></script>
   <script src="/js/views/documentos.js"></script>
   <script src="/js/views/productos.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>
+  <script src="/js/empresa-logo.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
