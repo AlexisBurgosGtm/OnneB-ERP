@@ -80,7 +80,7 @@
   font-size: 0.75rem;
   letter-spacing: 0.02em;
   border: none;
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
 }
 
 .btn-empleado-activo--si {
@@ -90,17 +90,18 @@
 .btn-empleado-activo--si:hover,
 .btn-empleado-activo--si:focus {
   background-color: #15803d;
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
 }
 
 .btn-empleado-activo--no {
   background-color: #dc2626;
+  color: var(--btn-fg-danger, #fff);
 }
 
 .btn-empleado-activo--no:hover,
 .btn-empleado-activo--no:focus {
   background-color: #b91c1c;
-  color: #fff;
+  color: var(--btn-fg-danger, #fff);
 }
 
 /* Nuevo: FAB verde translúcido, esquina inferior derecha */
@@ -118,7 +119,7 @@
   align-items: center;
   justify-content: center;
   font-size: 1.35rem;
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
   background: rgba(22, 163, 74, 0.82);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -130,7 +131,7 @@
 .btn-catalogo-nuevo:hover,
 .btn-onneb-nuevo-fab:hover {
   transform: translateY(-2px) scale(1.05);
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
   background: rgba(22, 163, 74, 0.94);
   box-shadow: 0 10px 28px rgba(22, 163, 74, 0.48);
 }
@@ -141,7 +142,7 @@
 }
 
 .btn-onneb-nuevo {
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
   background: rgba(22, 163, 74, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(8px);
@@ -151,7 +152,7 @@
 
 .btn-onneb-nuevo:hover,
 .btn-onneb-nuevo:focus {
-  color: #fff;
+  color: var(--btn-fg-success, #fff);
   background: rgba(22, 163, 74, 0.92);
   border-color: rgba(255, 255, 255, 0.45);
 }
@@ -165,7 +166,7 @@
   padding: 0.25rem 0.55rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #ffffff !important;
+  color: var(--btn-fg-muted, #fff) !important;
   background: linear-gradient(145deg, #64748b, #475569) !important;
   border: 1px solid #475569 !important;
   border-radius: 0.375rem;
@@ -173,7 +174,7 @@
 }
 
 .btn-catalogo-ver:hover {
-  color: #ffffff !important;
+  color: var(--btn-fg-muted, #fff) !important;
   opacity: 0.92;
   transform: translateY(-1px);
 }
@@ -187,7 +188,7 @@
   padding: 0.25rem 0.55rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #ffffff !important;
+  color: var(--btn-fg-info, #fff) !important;
   background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
   border: 1px solid #2563eb !important;
   border-radius: 0.375rem;
@@ -195,7 +196,7 @@
 }
 
 .btn-catalogo-editar:hover {
-  color: #ffffff !important;
+  color: var(--btn-fg-info, #fff) !important;
   opacity: 0.92;
   transform: translateY(-1px);
 }
@@ -209,7 +210,7 @@
   padding: 0.25rem 0.55rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #ffffff !important;
+  color: var(--btn-fg-danger, #fff) !important;
   background: linear-gradient(145deg, #ef4444, #dc2626) !important;
   border: 1px solid #dc2626 !important;
   border-radius: 0.375rem;
@@ -217,7 +218,7 @@
 }
 
 .btn-catalogo-eliminar:hover {
-  color: #ffffff !important;
+  color: var(--btn-fg-danger, #fff) !important;
   opacity: 0.92;
   transform: translateY(-1px);
 }
@@ -232,7 +233,7 @@
   font-size: 0.875rem;
   font-weight: 700 !important;
   letter-spacing: 0.03em;
-  color: #ffffff !important;
+  color: var(--btn-fg-warning, #fff) !important;
   background: linear-gradient(145deg, #f59e0b, #d97706) !important;
   border: 1px solid #d97706 !important;
   border-radius: 0.375rem;
@@ -240,7 +241,7 @@
 }
 
 .btn-catalogo-bloquear:hover {
-  color: #ffffff !important;
+  color: var(--btn-fg-warning, #fff) !important;
   opacity: 0.92;
   transform: translateY(-1px);
 }
@@ -254,6 +255,17 @@
 
 .catalogo-vista-wrap {
   padding-bottom: 5rem;
+}
+
+/* Portales en body (SweetAlert, hoja búsqueda POS) — no heredar --login-text */
+.swal2-popup.modal-catalogo {
+  color: var(--app-text, #1a1a1a);
+  background: var(--app-surface, #ffffff);
+}
+
+.swal2-popup.modal-catalogo .swal2-title,
+.swal2-popup.modal-catalogo .swal2-html-container {
+  color: var(--app-text, #1a1a1a);
 }
 
 /* Modal — Cancelar izquierda | Guardar / Aceptar / Eliminar derecha */
@@ -324,7 +336,7 @@
   gap: 0.4rem;
   padding: 0.5rem 1rem !important;
   font-weight: 600 !important;
-  color: #ffffff !important;
+  color: var(--btn-fg-guardar, #fff) !important;
   background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
   border: 1px solid #2563eb !important;
   border-radius: 0.375rem !important;
@@ -333,7 +345,7 @@
 }
 
 .btn-modal-guardar:hover {
-  color: #ffffff !important;
+  color: var(--btn-fg-guardar, #fff) !important;
   opacity: 0.92;
 }
 

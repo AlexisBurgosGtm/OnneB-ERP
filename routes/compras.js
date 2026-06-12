@@ -310,6 +310,7 @@ router.get('/productos', async (req, res) => {
         AND (
           p.CODPROD LIKE @qLike OR p.CODPROD2 LIKE @qLike
           OR p.DESPROD LIKE @qLike OR p.DESPROD2 LIKE @qLike
+          OR m.DESMARCA LIKE @qLike
         )
       `;
     }
@@ -317,6 +318,7 @@ router.get('/productos', async (req, res) => {
       SELECT TOP (@limit)
         p.CODPROD,
         p.DESPROD,
+        m.DESMARCA,
         p.COSTO AS COSTO_PROD,
         p.TIPOPROD,
         pr.CODMEDIDA,
@@ -325,6 +327,7 @@ router.get('/productos', async (req, res) => {
         pr.EQUIVALE
       FROM dbo.PRODUCTOS p
       INNER JOIN dbo.PRECIOS pr ON p.CODPROD = pr.CODPROD AND p.EMPNIT = pr.EMPNIT
+      LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
       WHERE p.EMPNIT = @EMPNIT
         AND p.HABILITADO = 'SI'
         AND pr.HABILITADO = 'SI'
@@ -334,6 +337,7 @@ router.get('/productos', async (req, res) => {
     const rows = result.recordset.map((row) => ({
       CODPROD: row.CODPROD,
       DESPROD: row.DESPROD,
+      DESMARCA: row.DESMARCA ?? '',
       COSTO_PROD: row.COSTO_PROD,
       TIPOPROD: row.TIPOPROD,
       CODMEDIDA: row.CODMEDIDA,
@@ -534,6 +538,14 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
       request.input('CONCRE', sql.VarChar, concre);
       updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concre === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
     }
+    if (req.body?.SERIEFAC !== undefined) {
+      request.input('SERIEFAC', sql.VarChar, String(req.body.SERIEFAC || '').trim());
+      updates.push('SERIEFAC = @SERIEFAC');
+    }
+    if (req.body?.NOFAC !== undefined) {
+      request.input('NOFAC', sql.VarChar, String(req.body.NOFAC || '').trim());
+      updates.push('NOFAC = @NOFAC');
+    }
 
     const fechaParts = req.body?.FECHA !== undefined ? parseFechaInput(req.body.FECHA) : null;
     if (req.body?.FECHA !== undefined && !fechaParts) {
@@ -565,6 +577,12 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
         }
         if (req.body?.CONCRE !== undefined) {
           txnReq.input('CONCRE', sql.VarChar, String(req.body.CONCRE || 'CON').trim().toUpperCase());
+        }
+        if (req.body?.SERIEFAC !== undefined) {
+          txnReq.input('SERIEFAC', sql.VarChar, String(req.body.SERIEFAC || '').trim());
+        }
+        if (req.body?.NOFAC !== undefined) {
+          txnReq.input('NOFAC', sql.VarChar, String(req.body.NOFAC || '').trim());
         }
         const result = await txnReq.query(`
           UPDATE dbo.DOCUMENTOS SET ${updates.join(', ')}
@@ -651,7 +669,15 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
       `);
     if (!prodRes.recordset.length) return res.status(404).json({ error: 'Producto o precio no encontrado' });
     const prod = prodRes.recordset[0];
-    const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+    const costoDefault = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+    const costoBody = req.body?.COSTO;
+    const costo =
+      costoBody !== undefined && costoBody !== null && costoBody !== ''
+        ? Number(costoBody)
+        : costoDefault;
+    if (Number.isNaN(costo) || costo < 0) {
+      return res.status(400).json({ error: 'Costo inválido' });
+    }
     const precio = costo;
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(

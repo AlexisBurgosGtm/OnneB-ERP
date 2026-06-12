@@ -460,12 +460,12 @@
   const menuLabels = {
     inicio: 'Inicio',
     'pedidos-mostrador': 'Pedidos de Mostrador',
-    suscripciones: 'Suscripciones',
     facturacion: 'Facturación',
     'notas-credito': 'Notas de Crédito',
     compras: 'Compras',
     'notas-debito': 'Notas de Débito',
     gastos: 'Gastos',
+    'corte-caja': 'Corte de Caja',
     developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
@@ -519,8 +519,6 @@
         SalidasInventarioView.load(mainContent);
       } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
         InventarioView.load(mainContent);
-      } else if (key === 'suscripciones' && typeof SuscripcionesView !== 'undefined') {
-        SuscripcionesView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
       } else if (

@@ -250,14 +250,15 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       let whereExtra = " AND p.TIPOPROD <> 'S'";
       if (q) {
         request.input('Q', sql.VarChar, `%${q}%`);
-        whereExtra += ' AND (p.CODPROD LIKE @Q OR p.DESPROD LIKE @Q)';
+        whereExtra += ' AND (p.CODPROD LIKE @Q OR p.DESPROD LIKE @Q OR m.DESMARCA LIKE @Q)';
       }
       const result = await request.query(`
         SELECT TOP ${SEARCH_LIMIT}
-          p.CODPROD, p.DESPROD, p.COSTO AS COSTO_PROD, p.TIPOPROD, p.EXISTENCIA,
+          p.CODPROD, p.DESPROD, m.DESMARCA, p.COSTO AS COSTO_PROD, p.TIPOPROD, p.EXISTENCIA,
           pr.CODMEDIDA, pr.COSTO, pr.EQUIVALE, pr.PRECIO
         FROM dbo.PRODUCTOS p
         INNER JOIN dbo.PRECIOS pr ON p.CODPROD = pr.CODPROD AND p.EMPNIT = pr.EMPNIT
+        LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
         WHERE p.EMPNIT = @EMPNIT AND p.HABILITADO = 'SI' AND pr.HABILITADO = 'SI'
         ${whereExtra}
         ORDER BY p.DESPROD, pr.CODMEDIDA, pr.EQUIVALE DESC
@@ -265,6 +266,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       const rows = result.recordset.map((row) => ({
         CODPROD: row.CODPROD,
         DESPROD: row.DESPROD,
+        DESMARCA: row.DESMARCA ?? '',
         COSTO_PROD: row.COSTO_PROD,
         TIPOPROD: row.TIPOPROD,
         EXISTENCIA: row.EXISTENCIA,

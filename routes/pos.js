@@ -310,6 +310,7 @@ router.get('/productos', async (req, res) => {
         AND (
           p.CODPROD LIKE @qLike OR p.CODPROD2 LIKE @qLike
           OR p.DESPROD LIKE @qLike OR p.DESPROD2 LIKE @qLike
+          OR m.DESMARCA LIKE @qLike
         )
       `;
     }
@@ -317,6 +318,7 @@ router.get('/productos', async (req, res) => {
       SELECT TOP (@limit)
         p.CODPROD,
         p.DESPROD,
+        m.DESMARCA,
         p.COSTO AS COSTO_PROD,
         p.TIPOPROD,
         pr.CODMEDIDA,
@@ -325,6 +327,7 @@ router.get('/productos', async (req, res) => {
         pr.EQUIVALE
       FROM dbo.PRODUCTOS p
       INNER JOIN dbo.PRECIOS pr ON p.CODPROD = pr.CODPROD AND p.EMPNIT = pr.EMPNIT
+      LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
       WHERE p.EMPNIT = @EMPNIT
         AND p.HABILITADO = 'SI'
         AND pr.HABILITADO = 'SI'
@@ -334,6 +337,7 @@ router.get('/productos', async (req, res) => {
     const rows = result.recordset.map((row) => ({
       CODPROD: row.CODPROD,
       DESPROD: row.DESPROD,
+      DESMARCA: row.DESMARCA ?? '',
       COSTO_PROD: row.COSTO_PROD,
       TIPOPROD: row.TIPOPROD,
       CODMEDIDA: row.CODMEDIDA,

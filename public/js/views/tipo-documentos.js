@@ -119,24 +119,21 @@ const TipoDocumentosView = {
   },
 
   async loadLookups() {
-    const empNit = F.getEmpNit() || '';
-    if (this._lookups && this._lookupsEmpNit === empNit) return this._lookups;
+    if (this._lookups) return this._lookups;
     const ts = Date.now();
     let tiposDoc = [];
     try {
-      const url = empNit
-        ? `/api/documentos/tipos?empnit=${encodeURIComponent(empNit)}&_=${ts}`
-        : `/api/tipo-documentos/config-tipos?_=${ts}`;
-      const res = await F.fetchJson(url, { cache: 'no-store' });
+      const res = await F.fetchJson(`/api/tipo-documentos/config-tipos?_=${ts}`, {
+        cache: 'no-store',
+      });
       tiposDoc = (res.rows || []).map((r) => ({
         value: String(r.TIPODOC ?? '').trim().toUpperCase(),
         label: `${String(r.TIPODOC ?? '').trim().toUpperCase()} — ${String(r.DESCRIPCION ?? r.TIPODOC ?? '').trim()}`,
       }));
     } catch (err) {
-      console.warn('[TipoDocumentos] tipos doc:', err);
+      console.warn('[TipoDocumentos] CONFIG_TIPODOCUMENTOS:', err);
     }
     this._lookups = { tiposDoc };
-    this._lookupsEmpNit = empNit;
     return this._lookups;
   },
 

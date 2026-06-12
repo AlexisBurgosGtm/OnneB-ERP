@@ -45,7 +45,7 @@
 
 #view-main .btn-primary,
 .swal2-popup .swal2-confirm.btn-primary {
-  color: #fff !important;
+  color: var(--btn-fg-primary) !important;
   background: color-mix(in srgb, var(--bs-primary) 76%, transparent) !important;
   border-color: var(--onneb-btn-glass-border) !important;
   box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset);
@@ -54,7 +54,7 @@
 #view-main .btn-primary:hover,
 #view-main .btn-primary:focus,
 .swal2-popup .swal2-confirm.btn-primary:hover {
-  color: #fff !important;
+  color: var(--btn-fg-primary) !important;
   background: color-mix(in srgb, var(--bs-primary) 88%, transparent) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset);
@@ -70,7 +70,7 @@
 
 #view-main .btn-outline-primary:hover,
 #view-main .btn-outline-primary:focus {
-  color: #fff !important;
+  color: var(--btn-fg-info) !important;
   background: color-mix(in srgb, var(--btn-base-editar) 78%, transparent) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   box-shadow: var(--onneb-btn-glass-shadow);
@@ -101,7 +101,7 @@
 }
 
 #view-main .btn-outline-danger:hover {
-  color: #fff !important;
+  color: var(--btn-fg-danger) !important;
   background: color-mix(in srgb, var(--btn-base-eliminar) 76%, transparent) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--onneb-brand) 35%, var(--btn-base-eliminar) 25%);
@@ -114,7 +114,7 @@
 }
 
 #view-main .btn-outline-success:hover {
-  color: #fff !important;
+  color: var(--btn-fg-success) !important;
   background: color-mix(in srgb, var(--btn-base-nuevo) 76%, transparent) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
 }
@@ -123,6 +123,7 @@
 .btn-catalogo-nuevo,
 .btn-onneb-nuevo-fab,
 .btn-onneb-nuevo {
+  color: var(--btn-fg-success) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
   background: color-mix(in srgb, var(--btn-base-nuevo) 76%, transparent) !important;
   backdrop-filter: blur(10px);
@@ -137,6 +138,7 @@
 .btn-onneb-nuevo-fab:hover,
 .btn-onneb-nuevo:hover,
 .btn-onneb-nuevo:focus {
+  color: var(--btn-fg-success) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   background: color-mix(in srgb, var(--btn-base-nuevo) 90%, transparent) !important;
   box-shadow:
@@ -148,7 +150,7 @@
 /* —— Imprimir: morado fijo + acento tema —— */
 .inv-card-btn[data-action='imprimir'],
 .btn-catalogo-imprimir {
-  color: #fff !important;
+  color: var(--btn-fg-purple) !important;
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--btn-base-imprimir) 80%, transparent),
@@ -174,6 +176,26 @@
 }
 
 /* —— Ver / Editar / Eliminar / Bloquear —— */
+.btn-catalogo-ver,
+.btn-catalogo-ver:hover {
+  color: var(--btn-fg-muted) !important;
+}
+
+.btn-catalogo-editar,
+.btn-catalogo-editar:hover {
+  color: var(--btn-fg-info) !important;
+}
+
+.btn-catalogo-eliminar,
+.btn-catalogo-eliminar:hover {
+  color: var(--btn-fg-danger) !important;
+}
+
+.btn-catalogo-bloquear,
+.btn-catalogo-bloquear:hover {
+  color: var(--btn-fg-warning) !important;
+}
+
 .btn-catalogo-ver {
   background: linear-gradient(
     145deg,
@@ -247,6 +269,7 @@
 
 .btn-modal-guardar,
 .swal2-popup.modal-catalogo .swal2-confirm:not(.btn-catalogo-eliminar):not(.btn-catalogo-bloquear) {
+  color: var(--btn-fg-guardar) !important;
   background: linear-gradient(
     145deg,
     color-mix(in srgb, var(--btn-base-guardar) 80%, transparent),
@@ -260,12 +283,14 @@
 
 .btn-modal-guardar:hover,
 .swal2-popup.modal-catalogo .swal2-confirm:not(.btn-catalogo-eliminar):not(.btn-catalogo-bloquear):hover {
+  color: var(--btn-fg-guardar) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
 }
 
 /* —— POS / Compras / Inventario —— */
 .pos-fab-finalizar {
+  color: var(--fab-action-fg) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
   background: linear-gradient(
     145deg,
@@ -279,6 +304,7 @@
 }
 
 .pos-fab-finalizar:hover:not(:disabled) {
+  color: var(--fab-action-fg) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   background: linear-gradient(
     145deg,
@@ -289,6 +315,7 @@
 }
 
 .btn-productos-guardar-fab {
+  color: var(--btn-fg-guardar) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
   background: linear-gradient(
     145deg,
@@ -304,12 +331,14 @@
 }
 
 .btn-productos-guardar-fab:hover {
+  color: var(--btn-fg-guardar) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
 }
 
 /* Inventario — imprimir (morado) */
 .inventario-fab-print {
+  color: var(--btn-fg-purple) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
   background: linear-gradient(
     145deg,
@@ -323,6 +352,7 @@
 }
 
 .inventario-fab-print:hover {
+  color: var(--btn-fg-purple) !important;
   border-color: var(--onneb-btn-glass-border-strong) !important;
   background: linear-gradient(
     145deg,
@@ -370,17 +400,50 @@
 }
 
 .btn-empleado-activo--si {
+  color: var(--btn-fg-success) !important;
   background-color: color-mix(in srgb, var(--btn-base-nuevo) 88%, transparent) !important;
 }
 
 .btn-empleado-activo--no {
+  color: var(--btn-fg-danger) !important;
   background-color: color-mix(in srgb, var(--btn-base-eliminar-dark) 88%, transparent) !important;
 }
 
 /* Config / Developer */
 .config-general-panel .btn-actualizar-pass {
+  color: var(--btn-fg-guardar) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
   box-shadow: var(--onneb-btn-glass-shadow);
+}
+
+.config-general-panel .btn-actualizar-pass:hover {
+  color: var(--btn-fg-guardar) !important;
+}
+
+.pos-fab-agregar {
+  color: var(--btn-fg-success) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-nuevo) 76%, transparent),
+    color-mix(in srgb, var(--btn-base-nuevo-dark) 84%, transparent)
+  ) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 6px 20px color-mix(in srgb, var(--btn-base-nuevo) 26%, transparent) !important;
+}
+
+.pos-fab-agregar:hover:not(:disabled) {
+  color: var(--btn-fg-success) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-nuevo) 88%, transparent),
+    color-mix(in srgb, var(--btn-base-nuevo-dark) 92%, transparent)
+  ) !important;
 }
 
 .btn-developer-con,

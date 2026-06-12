@@ -28,6 +28,72 @@ const OnnebThemes = {
     return this.themes.some((t) => t.id === id) ? id : this.DEFAULT;
   },
 
+  _parseRgb(color) {
+    if (!color) return [255, 255, 255];
+    const v = color.trim();
+    if (v.startsWith('#')) {
+      let h = v.slice(1);
+      if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+      if (h.length >= 6) {
+        return [
+          parseInt(h.slice(0, 2), 16),
+          parseInt(h.slice(2, 4), 16),
+          parseInt(h.slice(4, 6), 16),
+        ];
+      }
+    }
+    const rgb = v.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
+    if (rgb) return [+rgb[1], +rgb[2], +rgb[3]];
+    return [255, 255, 255];
+  },
+
+  _luminance([r, g, b]) {
+    const lin = (c) => {
+      c /= 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  },
+
+  _mixRgb(base, bg, ratio) {
+    const t = 1 - ratio;
+    return base.map((c, i) => Math.round(c * ratio + bg[i] * t));
+  },
+
+  _contrastText(rgb) {
+    const lum = this._luminance(rgb);
+    const whiteContrast = 1.05 / (lum + 0.05);
+    const blackContrast = (lum + 0.05) / 0.05;
+    return whiteContrast >= blackContrast ? '#ffffff' : '#1a1a1a';
+  },
+
+  _getCssRgb(root, name, fallback) {
+    const raw = getComputedStyle(root).getPropertyValue(name).trim();
+    return this._parseRgb(raw || fallback || '#ffffff');
+  },
+
+  _updateContrastVars() {
+    const root = document.documentElement;
+    const appBg = this._getCssRgb(root, '--app-bg', '#ffffff');
+    const tokens = [
+      ['--btn-fg-primary', '--bs-primary', 0.76, '#7c3aed'],
+      ['--btn-fg-success', '--btn-base-nuevo', 0.76, '#16a34a'],
+      ['--btn-fg-danger', '--btn-base-eliminar', 0.8, '#ef4444'],
+      ['--btn-fg-warning', '--btn-base-bloquear', 0.8, '#f59e0b'],
+      ['--btn-fg-info', '--btn-base-editar', 0.8, '#3b82f6'],
+      ['--btn-fg-muted', '--btn-base-ver', 0.8, '#64748b'],
+      ['--btn-fg-purple', '--btn-base-imprimir', 0.8, '#8b5cf6'],
+      ['--btn-fg-guardar', '--btn-base-guardar', 0.78, '#2563eb'],
+      ['--fab-action-fg', '--btn-base-finalizar', 0.76, '#2563eb'],
+    ];
+
+    tokens.forEach(([outVar, srcVar, mix, fallback]) => {
+      const base = this._getCssRgb(root, srcVar, fallback);
+      const mixed = this._mixRgb(base, appBg, mix);
+      root.style.setProperty(outVar, this._contrastText(mixed));
+    });
+  },
+
   apply(themeId) {
     const valid = this.themes.some((t) => t.id === themeId);
     const id = valid ? themeId : this.DEFAULT;
@@ -53,6 +119,7 @@ const OnnebThemes = {
       };
       meta.setAttribute('content', colors[id] || colors.purple);
     }
+    requestAnimationFrame(() => this._updateContrastVars());
     this.syncPickerUI();
   },
 
@@ -141,3 +208,7 @@ const OnnebThemes = {
     this.bindEvents();
   },
 };
+
+if (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) {
+  requestAnimationFrame(() => OnnebThemes._updateContrastVars());
+}

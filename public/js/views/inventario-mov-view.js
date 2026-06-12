@@ -131,6 +131,20 @@ function createInventarioMovView(cfg) {
       return m;
     },
 
+    formatProdLabel(desprod, desmarca) {
+      const name = String(desprod ?? '').trim();
+      const marca = String(desmarca ?? '').trim();
+      if (!marca) return name;
+      return `${name} · ${marca}`;
+    },
+
+    renderProdNameHtml(desprod, desmarca) {
+      const name = this.escapeHtml(String(desprod ?? '').trim());
+      const marca = String(desmarca ?? '').trim();
+      if (!marca) return name;
+      return `${name} · <strong class="pos-prod-marca">${this.escapeHtml(marca)}</strong>`;
+    },
+
     docEditable(header) {
       return DocFecha.editableStatus(header?.STATUS);
     },
@@ -171,13 +185,13 @@ function createInventarioMovView(cfg) {
       });
     },
 
-    async loadDocumento(coddoc, correlativo) {
+    async loadDocumento(coddoc, correlativo, opts = {}) {
       const url = this.apiUrl(
         `/documentos/${encodeURIComponent(coddoc)}/${correlativo}`,
         { _: Date.now() }
       );
       this._documento = await F.fetchJson(url);
-      if (this._screen === 'editor') this.renderAll();
+      if (this._screen === 'editor' && !opts.skipRender) this.renderAll();
       return this._documento;
     },
 
@@ -428,13 +442,17 @@ function createInventarioMovView(cfg) {
     },
 
     renderProductList() {
-      const el = this._container?.querySelector(`#${NS}-product-list`);
-      if (!el) return;
+      const targets = PosDocSearchUI.listTargets(this._container, NS);
+      if (!targets.length) return;
       if (!this._productos.length) {
-        el.innerHTML = '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+        const empty =
+          '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+        targets.forEach((el) => {
+          el.innerHTML = empty;
+        });
         return;
       }
-      el.innerHTML = this._productos
+      const html = this._productos
         .map(
           (p) => `
           <div class="pos-product-item" tabindex="0" role="button"
@@ -442,11 +460,14 @@ function createInventarioMovView(cfg) {
             data-codmedida="${this.escapeHtml(p.CODMEDIDA)}">
             <div>
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))}</div>
-              <div>${this.escapeHtml(p.DESPROD)}</div>
+              <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
             </div>
           </div>`
         )
         .join('');
+      targets.forEach((el) => {
+        el.innerHTML = html;
+      });
     },
 
     renderCart() {
@@ -510,8 +531,7 @@ function createInventarioMovView(cfg) {
 
     syncEditorControls() {
       const editable = this.docEditable(this._documento?.header);
-      const search = this._container?.querySelector(`#${NS}-product-search`);
-      if (search) search.disabled = !editable;
+      PosDocSearchUI.syncControls(this._container, NS, editable);
       const fecha = this._container?.querySelector(`#${NS}-doc-fecha`);
       if (fecha) fecha.disabled = !editable;
       const fab = this._container?.querySelector(`#${NS}-btn-finalizar`);
@@ -631,7 +651,7 @@ function createInventarioMovView(cfg) {
           </div>
         </div>
         <div class="pos-main">
-          <div class="pos-panel card shadow-sm">
+          <div class="pos-panel pos-panel-search card shadow-sm">
             <div class="card-header py-2 d-flex align-items-center gap-2">
               <i class="fa-solid fa-box"></i>
               <span class="fw-semibold">Productos</span>
@@ -646,10 +666,12 @@ function createInventarioMovView(cfg) {
               <div class="pos-product-list" id="${NS}-product-list"></div>
             </div>
           </div>
-          <div class="pos-panel card shadow-sm">
-            <div class="card-header py-2">
-              <i class="fa-solid fa-receipt me-1"></i>
-              <span class="fw-semibold">Documento actual</span>
+          <div class="pos-panel pos-panel-cart card shadow-sm">
+            <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-receipt"></i>
+                <span class="fw-semibold">Documento actual</span>
+              </div>
             </div>
             <div class="card-body">
               <div class="pos-cart-table flex-grow-1 d-flex flex-column">
@@ -670,10 +692,8 @@ function createInventarioMovView(cfg) {
             </div>
           </div>
         </div>
-        ${editable ? `
-        <button type="button" class="pos-fab-finalizar" id="${NS}-btn-finalizar">
-          <i class="fa-solid fa-check me-2"></i>Finalizar
-        </button>` : ''}
+        ${editable ? PosDocSearchUI.fabBarHtml(NS, `${NS}-btn-finalizar`) : ''}
+        ${PosDocSearchUI.productModalHtml(NS)}
       </div>`;
     },
 
@@ -732,27 +752,10 @@ function createInventarioMovView(cfg) {
     },
 
     bindEditorEvents() {
-      const searchProd = this._container?.querySelector(`#${NS}-product-search`);
-      if (searchProd) {
-        const run = F.debounce(() => this.buscarProductos(searchProd.value.trim()), 300);
-        searchProd.addEventListener('input', run);
-        searchProd.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            this.buscarProductos(searchProd.value.trim());
-          }
-        });
-      }
-
-      this._container?.querySelector(`#${NS}-product-list`)?.addEventListener('click', (e) => {
-        const item = e.target.closest('.pos-product-item');
-        if (!item) return;
-        const cod = item.getAttribute('data-codprod');
-        const med = item.getAttribute('data-codmedida');
-        const row = this._productos.find(
-          (p) => String(p.CODPROD) === String(cod) && String(p.CODMEDIDA) === String(med)
-        );
-        if (row) this.onProductClick(row);
+      PosDocSearchUI.bind(this, NS, {
+        getEditable: () => this.docEditable(this._documento?.header),
+        buscarProductos: this.buscarProductos,
+        onProductPick: (row) => this.onProductClick(row),
       });
 
       this._container?.querySelector(`#${NS}-cart-tbody`)?.addEventListener('click', async (e) => {
@@ -806,14 +809,15 @@ function createInventarioMovView(cfg) {
     async buscarProductos(q) {
       if (this._loadingProducts) return;
       this._loadingProducts = true;
-      const list = this._container?.querySelector(`#${NS}-product-list`);
-      if (list) list.innerHTML = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+      const spinner = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+      PosDocSearchUI.setListsHtml(this._container, NS, spinner);
       try {
         const data = await this.fetchProductos(q);
         this._productos = data.rows || [];
         this.renderProductList();
       } catch (err) {
-        if (list) list.innerHTML = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
+        const errHtml = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
+        PosDocSearchUI.setListsHtml(this._container, NS, errHtml);
       } finally {
         this._loadingProducts = false;
       }
@@ -822,6 +826,7 @@ function createInventarioMovView(cfg) {
     async showList() {
       this._screen = 'list';
       this._documento = null;
+      PosDocSearchUI.teardown(NS);
       await this.fetchDocsList();
       this._container.innerHTML = this.renderListScreen();
       this.bindListEvents();
@@ -829,11 +834,12 @@ function createInventarioMovView(cfg) {
 
     async showEditor(coddoc, correlativo) {
       this._screen = 'editor';
+      PosDocSearchUI.teardown(NS);
+      if (coddoc && correlativo) {
+        await this.loadDocumento(coddoc, correlativo, { skipRender: true });
+      }
       this._container.innerHTML = this.renderEditorShell();
       this.bindEditorEvents();
-      if (coddoc && correlativo) {
-        await this.loadDocumento(coddoc, correlativo);
-      }
       await this.buscarProductos('');
       this.renderAll();
     },

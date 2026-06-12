@@ -113,6 +113,17 @@ body {
   color: var(--app-text);
 }
 
+.main-content.align-items-stretch {
+  overflow: hidden;
+}
+
+.main-content > .pos-vista-wrap,
+.main-content > .pos-list-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
 .inicio-blank {
   min-height: 100%;
   background: var(--app-bg, #ffffff);

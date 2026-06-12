@@ -1,6 +1,19 @@
 /**
  * OnneB POS — temas visuales (morado por defecto)
  */
+:root {
+  /* Contraste en botones translúcidos — themes.js recalcula al cambiar tema */
+  --btn-fg-primary: var(--app-text);
+  --btn-fg-success: var(--app-text);
+  --btn-fg-danger: #ffffff;
+  --btn-fg-warning: var(--app-text);
+  --btn-fg-info: #ffffff;
+  --btn-fg-muted: #ffffff;
+  --btn-fg-purple: #ffffff;
+  --btn-fg-guardar: #ffffff;
+  --fab-action-fg: var(--app-text);
+}
+
 :root,
 [data-theme='purple'] {
   --onneb-brand: #7c3aed;

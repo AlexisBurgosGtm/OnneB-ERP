@@ -37,6 +37,20 @@ const PosView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  formatProdLabel(desprod, desmarca) {
+    const name = String(desprod ?? '').trim();
+    const marca = String(desmarca ?? '').trim();
+    if (!marca) return name;
+    return `${name} · ${marca}`;
+  },
+
+  renderProdNameHtml(desprod, desmarca) {
+    const name = this.escapeHtml(String(desprod ?? '').trim());
+    const marca = String(desmarca ?? '').trim();
+    if (!marca) return name;
+    return `${name} · <strong class="pos-prod-marca">${this.escapeHtml(marca)}</strong>`;
+  },
+
   formatFechaPedido(row) {
     if (!row?.FECHA) return '—';
     const s = String(row.FECHA).slice(0, 10);
@@ -80,6 +94,34 @@ const PosView = {
     return tipo || neg || '—';
   },
 
+  hasCliente(h) {
+    const cod = h?.CODCLIENTE;
+    if (cod == null || cod === '' || Number(cod) <= 0) return false;
+    const nom = String(h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
+    return nom.length > 0;
+  },
+
+  hasVendedor(h) {
+    const cod = h?.CODVEN;
+    return cod != null && cod !== '' && Number(cod) > 0;
+  },
+
+  syncClienteSearchEmphasis() {
+    const h = this._pedido?.header;
+    const inp = this._container?.querySelector('#pos-cliente-search');
+    if (!inp) return;
+    const highlight = this.docEditable(h) && !this.hasCliente(h);
+    inp.classList.toggle('pos-cliente-search-required', highlight);
+  },
+
+  syncVendedorEmphasis() {
+    const h = this._pedido?.header;
+    const sel = this._container?.querySelector('#pos-doc-vendedor');
+    if (!sel) return;
+    const highlight = this.docEditable(h) && !this.hasVendedor(h);
+    sel.classList.toggle('pos-doc-vendedor-required', highlight);
+  },
+
   async fetchConfig() {
     return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
   },
@@ -119,10 +161,10 @@ const PosView = {
     });
   },
 
-  async loadPedido(coddoc, correlativo) {
+  async loadPedido(coddoc, correlativo, opts = {}) {
     const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
     this._pedido = await F.fetchJson(url);
-    if (this._screen === 'editor') this.renderAll();
+    if (this._screen === 'editor' && !opts.skipRender) this.renderAll();
   },
 
   async crearPedido() {
@@ -154,6 +196,18 @@ const PosView = {
     }
     if (!(this._pedido?.lines || []).length) {
       F.toast('Agregue al menos un producto', 'warning');
+      return;
+    }
+    if (!this.hasCliente(h)) {
+      F.toast('Seleccione un cliente antes de finalizar', 'warning');
+      this.syncClienteSearchEmphasis();
+      this._container?.querySelector('#pos-cliente-search')?.focus();
+      return;
+    }
+    if (!this.hasVendedor(h)) {
+      F.toast('Seleccione un vendedor antes de finalizar', 'warning');
+      this.syncVendedorEmphasis();
+      this._container?.querySelector('#pos-doc-vendedor')?.focus();
       return;
     }
 
@@ -274,6 +328,10 @@ const PosView = {
       return;
     }
     const defaultMedida = row.CODMEDIDA || precios[0].CODMEDIDA;
+    const priceByMedida = Object.fromEntries(
+      precios.map((p) => [String(p.CODMEDIDA), Number(p.PRECIO) || 0])
+    );
+    const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
@@ -284,18 +342,40 @@ const PosView = {
       ...CatalogosUI.modalBase(),
       title: row.DESPROD || row.CODPROD,
       html: `
-        <label class="form-label small">Medida / precio</label>
+        <label class="form-label small mb-0">Medida</label>
         <select id="pos-swal-medida" class="form-select form-select-sm">${options}</select>
-        <label class="form-label small mt-2">Cantidad</label>
-        <input type="number" id="pos-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
+        <div class="row g-2 mt-2 align-items-end">
+          <div class="col-6">
+            <label class="form-label small mb-0" for="pos-swal-cant">Cantidad</label>
+            <input type="number" id="pos-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-0" for="pos-swal-precio">Precio</label>
+            <input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly tabindex="-1">
+          </div>
+        </div>
+        <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
       `,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
       didOpen: () => {
-        document.getElementById('pos-swal-cant')?.focus();
-        document.getElementById('pos-swal-cant')?.select();
+        const medSel = document.getElementById('pos-swal-medida');
+        const cantInp = document.getElementById('pos-swal-cant');
+        const precioInp = document.getElementById('pos-swal-precio');
+        const totalEl = document.getElementById('pos-swal-total');
+        const updateTotal = () => {
+          const med = medSel?.value;
+          const precio = priceByMedida[med] ?? 0;
+          const cant = Number(cantInp?.value) || 0;
+          if (precioInp) precioInp.value = this.formatMoney(precio);
+          if (totalEl) totalEl.textContent = `Total: ${this.formatMoney(cant * precio)}`;
+        };
+        medSel?.addEventListener('change', updateTotal);
+        cantInp?.addEventListener('input', updateTotal);
+        cantInp?.focus();
+        cantInp?.select();
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('pos-swal-cant')?.value);
@@ -317,28 +397,35 @@ const PosView = {
   },
 
   renderProductList() {
-    const el = this._container?.querySelector('#pos-product-list');
-    if (!el) return;
+    const targets = PosDocSearchUI.listTargets(this._container, 'pos');
+    if (!targets.length) return;
     if (!this._productos.length) {
-      el.innerHTML = '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+      const empty =
+        '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+      targets.forEach((el) => {
+        el.innerHTML = empty;
+      });
       return;
     }
-    el.innerHTML = this._productos
+    const html = this._productos
       .map(
         (p) => `
           <div class="pos-product-item" tabindex="0" role="button"
             data-codprod="${this.escapeHtml(p.CODPROD)}"
             data-codmedida="${this.escapeHtml(p.CODMEDIDA)}"
-            aria-label="Agregar ${this.escapeHtml(p.DESPROD)} ${this.escapeHtml(p.CODMEDIDA)}">
+            aria-label="Agregar ${this.escapeHtml(this.formatProdLabel(p.DESPROD, p.DESMARCA))} ${this.escapeHtml(p.CODMEDIDA)}">
             <div>
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(p.CODMEDIDA)}</div>
-              <div>${this.escapeHtml(p.DESPROD)}</div>
+              <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
             </div>
             <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
           </div>
         `
       )
       .join('');
+    targets.forEach((el) => {
+      el.innerHTML = html;
+    });
   },
 
   renderCart() {
@@ -356,20 +443,23 @@ const PosView = {
       .map((ln) => {
         const lineId = this.lineId(ln);
         const qty = Number(ln.CANTIDAD) || 0;
-        const qtyControls = editable
-          ? `<div class="d-flex align-items-center gap-1 justify-content-center">
-              <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>−</button>
+        const unitPrice = this.formatMoney(ln.PRECIO);
+        const qtyControlsInner = editable
+          ? `<button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>−</button>
               <span class="px-1">${qty}</span>
-              <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>
-            </div>`
+              <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>`
           : `<span>${qty}</span>`;
+        const qtyCell = `<div class="pos-cart-qty-price d-flex align-items-center justify-content-center gap-2 flex-wrap">
+            <div class="d-flex align-items-center gap-1">${qtyControlsInner}</div>
+            <span class="pos-cart-unit-price small text-nowrap">${this.escapeHtml(unitPrice)}</span>
+          </div>`;
         const delBtn = editable
           ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${lineId}" title="Quitar"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
           : '';
         return `<tr>
           <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
-          <td class="text-center">${qtyControls}</td>
+          <td class="text-center">${qtyCell}</td>
           <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
           <td class="text-end">${delBtn}</td>
         </tr>`;
@@ -423,9 +513,9 @@ const PosView = {
       .join('');
     return `
       <div class="pos-doc-vendedor-wrap">
-        <label class="form-label small mb-0" for="pos-doc-vendedor">Vendedor</label>
+        <label class="form-label small mb-0" for="pos-doc-vendedor">Vendedor <span class="text-danger">*</span></label>
         <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
-          <option value="">—</option>
+          <option value="">— Seleccione —</option>
           ${opts}
         </select>
       </div>`;
@@ -433,12 +523,15 @@ const PosView = {
 
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
-    ['#pos-product-search', '#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor'].forEach((sel) => {
+    PosDocSearchUI.syncControls(this._container, 'pos', editable);
+    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-pos-finalizar');
     if (fab) fab.style.display = editable ? '' : 'none';
+    this.syncClienteSearchEmphasis();
+    this.syncVendedorEmphasis();
   },
 
   renderAll() {
@@ -623,7 +716,7 @@ const PosView = {
           </div>
         </div>
         <div class="pos-main">
-          <div class="pos-panel card shadow-sm">
+          <div class="pos-panel pos-panel-search card shadow-sm">
             <div class="card-header py-2 d-flex align-items-center gap-2">
               <i class="fa-solid fa-box"></i>
               <span class="fw-semibold">Productos</span>
@@ -638,16 +731,18 @@ const PosView = {
               <div class="pos-product-list" id="pos-product-list"></div>
             </div>
           </div>
-          <div class="pos-panel card shadow-sm">
-            <div class="card-header py-2">
-              <i class="fa-solid fa-receipt me-1"></i>
-              <span class="fw-semibold">Pedido actual</span>
+          <div class="pos-panel pos-panel-cart card shadow-sm">
+            <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-receipt"></i>
+                <span class="fw-semibold">Pedido actual</span>
+              </div>
             </div>
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Cliente</label>
                 <input type="search" class="form-control form-control-sm pos-search-glow" id="pos-cliente-search"
-                  placeholder="Buscar cliente…" autocomplete="off"${editable ? '' : ' disabled'}>
+                  placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
                 <div id="pos-cliente-nombre" class="small text-muted mt-1"></div>
                 <div id="pos-cliente-results" class="list-group position-absolute w-100 shadow-sm d-none"
                   style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>
@@ -659,7 +754,7 @@ const PosView = {
                       <tr>
                         <th>Cód.</th>
                         <th>Producto</th>
-                        <th class="text-center">Cant.</th>
+                        <th class="text-center">Cant. / Precio</th>
                         <th class="text-end">Total</th>
                         <th></th>
                       </tr>
@@ -671,10 +766,8 @@ const PosView = {
             </div>
           </div>
         </div>
-        ${editable ? `
-        <button type="button" class="pos-fab-finalizar" id="btn-pos-finalizar">
-          <i class="fa-solid fa-check me-2"></i>Finalizar
-        </button>` : ''}
+        ${editable ? PosDocSearchUI.fabBarHtml('pos') : ''}
+        ${PosDocSearchUI.productModalHtml('pos')}
       </div>`;
   },
 
@@ -709,27 +802,10 @@ const PosView = {
   },
 
   bindEditorEvents() {
-    const searchProd = this._container?.querySelector('#pos-product-search');
-    if (searchProd) {
-      const run = F.debounce(() => this.buscarProductos(searchProd.value.trim()), 300);
-      searchProd.addEventListener('input', run);
-      searchProd.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          this.buscarProductos(searchProd.value.trim());
-        }
-      });
-    }
-
-    this._container?.querySelector('#pos-product-list')?.addEventListener('click', (e) => {
-      const item = e.target.closest('.pos-product-item');
-      if (!item) return;
-      const cod = item.getAttribute('data-codprod');
-      const med = item.getAttribute('data-codmedida');
-      const row = this._productos.find(
-        (p) => String(p.CODPROD) === String(cod) && String(p.CODMEDIDA) === String(med)
-      );
-      if (row) this.onProductClick(row);
+    PosDocSearchUI.bind(this, 'pos', {
+      getEditable: () => this.docEditable(this._pedido?.header),
+      buscarProductos: this.buscarProductos,
+      onProductPick: (row) => this.onProductClick(row),
     });
 
     this._container?.querySelector('#pos-cart-tbody')?.addEventListener('click', async (e) => {
@@ -838,14 +914,15 @@ const PosView = {
   async buscarProductos(q) {
     if (this._loadingProducts) return;
     this._loadingProducts = true;
-    const list = this._container?.querySelector('#pos-product-list');
-    if (list) list.innerHTML = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+    const spinner = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
+    PosDocSearchUI.setListsHtml(this._container, 'pos', spinner);
     try {
       const data = await this.fetchProductos(q);
       this._productos = data.rows || [];
       this.renderProductList();
     } catch (err) {
-      if (list) list.innerHTML = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
+      const errHtml = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
+      PosDocSearchUI.setListsHtml(this._container, 'pos', errHtml);
     } finally {
       this._loadingProducts = false;
     }
@@ -894,6 +971,7 @@ const PosView = {
       body: JSON.stringify({ CODVEN: next ? parseInt(next, 10) : null }),
     });
     this.renderHeaderInfo();
+    this.syncVendedorEmphasis();
     F.toast('Vendedor actualizado', 'success');
   },
 
@@ -907,12 +985,14 @@ const PosView = {
       body: JSON.stringify({ CODCLIENTE: codcliente }),
     });
     this.renderHeaderInfo();
+    this.syncClienteSearchEmphasis();
     F.toast('Cliente actualizado', 'success');
   },
 
   async showList() {
     this._screen = 'list';
     this._pedido = null;
+    PosDocSearchUI.teardown('pos');
     await this.fetchPedidosList();
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();
@@ -920,12 +1000,13 @@ const PosView = {
 
   async showEditor(coddoc, correlativo) {
     this._screen = 'editor';
+    PosDocSearchUI.teardown('pos');
+    if (coddoc && correlativo) {
+      await this.loadPedido(coddoc, correlativo, { skipRender: true });
+    }
     await this.fetchVendedores();
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
-    if (coddoc && correlativo) {
-      await this.loadPedido(coddoc, correlativo);
-    }
     await this.buscarProductos('');
     this.renderAll();
   },
