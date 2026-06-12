@@ -133,6 +133,8 @@
   top: calc(100% + 0.55rem);
   right: 0;
   min-width: 11.5rem;
+  max-height: min(70vh, 22rem);
+  overflow-y: auto;
   padding: 0.55rem;
   border-radius: 0.85rem;
   background: color-mix(in srgb, var(--app-surface, #fff) 88%, transparent);
@@ -213,6 +215,30 @@
 
 .theme-swatch-mustard {
   background: linear-gradient(135deg, #fde047, #ca8a04);
+}
+
+.theme-swatch-fire {
+  background: linear-gradient(135deg, #fb923c, #dc2626);
+}
+
+.theme-swatch-winter {
+  background: linear-gradient(135deg, #bae6fd, #0284c7);
+}
+
+.theme-swatch-summer {
+  background: linear-gradient(135deg, #fcd34d, #38bdf8);
+}
+
+.theme-swatch-autumn {
+  background: linear-gradient(135deg, #fdba74, #9a3412);
+}
+
+.theme-swatch-valentine {
+  background: linear-gradient(135deg, #f9a8d4, #db2777);
+}
+
+.theme-swatch-nature {
+  background: linear-gradient(135deg, #4ade80, #15803d);
 }
 
 #btn-logout {

@@ -79,16 +79,6 @@
   padding-bottom: 4.5rem;
 }
 
-.inventario-fab-print {
-  background: rgba(37, 99, 235, 0.82);
-  box-shadow: 0 6px 22px rgba(37, 99, 235, 0.38);
-}
-
-.inventario-fab-print:hover {
-  background: rgba(37, 99, 235, 0.94);
-  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.48);
-}
-
 .inventario-fab-print:disabled {
   opacity: 0.65;
   cursor: not-allowed;

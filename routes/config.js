@@ -4,7 +4,11 @@ const { isDbConfigured } = require('../config/database');
 
 const router = express.Router();
 const ADMIN_CONFIG_ID = 2;
+const OPERATOR_CONFIG_ID = 4;
 const INVENTARIO_NEGATIVO_CONFIG_ID = 3;
+const TICKET_VENTA_CONFIG_ID = 11;
+const CLAVE_VENDEDOR_CONFIG_ID = 17;
+const COBRO_PREDETERMINADO_CONFIG_ID = 15;
 
 router.post('/:id/verify-pass', async (req, res) => {
   if (!isDbConfigured()) {
@@ -156,4 +160,12 @@ router.put('/:id/sino', async (req, res) => {
   }
 });
 
-module.exports = { router, ADMIN_CONFIG_ID, INVENTARIO_NEGATIVO_CONFIG_ID };
+module.exports = {
+  router,
+  ADMIN_CONFIG_ID,
+  OPERATOR_CONFIG_ID,
+  INVENTARIO_NEGATIVO_CONFIG_ID,
+  TICKET_VENTA_CONFIG_ID,
+  CLAVE_VENDEDOR_CONFIG_ID,
+  COBRO_PREDETERMINADO_CONFIG_ID,
+};

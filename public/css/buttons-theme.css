@@ -1,0 +1,402 @@
+/**
+ * OnneB — botones translúcidos con acento del tema (borde + sombra).
+ * El color semántico de cada botón se conserva; --onneb-brand define marco y glow.
+ */
+
+:root {
+  --onneb-btn-glass-border: color-mix(in srgb, var(--onneb-brand) 78%, transparent);
+  --onneb-btn-glass-border-strong: var(--onneb-brand);
+  --onneb-btn-glass-shadow: 0 4px 14px color-mix(in srgb, var(--onneb-brand) 36%, transparent);
+  --onneb-btn-glass-shadow-hover: 0 8px 22px color-mix(in srgb, var(--onneb-brand) 50%, transparent);
+  --onneb-btn-glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+
+  --btn-base-nuevo: #16a34a;
+  --btn-base-nuevo-dark: #15803d;
+  --btn-base-imprimir: #8b5cf6;
+  --btn-base-imprimir-dark: #6d28d9;
+  --btn-base-ver: #64748b;
+  --btn-base-ver-dark: #475569;
+  --btn-base-editar: #3b82f6;
+  --btn-base-editar-dark: #2563eb;
+  --btn-base-eliminar: #ef4444;
+  --btn-base-eliminar-dark: #dc2626;
+  --btn-base-bloquear: #f59e0b;
+  --btn-base-bloquear-dark: #d97706;
+  --btn-base-guardar: #2563eb;
+  --btn-base-guardar-dark: #1d4ed8;
+  --btn-base-finalizar: #2563eb;
+  --btn-base-finalizar-dark: #1d4ed8;
+}
+
+/* —— Base translúcida para botones Bootstrap en la app —— */
+#view-main .btn:not(.btn-link):not(.btn-empleado-activo):not(.btn-theme-fab):not(.btn-menu-fab):not(.btn-icon),
+.swal2-popup.modal-catalogo .btn:not(.btn-link) {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-width: 1.5px;
+  border-style: solid;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+#view-main .btn-primary,
+.swal2-popup .swal2-confirm.btn-primary {
+  color: #fff !important;
+  background: color-mix(in srgb, var(--bs-primary) 76%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border) !important;
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset);
+}
+
+#view-main .btn-primary:hover,
+#view-main .btn-primary:focus,
+.swal2-popup .swal2-confirm.btn-primary:hover {
+  color: #fff !important;
+  background: color-mix(in srgb, var(--bs-primary) 88%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset);
+  transform: translateY(-1px);
+}
+
+#view-main .btn-outline-primary {
+  color: var(--btn-base-editar-dark) !important;
+  background: color-mix(in srgb, var(--btn-base-editar) 14%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border) !important;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--onneb-brand) 22%, transparent);
+}
+
+#view-main .btn-outline-primary:hover,
+#view-main .btn-outline-primary:focus {
+  color: #fff !important;
+  background: color-mix(in srgb, var(--btn-base-editar) 78%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow);
+}
+
+#view-main .btn-outline-secondary,
+#btn-logout {
+  color: var(--app-text) !important;
+  background: color-mix(in srgb, var(--app-surface) 58%, transparent) !important;
+  border-color: color-mix(in srgb, var(--onneb-brand) 48%, var(--app-border)) !important;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--onneb-brand) 16%, transparent);
+}
+
+#view-main .btn-outline-secondary:hover,
+#view-main .btn-outline-secondary:focus,
+#btn-logout:hover {
+  color: var(--app-text) !important;
+  background: color-mix(in srgb, var(--app-surface) 78%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow);
+  transform: translateY(-1px);
+}
+
+#view-main .btn-outline-danger {
+  color: var(--btn-base-eliminar-dark) !important;
+  background: color-mix(in srgb, var(--btn-base-eliminar) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--onneb-brand) 55%, var(--btn-base-eliminar)) !important;
+}
+
+#view-main .btn-outline-danger:hover {
+  color: #fff !important;
+  background: color-mix(in srgb, var(--btn-base-eliminar) 76%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--onneb-brand) 35%, var(--btn-base-eliminar) 25%);
+}
+
+#view-main .btn-outline-success {
+  color: var(--btn-base-nuevo-dark) !important;
+  background: color-mix(in srgb, var(--btn-base-nuevo) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--onneb-brand) 55%, var(--btn-base-nuevo)) !important;
+}
+
+#view-main .btn-outline-success:hover {
+  color: #fff !important;
+  background: color-mix(in srgb, var(--btn-base-nuevo) 76%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+}
+
+/* —— Catálogo: Nuevo (verde) + acento tema —— */
+.btn-catalogo-nuevo,
+.btn-onneb-nuevo-fab,
+.btn-onneb-nuevo {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  background: color-mix(in srgb, var(--btn-base-nuevo) 76%, transparent) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 4px 16px color-mix(in srgb, var(--btn-base-nuevo) 28%, transparent) !important;
+}
+
+.btn-catalogo-nuevo:hover,
+.btn-onneb-nuevo-fab:hover,
+.btn-onneb-nuevo:hover,
+.btn-onneb-nuevo:focus {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  background: color-mix(in srgb, var(--btn-base-nuevo) 90%, transparent) !important;
+  box-shadow:
+    var(--onneb-btn-glass-shadow-hover),
+    var(--onneb-btn-glass-inset),
+    0 6px 20px color-mix(in srgb, var(--btn-base-nuevo) 34%, transparent) !important;
+}
+
+/* —— Imprimir: morado fijo + acento tema —— */
+.inv-card-btn[data-action='imprimir'],
+.btn-catalogo-imprimir {
+  color: #fff !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-imprimir) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-imprimir-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 3px 12px color-mix(in srgb, var(--btn-base-imprimir) 26%, transparent) !important;
+}
+
+.inv-card-btn[data-action='imprimir']:hover,
+.btn-catalogo-imprimir:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow:
+    var(--onneb-btn-glass-shadow-hover),
+    var(--onneb-btn-glass-inset),
+    0 5px 16px color-mix(in srgb, var(--btn-base-imprimir) 32%, transparent) !important;
+  transform: translateY(-1px);
+}
+
+/* —— Ver / Editar / Eliminar / Bloquear —— */
+.btn-catalogo-ver {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-ver) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-ver-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-catalogo-editar {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-editar) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-editar-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-catalogo-eliminar {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-eliminar) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-eliminar-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-catalogo-bloquear {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-bloquear) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-bloquear-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-catalogo-ver:hover,
+.btn-catalogo-editar:hover,
+.btn-catalogo-eliminar:hover,
+.btn-catalogo-bloquear:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+/* —— Modales —— */
+.btn-modal-cancelar {
+  background: color-mix(in srgb, var(--app-surface) 72%, transparent) !important;
+  border: 1.5px solid color-mix(in srgb, var(--onneb-brand) 38%, var(--app-border)) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--onneb-brand) 12%, transparent);
+  color: var(--app-text) !important;
+}
+
+.btn-modal-cancelar:hover {
+  border-color: var(--onneb-btn-glass-border) !important;
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent) !important;
+}
+
+.btn-modal-guardar,
+.swal2-popup.modal-catalogo .swal2-confirm:not(.btn-catalogo-eliminar):not(.btn-catalogo-bloquear) {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-guardar) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-guardar-dark) 86%, transparent)
+  ) !important;
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--onneb-btn-glass-shadow), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-modal-guardar:hover,
+.swal2-popup.modal-catalogo .swal2-confirm:not(.btn-catalogo-eliminar):not(.btn-catalogo-bloquear):hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+/* —— POS / Compras / Inventario —— */
+.pos-fab-finalizar {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-finalizar) 76%, transparent),
+    color-mix(in srgb, var(--btn-base-finalizar-dark) 84%, transparent)
+  ) !important;
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 6px 20px color-mix(in srgb, var(--btn-base-finalizar) 26%, transparent) !important;
+}
+
+.pos-fab-finalizar:hover:not(:disabled) {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-finalizar) 88%, transparent),
+    color-mix(in srgb, var(--btn-base-finalizar-dark) 92%, transparent)
+  ) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+.btn-productos-guardar-fab {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-guardar) 78%, transparent),
+    color-mix(in srgb, var(--btn-base-guardar-dark) 85%, transparent)
+  ) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 6px 20px color-mix(in srgb, var(--btn-base-guardar) 28%, transparent) !important;
+}
+
+.btn-productos-guardar-fab:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+/* Inventario — imprimir (morado) */
+.inventario-fab-print {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-imprimir) 80%, transparent),
+    color-mix(in srgb, var(--btn-base-imprimir-dark) 86%, transparent)
+  ) !important;
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 6px 22px color-mix(in srgb, var(--btn-base-imprimir) 30%, transparent) !important;
+}
+
+.inventario-fab-print:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--btn-base-imprimir) 90%, transparent),
+    color-mix(in srgb, var(--btn-base-imprimir-dark) 92%, transparent)
+  ) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+/* Login — borde acento tema */
+.btn-login {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  box-shadow:
+    var(--onneb-btn-glass-shadow),
+    var(--onneb-btn-glass-inset),
+    0 8px 28px color-mix(in srgb, var(--onneb-brand) 32%, transparent) !important;
+}
+
+.btn-login:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+  box-shadow: var(--onneb-btn-glass-shadow-hover), var(--onneb-btn-glass-inset) !important;
+}
+
+/* Cards: Editar mantiene azul outline con acento tema (ya en .btn-outline-primary) */
+#view-main .inv-card-btn[data-action='editar'] {
+  border-color: var(--onneb-btn-glass-border) !important;
+}
+
+#view-main .inv-card-btn[data-action='editar']:hover {
+  border-color: var(--onneb-btn-glass-border-strong) !important;
+}
+
+#view-main .inv-card-btn[data-action='bloquear'],
+#view-main .inv-card-btn[data-action='eliminar'] {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Empleados activo SI/NO — base semántica + borde tema */
+.btn-empleado-activo {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: var(--onneb-btn-glass-shadow);
+}
+
+.btn-empleado-activo--si {
+  background-color: color-mix(in srgb, var(--btn-base-nuevo) 88%, transparent) !important;
+}
+
+.btn-empleado-activo--no {
+  background-color: color-mix(in srgb, var(--btn-base-eliminar-dark) 88%, transparent) !important;
+}
+
+/* Config / Developer */
+.config-general-panel .btn-actualizar-pass {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  box-shadow: var(--onneb-btn-glass-shadow);
+}
+
+.btn-developer-con,
+.btn-developer-cre {
+  border: 1.5px solid var(--onneb-btn-glass-border) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: var(--onneb-btn-glass-shadow);
+}
+
+[data-theme='carbon'] .btn-modal-cancelar {
+  color: var(--app-text) !important;
+  background: color-mix(in srgb, var(--app-surface) 75%, transparent) !important;
+}
+
+[data-theme='carbon'] .btn-primary {
+  background: color-mix(in srgb, var(--bs-primary) 72%, transparent) !important;
+  border-color: var(--onneb-btn-glass-border) !important;
+}

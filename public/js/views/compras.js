@@ -198,16 +198,18 @@ const ComprasView = {
                 value="${nofacVal}" autocomplete="off">
             </div>
           </div>
-          <div class="mb-2">
-            <label class="form-label small mb-0" for="compras-finalizar-concre">Forma de pago</label>
-            <select id="compras-finalizar-concre" class="form-select form-select-sm">
-              <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
-              <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
-            </select>
-          </div>
-          <div class="mb-2${concreVal === 'CRE' ? '' : ' d-none'}" id="compras-finalizar-venc-wrap">
-            <label class="form-label small mb-0" for="compras-finalizar-venc">Vencimiento</label>
-            <input type="date" id="compras-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+          <div class="row g-2 mb-2 align-items-end" id="compras-finalizar-pago-row">
+            <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="compras-finalizar-concre-wrap">
+              <label class="form-label small mb-0" for="compras-finalizar-concre">Forma de pago</label>
+              <select id="compras-finalizar-concre" class="form-select form-select-sm">
+                <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
+                <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
+              </select>
+            </div>
+            <div class="col-6${concreVal === 'CRE' ? '' : ' d-none'}" id="compras-finalizar-venc-wrap">
+              <label class="form-label small mb-0" for="compras-finalizar-venc">Vencimiento</label>
+              <input type="date" id="compras-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+            </div>
           </div>
           <div class="mb-0">
             <label class="form-label small mb-0" for="compras-finalizar-obs">Observaciones</label>
@@ -224,9 +226,14 @@ const ComprasView = {
       didOpen: () => {
         const concreSel = document.getElementById('compras-finalizar-concre');
         const vencWrap = document.getElementById('compras-finalizar-venc-wrap');
+        const concreWrap = document.getElementById('compras-finalizar-concre-wrap');
         const toggleVenc = () => {
           const isCre = concreSel?.value === 'CRE';
           vencWrap?.classList.toggle('d-none', !isCre);
+          if (concreWrap) {
+            concreWrap.classList.toggle('col-6', isCre);
+            concreWrap.classList.toggle('col-12', !isCre);
+          }
         };
         concreSel?.addEventListener('change', toggleVenc);
         toggleVenc();

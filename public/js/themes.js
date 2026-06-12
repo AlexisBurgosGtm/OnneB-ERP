@@ -6,10 +6,16 @@ const OnnebThemes = {
   DEFAULT: 'purple',
 
   themes: [
-    { id: 'purple', label: 'Blanco · Morado', swatchClass: 'theme-swatch-purple' },
+    { id: 'purple', label: 'Estilo Onne B', swatchClass: 'theme-swatch-purple' },
     { id: 'carbon', label: 'Carbono', swatchClass: 'theme-swatch-carbon' },
     { id: 'blue', label: 'Blanco · Azul', swatchClass: 'theme-swatch-blue' },
     { id: 'mustard', label: 'Blanco · Mostaza', swatchClass: 'theme-swatch-mustard' },
+    { id: 'fire', label: 'Fuego', swatchClass: 'theme-swatch-fire' },
+    { id: 'winter', label: 'Invierno', swatchClass: 'theme-swatch-winter' },
+    { id: 'summer', label: 'Verano', swatchClass: 'theme-swatch-summer' },
+    { id: 'autumn', label: 'Otoño', swatchClass: 'theme-swatch-autumn' },
+    { id: 'valentine', label: 'Día del cariño', swatchClass: 'theme-swatch-valentine' },
+    { id: 'nature', label: 'Naturaleza', swatchClass: 'theme-swatch-nature' },
   ],
 
   pickerTargets: [
@@ -33,7 +39,18 @@ const OnnebThemes = {
     }
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      const colors = { purple: '#7c3aed', carbon: '#18181b', blue: '#2563eb', mustard: '#ca8a04' };
+      const colors = {
+        purple: '#7c3aed',
+        carbon: '#18181b',
+        blue: '#2563eb',
+        mustard: '#ca8a04',
+        fire: '#ef4444',
+        winter: '#0ea5e9',
+        summer: '#f59e0b',
+        autumn: '#ea580c',
+        valentine: '#ec4899',
+        nature: '#16a34a',
+      };
       meta.setAttribute('content', colors[id] || colors.purple);
     }
     this.syncPickerUI();
