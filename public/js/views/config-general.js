@@ -7,6 +7,7 @@ const ConfigGeneralView = {
   _container: null,
   _adminMeta: null,
   _inventarioMeta: null,
+  _invSaldoPendientes: null,
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -80,11 +81,38 @@ const ConfigGeneralView = {
     `;
   },
 
+  renderInvSaldoCard(pendientes = 0) {
+    const count = Number(pendientes) || 0;
+    const statusText =
+      count === 0
+        ? 'Todos los productos tienen registro en INVSALDO.'
+        : `${count} producto(s) sin registro en INVSALDO.`;
+    return `
+      <div class="card mt-3">
+        <div class="card-body p-4">
+          <h5 class="card-title mb-1">
+            <i class="fa-solid fa-warehouse me-2 text-primary"></i>Sincronizar saldos de inventario
+          </h5>
+          <p class="card-text mb-2">
+            Crea registros faltantes en <strong>INVSALDO</strong> para productos existentes en
+            <strong>PRODUCTOS</strong> (bodega 0, saldo inicial = existencia del producto).
+          </p>
+          <p class="small text-muted mb-3" id="config-invsaldo-status">${this.escapeHtml(statusText)}</p>
+          <button type="button" class="btn btn-actualizar-pass" id="btn-sincronizar-invsaldo"
+            ${count === 0 ? 'disabled' : ''}>
+            <i class="fa-solid fa-wrench" aria-hidden="true"></i> Corregir INVSALDO
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
   renderAll() {
     return `
       <div class="config-general-panel">
         ${this.renderAdminCard(this._adminMeta)}
         ${this.renderInventarioCard(this._inventarioMeta)}
+        ${this.renderInvSaldoCard(this._invSaldoPendientes)}
       </div>
     `;
   },
@@ -104,6 +132,9 @@ const ConfigGeneralView = {
 
     btnUpdatePass?.addEventListener('click', () => this.onActualizarPass());
     btnUpdateInventario?.addEventListener('click', () => this.onActualizarInventario());
+    document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
+      this.onSincronizarInvSaldo();
+    });
   },
 
   async fetchPass() {
@@ -142,6 +173,67 @@ const ConfigGeneralView = {
       });
       F.toast('Clave actualizada', 'success');
     } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
+  async fetchInvSaldoPendientes() {
+    const empNit = F.getEmpNit();
+    if (!empNit) return { pendientes: 0 };
+    const params = new URLSearchParams({ empnit: empNit, _: String(Date.now()) });
+    return F.fetchJson(`/api/inventario/saldo/pendientes?${params.toString()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  updateInvSaldoCard(pendientes) {
+    this._invSaldoPendientes = pendientes;
+    const status = document.getElementById('config-invsaldo-status');
+    const btn = document.getElementById('btn-sincronizar-invsaldo');
+    const count = Number(pendientes) || 0;
+    if (status) {
+      status.textContent =
+        count === 0
+          ? 'Todos los productos tienen registro en INVSALDO.'
+          : `${count} producto(s) sin registro en INVSALDO.`;
+    }
+    if (btn) btn.disabled = count === 0;
+  },
+
+  async onSincronizarInvSaldo() {
+    const empNit = F.getEmpNit();
+    if (!empNit) {
+      F.toast('No hay empresa activa en la sesión', 'warning');
+      return;
+    }
+    const pendientes = Number(this._invSaldoPendientes) || 0;
+    if (pendientes <= 0) {
+      F.toast('No hay productos pendientes de sincronizar', 'info');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Corregir INVSALDO?',
+      text: `Se crearán ${pendientes} registro(s) en INVSALDO para productos sin saldo.`,
+      icon: 'question',
+      confirmText: 'Corregir',
+    });
+    if (!ok) return;
+
+    const btn = document.getElementById('btn-sincronizar-invsaldo');
+    if (btn) btn.disabled = true;
+
+    try {
+      const params = new URLSearchParams({ empnit: empNit });
+      const data = await F.fetchJson(`/api/inventario/saldo/sincronizar?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      this.updateInvSaldoCard(data.pendientes ?? 0);
+      F.toast(`INVSALDO actualizado: ${data.creados ?? 0} registro(s) creado(s)`, 'success');
+    } catch (err) {
+      this.updateInvSaldoCard(this._invSaldoPendientes);
       F.alert('Error', err.message, 'error');
     }
   },
@@ -186,9 +278,16 @@ const ConfigGeneralView = {
     `;
 
     try {
-      const [adminMeta, inventarioMeta] = await Promise.all([this.fetchPass(), this.fetchSino()]);
+      const empNit = F.getEmpNit();
+      const fetches = [this.fetchPass(), this.fetchSino()];
+      if (empNit) fetches.push(this.fetchInvSaldoPendientes());
+      const results = await Promise.all(fetches);
+      const adminMeta = results[0];
+      const inventarioMeta = results[1];
+      const invSaldoMeta = empNit ? results[2] : { pendientes: 0 };
       this._adminMeta = adminMeta;
       this._inventarioMeta = inventarioMeta;
+      this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
       container.innerHTML = this.renderAll();
       const input = document.getElementById('input-admin-pass');
       if (input) input.value = adminMeta.pass ?? '';

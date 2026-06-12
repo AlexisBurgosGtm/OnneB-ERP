@@ -645,6 +645,21 @@
   min-width: 8.5rem;
 }
 
+.pos-doc-meta-fields {
+  align-items: flex-end;
+}
+
+.pos-doc-vendedor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 10rem;
+}
+
+.pos-doc-vendedor-wrap .form-select {
+  max-width: 14rem;
+}
+
 .pos-doc-fecha-wrap .form-control {
   max-width: 11rem;
 }
@@ -669,7 +684,7 @@
     margin-left: 0;
   }
 
-  .pos-header-top .pos-doc-fecha-wrap {
+  .pos-header-top .pos-doc-meta-fields {
     flex: 1 1 100%;
     order: 10;
   }

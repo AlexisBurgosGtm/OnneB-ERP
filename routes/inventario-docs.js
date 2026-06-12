@@ -10,6 +10,8 @@ const {
   isStatusEditable,
   SQL_STATUS_EDITABLE,
 } = require('../lib/documento-status');
+const { assertAdminPass } = require('../lib/config-auth');
+const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 
 const SEARCH_LIMIT = 80;
 const DEFAULT_BODEGA = 1;
@@ -842,6 +844,32 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       res.json({ ok: true, documento: doc });
     } catch (err) {
       console.warn(`[API POST /${logPrefix}/documentos/bloquear]`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/documentos/:coddoc/:correlativo', async (req, res) => {
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = requireEmpNit(req, res);
+    if (!empnit) return;
+    const coddoc = String(req.params.coddoc || '').trim();
+    const correlativo = parseCorrelativo(req.params.correlativo);
+    if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+    const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
+
+    try {
+      const pool = await req.app.locals.getDbPool();
+      await assertAdminPass(pool, pass);
+      const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof DocumentoDeleteError) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
+      if (err.statusCode === 401) {
+        return res.status(401).json({ error: err.message });
+      }
+      console.warn(`[API DELETE /${logPrefix}/documentos]`, err.message);
       res.status(500).json({ error: err.message });
     }
   });

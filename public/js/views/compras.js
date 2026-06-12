@@ -1,18 +1,17 @@
 /**
- * Vista POS — Pedidos de mostrador (DOCUMENTOS + DOCPRODUCTOS).
+ * Vista Compras — documentos COM (DOCUMENTOS + DOCPRODUCTOS).
  */
-const PosView = {
+const ComprasView = {
   _container: null,
   _config: null,
-  _pedido: null,
+  _compra: null,
   _productos: [],
-  _pedidosList: [],
+  _comprasList: [],
   _listFilter: '',
   _screen: 'list',
   _loadingProducts: false,
   _searchTimer: null,
   _cartBusy: false,
-  _vendedores: [],
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -28,7 +27,7 @@ const PosView = {
     if (!emp) throw new Error('No hay empresa activa');
     const segment = path ? (path.startsWith('/') ? path : `/${path}`) : '';
     const params = new URLSearchParams({ empnit: emp, ...extraParams });
-    return `/api/pos${segment}?${params}`;
+    return `/api/compras${segment}?${params}`;
   },
 
   formatMoney(value) {
@@ -37,7 +36,7 @@ const PosView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
-  formatFechaPedido(row) {
+  formatFechaCompra(row) {
     if (!row?.FECHA) return '—';
     const s = String(row.FECHA).slice(0, 10);
     const [y, m, d] = s.split('-');
@@ -46,14 +45,14 @@ const PosView = {
   },
 
   docKey() {
-    if (!this._pedido?.header) return null;
-    const h = this._pedido.header;
+    if (!this._compra?.header) return null;
+    const h = this._compra.header;
     return { coddoc: h.CODDOC, correlativo: Number(h.CORRELATIVO) };
   },
 
   docLabel() {
-    const h = this._pedido?.header;
-    if (!h) return 'Sin pedido';
+    const h = this._compra?.header;
+    if (!h) return 'Sin compra';
     return `${h.CODDOC} #${h.CORRELATIVO}`;
   },
 
@@ -64,20 +63,20 @@ const PosView = {
   findLineById(id) {
     const n = Number(id);
     if (Number.isNaN(n)) return null;
-    return (this._pedido?.lines || []).find((l) => Number(this.lineId(l)) === n) || null;
+    return (this._compra?.lines || []).find((l) => Number(this.lineId(l)) === n) || null;
   },
 
   usuario() {
     const u = F.session('user');
-    return u?.username || 'POS';
+    return u?.username || 'COMPRAS';
   },
 
-  clienteTipoNegocio(h) {
+  proveedorLabel(h) {
     if (!h) return '—';
-    const tipo = String(h.CLI_TIPONEGOCIO || h.TIPONEGOCIO || '').trim();
-    const neg = String(h.CLI_NEGOCIO || h.NEGOCIO || '').trim();
-    if (tipo && neg) return `${tipo} — ${neg}`;
-    return tipo || neg || '—';
+    const emp = String(h.PROV_EMPRESA || '').trim();
+    const raz = String(h.PROV_RAZON || h.DOC_NOMCLIE || '').trim();
+    if (emp && raz && emp !== raz) return `${emp} — ${raz}`;
+    return emp || raz || '—';
   },
 
   async fetchConfig() {
@@ -88,29 +87,29 @@ const PosView = {
     const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40' });
     if (q) params.set('q', q);
     params.set('_', String(Date.now()));
-    return F.fetchJson(`/api/pos/productos?${params}`);
+    return F.fetchJson(`/api/compras/productos?${params}`);
   },
 
-  async fetchPedidosList() {
+  async fetchComprasList() {
     const coddoc = this._config?.coddocDefault || '';
     const params = new URLSearchParams({ empnit: F.getEmpNit(), status: 'O' });
     if (coddoc) params.set('coddoc', coddoc);
     params.set('_', String(Date.now()));
-    const data = await F.fetchJson(`/api/pos/pedidos?${params}`);
-    this._pedidosList = data.rows || [];
-    return this._pedidosList;
+    const data = await F.fetchJson(`/api/compras/compras?${params}`);
+    this._comprasList = data.rows || [];
+    return this._comprasList;
   },
 
-  filteredPedidosList() {
+  filteredComprasList() {
     const q = this._listFilter.trim().toLowerCase();
-    if (!q) return this._pedidosList;
-    return this._pedidosList.filter((r) => {
+    if (!q) return this._comprasList;
+    return this._comprasList.filter((r) => {
       const hay = [
         r.CODDOC,
         r.CORRELATIVO,
         r.DOC_NOMCLIE,
-        r.NEGOCIO,
-        r.TIPONEGOCIO,
+        r.EMPRESA,
+        r.RAZONSOCIAL,
         r.OBS,
       ]
         .map((v) => String(v ?? '').toLowerCase())
@@ -119,71 +118,101 @@ const PosView = {
     });
   },
 
-  async loadPedido(coddoc, correlativo) {
-    const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
-    this._pedido = await F.fetchJson(url);
+  async loadCompra(coddoc, correlativo) {
+    const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+    this._compra = await F.fetchJson(url);
     if (this._screen === 'editor') this.renderAll();
   },
 
-  async crearPedido() {
+  async crearCompra() {
     const body = {
       CODDOC: this._config?.coddocDefault,
-      CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
+      CODPROV: this._config?.proveedorDefault?.CODPROV,
       USUARIO: this.usuario(),
     };
-    const url = `/api/pos/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    this._pedido = await F.fetchJson(url, {
+    const url = `/api/compras/compras?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    this._compra = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    F.toast('Nuevo pedido creado', 'success');
+    F.toast('Nueva compra creada', 'success');
   },
 
   docEditable(header) {
     return DocFecha.editableStatus(header?.STATUS);
   },
 
-  async finalizarPedido() {
+  todayInputValue() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  },
+
+  async finalizarCompra() {
     const key = this.docKey();
     if (!key) return;
-    const h = this._pedido?.header;
+    const h = this._compra?.header;
     if (!this.docEditable(h)) {
-      F.toast('El pedido no está operado', 'warning');
+      F.toast('La compra no está operada', 'warning');
       return;
     }
-    if (!(this._pedido?.lines || []).length) {
+    if (!(this._compra?.lines || []).length) {
       F.toast('Agregue al menos un producto', 'warning');
       return;
     }
 
-    const tipoNeg = this.escapeHtml(this.clienteTipoNegocio(h));
-    const nombre = this.escapeHtml(h.DOC_NOMCLIE || h.CLI_NOMBRE || '—');
-    const dir = this.escapeHtml(h.DOC_DIRCLIE || h.CLI_DIR || '—');
+    const proveedor = this.escapeHtml(this.proveedorLabel(h));
+    const dir = this.escapeHtml(h.DOC_DIRCLIE || h.PROV_DIR || '—');
     const obsVal = this.escapeHtml(h.OBS || '');
+    const seriefacVal = this.escapeHtml(h.SERIEFAC || '');
+    const nofacVal = this.escapeHtml(h.NOFAC || '');
+    const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
+    const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
 
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Finalizar pedido',
+      title: 'Finalizar compra',
       html: `
         <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())}</p>
         <div class="text-start">
           <div class="mb-2">
-            <label class="form-label small mb-0">Tipo negocio — Negocio</label>
-            <div class="form-control form-control-sm bg-light">${tipoNeg}</div>
+            <label class="form-label small mb-0">Proveedor</label>
+            <div class="form-control form-control-sm bg-light">${proveedor}</div>
           </div>
           <div class="mb-2">
-            <label class="form-label small mb-0">Nombre cliente</label>
-            <div class="form-control form-control-sm bg-light">${nombre}</div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-0">Dirección cliente</label>
+            <label class="form-label small mb-0">Dirección</label>
             <div class="form-control form-control-sm bg-light">${dir}</div>
           </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small mb-0" for="compras-finalizar-serie">Serie factura</label>
+              <input type="text" id="compras-finalizar-serie" class="form-control form-control-sm"
+                value="${seriefacVal}" autocomplete="off">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-0" for="compras-finalizar-num">Número factura</label>
+              <input type="text" id="compras-finalizar-num" class="form-control form-control-sm"
+                value="${nofacVal}" autocomplete="off">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-0" for="compras-finalizar-concre">Forma de pago</label>
+            <select id="compras-finalizar-concre" class="form-select form-select-sm">
+              <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
+              <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
+            </select>
+          </div>
+          <div class="mb-2${concreVal === 'CRE' ? '' : ' d-none'}" id="compras-finalizar-venc-wrap">
+            <label class="form-label small mb-0" for="compras-finalizar-venc">Vencimiento</label>
+            <input type="date" id="compras-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+          </div>
           <div class="mb-0">
-            <label class="form-label small mb-0" for="pos-finalizar-obs">Observaciones</label>
-            <textarea id="pos-finalizar-obs" class="form-control form-control-sm" rows="3"
-              placeholder="Observaciones del pedido…">${obsVal}</textarea>
+            <label class="form-label small mb-0" for="compras-finalizar-obs">Observaciones</label>
+            <textarea id="compras-finalizar-obs" class="form-control form-control-sm" rows="2"
+              placeholder="Observaciones…">${obsVal}</textarea>
           </div>
         </div>
       `,
@@ -192,40 +221,75 @@ const PosView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => document.getElementById('pos-finalizar-obs')?.focus(),
-      preConfirm: () => document.getElementById('pos-finalizar-obs')?.value?.trim() || '',
+      didOpen: () => {
+        const concreSel = document.getElementById('compras-finalizar-concre');
+        const vencWrap = document.getElementById('compras-finalizar-venc-wrap');
+        const toggleVenc = () => {
+          const isCre = concreSel?.value === 'CRE';
+          vencWrap?.classList.toggle('d-none', !isCre);
+        };
+        concreSel?.addEventListener('change', toggleVenc);
+        toggleVenc();
+        document.getElementById('compras-finalizar-serie')?.focus();
+      },
+      preConfirm: () => {
+        const seriefac = document.getElementById('compras-finalizar-serie')?.value?.trim() || '';
+        const nofac = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
+        const concre = document.getElementById('compras-finalizar-concre')?.value || 'CON';
+        const venc = document.getElementById('compras-finalizar-venc')?.value?.trim() || '';
+        const obs = document.getElementById('compras-finalizar-obs')?.value?.trim() || '';
+        if (!seriefac) {
+          Swal.showValidationMessage('Ingrese la serie de factura');
+          return false;
+        }
+        if (!nofac) {
+          Swal.showValidationMessage('Ingrese el número de factura');
+          return false;
+        }
+        if (concre === 'CRE' && !venc) {
+          Swal.showValidationMessage('Ingrese la fecha de vencimiento');
+          return false;
+        }
+        return { seriefac, nofac, concre, vencimiento: concre === 'CRE' ? venc : null, obs };
+      },
     });
 
     if (!isConfirmed) return;
 
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ OBS: value }),
+      body: JSON.stringify({
+        SERIEFAC: value.seriefac,
+        NOFAC: value.nofac,
+        CONCRE: value.concre,
+        VENCIMIENTO: value.vencimiento,
+        OBS: value.obs,
+      }),
     });
-    F.toast('Pedido finalizado', 'success');
-    this._pedido = null;
+    F.toast('Compra finalizada', 'success');
+    this._compra = null;
     await this.showList();
   },
 
   async agregarLinea(codprod, codmedida, cantidad = 1) {
     const key = this.docKey();
     if (!key) {
-      F.toast('No hay pedido activo', 'warning');
+      F.toast('No hay compra activa', 'warning');
       return;
     }
-    if (!this.docEditable(this._pedido?.header)) {
-      F.toast('El pedido no está en edición', 'warning');
+    if (!this.docEditable(this._compra?.header)) {
+      F.toast('La compra no está en edición', 'warning');
       return;
     }
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ CODPROD: codprod, CODMEDIDA: codmedida, CANTIDAD: cantidad }),
     });
-    this._pedido = res.pedido;
+    this._compra = res.compra;
     this.renderCart();
     this.renderOrderSummary();
     F.toast('Producto agregado', 'success');
@@ -233,22 +297,22 @@ const PosView = {
 
   setCartBusy(busy) {
     this._cartBusy = busy;
-    const tbody = this._container?.querySelector('#pos-cart-tbody');
+    const tbody = this._container?.querySelector('#compras-cart-tbody');
     tbody?.classList.toggle('pos-cart-busy', busy);
-    const fab = this._container?.querySelector('#btn-pos-finalizar');
+    const fab = this._container?.querySelector('#btn-compras-finalizar');
     if (fab) fab.disabled = busy;
   },
 
   async actualizarCantidad(lineId, cantidad) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const res = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ CANTIDAD: cantidad }),
     });
-    this._pedido = res.pedido;
+    this._compra = res.compra;
     this.renderCart();
     this.renderOrderSummary();
   },
@@ -256,9 +320,9 @@ const PosView = {
   async eliminarLinea(lineId) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const res = await F.fetchJson(url, { method: 'DELETE' });
-    this._pedido = res.pedido;
+    this._compra = res.compra;
     this.renderCart();
     this.renderOrderSummary();
   },
@@ -277,14 +341,14 @@ const PosView = {
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
-        return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(p.CODMEDIDA)} — ${this.escapeHtml(this.formatMoney(p.PRECIO))} (eq. ${this.escapeHtml(p.EQUIVALE)})</option>`;
+        return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(p.CODMEDIDA)} — ${this.escapeHtml(this.formatMoney(p.COSTO))} (eq. ${this.escapeHtml(p.EQUIVALE)})</option>`;
       })
       .join('');
     const { value: picked } = await Swal.fire({
       ...CatalogosUI.modalBase(),
       title: row.DESPROD || row.CODPROD,
       html: `
-        <label class="form-label small">Medida / precio</label>
+        <label class="form-label small">Medida / costo</label>
         <select id="pos-swal-medida" class="form-select form-select-sm">${options}</select>
         <label class="form-label small mt-2">Cantidad</label>
         <input type="number" id="pos-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
@@ -317,7 +381,7 @@ const PosView = {
   },
 
   renderProductList() {
-    const el = this._container?.querySelector('#pos-product-list');
+    const el = this._container?.querySelector('#compras-product-list');
     if (!el) return;
     if (!this._productos.length) {
       el.innerHTML = '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
@@ -334,7 +398,7 @@ const PosView = {
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(p.CODMEDIDA)}</div>
               <div>${this.escapeHtml(p.DESPROD)}</div>
             </div>
-            <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+            <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.COSTO))}</div>
           </div>
         `
       )
@@ -342,14 +406,14 @@ const PosView = {
   },
 
   renderCart() {
-    const tbody = this._container?.querySelector('#pos-cart-tbody');
+    const tbody = this._container?.querySelector('#compras-cart-tbody');
     if (!tbody) return;
-    const lines = this._pedido?.lines || [];
-    const h = this._pedido?.header;
+    const lines = this._compra?.lines || [];
+    const h = this._compra?.header;
     const editable = this.docEditable(h);
     if (!lines.length) {
       tbody.innerHTML =
-        '<tr><td colspan="5" class="text-center text-muted py-3">Sin productos en el pedido</td></tr>';
+        '<tr><td colspan="5" class="text-center text-muted py-3">Sin productos en la compra</td></tr>';
       return;
     }
     tbody.innerHTML = lines
@@ -370,7 +434,7 @@ const PosView = {
           <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
           <td class="text-center">${qtyControls}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALCOSTO))}</td>
           <td class="text-end">${delBtn}</td>
         </tr>`;
       })
@@ -378,12 +442,12 @@ const PosView = {
   },
 
   renderOrderSummary() {
-    const totalEl = this._container?.querySelector('#pos-header-total');
-    const itemsEl = this._container?.querySelector('#pos-header-items');
-    const docEl = this._container?.querySelector('#pos-header-doc');
-    const h = this._pedido?.header;
-    const lines = this._pedido?.lines || [];
-    const total = h?.TOTALPRECIO ?? 0;
+    const totalEl = this._container?.querySelector('#compras-header-total');
+    const itemsEl = this._container?.querySelector('#compras-header-items');
+    const docEl = this._container?.querySelector('#compras-header-doc');
+    const h = this._compra?.header;
+    const lines = this._compra?.lines || [];
+    const total = h?.TOTALCOSTO ?? 0;
     const itemCount = lines.reduce((sum, ln) => sum + (Number(ln.CANTIDAD) || 0), 0);
     if (totalEl) totalEl.textContent = this.formatMoney(total);
     if (itemsEl) {
@@ -393,51 +457,26 @@ const PosView = {
   },
 
   renderHeaderInfo() {
-    const cliente = this._container?.querySelector('#pos-cliente-nombre');
-    const h = this._pedido?.header;
-    if (cliente && h) {
-      cliente.textContent = h.DOC_NOMCLIE || '—';
-      const inp = this._container.querySelector('#pos-cliente-search');
+    const provEl = this._container?.querySelector('#compras-proveedor-nombre');
+    const h = this._compra?.header;
+    if (provEl && h) {
+      provEl.textContent = h.DOC_NOMCLIE || '—';
+      const inp = this._container.querySelector('#compras-proveedor-search');
       if (inp && !inp.matches(':focus')) inp.value = h.DOC_NOMCLIE || '';
     }
-    const fechaInp = this._container?.querySelector('#pos-doc-fecha');
+    const fechaInp = this._container?.querySelector('#compras-doc-fecha');
     if (fechaInp && h && !fechaInp.matches(':focus')) {
       fechaInp.value = DocFecha.inputValueFromHeader(h);
     }
-    const vendedorSel = this._container?.querySelector('#pos-doc-vendedor');
-    if (vendedorSel && h && document.activeElement !== vendedorSel) {
-      const codven = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
-      vendedorSel.value = codven;
-    }
-  },
-
-  renderVendedorField() {
-    const h = this._pedido?.header;
-    const codven = h?.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
-    const disabled = !this.docEditable(h) ? ' disabled' : '';
-    const opts = (this._vendedores || [])
-      .map(
-        (v) =>
-          `<option value="${v.CODEMPLEADO}"${String(v.CODEMPLEADO) === codven ? ' selected' : ''}>${this.escapeHtml(v.NOMEMPLEADO)}</option>`
-      )
-      .join('');
-    return `
-      <div class="pos-doc-vendedor-wrap">
-        <label class="form-label small mb-0" for="pos-doc-vendedor">Vendedor</label>
-        <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
-          <option value="">—</option>
-          ${opts}
-        </select>
-      </div>`;
   },
 
   syncEditorControls() {
-    const editable = this.docEditable(this._pedido?.header);
-    ['#pos-product-search', '#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor'].forEach((sel) => {
+    const editable = this.docEditable(this._compra?.header);
+    ['#compras-product-search', '#compras-proveedor-search', '#compras-doc-fecha'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
-    const fab = this._container?.querySelector('#btn-pos-finalizar');
+    const fab = this._container?.querySelector('#btn-compras-finalizar');
     if (fab) fab.style.display = editable ? '' : 'none';
   },
 
@@ -448,47 +487,44 @@ const PosView = {
     this.syncEditorControls();
   },
 
-  async bloquearPedido(coddoc, correlativo) {
-    const row = this._pedidosList.find(
-      (r) => String(r.CODDOC) === String(coddoc) && Number(r.CORRELATIVO) === Number(correlativo)
-    );
-    const label = row ? `${coddoc} #${correlativo}` : `${coddoc} #${correlativo}`;
+  async bloquearCompra(coddoc, correlativo) {
+    const label = `${coddoc} #${correlativo}`;
     const confirm = await CatalogosUI.fireConfirm({
-      title: '¿Bloquear pedido?',
-      html: `<p class="mb-0">El pedido <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse en el listado de operados.</p>`,
+      title: '¿Bloquear compra?',
+      html: `<p class="mb-0">La compra <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse en el listado de operados.</p>`,
       icon: 'warning',
       confirmText: 'BLOQUEAR',
       confirmClass: 'btn-catalogo-bloquear',
     });
     if (!confirm) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/bloquear?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}/bloquear?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, { method: 'POST' });
-    F.toast('Pedido bloqueado', 'success');
-    await this.fetchPedidosList();
+    F.toast('Compra bloqueada', 'success');
+    await this.fetchComprasList();
     this.refreshListDom();
   },
 
-  async eliminarPedido(coddoc, correlativo) {
+  async eliminarCompra(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
-    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'pedido' });
+    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'compra' });
     if (!pass) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pass: String(pass) }),
     });
-    F.toast('Pedido eliminado', 'success');
-    await this.fetchPedidosList();
+    F.toast('Compra eliminada', 'success');
+    await this.fetchComprasList();
     this.refreshListDom();
   },
 
-  async imprimirPedido(coddoc, correlativo) {
+  async imprimirCompra(coddoc, correlativo) {
     try {
-      const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
-      const pedido = await F.fetchJson(url);
-      const h = pedido.header;
-      const lines = pedido.lines || [];
+      const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+      const compra = await F.fetchJson(url);
+      const h = compra.header;
+      const lines = compra.lines || [];
       const rows = lines
         .map(
           (ln) => `<tr>
@@ -496,24 +532,25 @@ const PosView = {
             <td>${this.escapeHtml(ln.DESPROD)}</td>
             <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
             <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALCOSTO))}</td>
           </tr>`
         )
         .join('');
       const html = PrintReport.wrapDocument({
-        title: 'Pedido POS',
+        title: 'Compra',
         bodyHtml: `
           ${PrintReport.reportHeaderHtml({
-            title: 'Pedido de mostrador',
+            title: 'Compra a proveedor',
             subtitleHtml: `
-              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaPedido(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-              <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
+              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaCompra(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
+              <p><strong>Proveedor:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
+              ${h.SERIEFAC || h.NOFAC ? `<p><strong>Factura:</strong> ${PrintReport.escapeHtml(h.SERIEFAC || '')} ${PrintReport.escapeHtml(h.NOFAC || '')}</p>` : ''}
               ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
             `,
           })}
           <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
+          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALCOSTO))}</strong></p>
         `,
       });
       PrintReport.openAndPrint(html, 'width=800,height=600');
@@ -523,36 +560,36 @@ const PosView = {
   },
 
   refreshListDom() {
-    const grid = this._container?.querySelector('#pos-pedido-cards');
+    const grid = this._container?.querySelector('#compras-list-cards');
     if (grid) grid.innerHTML = this.renderListCardsHtml();
     const sub = this._container?.querySelector('.pos-list-sub');
     if (sub) {
-      sub.textContent = `${this.filteredPedidosList().length} pedido(s) operados`;
+      sub.textContent = `${this.filteredComprasList().length} compra(s) operadas`;
     }
   },
 
   renderListCardsHtml() {
-    const rows = this.filteredPedidosList();
+    const rows = this.filteredComprasList();
     if (!rows.length) {
-      return '<div class="pos-list-empty text-muted text-center py-5">No hay pedidos operados</div>';
+      return '<div class="pos-list-empty text-muted text-center py-5">No hay compras operadas</div>';
     }
     return rows
       .map((r) => {
         const label = `${r.CODDOC} #${r.CORRELATIVO}`;
-        const cliente = r.DOC_NOMCLIE || r.NEGOCIO || 'Sin cliente';
-        const tipo = [r.TIPONEGOCIO, r.NEGOCIO].filter(Boolean).join(' · ');
+        const proveedor = r.DOC_NOMCLIE || r.EMPRESA || r.RAZONSOCIAL || 'Sin proveedor';
+        const meta = [r.EMPRESA, r.RAZONSOCIAL].filter(Boolean).join(' · ');
         return `
           <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
             data-correlativo="${r.CORRELATIVO}">
             <div class="pos-pedido-card-top">
               <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
-              <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</span>
+              <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</span>
             </div>
-            <div class="pos-pedido-card-cliente">${this.escapeHtml(cliente)}</div>
-            ${tipo ? `<div class="pos-pedido-card-meta">${this.escapeHtml(tipo)}</div>` : ''}
+            <div class="pos-pedido-card-cliente">${this.escapeHtml(proveedor)}</div>
+            ${meta ? `<div class="pos-pedido-card-meta">${this.escapeHtml(meta)}</div>` : ''}
             <div class="pos-pedido-card-footer">
               <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
-              <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaPedido(r))}</span>
+              <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaCompra(r))}</span>
             </div>
             <div class="inv-card-actions">
               <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
@@ -574,50 +611,49 @@ const PosView = {
   },
 
   renderListScreen() {
-    const count = this.filteredPedidosList().length;
+    const count = this.filteredComprasList().length;
     return `
       <div class="pos-list-wrap">
         <div class="pos-list-header">
-          <h2 class="pos-list-title">Seleccione un pedido o cree uno nuevo</h2>
-          <p class="pos-list-sub text-muted mb-0">${count} pedido(s) operados</p>
+          <h2 class="pos-list-title">Seleccione una compra o cree una nueva</h2>
+          <p class="pos-list-sub text-muted mb-0">${count} compra(s) operadas</p>
         </div>
         <div class="pos-list-search mb-3">
           <div class="input-group">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input type="search" class="form-control pos-search-glow" id="pos-list-search"
-              placeholder="Buscar pedido, cliente, negocio…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+            <input type="search" class="form-control pos-search-glow" id="compras-list-search"
+              placeholder="Buscar compra, proveedor…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
           </div>
         </div>
-        <div class="pos-pedido-cards" id="pos-pedido-cards">${this.renderListCardsHtml()}</div>
-        <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-pos-list-nuevo"
-          aria-label="Nuevo pedido" title="Nuevo pedido">
+        <div class="pos-pedido-cards" id="compras-list-cards">${this.renderListCardsHtml()}</div>
+        <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-compras-list-nuevo"
+          aria-label="Nueva compra" title="Nueva compra">
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
         </button>
       </div>`;
   },
 
   renderEditorShell() {
-    const tipoLabel = this._config?.tiposDocumento?.[0]?.DESDOC || 'Pedidos';
-    const editable = this.docEditable(this._pedido?.header);
+    const tipoLabel = this._config?.tiposDocumento?.[0]?.DESDOC || 'Compras';
+    const editable = this.docEditable(this._compra?.header);
     return `
       <div class="pos-vista-wrap">
         <div class="pos-header card shadow-sm">
           <div class="card-body pos-header-body">
             <div class="pos-header-top d-flex flex-wrap align-items-center gap-2">
-              <button type="button" class="btn btn-sm btn-outline-secondary pos-btn-atras" id="btn-pos-atras">
+              <button type="button" class="btn btn-sm btn-outline-secondary pos-btn-atras" id="btn-compras-atras">
                 <i class="fa-solid fa-arrow-left me-1"></i>Atrás
               </button>
               <div class="pos-header-brand">
                 ${typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.posHeaderLogoHtml() : '<img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="pos-header-logo">'}
               </div>
-              <div class="pos-header-doc-label small fw-semibold" id="pos-header-doc">${this.escapeHtml(this.docLabel())}</div>
+              <div class="pos-header-doc-label small fw-semibold" id="compras-header-doc">${this.escapeHtml(this.docLabel())}</div>
               <div class="pos-doc-meta-fields d-flex flex-wrap align-items-end gap-2">
-                ${DocFecha.renderField('pos-doc-fecha', this._pedido?.header)}
-                ${this.renderVendedorField()}
+                ${DocFecha.renderField('compras-doc-fecha', this._compra?.header)}
               </div>
               <div class="pos-header-summary ms-auto text-end">
-                <h3 class="pos-header-total mb-0" id="pos-header-total">Q 0.00</h3>
-                <div class="pos-header-items" id="pos-header-items">0 items</div>
+                <h3 class="pos-header-total mb-0" id="compras-header-total">Q 0.00</h3>
+                <div class="pos-header-items" id="compras-header-items">0 items</div>
               </div>
             </div>
           </div>
@@ -632,24 +668,24 @@ const PosView = {
             <div class="card-body">
               <div class="input-group input-group-sm mb-2 pos-search-group">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input type="search" class="form-control pos-search-glow" id="pos-product-search"
+                <input type="search" class="form-control pos-search-glow" id="compras-product-search"
                   placeholder="Código o descripción…" autocomplete="off"${editable ? '' : ' disabled'}>
               </div>
-              <div class="pos-product-list" id="pos-product-list"></div>
+              <div class="pos-product-list" id="compras-product-list"></div>
             </div>
           </div>
           <div class="pos-panel card shadow-sm">
             <div class="card-header py-2">
               <i class="fa-solid fa-receipt me-1"></i>
-              <span class="fw-semibold">Pedido actual</span>
+              <span class="fw-semibold">Compra actual</span>
             </div>
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
-                <label class="form-label small mb-1">Cliente</label>
-                <input type="search" class="form-control form-control-sm pos-search-glow" id="pos-cliente-search"
-                  placeholder="Buscar cliente…" autocomplete="off"${editable ? '' : ' disabled'}>
-                <div id="pos-cliente-nombre" class="small text-muted mt-1"></div>
-                <div id="pos-cliente-results" class="list-group position-absolute w-100 shadow-sm d-none"
+                <label class="form-label small mb-1">Proveedor</label>
+                <input type="search" class="form-control form-control-sm pos-search-glow" id="compras-proveedor-search"
+                  placeholder="Buscar proveedor…" autocomplete="off"${editable ? '' : ' disabled'}>
+                <div id="compras-proveedor-nombre" class="small text-muted mt-1"></div>
+                <div id="compras-proveedor-results" class="list-group position-absolute w-100 shadow-sm d-none"
                   style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>
               </div>
               <div class="pos-cart-table flex-grow-1 d-flex flex-column">
@@ -664,7 +700,7 @@ const PosView = {
                         <th></th>
                       </tr>
                     </thead>
-                    <tbody id="pos-cart-tbody"></tbody>
+                    <tbody id="compras-cart-tbody"></tbody>
                   </table>
                 </div>
               </div>
@@ -672,20 +708,20 @@ const PosView = {
           </div>
         </div>
         ${editable ? `
-        <button type="button" class="pos-fab-finalizar" id="btn-pos-finalizar">
+        <button type="button" class="pos-fab-finalizar" id="btn-compras-finalizar">
           <i class="fa-solid fa-check me-2"></i>Finalizar
         </button>` : ''}
       </div>`;
   },
 
   bindListEvents() {
-    const search = this._container?.querySelector('#pos-list-search');
+    const search = this._container?.querySelector('#compras-list-search');
     search?.addEventListener('input', () => {
       this._listFilter = search.value;
       this.refreshListDom();
     });
 
-    this._container?.querySelector('#pos-pedido-cards')?.addEventListener('click', async (e) => {
+    this._container?.querySelector('#compras-list-cards')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('.inv-card-btn');
       if (!btn) return;
       e.preventDefault();
@@ -697,19 +733,19 @@ const PosView = {
       const action = btn.getAttribute('data-action');
       try {
         if (action === 'editar') await this.showEditor(coddoc, correlativo);
-        else if (action === 'imprimir') await this.imprimirPedido(coddoc, correlativo);
-        else if (action === 'bloquear') await this.bloquearPedido(coddoc, correlativo);
-        else if (action === 'eliminar') await this.eliminarPedido(coddoc, correlativo);
+        else if (action === 'imprimir') await this.imprimirCompra(coddoc, correlativo);
+        else if (action === 'bloquear') await this.bloquearCompra(coddoc, correlativo);
+        else if (action === 'eliminar') await this.eliminarCompra(coddoc, correlativo);
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
       }
     });
 
-    this._container?.querySelector('#btn-pos-list-nuevo')?.addEventListener('click', () => this.onNuevoPedido());
+    this._container?.querySelector('#btn-compras-list-nuevo')?.addEventListener('click', () => this.onNuevaCompra());
   },
 
   bindEditorEvents() {
-    const searchProd = this._container?.querySelector('#pos-product-search');
+    const searchProd = this._container?.querySelector('#compras-product-search');
     if (searchProd) {
       const run = F.debounce(() => this.buscarProductos(searchProd.value.trim()), 300);
       searchProd.addEventListener('input', run);
@@ -721,7 +757,7 @@ const PosView = {
       });
     }
 
-    this._container?.querySelector('#pos-product-list')?.addEventListener('click', (e) => {
+    this._container?.querySelector('#compras-product-list')?.addEventListener('click', (e) => {
       const item = e.target.closest('.pos-product-item');
       if (!item) return;
       const cod = item.getAttribute('data-codprod');
@@ -732,14 +768,14 @@ const PosView = {
       if (row) this.onProductClick(row);
     });
 
-    this._container?.querySelector('#pos-cart-tbody')?.addEventListener('click', async (e) => {
+    this._container?.querySelector('#compras-cart-tbody')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn || btn.disabled || this._cartBusy) return;
       e.preventDefault();
       const id = Number(btn.getAttribute('data-id'));
       const line = this.findLineById(id);
       if (!line) {
-        F.toast('No se encontró la línea del pedido', 'warning');
+        F.toast('No se encontró la línea de la compra', 'warning');
         return;
       }
       const action = btn.getAttribute('data-action');
@@ -757,19 +793,19 @@ const PosView = {
           else await this.actualizarCantidad(id, qty - 1);
         }
       } catch (err) {
-        F.toast(err.message || 'Error al actualizar el pedido', 'error');
+        F.toast(err.message || 'Error al actualizar la compra', 'error');
       } finally {
         this.setCartBusy(false);
         this.renderCart();
       }
     });
 
-    this._container?.querySelector('#btn-pos-atras')?.addEventListener('click', () => this.showList());
-    this._container?.querySelector('#btn-pos-finalizar')?.addEventListener('click', () => {
-      this.finalizarPedido().catch((err) => F.toast(err.message, 'error'));
+    this._container?.querySelector('#btn-compras-atras')?.addEventListener('click', () => this.showList());
+    this._container?.querySelector('#btn-compras-finalizar')?.addEventListener('click', () => {
+      this.finalizarCompra().catch((err) => F.toast(err.message, 'error'));
     });
 
-    const fechaInp = this._container?.querySelector('#pos-doc-fecha');
+    const fechaInp = this._container?.querySelector('#compras-doc-fecha');
     if (fechaInp) {
       fechaInp.addEventListener('change', () => {
         if (fechaInp.disabled) return;
@@ -779,57 +815,48 @@ const PosView = {
       });
     }
 
-    const vendedorSel = this._container?.querySelector('#pos-doc-vendedor');
-    if (vendedorSel) {
-      vendedorSel.addEventListener('change', () => {
-        if (vendedorSel.disabled) return;
-        const val = vendedorSel.value?.trim();
-        this.guardarVendedorDocumento(val).catch((err) => F.toast(err.message, 'error'));
-      });
-    }
-
-    const clienteSearch = this._container?.querySelector('#pos-cliente-search');
-    const clienteList = this._container?.querySelector('#pos-cliente-results');
-    if (clienteSearch && clienteList) {
-      const runCli = F.debounce(async () => {
-        const q = clienteSearch.value.trim();
+    const provSearch = this._container?.querySelector('#compras-proveedor-search');
+    const provList = this._container?.querySelector('#compras-proveedor-results');
+    if (provSearch && provList) {
+      const runProv = F.debounce(async () => {
+        const q = provSearch.value.trim();
         if (q.length < 2) {
-          clienteList.classList.add('d-none');
+          provList.classList.add('d-none');
           return;
         }
         try {
-          const rows = await this.buscarClientes(q);
+          const rows = await this.buscarProveedores(q);
           if (!rows.length) {
-            clienteList.innerHTML = '<div class="list-group-item small text-muted">Sin resultados</div>';
+            provList.innerHTML = '<div class="list-group-item small text-muted">Sin resultados</div>';
           } else {
-            clienteList.innerHTML = rows
+            provList.innerHTML = rows
               .map(
-                (c) =>
+                (p) =>
                   `<button type="button" class="list-group-item list-group-item-action small"
-                    data-codcliente="${c.CODCLIENTE}">
-                    <strong>${this.escapeHtml(c.NEGOCIO || c.NOMBRECLIENTE)}</strong>
-                    <span class="text-muted d-block">${this.escapeHtml(c.NOMBRECLIENTE || '')} · ${this.escapeHtml(c.NIT || '')}</span>
+                    data-codprov="${p.CODPROV}">
+                    <strong>${this.escapeHtml(p.EMPRESA || p.RAZONSOCIAL)}</strong>
+                    <span class="text-muted d-block">${this.escapeHtml(p.RAZONSOCIAL || '')} · ${this.escapeHtml(p.NIT || '')}</span>
                   </button>`
               )
               .join('');
           }
-          clienteList.classList.remove('d-none');
+          provList.classList.remove('d-none');
         } catch (err) {
-          clienteList.innerHTML = `<div class="list-group-item text-danger small">${this.escapeHtml(err.message)}</div>`;
-          clienteList.classList.remove('d-none');
+          provList.innerHTML = `<div class="list-group-item text-danger small">${this.escapeHtml(err.message)}</div>`;
+          provList.classList.remove('d-none');
         }
       }, 350);
-      clienteSearch.addEventListener('input', runCli);
-      clienteList.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-codcliente]');
+      provSearch.addEventListener('input', runProv);
+      provList.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-codprov]');
         if (!btn) return;
-        const cod = parseInt(btn.getAttribute('data-codcliente'), 10);
-        clienteList.classList.add('d-none');
-        await this.aplicarCliente(cod);
+        const cod = parseInt(btn.getAttribute('data-codprov'), 10);
+        provList.classList.add('d-none');
+        await this.aplicarProveedor(cod);
       });
       document.addEventListener('click', (e) => {
-        if (!clienteSearch.contains(e.target) && !clienteList.contains(e.target)) {
-          clienteList.classList.add('d-none');
+        if (!provSearch.contains(e.target) && !provList.contains(e.target)) {
+          provList.classList.add('d-none');
         }
       });
     }
@@ -838,7 +865,7 @@ const PosView = {
   async buscarProductos(q) {
     if (this._loadingProducts) return;
     this._loadingProducts = true;
-    const list = this._container?.querySelector('#pos-product-list');
+    const list = this._container?.querySelector('#compras-product-list');
     if (list) list.innerHTML = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
     try {
       const data = await this.fetchProductos(q);
@@ -851,20 +878,18 @@ const PosView = {
     }
   },
 
-  async buscarClientes(q) {
-    const emp = F.getEmpNit();
-    const params = new URLSearchParams({ empnit: emp, q, limit: '15', habilitado: 'SI', _: Date.now() });
-    const data = await F.fetchJson(`/api/clientes?${params}`);
+  async buscarProveedores(q) {
+    const data = await F.fetchJson(this.apiUrl('/proveedores', { q, limit: '15', _: Date.now() }));
     return data.rows || [];
   },
 
   async guardarFechaDocumento(fecha) {
     const key = this.docKey();
-    if (!key || !this.docEditable(this._pedido?.header)) return;
-    const actual = DocFecha.inputValueFromHeader(this._pedido.header);
+    if (!key || !this.docEditable(this._compra?.header)) return;
+    const actual = DocFecha.inputValueFromHeader(this._compra.header);
     if (fecha === actual) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    this._pedido = await F.fetchJson(url, {
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    this._compra = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ FECHA: fecha }),
@@ -873,70 +898,45 @@ const PosView = {
     F.toast('Fecha actualizada', 'success');
   },
 
-  async fetchVendedores() {
-    if (this._vendedores.length) return this._vendedores;
-    const data = await F.fetchJson(this.apiUrl('/vendedores', { _: Date.now() }));
-    this._vendedores = data.rows || [];
-    return this._vendedores;
-  },
-
-  async guardarVendedorDocumento(codven) {
+  async aplicarProveedor(codprov) {
     const key = this.docKey();
-    if (!key || !this.docEditable(this._pedido?.header)) return;
-    const h = this._pedido.header;
-    const actual = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
-    const next = codven || '';
-    if (next === actual) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    this._pedido = await F.fetchJson(url, {
+    if (!key || !this.docEditable(this._compra?.header)) return;
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    this._compra = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CODVEN: next ? parseInt(next, 10) : null }),
+      body: JSON.stringify({ CODPROV: codprov }),
     });
     this.renderHeaderInfo();
-    F.toast('Vendedor actualizado', 'success');
-  },
-
-  async aplicarCliente(codcliente) {
-    const key = this.docKey();
-    if (!key || !this.docEditable(this._pedido?.header)) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    this._pedido = await F.fetchJson(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CODCLIENTE: codcliente }),
-    });
-    this.renderHeaderInfo();
-    F.toast('Cliente actualizado', 'success');
+    F.toast('Proveedor actualizado', 'success');
   },
 
   async showList() {
     this._screen = 'list';
-    this._pedido = null;
-    await this.fetchPedidosList();
+    this._compra = null;
+    await this.fetchComprasList();
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();
   },
 
   async showEditor(coddoc, correlativo) {
     this._screen = 'editor';
-    await this.fetchVendedores();
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
     if (coddoc && correlativo) {
-      await this.loadPedido(coddoc, correlativo);
+      await this.loadCompra(coddoc, correlativo);
     }
     await this.buscarProductos('');
     this.renderAll();
   },
 
-  async onNuevoPedido() {
+  async onNuevaCompra() {
     try {
-      await this.crearPedido();
+      await this.crearCompra();
       const key = this.docKey();
       if (key) await this.showEditor(key.coddoc, key.correlativo);
     } catch (err) {
-      F.toast(err.message || 'Error al crear pedido', 'error');
+      F.toast(err.message || 'Error al crear compra', 'error');
     }
   },
 
@@ -954,14 +954,14 @@ const PosView = {
       return;
     }
 
-    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando POS…</div>`;
+    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando Compras…</div>`;
 
     try {
       this._config = await this.fetchConfig();
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
-            Configure un tipo de documento <strong>ENV</strong> (pedidos) activo para esta empresa.
+            Configure un tipo de documento <strong>COM</strong> (compras) activo para esta empresa.
           </div>`;
         return;
       }

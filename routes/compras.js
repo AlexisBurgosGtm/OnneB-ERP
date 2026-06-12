@@ -17,9 +17,9 @@ const router = express.Router();
 
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
-const TIPODOC_MOSTRADOR = 'ENV';
+const TIPODOC_COMPRAS = 'COM';
 const DEFAULT_BODEGA = 1;
-const CODTIPO_EMPLEADO_VENDEDOR = 3;
+const CODEMBARQUE_COMPRAS = 'COMPRAS';
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -66,14 +66,14 @@ function calcLineTotals(cantidad, costo, precio, equivale) {
   return { totalUnidades, totalCosto, totalPrecio };
 }
 
-async function getTipoDocEnv(pool, empnit, coddocPreferred) {
+async function getTipoDocCom(pool, empnit, coddocPreferred) {
   const req = pool.request().input('EMPNIT', sql.VarChar, empnit);
   if (coddocPreferred) {
     req.input('CODDOC', sql.VarChar, coddocPreferred);
     const one = await req.query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC = '${TIPODOC_MOSTRADOR}' AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
     `);
     if (one.recordset.length) return one.recordset[0];
   }
@@ -83,7 +83,7 @@ async function getTipoDocEnv(pool, empnit, coddocPreferred) {
     .query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_MOSTRADOR}' AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
       ORDER BY CODDOC
     `);
   return all.recordset[0] || null;
@@ -121,17 +121,22 @@ async function allocateCorrelativo(transaction, empnit, coddoc) {
   return next;
 }
 
-async function getClienteSnapshot(pool, empnit, codcliente) {
+async function getProveedorSnapshot(pool, empnit, codprov) {
   const r = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODCLIENTE', sql.Int, codcliente)
+    .input('CODPROV', sql.Int, codprov)
     .query(`
-      SELECT CODCLIENTE, NIT, NOMBRECLIENTE, DIRCLIENTE, NEGOCIO, TIPONEGOCIO
-      FROM dbo.CLIENTES
-      WHERE EMPNIT = @EMPNIT AND CODCLIENTE = @CODCLIENTE
+      SELECT CODPROV, NIT, EMPRESA, RAZONSOCIAL, DIRECCION
+      FROM dbo.PROVEEDORES
+      WHERE EMPNIT = @EMPNIT AND CODPROV = @CODPROV
     `);
   return r.recordset[0] || null;
+}
+
+function proveedorDisplayName(prov) {
+  if (!prov) return '';
+  return String(prov.EMPRESA || prov.RAZONSOCIAL || '').trim();
 }
 
 async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
@@ -163,8 +168,8 @@ async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
     .input('TOTALPRECIO', sql.Decimal(18, 3), totalPrecio)
     .input('TOTALIVA', sql.Float, totalIva)
     .input('TOTALSINIVA', sql.Float, totalSinIva)
-    .input('PAGO', sql.Decimal(18, 3), totalPrecio)
-    .input('DOC_ABONO', sql.Decimal(18, 3), totalPrecio)
+    .input('PAGO', sql.Decimal(18, 3), totalCosto)
+    .input('DOC_ABONO', sql.Decimal(18, 3), totalCosto)
     .query(`
       UPDATE dbo.DOCUMENTOS
       SET TOTALCOSTO = @TOTALCOSTO,
@@ -178,7 +183,7 @@ async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
   return { totalCosto, totalPrecio, totalIva, totalSinIva };
 }
 
-async function loadPedido(pool, empnit, coddoc, correlativo) {
+async function loadCompra(pool, empnit, coddoc, correlativo) {
   const headerRes = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -186,11 +191,11 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
       SELECT d.*, t.DESDOC, t.TIPODOC,
-        c.NEGOCIO AS CLI_NEGOCIO, c.TIPONEGOCIO AS CLI_TIPONEGOCIO,
-        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR
+        d.CODCLIENTE AS CODPROV,
+        p.EMPRESA AS PROV_EMPRESA, p.RAZONSOCIAL AS PROV_RAZON, p.DIRECCION AS PROV_DIR
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
-      LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.PROVEEDORES p ON p.EMPNIT = d.EMPNIT AND p.CODPROV = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   if (!headerRes.recordset.length) return null;
@@ -209,43 +214,38 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
   return { header: headerRes.recordset[0], lines: linesRes.recordset };
 }
 
-async function getVendedorActivo(pool, empnit, codempleado) {
-  const cod = parseInt(codempleado, 10);
-  if (Number.isNaN(cod)) return null;
-  const result = await pool
-    .request()
-    .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODEMPLEADO', sql.Int, cod)
-    .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
-    .query(`
-      SELECT CODEMPLEADO, NOMEMPLEADO
-      FROM dbo.Empleados
-      WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-        AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
-    `);
-  return result.recordset[0] || null;
-}
-
-router.get('/vendedores', async (req, res) => {
+router.get('/proveedores', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const q = String(req.query.q || '').trim();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), SEARCH_LIMIT);
   try {
     const pool = await req.app.locals.getDbPool();
-    const result = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
-      .query(`
-        SELECT CODEMPLEADO, NOMEMPLEADO
-        FROM dbo.Empleados
-        WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
-        ORDER BY NOMEMPLEADO ASC
-      `);
-    res.json({ rows: result.recordset });
+    const request = pool.request().input('EMPNIT', sql.VarChar, empnit).input('limit', sql.Int, limit);
+    let whereExtra = '';
+    if (q) {
+      request.input('qLike', sql.NVarChar, `%${q}%`);
+      whereExtra = `
+        AND (
+          p.EMPRESA LIKE @qLike OR p.RAZONSOCIAL LIKE @qLike
+          OR p.NIT LIKE @qLike OR CAST(p.CODPROV AS varchar(20)) LIKE @qLike
+          OR p.CONTACTO LIKE @qLike
+        )
+      `;
+    }
+    const result = await request.query(`
+      SELECT TOP (@limit)
+        p.CODPROV, p.NIT, p.EMPRESA, p.RAZONSOCIAL, p.DIRECCION, p.CONTACTO
+      FROM dbo.PROVEEDORES p
+      WHERE p.EMPNIT = @EMPNIT
+        ${whereExtra}
+      ORDER BY p.EMPRESA ASC
+    `);
+    res.json({ rows: result.recordset, q: q || null });
   } catch (err) {
-    console.warn('[API GET /pos/vendedores]', err.message);
+    console.warn('[API GET /compras/proveedores]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -263,32 +263,32 @@ router.get('/config', async (req, res) => {
       .query(`
         SELECT CODDOC, DESDOC, CORRELATIVO
         FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_MOSTRADOR}' AND ACTIVO = 'SI'
+        WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
         ORDER BY CODDOC
       `);
     const def = tipos.recordset[0] || null;
-    const cliente = await pool
+    const proveedor = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .query(`
-        SELECT TOP 1 CODCLIENTE, NIT, NOMBRECLIENTE, DIRCLIENTE, NEGOCIO
-        FROM dbo.CLIENTES
-        WHERE EMPNIT = @EMPNIT AND HABILITADO = 'SI'
-        ORDER BY CODCLIENTE
+        SELECT TOP 1 CODPROV, NIT, EMPRESA, RAZONSOCIAL, DIRECCION
+        FROM dbo.PROVEEDORES
+        WHERE EMPNIT = @EMPNIT
+        ORDER BY CODPROV
       `);
     res.json({
       empnit,
-      tipodoc: TIPODOC_MOSTRADOR,
+      tipodoc: TIPODOC_COMPRAS,
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
       coddocDefault: def?.CODDOC || null,
       tiposDocumento: tipos.recordset,
-      clienteDefault: cliente.recordset[0] || null,
+      proveedorDefault: proveedor.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
     });
   } catch (err) {
-    console.warn('[API GET /pos/config]', err.message);
+    console.warn('[API GET /compras/config]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -343,12 +343,12 @@ router.get('/productos', async (req, res) => {
     }));
     res.json({ rows, q: q || null });
   } catch (err) {
-    console.warn('[API GET /pos/productos]', err.message);
+    console.warn('[API GET /compras/productos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/pedidos', async (req, res) => {
+router.get('/compras', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -368,27 +368,27 @@ router.get('/pedidos', async (req, res) => {
     const result = await request.query(`
       SELECT TOP 100
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
-        d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
-        c.NEGOCIO, c.TIPONEGOCIO,
+        d.DOC_NOMCLIE, d.TOTALCOSTO, d.CODCLIENTE AS CODPROV, d.OBS, d.DOC_DIRCLIE,
+        p.EMPRESA, p.RAZONSOCIAL,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
-      LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.PROVEEDORES p ON p.EMPNIT = d.EMPNIT AND p.CODPROV = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT
-        AND t.TIPODOC = '${TIPODOC_MOSTRADOR}'
+        AND t.TIPODOC = '${TIPODOC_COMPRAS}'
         AND d.STATUS = '${status}'
         ${coddocFilter}
       ORDER BY d.ID DESC
     `);
     res.json({ rows: result.recordset, status });
   } catch (err) {
-    console.warn('[API GET /pos/pedidos]', err.message);
+    console.warn('[API GET /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/pedidos/:coddoc/:correlativo', async (req, res) => {
+router.get('/compras/:coddoc/:correlativo', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -398,42 +398,42 @@ router.get('/pedidos/:coddoc/:correlativo', async (req, res) => {
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   try {
     const pool = await req.app.locals.getDbPool();
-    const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-    if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
-    res.json(pedido);
+    const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+    if (!compra) return res.status(404).json({ error: 'Compra no encontrada' });
+    res.json(compra);
   } catch (err) {
-    console.warn('[API GET /pos/pedidos/:coddoc/:correlativo]', err.message);
+    console.warn('[API GET /compras/compras/:coddoc/:correlativo]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/pedidos', async (req, res) => {
+router.post('/compras', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
   const coddocBody = String(req.body?.CODDOC || '').trim();
-  const codcliente = parseInt(req.body?.CODCLIENTE, 10);
-  const usuario = String(req.body?.USUARIO || req.body?.usuario || 'POS').trim();
+  const codprov = parseInt(req.body?.CODPROV, 10);
+  const usuario = String(req.body?.USUARIO || req.body?.usuario || 'COMPRAS').trim();
   const obs = String(req.body?.OBS || '').trim();
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const tipo = await getTipoDocEnv(pool, empnit, coddocBody);
+    const tipo = await getTipoDocCom(pool, empnit, coddocBody);
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento ${TIPODOC_MOSTRADOR} (pedidos) activo para la empresa`,
+        error: `No hay tipo de documento ${TIPODOC_COMPRAS} (compras) activo para la empresa`,
       });
     }
     const coddoc = tipo.CODDOC;
-    let cliente = null;
-    if (!Number.isNaN(codcliente)) {
-      cliente = await getClienteSnapshot(pool, empnit, codcliente);
+    let proveedor = null;
+    if (!Number.isNaN(codprov)) {
+      proveedor = await getProveedorSnapshot(pool, empnit, codprov);
     }
-    if (!cliente) {
-      cliente = await getClienteSnapshot(pool, empnit, 1);
+    if (!proveedor) {
+      proveedor = await getProveedorSnapshot(pool, empnit, 1);
     }
-    if (!cliente) {
-      return res.status(400).json({ error: 'No hay cliente disponible para el pedido' });
+    if (!proveedor) {
+      return res.status(400).json({ error: 'No hay proveedor disponible para la compra' });
     }
 
     const parts = nowParts();
@@ -441,7 +441,7 @@ router.post('/pedidos', async (req, res) => {
     await transaction.begin();
     try {
       const correlativo = await allocateCorrelativo(transaction, empnit, coddoc);
-      const nom = cliente.NOMBRECLIENTE || cliente.NEGOCIO || 'CLIENTE';
+      const nom = proveedorDisplayName(proveedor) || 'PROVEEDOR';
       await transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -453,10 +453,10 @@ router.post('/pedidos', async (req, res) => {
         .input('MINUTO', sql.Int, parts.minuto)
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-        .input('CODCLIENTE', sql.Int, cliente.CODCLIENTE)
-        .input('DOC_NIT', sql.VarChar, String(cliente.NIT || 'CF'))
+        .input('CODCLIENTE', sql.Int, proveedor.CODPROV)
+        .input('DOC_NIT', sql.VarChar, String(proveedor.NIT || 'CF'))
         .input('DOC_NOMCLIE', sql.VarChar, nom)
-        .input('DOC_DIRCLIE', sql.VarChar, String(cliente.DIRCLIENTE || 'SN'))
+        .input('DOC_DIRCLIE', sql.VarChar, String(proveedor.DIRECCION || 'SN'))
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
         .query(`
@@ -470,26 +470,26 @@ router.post('/pedidos', async (req, res) => {
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
-            0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
+            0, 0, '${CODEMBARQUE_COMPRAS}', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, 1,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',
             @FECHA, 0, 0, 0, 0, 0
           )
         `);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.status(201).json(pedido);
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.status(201).json(compra);
     } catch (inner) {
       await transaction.rollback();
       throw inner;
     }
   } catch (err) {
-    console.warn('[API POST /pos/pedidos]', err.message);
+    console.warn('[API POST /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
+router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -506,15 +506,15 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo);
 
-    if (req.body?.CODCLIENTE !== undefined) {
-      const codcliente = parseInt(req.body.CODCLIENTE, 10);
-      if (Number.isNaN(codcliente)) return res.status(400).json({ error: 'CODCLIENTE inválido' });
-      const cliente = await getClienteSnapshot(pool, empnit, codcliente);
-      if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
-      request.input('CODCLIENTE', sql.Int, cliente.CODCLIENTE);
-      request.input('DOC_NIT', sql.VarChar, String(cliente.NIT || 'CF'));
-      request.input('DOC_NOMCLIE', sql.VarChar, cliente.NOMBRECLIENTE || cliente.NEGOCIO || '');
-      request.input('DOC_DIRCLIE', sql.VarChar, String(cliente.DIRCLIENTE || 'SN'));
+    if (req.body?.CODPROV !== undefined) {
+      const codprov = parseInt(req.body.CODPROV, 10);
+      if (Number.isNaN(codprov)) return res.status(400).json({ error: 'CODPROV inválido' });
+      const proveedor = await getProveedorSnapshot(pool, empnit, codprov);
+      if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado' });
+      request.input('CODCLIENTE', sql.Int, proveedor.CODPROV);
+      request.input('DOC_NIT', sql.VarChar, String(proveedor.NIT || 'CF'));
+      request.input('DOC_NOMCLIE', sql.VarChar, proveedorDisplayName(proveedor));
+      request.input('DOC_DIRCLIE', sql.VarChar, String(proveedor.DIRECCION || 'SN'));
       updates.push(
         'CODCLIENTE = @CODCLIENTE',
         'DOC_NIT = @DOC_NIT',
@@ -534,22 +534,6 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       request.input('CONCRE', sql.VarChar, concre);
       updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concre === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
     }
-    if (req.body?.CODVEN !== undefined) {
-      const raw = req.body.CODVEN;
-      if (raw === null || raw === '' || raw === 0 || raw === '0') {
-        request.input('CODVEN', sql.Int, null);
-        updates.push('CODVEN = @CODVEN');
-      } else {
-        const codven = parseInt(raw, 10);
-        if (Number.isNaN(codven)) return res.status(400).json({ error: 'CODVEN inválido' });
-        const vendedor = await getVendedorActivo(pool, empnit, codven);
-        if (!vendedor) {
-          return res.status(404).json({ error: 'Vendedor no encontrado o inactivo' });
-        }
-        request.input('CODVEN', sql.Int, vendedor.CODEMPLEADO);
-        updates.push('CODVEN = @CODVEN');
-      }
-    }
 
     const fechaParts = req.body?.FECHA !== undefined ? parseFechaInput(req.body.FECHA) : null;
     if (req.body?.FECHA !== undefined && !fechaParts) {
@@ -567,30 +551,20 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
           .input('EMPNIT', sql.VarChar, empnit)
           .input('CODDOC', sql.VarChar, coddoc)
           .input('CORRELATIVO', sql.Decimal(18, 0), correlativo);
-        if (req.body?.CODCLIENTE !== undefined) {
-          const codcliente = parseInt(req.body.CODCLIENTE, 10);
-          const cliente = await getClienteSnapshot(pool, empnit, codcliente);
+        if (req.body?.CODPROV !== undefined) {
+          const codprov = parseInt(req.body.CODPROV, 10);
+          const proveedor = await getProveedorSnapshot(pool, empnit, codprov);
           txnReq
-            .input('CODCLIENTE', sql.Int, cliente.CODCLIENTE)
-            .input('DOC_NIT', sql.VarChar, String(cliente.NIT || 'CF'))
-            .input('DOC_NOMCLIE', sql.VarChar, cliente.NOMBRECLIENTE || cliente.NEGOCIO || '')
-            .input('DOC_DIRCLIE', sql.VarChar, String(cliente.DIRCLIENTE || 'SN'));
+            .input('CODCLIENTE', sql.Int, proveedor.CODPROV)
+            .input('DOC_NIT', sql.VarChar, String(proveedor.NIT || 'CF'))
+            .input('DOC_NOMCLIE', sql.VarChar, proveedorDisplayName(proveedor))
+            .input('DOC_DIRCLIE', sql.VarChar, String(proveedor.DIRECCION || 'SN'));
         }
         if (req.body?.OBS !== undefined) {
           txnReq.input('OBS', sql.VarChar, String(req.body.OBS || ''));
         }
         if (req.body?.CONCRE !== undefined) {
           txnReq.input('CONCRE', sql.VarChar, String(req.body.CONCRE || 'CON').trim().toUpperCase());
-        }
-        if (req.body?.CODVEN !== undefined) {
-          const raw = req.body.CODVEN;
-          if (raw === null || raw === '' || raw === 0 || raw === '0') {
-            txnReq.input('CODVEN', sql.Int, null);
-          } else {
-            const codven = parseInt(raw, 10);
-            const vendedor = await getVendedorActivo(pool, empnit, codven);
-            txnReq.input('CODVEN', sql.Int, vendedor.CODEMPLEADO);
-          }
         }
         const result = await txnReq.query(`
           UPDATE dbo.DOCUMENTOS SET ${updates.join(', ')}
@@ -599,7 +573,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
         `);
         if (result.rowsAffected[0] === 0) {
           await transaction.rollback();
-          return res.status(404).json({ error: 'Pedido no encontrado o no operado' });
+          return res.status(404).json({ error: 'Compra no encontrada o no operada' });
         }
       }
       if (fechaParts) {
@@ -616,23 +590,23 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
           `);
         if (!chk.recordset.length) {
           await transaction.rollback();
-          return res.status(404).json({ error: 'Pedido no encontrado o no operado' });
+          return res.status(404).json({ error: 'Compra no encontrada o no operada' });
         }
       }
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.json(pedido);
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.json(compra);
     } catch (inner) {
       await transaction.rollback();
       throw inner;
     }
   } catch (err) {
-    console.warn('[API PATCH /pos/pedidos]', err.message);
+    console.warn('[API PATCH /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
+router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -657,9 +631,9 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         SELECT STATUS FROM dbo.DOCUMENTOS
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
       `);
-    if (!docCheck.recordset.length) return res.status(404).json({ error: 'Pedido no encontrado' });
+    if (!docCheck.recordset.length) return res.status(404).json({ error: 'Compra no encontrada' });
     if (!isStatusEditable(docCheck.recordset[0].STATUS)) {
-      return res.status(400).json({ error: 'El pedido ya no está en edición' });
+      return res.status(400).json({ error: 'La compra ya no está en edición' });
     }
 
     const prodRes = await pool
@@ -678,7 +652,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     if (!prodRes.recordset.length) return res.status(404).json({ error: 'Producto o precio no encontrado' });
     const prod = prodRes.recordset[0];
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const precio = Number(prod.PRECIO) || 0;
+    const precio = costo;
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
@@ -735,19 +709,19 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       const lineId = ins.recordset[0]?.ID;
       const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.status(201).json({ lineId, totals, pedido });
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.status(201).json({ lineId, totals, compra });
     } catch (inner) {
       await transaction.rollback();
       throw inner;
     }
   } catch (err) {
-    console.warn('[API POST /pos/pedidos/lineas]', err.message);
+    console.warn('[API POST /compras/compras/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) => {
+router.patch('/compras/:coddoc/:correlativo/lineas/:lineId', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -776,7 +750,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       `);
     if (!lineRes.recordset.length) return res.status(404).json({ error: 'Línea no encontrada' });
     if (!isStatusEditable(lineRes.recordset[0].STATUS)) {
-      return res.status(400).json({ error: 'El pedido ya no está en edición' });
+      return res.status(400).json({ error: 'La compra ya no está en edición' });
     }
     const line = lineRes.recordset[0];
     const totals = calcLineTotals(cantidad, line.COSTO, line.PRECIO, line.EQUIVALE);
@@ -804,19 +778,19 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         `);
       const docTotals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.json({ totals: docTotals, pedido });
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.json({ totals: docTotals, compra });
     } catch (inner) {
       await transaction.rollback();
       throw inner;
     }
   } catch (err) {
-    console.warn('[API PATCH /pos/pedidos/lineas]', err.message);
+    console.warn('[API PATCH /compras/compras/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) => {
+router.delete('/compras/:coddoc/:correlativo/lineas/:lineId', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -853,19 +827,19 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
       }
       const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.json({ totals, pedido });
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.json({ totals, compra });
     } catch (inner) {
       await transaction.rollback();
       throw inner;
     }
   } catch (err) {
-    console.warn('[API DELETE /pos/pedidos/lineas]', err.message);
+    console.warn('[API DELETE /compras/compras/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
+router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -873,25 +847,49 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   const correlativo = parseCorrelativo(req.params.correlativo);
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
+  const seriefac = String(req.body?.SERIEFAC || '').trim();
+  const nofac = String(req.body?.NOFAC || '').trim();
+  const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
+  if (!seriefac) return res.status(400).json({ error: 'Serie factura requerida' });
+  if (!nofac) return res.status(400).json({ error: 'Número factura requerido' });
+  if (concre !== 'CON' && concre !== 'CRE') {
+    return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
+  }
+  const vencParts = concre === 'CRE' ? parseFechaInput(req.body?.VENCIMIENTO) : null;
+  if (concre === 'CRE' && !vencParts) {
+    return res.status(400).json({ error: 'Vencimiento requerido para crédito (YYYY-MM-DD)' });
+  }
 
   try {
     const pool = await req.app.locals.getDbPool();
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
-      if (obs !== null) {
-        await transaction
-          .request()
-          .input('EMPNIT', sql.VarChar, empnit)
-          .input('CODDOC', sql.VarChar, coddoc)
-          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-          .input('OBS', sql.VarChar, obs)
-          .query(`
-            UPDATE dbo.DOCUMENTOS SET OBS = @OBS
-            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-              AND ${SQL_STATUS_EDITABLE}
-          `);
+      const txnUpd = transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .input('SERIEFAC', sql.VarChar, seriefac)
+        .input('NOFAC', sql.VarChar, nofac)
+        .input('CONCRE', sql.VarChar, concre)
+        .input('TIPOPAGO', sql.VarChar, concre === 'CRE' ? 'CREDITO' : 'CONTADO');
+      let vencSql = '';
+      if (concre === 'CRE') {
+        txnUpd.input('VENCIMIENTO', sql.Date, vencParts.fecha);
+        vencSql = ', VENCIMIENTO = @VENCIMIENTO';
       }
+      if (obs !== null) {
+        txnUpd.input('OBS', sql.VarChar, obs);
+      }
+      const obsSql = obs !== null ? ', OBS = @OBS' : '';
+      await txnUpd.query(`
+        UPDATE dbo.DOCUMENTOS
+        SET SERIEFAC = @SERIEFAC, NOFAC = @NOFAC, CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO
+          ${vencSql}${obsSql}
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+          AND ${SQL_STATUS_EDITABLE}
+      `);
       const docRow = await transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -903,12 +901,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         `);
       if (!docRow.recordset.length) {
         await transaction.rollback();
-        return res.status(404).json({ error: 'Pedido no encontrado' });
+        return res.status(404).json({ error: 'Compra no encontrada' });
       }
       const docMeta = docRow.recordset[0];
       if (!isStatusEditable(docMeta.STATUS)) {
         await transaction.rollback();
-        return res.status(400).json({ error: 'El pedido no está operado' });
+        return res.status(400).json({ error: 'La compra no está operada' });
       }
       const lineCount = await transaction
         .request()
@@ -921,7 +919,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         `);
       if (lineCount.recordset[0].cnt < 1) {
         await transaction.rollback();
-        return res.status(400).json({ error: 'Agregue al menos un producto al pedido' });
+        return res.status(400).json({ error: 'Agregue al menos un producto a la compra' });
       }
       await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       let inv = { tipom: 0, lineas: 0, productos: 0 };
@@ -948,8 +946,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         }
       }
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-      res.json({ ok: true, pedido, inventario: inv });
+      const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+      res.json({ ok: true, compra, inventario: inv });
     } catch (inner) {
       await transaction.rollback();
       if (inner instanceof InventarioError) {
@@ -961,12 +959,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
     if (err instanceof InventarioError) {
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
     }
-    console.warn('[API POST /pos/pedidos/finalizar]', err.message);
+    console.warn('[API POST /compras/compras/finalizar]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/pedidos/:coddoc/:correlativo/bloquear', async (req, res) => {
+router.post('/compras/:coddoc/:correlativo/bloquear', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -987,17 +985,17 @@ router.post('/pedidos/:coddoc/:correlativo/bloquear', async (req, res) => {
           AND STATUS = '${STATUS_OPERADO}'
       `);
     if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: 'Pedido no encontrado o no se puede bloquear' });
+      return res.status(404).json({ error: 'Compra no encontrada o no se puede bloquear' });
     }
-    const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
-    res.json({ ok: true, pedido });
+    const compra = await loadCompra(pool, empnit, coddoc, correlativo);
+    res.json({ ok: true, compra });
   } catch (err) {
-    console.warn('[API POST /pos/pedidos/bloquear]', err.message);
+    console.warn('[API POST /compras/compras/bloquear]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
+router.delete('/compras/:coddoc/:correlativo', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
@@ -1018,7 +1016,7 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
     if (err.statusCode === 401) {
       return res.status(401).json({ error: err.message });
     }
-    console.warn('[API DELETE /pos/pedidos]', err.message);
+    console.warn('[API DELETE /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

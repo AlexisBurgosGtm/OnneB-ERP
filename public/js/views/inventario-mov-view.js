@@ -265,6 +265,23 @@ function createInventarioMovView(cfg) {
       this.refreshListDom();
     },
 
+    async eliminarDocumento(coddoc, correlativo) {
+      const label = `${coddoc} #${correlativo}`;
+      const pass = await CatalogosUI.confirmEliminarDocumento({ label });
+      if (!pass) return;
+      await F.fetchJson(
+        this.apiUrl(`/documentos/${encodeURIComponent(coddoc)}/${correlativo}`),
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pass: String(pass) }),
+        }
+      );
+      F.toast('Documento eliminado', 'success');
+      await this.fetchDocsList();
+      this.refreshListDom();
+    },
+
     async imprimirDocumento(coddoc, correlativo) {
       try {
         const doc = await this.loadDocumento(coddoc, correlativo);
@@ -281,24 +298,21 @@ function createInventarioMovView(cfg) {
             </tr>`
           )
           .join('');
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${this.escapeHtml(cfg.printTitle || 'Inventario')}</title>
-          <style>body{font-family:Segoe UI,sans-serif;padding:1.5rem;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:1rem}
-          th,td{border:1px solid #ccc;padding:4px 6px}th{background:#f5f5f5;text-align:left}.text-end{text-align:right}h1{font-size:1.1rem;margin:0}</style></head>
-          <body><h1>${this.escapeHtml(cfg.printTitle || 'Movimiento inventario')}</h1>
-          <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFecha(h)} · ${this.escapeHtml(h.USUARIO || '')}</p>
-          ${h.OBS ? `<p><em>${this.escapeHtml(h.OBS)}</em></p>` : ''}
-          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Unidades</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          </body></html>`;
-        const w = window.open('', '_blank', 'width=800,height=600');
-        if (!w) {
-          F.toast('Permita ventanas emergentes para imprimir', 'warning');
-          return;
-        }
-        w.document.write(html);
-        w.document.close();
-        w.focus();
-        w.print();
+        const html = PrintReport.wrapDocument({
+          title: cfg.printTitle || 'Inventario',
+          bodyHtml: `
+            ${PrintReport.reportHeaderHtml({
+              title: cfg.printTitle || 'Movimiento inventario',
+              subtitleHtml: `
+                <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFecha(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
+                ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
+              `,
+            })}
+            <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Unidades</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
+          `,
+        });
+        PrintReport.openAndPrint(html, 'width=800,height=600');
       } catch (err) {
         F.toast(err.message || 'Error al imprimir', 'error');
       }
@@ -533,6 +547,9 @@ function createInventarioMovView(cfg) {
               <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
                 <i class="fa-solid fa-lock me-1"></i>Bloquear
               </button>
+              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
+                <i class="fa-solid fa-trash me-1"></i>Eliminar
+              </button>
             </div>
           </div>`;
         })
@@ -602,7 +619,7 @@ function createInventarioMovView(cfg) {
                 <i class="fa-solid fa-arrow-left me-1"></i>Atrás
               </button>
               <div class="pos-header-brand">
-                <img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="pos-header-logo">
+                ${typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.posHeaderLogoHtml() : '<img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="pos-header-logo">'}
               </div>
               <div class="pos-header-doc-label small fw-semibold" id="${NS}-header-doc">${this.escapeHtml(this.docLabel())}</div>
               ${DocFecha.renderField(`${NS}-doc-fecha`, this._documento?.header)}
@@ -705,6 +722,7 @@ function createInventarioMovView(cfg) {
           if (action === 'editar') await this.showEditor(coddoc, correlativo);
           else if (action === 'imprimir') await this.imprimirDocumento(coddoc, correlativo);
           else if (action === 'bloquear') await this.bloquearDocumento(coddoc, correlativo);
+          else if (action === 'eliminar') await this.eliminarDocumento(coddoc, correlativo);
         } catch (err) {
           F.toast(err.message || 'Error', 'error');
         }

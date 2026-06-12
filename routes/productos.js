@@ -1,6 +1,7 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
+const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
 
 const router = express.Router();
 
@@ -623,45 +624,54 @@ router.post('/', async (req, res) => {
       .query(`SELECT 1 AS ok FROM dbo.PRODUCTOS WHERE EMPNIT = @EMPNIT AND CODPROD = @CODPROD`);
     if (dup.recordset.length) return res.status(409).json({ error: 'El código de producto ya existe' });
 
-    await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODPROD', sql.VarChar, data.CODPROD)
-      .input('CODPROD2', sql.VarChar, data.CODPROD2 || null)
-      .input('DESPROD', sql.VarChar, data.DESPROD)
-      .input('DESPROD2', sql.VarChar, data.DESPROD2 || null)
-      .input('DESPROD3', sql.VarChar, data.DESPROD3 || null)
-      .input('UXC', sql.Int, data.UXC ?? null)
-      .input('CODMEDIDACOMPRA', sql.VarChar, data.CODMEDIDACOMPRA || null)
-      .input('COSTO', sql.Decimal(18, 3), data.COSTO ?? 0)
-      .input('CODMARCA', sql.Int, data.CODMARCA ?? null)
-      .input('CODCLAUNO', sql.Int, data.CODCLAUNO ?? null)
-      .input('CODCLADOS', sql.Int, data.CODCLADOS ?? null)
-      .input('CODCLATRES', sql.Int, data.CODCLATRES ?? null)
-      .input('HABILITADO', sql.VarChar, data.HABILITADO)
-      .input('VENCIMIENTO', sql.Date, data.VENCIMIENTO || null)
-      .input('SERIE', sql.Int, data.SERIE ?? 0)
-      .input('PORCDESCUENTO', sql.Decimal(18, 3), data.PORCDESCUENTO ?? 0)
-      .input('INVMINIMO', sql.Int, data.INVMINIMO ?? 0)
-      .input('INVMAXIMO', sql.Int, data.INVMAXIMO ?? 0)
-      .input('EXENTO', sql.Int, data.EXENTO ?? 0)
-      .input('NF', sql.Int, data.NF ?? 0)
-      .input('TIPOPROD', sql.VarChar, data.TIPOPROD || 'P')
-      .input('FACTURAR', sql.VarChar, data.FACTURAR || 'SI')
-      .input('BONO', sql.Float, data.BONO ?? 0)
-      .query(`
-        INSERT INTO dbo.PRODUCTOS (
-          EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
-          CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE,
-          PORCDESCUENTO, INVMINIMO, INVMAXIMO, EXENTO, NF, TIPOPROD, EXISTENCIA, FACTURAR, BONO,
-          FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO
-        ) VALUES (
-          @EMPNIT, @CODPROD, @CODPROD2, @DESPROD, @DESPROD2, @DESPROD3, @UXC, @CODMEDIDACOMPRA, @COSTO,
-          @CODMARCA, @CODCLAUNO, @CODCLADOS, @CODCLATRES, @HABILITADO, @VENCIMIENTO, @SERIE,
-          @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
-          0, 0, 0
-        )
-      `);
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    try {
+      await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODPROD', sql.VarChar, data.CODPROD)
+        .input('CODPROD2', sql.VarChar, data.CODPROD2 || null)
+        .input('DESPROD', sql.VarChar, data.DESPROD)
+        .input('DESPROD2', sql.VarChar, data.DESPROD2 || null)
+        .input('DESPROD3', sql.VarChar, data.DESPROD3 || null)
+        .input('UXC', sql.Int, data.UXC ?? null)
+        .input('CODMEDIDACOMPRA', sql.VarChar, data.CODMEDIDACOMPRA || null)
+        .input('COSTO', sql.Decimal(18, 3), data.COSTO ?? 0)
+        .input('CODMARCA', sql.Int, data.CODMARCA ?? null)
+        .input('CODCLAUNO', sql.Int, data.CODCLAUNO ?? null)
+        .input('CODCLADOS', sql.Int, data.CODCLADOS ?? null)
+        .input('CODCLATRES', sql.Int, data.CODCLATRES ?? null)
+        .input('HABILITADO', sql.VarChar, data.HABILITADO)
+        .input('VENCIMIENTO', sql.Date, data.VENCIMIENTO || null)
+        .input('SERIE', sql.Int, data.SERIE ?? 0)
+        .input('PORCDESCUENTO', sql.Decimal(18, 3), data.PORCDESCUENTO ?? 0)
+        .input('INVMINIMO', sql.Int, data.INVMINIMO ?? 0)
+        .input('INVMAXIMO', sql.Int, data.INVMAXIMO ?? 0)
+        .input('EXENTO', sql.Int, data.EXENTO ?? 0)
+        .input('NF', sql.Int, data.NF ?? 0)
+        .input('TIPOPROD', sql.VarChar, data.TIPOPROD || 'P')
+        .input('FACTURAR', sql.VarChar, data.FACTURAR || 'SI')
+        .input('BONO', sql.Float, data.BONO ?? 0)
+        .query(`
+          INSERT INTO dbo.PRODUCTOS (
+            EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
+            CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE,
+            PORCDESCUENTO, INVMINIMO, INVMAXIMO, EXENTO, NF, TIPOPROD, EXISTENCIA, FACTURAR, BONO,
+            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO
+          ) VALUES (
+            @EMPNIT, @CODPROD, @CODPROD2, @DESPROD, @DESPROD2, @DESPROD3, @UXC, @CODMEDIDACOMPRA, @COSTO,
+            @CODMARCA, @CODCLAUNO, @CODCLADOS, @CODCLATRES, @HABILITADO, @VENCIMIENTO, @SERIE,
+            @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
+            0, 0, 0
+          )
+        `);
+      await ensureInvSaldoForProduct(transaction, empnit, data.CODPROD, 0);
+      await transaction.commit();
+    } catch (inner) {
+      await transaction.rollback();
+      throw inner;
+    }
     res.status(201).json({ ok: true, CODPROD: data.CODPROD });
   } catch (err) {
     console.warn('[API POST /productos]', err.message);

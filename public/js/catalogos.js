@@ -73,6 +73,10 @@ const CatalogosUI = {
     return `<i class="fa-solid fa-floppy-disk"></i> ${label}`;
   },
 
+  eliminarButtonHtml(label = 'Eliminar') {
+    return `<i class="fa-solid fa-trash"></i> ${label}`;
+  },
+
   /** Modal formulario — Guardar a la derecha */
   async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen } = {}) {
     const result = await Swal.fire({
@@ -113,8 +117,8 @@ const CatalogosUI = {
       icon,
       showCancelButton: true,
       confirmButtonText:
-        confirmClass === 'btn-catalogo-eliminar' && (confirmText === 'Aceptar' || !confirmText)
-          ? 'Eliminar'
+        confirmClass === 'btn-catalogo-eliminar'
+          ? this.eliminarButtonHtml(confirmText === 'Aceptar' || !confirmText ? 'Eliminar' : confirmText)
           : confirmText === 'Guardar'
             ? this.guardarButtonHtml('Guardar')
             : confirmText,
@@ -149,8 +153,11 @@ const CatalogosUI = {
     configId = 2,
     confirmText = 'Aceptar',
     cancelText = 'Cancelar',
+    confirmClass = null,
     verificarEnTiempoReal = true,
   } = {}) {
+    const isEliminar = confirmText === 'Eliminar';
+    const confirmCls = confirmClass || (isEliminar ? 'btn-catalogo-eliminar' : 'btn-modal-guardar');
     let lastVerifyOk = false;
     let verifySeq = 0;
 
@@ -187,29 +194,42 @@ const CatalogosUI = {
     }, 350);
 
     const result = await Swal.fire({
-      ...this.modalBase(),
+      ...this.modalBase({ customClass: { confirmButton: confirmCls } }),
       title,
       html: `
-        <div class="catalogo-form text-start config-pass-modal">
+        <form class="catalogo-form text-start config-pass-modal" autocomplete="off" novalidate
+          onsubmit="return false">
           <p class="small text-muted mb-2 mb-sm-3">${text}</p>
           <label for="config-pass-input" class="form-label small mb-0">Clave</label>
           <input
-            type="password"
+            type="text"
             id="config-pass-input"
-            class="form-control form-control-sm"
+            class="form-control form-control-sm config-pass-mask"
             autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
             spellcheck="false"
+            inputmode="text"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore="true"
+            data-form-type="other"
+            name="onneb-admin-auth"
             placeholder="Clave de administrador"
           >
           <div id="config-pass-feedback" class="small mt-1 config-pass-feedback" aria-live="polite"></div>
-        </div>
+        </form>
       `,
       width: 420,
       showCancelButton: true,
-      confirmButtonText: this.guardarButtonHtml(confirmText),
+      confirmButtonText: isEliminar
+        ? this.eliminarButtonHtml(confirmText)
+        : this.guardarButtonHtml(confirmText),
       cancelButtonText: this.cancelButtonHtml(cancelText),
       focusConfirm: false,
       didOpen: () => {
+        const form = Swal.getPopup()?.querySelector('.config-pass-modal');
+        form?.setAttribute('autocomplete', 'off');
         const input = document.getElementById('config-pass-input');
         const feedback = document.getElementById('config-pass-feedback');
         input?.focus();
@@ -240,10 +260,27 @@ const CatalogosUI = {
           Swal.showValidationMessage('Clave incorrecta');
           return false;
         }
-        return true;
+        return pass;
       },
     });
-    return result.isConfirmed;
+    return result.isConfirmed ? result.value : null;
+  },
+
+  /** Confirmación + clave admin para eliminar documento. @returns {Promise<string|null>} clave o null */
+  async confirmEliminarDocumento({ label, tipo = 'documento' }) {
+    const ok = await this.fireConfirm({
+      title: '¿Eliminar documento?',
+      html: `<p class="mb-0">Se eliminará permanentemente el ${tipo} <strong>${label}</strong>.</p>`,
+      icon: 'warning',
+      confirmText: 'Eliminar',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!ok) return null;
+    return this.solicitarClaveAdmin({
+      title: 'Autorizar eliminación',
+      text: 'Ingrese la clave para autorizar movimientos.',
+      confirmText: 'Eliminar',
+    });
   },
 };
 

@@ -1,9 +1,12 @@
 /**
- * Logo de empresa — carga única al iniciar sesión; se limpia al cerrar.
+ * Logo de empresa — carga única al iniciar sesión; memoria + sessionStorage por EMPNIT.
  */
 const EmpresaLogo = {
   _dataUrl: null,
   _empNit: null,
+  _loadPromise: null,
+  _pendingNit: null,
+  _STORAGE_PREFIX: 'onneb-emp-logo:',
 
   hexToDataUrl(hex, mime = 'image/png') {
     const clean = String(hex || '')
@@ -32,15 +35,71 @@ const EmpresaLogo = {
     return 'image/png';
   },
 
-  async loadForSession(empNit) {
-    this.clearSession();
-    const nit = String(empNit || '').trim();
-    if (!nit) return null;
+  _readFromStorage(empNit) {
     try {
-      const res = await fetch(
-        `/api/empresas/${encodeURIComponent(nit)}/logo?_=${Date.now()}`,
-        { cache: 'no-store', headers: { Accept: 'application/json' } }
-      );
+      return sessionStorage.getItem(`${this._STORAGE_PREFIX}${empNit}`);
+    } catch {
+      return null;
+    }
+  },
+
+  _writeToStorage(empNit, dataUrl) {
+    try {
+      if (dataUrl) sessionStorage.setItem(`${this._STORAGE_PREFIX}${empNit}`, dataUrl);
+      else sessionStorage.removeItem(`${this._STORAGE_PREFIX}${empNit}`);
+    } catch {
+      /* sessionStorage no disponible */
+    }
+  },
+
+  _clearStored(empNit) {
+    if (!empNit) return;
+    this._writeToStorage(empNit, null);
+  },
+
+  async loadForSession(empNit) {
+    const nit = String(empNit || '').trim();
+    if (!nit) {
+      this.clearSession();
+      return null;
+    }
+
+    if (this._empNit === nit && this._dataUrl) {
+      return this._dataUrl;
+    }
+
+    const stored = this._readFromStorage(nit);
+    if (stored) {
+      this._empNit = nit;
+      this._dataUrl = stored;
+      this.refreshAllPosHeaders();
+      return this._dataUrl;
+    }
+
+    if (this._loadPromise && this._pendingNit === nit) {
+      return this._loadPromise;
+    }
+
+    this._pendingNit = nit;
+    this._loadPromise = this._fetchFromApi(nit).finally(() => {
+      this._loadPromise = null;
+      this._pendingNit = null;
+    });
+    return this._loadPromise;
+  },
+
+  async _fetchFromApi(empNit) {
+    if (this._empNit && this._empNit !== empNit) {
+      this._clearStored(this._empNit);
+    }
+    this._dataUrl = null;
+    this._empNit = empNit;
+
+    try {
+      const res = await fetch(`/api/empresas/${encodeURIComponent(empNit)}/logo`, {
+        cache: 'default',
+        headers: { Accept: 'application/json' },
+      });
       if (!res.ok) return null;
       const data = await res.json();
       const hex = data?.hex || data?.LOGO || data?.EMPLOGO || '';
@@ -48,7 +107,8 @@ const EmpresaLogo = {
       const mime = data?.mime || this.detectMime(hex);
       this._dataUrl = this.hexToDataUrl(hex, mime);
       if (!this._dataUrl) return null;
-      this._empNit = nit;
+      this._writeToStorage(empNit, this._dataUrl);
+      this.refreshAllPosHeaders();
       return this._dataUrl;
     } catch (err) {
       console.warn('[EmpresaLogo] load:', err.message);
@@ -67,8 +127,30 @@ const EmpresaLogo = {
     return `<img src="${this._dataUrl}" alt="${alt}"${cls}>`;
   },
 
+  /** Logo POS / inventario: empresa o icono OnneB por defecto. */
+  posHeaderLogoHtml(className = 'pos-header-logo') {
+    const src = this.getDataUrl();
+    if (src) {
+      return `<img src="${src}" width="40" height="40" alt="Logo empresa" class="${className}">`;
+    }
+    return `<img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="${className}">`;
+  },
+
+  refreshAllPosHeaders() {
+    document.querySelectorAll('.pos-header-brand').forEach((el) => {
+      el.innerHTML = this.posHeaderLogoHtml();
+    });
+    if (typeof updateHeaderEmpresaLogo === 'function') {
+      updateHeaderEmpresaLogo();
+    }
+  },
+
   clearSession() {
+    if (this._empNit) this._clearStored(this._empNit);
     this._dataUrl = null;
     this._empNit = null;
+    this._loadPromise = null;
+    this._pendingNit = null;
+    this.refreshAllPosHeaders();
   },
 };

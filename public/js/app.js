@@ -172,6 +172,22 @@
     btnMenuFab.classList.toggle('is-visible', currentView === 'main');
   }
 
+  function updateHeaderEmpresaLogo() {
+    const logoWrap = document.getElementById('header-empresa-logo');
+    const iconEl = document.getElementById('header-empresa-icon-fallback');
+    if (!logoWrap) return;
+    const dataUrl = typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.getDataUrl() : null;
+    if (dataUrl) {
+      logoWrap.innerHTML = `<img src="${dataUrl}" alt="" class="header-empresa-logo-img">`;
+      logoWrap.hidden = false;
+      if (iconEl) iconEl.hidden = true;
+    } else {
+      logoWrap.innerHTML = '';
+      logoWrap.hidden = true;
+      if (iconEl) iconEl.hidden = false;
+    }
+  }
+
   function updateHeaderSessionInfo() {
     const empNameEl = document.getElementById('header-empresa-name');
     const userNameEl = document.getElementById('header-user-name');
@@ -185,6 +201,7 @@
     if (userNameEl) userNameEl.textContent = username;
     if (empBadge) empBadge.title = empNombre !== '—' ? `Empresa: ${empNombre}` : 'Empresa activa';
     if (userBadge) userBadge.title = username !== '—' ? `Usuario: ${username}` : 'Usuario activo';
+    updateHeaderEmpresaLogo();
   }
 
   function clearHeaderSessionInfo() {
@@ -192,7 +209,10 @@
     const userNameEl = document.getElementById('header-user-name');
     if (empNameEl) empNameEl.textContent = '—';
     if (userNameEl) userNameEl.textContent = '—';
+    updateHeaderEmpresaLogo();
   }
+
+  window.updateHeaderEmpresaLogo = updateHeaderEmpresaLogo;
 
   function navigateTo(target) {
     if (target === currentView) return;
@@ -385,7 +405,9 @@
         loadInicio();
         F.toast(`Bienvenido — ${empNombre}`, 'success');
         if (typeof EmpresaLogo !== 'undefined') {
-          EmpresaLogo.loadForSession(empNit).catch(() => {});
+          EmpresaLogo.loadForSession(empNit)
+            .then(() => updateHeaderEmpresaLogo())
+            .catch(() => updateHeaderEmpresaLogo());
         }
       } catch (err) {
         stopLoadingOverlays();
@@ -487,12 +509,16 @@
 
       if (key === 'inicio') {
         loadInicio();
+      } else if (key === 'compras' && typeof ComprasView !== 'undefined') {
+        ComprasView.load(mainContent);
       } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
         PosView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
         SalidasInventarioView.load(mainContent);
+      } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
+        InventarioView.load(mainContent);
       } else if (key === 'suscripciones' && typeof SuscripcionesView !== 'undefined') {
         SuscripcionesView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
@@ -583,6 +609,12 @@
 
     if (F.isLoggedIn()) {
       updateHeaderSessionInfo();
+      const empNit = F.getEmpNit();
+      if (empNit && typeof EmpresaLogo !== 'undefined') {
+        EmpresaLogo.loadForSession(empNit)
+          .then(() => updateHeaderEmpresaLogo())
+          .catch(() => updateHeaderEmpresaLogo());
+      }
     }
 
     if (buildCounterEl) {

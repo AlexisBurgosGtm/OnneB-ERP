@@ -36,7 +36,9 @@ const usuariosRouter = require('./routes/usuarios');
 const { router: configRouter } = require('./routes/config');
 const developerRouter = require('./routes/developer');
 const posRouter = require('./routes/pos');
+const comprasRouter = require('./routes/compras');
 const { entradasRouter, salidasRouter } = require('./routes/inventario-docs');
+const inventarioSaldoRouter = require('./routes/inventario-saldo');
 const documentosRouter = require('./routes/documentos');
 const productosRouter = require('./routes/productos');
 const suscripcionesRouter = require('./routes/suscripciones');
@@ -54,7 +56,8 @@ async function getDbPool() {
   return dbPool;
 }
 
-app.use(express.json());
+/** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
+app.use(express.json({ limit: '3mb' }));
 app.locals.getDbPool = getDbPool;
 
 const publicDir = path.join(__dirname, 'public');
@@ -123,8 +126,10 @@ app.use('/api/usuarios', usuariosRouter);
 app.use('/api/config', configRouter);
 app.use('/api/developer', developerRouter);
 app.use('/api/pos', posRouter);
+app.use('/api/compras', comprasRouter);
 app.use('/api/inventario/ent', entradasRouter);
 app.use('/api/inventario/sal', salidasRouter);
+app.use('/api/inventario', inventarioSaldoRouter);
 app.use('/api/documentos', documentosRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/suscripciones', suscripcionesRouter);

@@ -49,11 +49,30 @@
   box-shadow: 0 1px 3px color-mix(in srgb, var(--onneb-base-black) 6%, transparent);
 }
 
+.header-empresa-logo {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.header-empresa-logo-img {
+  display: block;
+  max-height: 1.65rem;
+  max-width: 3.25rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .header-empresa-badge i,
 .header-user-badge i {
   color: var(--onneb-brand);
   font-size: 0.85rem;
   flex-shrink: 0;
+}
+
+.header-empresa-icon-fallback[hidden] {
+  display: none !important;
 }
 
 .header-empresa-badge span,
