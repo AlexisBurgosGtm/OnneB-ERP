@@ -17,16 +17,21 @@
   max-width: 100%;
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.65rem;
   overflow: hidden;
+}
+
+.productos-vista-wrap.catalogo-vista-wrap {
+  padding-bottom: 0;
 }
 
 .productos-stats-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
-  margin-bottom: 0.75rem;
+  flex-shrink: 0;
 }
 
 .productos-stat-card {
@@ -53,10 +58,22 @@
   color: #dc3545;
 }
 
+/* Layout principal: lista + panel precios */
 .productos-list-layout {
-  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 34%);
+  gap: 0.65rem;
   min-height: 0;
-  align-items: stretch;
+  overflow: hidden;
+}
+
+.productos-list-col,
+.productos-precios-sidebar {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 .productos-glass-card {
@@ -81,12 +98,81 @@
 
 .productos-list-card,
 .productos-precios-card {
-  min-height: 12rem;
-  max-height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.productos-precios-sidebar {
+.productos-list-card .card-body {
+  flex: 1;
   min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.productos-list-card .productos-list-toolbar,
+.productos-list-card .productos-list-filters,
+.productos-list-card .marcas-search-wrap {
+  flex-shrink: 0;
+}
+
+.productos-table-wrap {
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--onneb-base-black, #000) 8%, transparent);
+  background: color-mix(in srgb, var(--app-bg, #ffffff) 92%, transparent);
+}
+
+.productos-table-wrap .table {
+  margin-bottom: 0;
+}
+
+.productos-table-wrap .table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--app-surface, #f5f5f5);
+  border-bottom-width: 1px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--onneb-base-black, #000) 8%, transparent);
+}
+
+.productos-precios-card .card-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.productos-precios-card #productos-precios-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.productos-opciones-slot:not(.d-none) {
+  flex-shrink: 0;
+}
+
+.productos-opciones-inner {
+  background: var(--app-surface-elevated, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--app-border, rgba(0, 0, 0, 0.08));
+}
+
+.productos-opciones-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.productos-opcion-btn {
+  justify-content: flex-start;
+  white-space: nowrap;
 }
 
 .productos-precios-panel-header {
@@ -117,6 +203,12 @@
 
 .productos-money {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.productos-precio-unit {
+  font-weight: 400;
+  margin-left: 0.2rem;
   white-space: nowrap;
 }
 
@@ -185,6 +277,7 @@
 
 .productos-screen-layer {
   width: 100%;
+  min-height: 0;
   transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
 }
@@ -195,6 +288,7 @@
   z-index: 2;
   flex: 1;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -299,4 +393,58 @@
   opacity: 0.65;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Tablet / móvil: apilar paneles con scroll independiente */
+@media (max-width: 991.98px) {
+  .productos-vista-wrap {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .productos-list-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    overflow: hidden;
+    gap: 0.75rem;
+  }
+
+  .productos-list-col,
+  .productos-precios-sidebar {
+    min-height: 0;
+  }
+
+  .productos-table-wrap {
+    max-height: 100%;
+  }
+
+  .productos-list-card .productos-list-filters .small.text-muted:last-child {
+    display: none;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .productos-stats-row {
+    gap: 0.4rem;
+  }
+
+  .productos-stat-card {
+    min-width: calc(50% - 0.25rem);
+    max-width: none;
+  }
+
+  .productos-stat-card:last-child {
+    min-width: 100%;
+  }
+
+  .productos-list-layout {
+    grid-template-rows: minmax(0, 1.35fr) minmax(0, 0.65fr);
+  }
+
+  .productos-opciones-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .productos-list-card .card-body {
+    padding: 0.65rem;
+  }
 }

@@ -2,6 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
+const { assertAdminPass } = require('../lib/config-auth');
 
 const router = express.Router();
 
@@ -193,6 +194,19 @@ function validatePrecioEquivalencia(data, { requireMedida = true } = {}) {
   const eq = parseInt(data.EQUIVALE, 10);
   if (!Number.isFinite(eq) || eq <= 0) return 'El equivalente debe ser mayor a cero';
   return null;
+}
+
+async function countDocProductosMovimientos(pool, empnit, codprod) {
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODPROD', sql.VarChar, codprod)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM dbo.DOCPRODUCTOS
+      WHERE EMPNIT = @EMPNIT AND CODPROD = @CODPROD
+    `);
+  return result.recordset[0]?.cnt ?? 0;
 }
 
 async function getProductoCostoUnitario(pool, empnit, codprod) {
@@ -542,6 +556,23 @@ router.delete('/:codprod/precios/:precioId', async (req, res) => {
   }
 });
 
+router.get('/:codprod/movimientos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const count = await countDocProductosMovimientos(pool, empnit, codprod);
+    res.json({ codprod, empnit, count, tieneMovimientos: count > 0 });
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/movimientos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/:codprod/habilitado', async (req, res) => {
   if (!isDbConfigured()) {
     return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -724,8 +755,17 @@ router.delete('/:codprod', async (req, res) => {
   if (!empnit) return;
   const codprod = String(req.params.codprod || '').trim();
   if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
   try {
     const pool = await req.app.locals.getDbPool();
+    const movCount = await countDocProductosMovimientos(pool, empnit, codprod);
+    if (movCount > 0) {
+      return res.status(409).json({
+        error: `No se puede eliminar: el producto tiene ${movCount} movimiento(s) en documentos.`,
+        count: movCount,
+      });
+    }
+    await assertAdminPass(pool, pass);
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -750,6 +790,9 @@ router.delete('/:codprod', async (req, res) => {
       throw inner;
     }
   } catch (err) {
+    if (err.statusCode === 401) {
+      return res.status(401).json({ error: err.message });
+    }
     console.warn('[API DELETE /productos/:codprod]', err.message);
     res.status(500).json({ error: err.message });
   }

@@ -71,7 +71,10 @@ const ComprasView = {
   },
 
   lineId(ln) {
-    return ln?.ID ?? ln?.Id ?? null;
+    const raw = ln?.ID ?? ln?.Id ?? ln?.id ?? null;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const n = Number(raw);
+    return Number.isNaN(n) ? raw : n;
   },
 
   findLineById(id) {
@@ -170,6 +173,193 @@ const ComprasView = {
     return `${y}-${m}-${day}`;
   },
 
+  resolveFinalizarFacDefaults(h, key) {
+    const seriefacStored = String(h?.SERIEFAC ?? '').trim();
+    const nofacStored = String(h?.NOFAC ?? '').trim();
+    return {
+      seriefac: seriefacStored || String(key?.coddoc ?? '').trim(),
+      nofac: nofacStored || (key?.correlativo != null ? String(key.correlativo) : ''),
+    };
+  },
+
+  readFinalizarFormForSubmit(key) {
+    let seriefac = document.getElementById('compras-finalizar-serie')?.value?.trim() || '';
+    let nofac = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
+    if (!seriefac) seriefac = String(key?.coddoc ?? '').trim();
+    if (!nofac) nofac = key?.correlativo != null ? String(key.correlativo) : '';
+    const concre = document.getElementById('compras-finalizar-concre')?.value || 'CON';
+    const venc = document.getElementById('compras-finalizar-venc')?.value?.trim() || '';
+    const obs = document.getElementById('compras-finalizar-obs')?.value?.trim() || '';
+    if (concre === 'CRE' && !venc) {
+      Swal.showValidationMessage('Ingrese la fecha de vencimiento');
+      return null;
+    }
+    Swal.resetValidationMessage?.();
+    return {
+      seriefac,
+      nofac,
+      concre,
+      vencimiento: concre === 'CRE' ? venc : null,
+      obs,
+    };
+  },
+
+  cargarCostosUrl(key) {
+    return `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${encodeURIComponent(key.correlativo)}/cargar-costos?empnit=${encodeURIComponent(F.getEmpNit())}`;
+  },
+
+  cargarCostosPendingLines() {
+    return (this._compra?.lines || []).filter((ln) => this.lineId(ln) != null);
+  },
+
+  cargarCostosBtnIdleHtml() {
+    return '<i class="fa-solid fa-coins" aria-hidden="true"></i> Cargar Costos';
+  },
+
+  ocultarConfirmacionCargarCostos() {
+    document.getElementById('compras-cargar-costos-confirm')?.classList.add('d-none');
+  },
+
+  setCargarCostosStatus(message, variant = 'info') {
+    const el = document.getElementById('compras-cargar-costos-status');
+    if (!el) return;
+    const text = String(message ?? '').trim();
+    if (!text) {
+      el.textContent = '';
+      el.classList.add('d-none');
+      el.classList.remove('is-info', 'is-success', 'is-warning', 'is-error', 'is-loading');
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove('d-none', 'is-info', 'is-success', 'is-warning', 'is-error', 'is-loading');
+    el.classList.add(`is-${variant}`);
+  },
+
+  mostrarConfirmacionCargarCostos() {
+    const pending = this.cargarCostosPendingLines();
+    if (!pending.length) {
+      this.setCargarCostosStatus('No hay líneas válidas para actualizar costos.', 'warning');
+      return;
+    }
+    this.setCargarCostosStatus('', 'info');
+    const countEl = document.getElementById('compras-cargar-costos-count');
+    if (countEl) countEl.textContent = String(pending.length);
+    const panel = document.getElementById('compras-cargar-costos-confirm');
+    panel?.classList.remove('d-none');
+    panel?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+
+  setFinalizarModalBusy(busy) {
+    const cargarBtn = document.getElementById('compras-finalizar-btn-cargar-costos');
+    const confirmAceptarBtn = document.getElementById('compras-cargar-costos-aceptar');
+    const confirmCancelBtn = document.getElementById('compras-cargar-costos-cancel');
+    const submitBtn = document.getElementById('compras-finalizar-btn-submit');
+    const cancelBtn = document.getElementById('compras-finalizar-btn-cancel');
+    [cargarBtn, confirmAceptarBtn, confirmCancelBtn, submitBtn, cancelBtn].forEach((btn) => {
+      if (btn) btn.disabled = busy;
+    });
+    const busyHtml = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Cargando…';
+    if (cargarBtn) {
+      cargarBtn.innerHTML = busy ? busyHtml : this.cargarCostosBtnIdleHtml();
+    }
+  },
+
+  async ejecutarCargarCostosModal(key) {
+    const pending = this.cargarCostosPendingLines();
+    if (!pending.length) {
+      this.setCargarCostosStatus('No hay líneas válidas para actualizar costos.', 'warning');
+      return;
+    }
+    const cargarBtn = document.getElementById('compras-finalizar-btn-cargar-costos');
+    if (cargarBtn?.disabled) return;
+    this.ocultarConfirmacionCargarCostos();
+    this.setFinalizarModalBusy(true);
+    const total = pending.length;
+    let okCount = 0;
+    let errCount = 0;
+    const errLines = [];
+    try {
+      for (let i = 0; i < pending.length; i += 1) {
+        const line = pending[i];
+        const lineId = this.lineId(line);
+        const label = line.DESPROD || line.CODPROD || 'Producto';
+        this.setCargarCostosStatus(`Actualizando (${i + 1}/${total}): ${label}…`, 'loading');
+        try {
+          const res = await F.fetchJson(this.cargarCostosUrl(key), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lineId }),
+          });
+          okCount += 1;
+          const name = res.desprod || res.codprod || label;
+          this.setCargarCostosStatus(
+            `(${i + 1}/${total}) ${name} — costo unit. ${this.formatMoney(res.costoUnitario)}`,
+            'info'
+          );
+        } catch (err) {
+          errCount += 1;
+          errLines.push(`${label}: ${err.message}`);
+          this.setCargarCostosStatus(`Error en ${label}: ${err.message}`, 'error');
+        }
+      }
+      if (okCount > 0 && errCount === 0) {
+        this.setCargarCostosStatus(
+          `${okCount} producto(s) actualizado(s). Presione Finalizar para completar la compra.`,
+          'success'
+        );
+      } else if (okCount > 0) {
+        this.setCargarCostosStatus(
+          `${okCount} actualizado(s), ${errCount} error(es). ${errLines.slice(0, 2).join(' · ')}`,
+          'warning'
+        );
+      } else {
+        this.setCargarCostosStatus(errLines[0] || 'No se pudo actualizar ningún costo.', 'error');
+      }
+    } finally {
+      this.setFinalizarModalBusy(false);
+    }
+  },
+
+  bindFinalizarModalExtras(key, finish) {
+    document.getElementById('compras-finalizar-btn-cancel')?.addEventListener('click', () => finish(null));
+    document.getElementById('compras-finalizar-btn-cargar-costos')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.mostrarConfirmacionCargarCostos();
+    });
+    document.getElementById('compras-finalizar-btn-submit')?.addEventListener('click', () => {
+      const value = this.readFinalizarFormForSubmit(key);
+      if (!value) return;
+      finish(value);
+    });
+
+    document.getElementById('compras-cargar-costos-cancel')?.addEventListener('click', () => {
+      this.ocultarConfirmacionCargarCostos();
+    });
+    document.getElementById('compras-cargar-costos-aceptar')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.ejecutarCargarCostosModal(key).catch((err) => {
+        this.setCargarCostosStatus(err.message, 'error');
+      });
+    });
+
+    const concreSel = document.getElementById('compras-finalizar-concre');
+    const vencWrap = document.getElementById('compras-finalizar-venc-wrap');
+    const concreWrap = document.getElementById('compras-finalizar-concre-wrap');
+    const toggleVenc = () => {
+      const isCre = concreSel?.value === 'CRE';
+      vencWrap?.classList.toggle('d-none', !isCre);
+      if (concreWrap) {
+        concreWrap.classList.toggle('col-6', isCre);
+        concreWrap.classList.toggle('col-12', !isCre);
+      }
+    };
+    concreSel?.addEventListener('change', toggleVenc);
+    toggleVenc();
+    document.getElementById('compras-finalizar-serie')?.focus();
+  },
+
   async finalizarCompra() {
     const key = this.docKey();
     if (!key) return;
@@ -190,15 +380,30 @@ const ComprasView = {
     const proveedor = this.escapeHtml(this.proveedorLabel(h));
     const dir = this.escapeHtml(h.DOC_DIRCLIE || h.PROV_DIR || '—');
     const obsVal = this.escapeHtml(h.OBS || '');
-    const seriefacVal = this.escapeHtml(h.SERIEFAC || '');
-    const nofacVal = this.escapeHtml(h.NOFAC || '');
+    const facDefaults = this.resolveFinalizarFacDefaults(h, key);
+    const seriefacVal = this.escapeHtml(facDefaults.seriefac);
+    const nofacVal = this.escapeHtml(facDefaults.nofac);
     const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
 
-    const { isConfirmed, value } = await Swal.fire({
-      ...CatalogosUI.modalBase(),
-      title: 'Finalizar compra',
-      html: `
+    const value = await new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+        Swal.close();
+      };
+
+      Swal.fire({
+        ...CatalogosUI.modalBase({
+          customClass: {
+            popup: 'modal-catalogo compras-finalizar-modal',
+            confirmButton: 'btn-modal-guardar',
+          },
+        }),
+        title: 'Finalizar compra',
+        html: `
         <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())}</p>
         <div class="text-start">
           <div class="mb-2">
@@ -213,12 +418,12 @@ const ComprasView = {
             <div class="col-6">
               <label class="form-label small mb-0" for="compras-finalizar-serie">Serie factura</label>
               <input type="text" id="compras-finalizar-serie" class="form-control form-control-sm"
-                value="${seriefacVal}" autocomplete="off">
+                value="${seriefacVal}" autocomplete="off" placeholder="${this.escapeHtml(key.coddoc)}">
             </div>
             <div class="col-6">
               <label class="form-label small mb-0" for="compras-finalizar-num">Número factura</label>
               <input type="text" id="compras-finalizar-num" class="form-control form-control-sm"
-                value="${nofacVal}" autocomplete="off">
+                value="${nofacVal}" autocomplete="off" placeholder="${this.escapeHtml(String(key.correlativo))}">
             </div>
           </div>
           <div class="row g-2 mb-2 align-items-end" id="compras-finalizar-pago-row">
@@ -239,52 +444,51 @@ const ComprasView = {
             <textarea id="compras-finalizar-obs" class="form-control form-control-sm" rows="2"
               placeholder="Observaciones…">${obsVal}</textarea>
           </div>
+          <div id="compras-cargar-costos-confirm" class="compras-cargar-confirm d-none mt-3">
+            <div class="compras-cargar-confirm-box">
+              <p class="small mb-2 mb-sm-3">
+                Se actualizarán <strong>PRODUCTOS</strong> y <strong>PRECIOS</strong> de
+                <strong id="compras-cargar-costos-count">0</strong> producto(s) según los costos de esta compra.
+                ¿Desea continuar?
+              </p>
+              <div class="d-flex flex-wrap gap-2 justify-content-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="compras-cargar-costos-cancel">
+                  No, volver
+                </button>
+                <button type="button" class="btn btn-sm btn-modal-cargar-costos" id="compras-cargar-costos-aceptar">
+                  <i class="fa-solid fa-coins me-1" aria-hidden="true"></i>Sí, cargar costos
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="compras-cargar-costos-status" class="compras-cargar-costos-status small d-none" aria-live="polite"></div>
+          <div class="compras-finalizar-footer">
+            <button type="button" class="btn-modal-cancelar" id="compras-finalizar-btn-cancel">
+              ${CatalogosUI.cancelButtonHtml('Cancelar')}
+            </button>
+            <button type="button" class="btn-modal-cargar-costos" id="compras-finalizar-btn-cargar-costos">
+              ${this.cargarCostosBtnIdleHtml()}
+            </button>
+            <button type="button" class="btn-modal-guardar" id="compras-finalizar-btn-submit">
+              ${CatalogosUI.guardarButtonHtml('Finalizar')}
+            </button>
+          </div>
         </div>
       `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
-      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
-      focusConfirm: false,
-      didOpen: () => {
-        const concreSel = document.getElementById('compras-finalizar-concre');
-        const vencWrap = document.getElementById('compras-finalizar-venc-wrap');
-        const concreWrap = document.getElementById('compras-finalizar-concre-wrap');
-        const toggleVenc = () => {
-          const isCre = concreSel?.value === 'CRE';
-          vencWrap?.classList.toggle('d-none', !isCre);
-          if (concreWrap) {
-            concreWrap.classList.toggle('col-6', isCre);
-            concreWrap.classList.toggle('col-12', !isCre);
-          }
-        };
-        concreSel?.addEventListener('change', toggleVenc);
-        toggleVenc();
-        document.getElementById('compras-finalizar-serie')?.focus();
-      },
-      preConfirm: () => {
-        const seriefac = document.getElementById('compras-finalizar-serie')?.value?.trim() || '';
-        const nofac = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
-        const concre = document.getElementById('compras-finalizar-concre')?.value || 'CON';
-        const venc = document.getElementById('compras-finalizar-venc')?.value?.trim() || '';
-        const obs = document.getElementById('compras-finalizar-obs')?.value?.trim() || '';
-        if (!seriefac) {
-          Swal.showValidationMessage('Ingrese la serie de factura');
-          return false;
-        }
-        if (!nofac) {
-          Swal.showValidationMessage('Ingrese el número de factura');
-          return false;
-        }
-        if (concre === 'CRE' && !venc) {
-          Swal.showValidationMessage('Ingrese la fecha de vencimiento');
-          return false;
-        }
-        return { seriefac, nofac, concre, vencimiento: concre === 'CRE' ? venc : null, obs };
-      },
+        icon: 'question',
+        showCancelButton: false,
+        showConfirmButton: false,
+        focusConfirm: false,
+        allowOutsideClick: () => !document.getElementById('compras-finalizar-btn-cargar-costos')?.disabled,
+        didOpen: () => {
+          this.bindFinalizarModalExtras(key, finish);
+        },
+      }).then(() => {
+        if (!settled) resolve(null);
+      });
     });
 
-    if (!isConfirmed) return;
+    if (!value) return;
 
     const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {

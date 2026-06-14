@@ -54,6 +54,14 @@ const ProductosView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  precioUnitarioLabelHtml(precio, equivale) {
+    const eq = Number(equivale);
+    const pr = Number(precio);
+    if (!Number.isFinite(eq) || eq <= 0 || Number.isNaN(pr)) return '';
+    const unit = Math.round((pr / eq) * 10000) / 10000;
+    return `<span class="productos-precio-unit small text-muted">(${this.escapeHtml(this.formatMoney(unit))})</span>`;
+  },
+
   normalizeHabilitado(value) {
     return String(value ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO';
   },
@@ -471,7 +479,10 @@ const ProductosView = {
             </div>
           </div>
         </div>
-        ${isEdit ? '<div id="productos-form-precios-wrap" class="productos-form-precios-section"></div>' : ''}
+        ${isEdit ? `<div id="productos-form-precios-wrap" class="productos-form-precios-section">
+          <div id="productos-form-opciones-panel" class="productos-opciones-slot mb-3"></div>
+          <div id="productos-form-precios-panel"></div>
+        </div>` : ''}
         ${this.btnGuardarFab()}
       </div>
     `;
@@ -795,10 +806,67 @@ const ProductosView = {
     });
   },
 
+  renderOpcionesReportes() {
+    const panel =
+      this._screen === 'form'
+        ? this._container?.querySelector('#productos-form-opciones-panel')
+        : this._container?.querySelector('#productos-opciones-panel');
+    if (!panel) return;
+    if (!this._selectedCodprod && this._screen !== 'form') {
+      panel.innerHTML = '';
+      panel.classList.add('d-none');
+      return;
+    }
+    const cod = this.activeCodprod();
+    if (!cod) {
+      panel.innerHTML = '';
+      panel.classList.add('d-none');
+      return;
+    }
+    panel.classList.remove('d-none');
+    const row = this.findRow(cod) || this._formRow;
+    const label = row?.DESPROD || cod;
+    panel.innerHTML = `
+      <div class="card productos-opciones-inner shadow-sm">
+        <div class="card-body py-2 px-3">
+          <div class="small text-muted mb-2 text-truncate" title="${this.escapeHtml(label)}">
+            <i class="fa-solid fa-box me-1"></i>${this.escapeHtml(label)}
+          </div>
+          <div class="productos-opciones-grid">
+            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="kardex">
+              <i class="fa-solid fa-book me-1"></i>Kardex
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="movimientos">
+              <i class="fa-solid fa-arrows-rotate me-1"></i>Movimientos
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="ventas">
+              <i class="fa-solid fa-cart-shopping me-1"></i>Ventas
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="compras">
+              <i class="fa-solid fa-truck me-1"></i>Compras
+            </button>
+          </div>
+        </div>
+      </div>`;
+    panel.querySelectorAll('.productos-opcion-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.onReportePendiente(btn.dataset.reporte));
+    });
+  },
+
+  onReportePendiente(tipo) {
+    const labels = {
+      kardex: 'Kardex',
+      movimientos: 'Movimientos',
+      ventas: 'Ventas',
+      compras: 'Compras',
+    };
+    F.toast(`Reporte ${labels[tipo] || tipo} — pendiente de definir.`, 'info');
+  },
+
   renderPreciosPanel() {
     const panel =
       this._screen === 'form'
-        ? this._container?.querySelector('#productos-form-precios-wrap')
+        ? this._container?.querySelector('#productos-form-precios-panel')
         : this._container?.querySelector('#productos-precios-panel');
     if (!panel) return;
     if (!this._selectedCodprod) {
@@ -807,6 +875,7 @@ const ProductosView = {
         <p class="text-muted small mb-0 py-2">
           Seleccione un producto de la lista para ver y editar sus precios.
         </p>`;
+      this.renderOpcionesReportes();
       return;
     }
     const rows = this._precios;
@@ -818,7 +887,7 @@ const ProductosView = {
           <td>${this.escapeHtml(p.CODMEDIDA)}</td>
           <td class="text-end">${this.escapeHtml(p.EQUIVALE)}</td>
           <td class="text-end">${this.escapeHtml(this.formatMoney(p.COSTO))}</td>
-          <td class="text-end productos-money">${this.escapeHtml(this.formatMoney(p.PRECIO))}</td>
+          <td class="text-end productos-money">${this.escapeHtml(this.formatMoney(p.PRECIO))}${this.precioUnitarioLabelHtml(p.PRECIO, p.EQUIVALE)}</td>
           <td class="text-end">
             <button type="button" class="btn btn-sm btn-outline-primary btn-precio-edit" data-id="${p.ID}" title="Editar">
               <i class="fa-solid fa-pen"></i>
@@ -860,6 +929,7 @@ const ProductosView = {
     panel.querySelectorAll('.btn-precio-del').forEach((btn) => {
       btn.addEventListener('click', () => this.onPrecioEliminar(parseInt(btn.getAttribute('data-id'), 10)));
     });
+    this.renderOpcionesReportes();
   },
 
   async loadPrecios(codprod) {
@@ -997,10 +1067,38 @@ const ProductosView = {
       title: '¿Eliminar producto?',
       html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(row?.DESPROD || codprod)}</strong> y todos sus precios.</p>`,
       icon: 'warning',
+      confirmText: 'Continuar',
     });
     if (!ok) return;
     try {
-      await F.fetchJson(this.apiBase(`/${encodeURIComponent(codprod)}`), { method: 'DELETE' });
+      const mov = await F.fetchJson(
+        `${this.apiBase(`/${encodeURIComponent(codprod)}/movimientos`)}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      if (mov.tieneMovimientos) {
+        F.alert(
+          'No se puede eliminar',
+          `El producto tiene ${mov.count} movimiento(s) registrados en documentos (DOCPRODUCTOS).`,
+          'warning'
+        );
+        return;
+      }
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+      return;
+    }
+    const pass = await CatalogosUI.solicitarClaveAdmin({
+      title: 'Autorizar eliminación',
+      text: 'Ingrese la clave de administrador para eliminar el producto.',
+      confirmText: 'Eliminar',
+    });
+    if (!pass) return;
+    try {
+      await F.fetchJson(this.apiBase(`/${encodeURIComponent(codprod)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass: String(pass) }),
+      });
       F.toast('Producto eliminado', 'success');
       if (this._selectedCodprod === codprod) {
         this._selectedCodprod = null;
@@ -1205,16 +1303,16 @@ const ProductosView = {
       <div class="productos-vista-wrap catalogo-vista-wrap">
         <div class="productos-stats-row" id="productos-stats"></div>
         <div class="row g-2 productos-list-layout">
-          <div class="col-8 d-flex flex-column min-h-0">
-            <div class="card productos-glass-card productos-list-card flex-grow-1 min-h-0 d-flex flex-column">
-              <div class="card-body productos-panel-scroll d-flex flex-column">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <div class="productos-list-col">
+            <div class="card productos-glass-card productos-list-card d-flex flex-column">
+              <div class="card-body d-flex flex-column min-h-0">
+                <div class="productos-list-toolbar d-flex flex-wrap justify-content-between align-items-center gap-2">
                   <span class="marcas-badge" id="productos-count">${this.badgeText()}</span>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-productos-refresh">
                     <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
                   </button>
                 </div>
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <div class="productos-list-filters d-flex flex-wrap align-items-center gap-2">
                   <label class="small text-muted mb-0" for="productos-filter-habilitado">Habilitado:</label>
                   <select class="form-select form-select-sm" id="productos-filter-habilitado" style="max-width: 11rem">${habSelect}</select>
                   <label class="small text-muted mb-0" for="productos-filter-marca">Marca:</label>
@@ -1224,7 +1322,7 @@ const ProductosView = {
                   </select>
                   <span class="small text-muted">Sin búsqueda: 50 registros; escriba para buscar en todos.</span>
                 </div>
-                <div class="marcas-search-wrap mb-2">
+                <div class="marcas-search-wrap">
                   <div class="input-group input-group-sm marcas-search">
                     <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                     <input type="search" class="form-control" id="productos-search"
@@ -1235,7 +1333,7 @@ const ProductosView = {
                     </button>
                   </div>
                 </div>
-                <div class="productos-table-wrap table-responsive flex-grow-1">
+                <div class="productos-table-wrap">
                   <table class="table table-sm table-hover table-striped">
                     <thead><tr>${headers}</tr></thead>
                     <tbody id="productos-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
@@ -1245,11 +1343,12 @@ const ProductosView = {
             </div>
             ${CatalogosUI.btnNuevoFab('btn-productos-nuevo')}
           </div>
-          <div class="col-4 productos-precios-sidebar d-flex flex-column min-h-0">
-            <div class="card productos-glass-card productos-precios-card flex-grow-1 min-h-0 d-flex flex-column">
+          <div class="productos-precios-sidebar d-flex flex-column">
+            <div class="card productos-glass-card productos-precios-card d-flex flex-column">
               <div class="card-header py-2"><i class="fa-solid fa-tags me-1"></i>Precios</div>
-              <div class="card-body productos-panel-scroll flex-grow-1">
-                <div id="productos-precios-panel"></div>
+              <div class="card-body productos-panel-scroll d-flex flex-column gap-2">
+                <div id="productos-opciones-panel" class="productos-opciones-slot d-none"></div>
+                <div id="productos-precios-panel" class="flex-grow-1 min-h-0"></div>
               </div>
             </div>
           </div>
@@ -1285,7 +1384,6 @@ const ProductosView = {
       'align-items-stretch',
       'justify-content-start',
       'w-100',
-      'h-100',
       'min-h-0',
       'overflow-hidden',
       'd-flex',

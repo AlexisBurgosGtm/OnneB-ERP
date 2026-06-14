@@ -293,9 +293,100 @@
 .swal2-popup.modal-catalogo .swal2-actions .btn-modal-guardar,
 .swal2-popup.modal-catalogo .swal2-actions .btn-catalogo-eliminar,
 .swal2-popup.modal-catalogo .swal2-actions .btn-catalogo-bloquear {
-  order: 2 !important;
+  order: 3 !important;
   margin: 0 !important;
   margin-left: auto !important;
+}
+
+.swal2-popup.modal-catalogo.compras-finalizar-modal .swal2-actions {
+  display: none !important;
+}
+
+.compras-cargar-costos-status {
+  margin-top: 0.65rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.375rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.compras-cargar-costos-status.is-info {
+  color: var(--app-text-muted, #555);
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 6%, var(--app-surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 18%, transparent);
+}
+
+.compras-cargar-costos-status.is-loading {
+  color: var(--app-text-muted, #555);
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 8%, var(--app-surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 22%, transparent);
+}
+
+.compras-cargar-costos-status.is-success {
+  color: #146c43;
+  background: color-mix(in srgb, #198754 10%, var(--app-surface, #fff));
+  border: 1px solid color-mix(in srgb, #198754 28%, transparent);
+}
+
+.compras-cargar-costos-status.is-warning {
+  color: #856404;
+  background: color-mix(in srgb, #ffc107 14%, var(--app-surface, #fff));
+  border: 1px solid color-mix(in srgb, #ffc107 35%, transparent);
+}
+
+.compras-cargar-costos-status.is-error {
+  color: #842029;
+  background: color-mix(in srgb, #dc3545 10%, var(--app-surface, #fff));
+  border: 1px solid color-mix(in srgb, #dc3545 28%, transparent);
+}
+
+.compras-finalizar-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--onneb-base-black, #000) 10%, transparent);
+}
+
+.compras-finalizar-footer .btn-modal-cancelar {
+  margin-right: auto;
+}
+
+.compras-finalizar-footer .btn-modal-guardar {
+  margin-left: auto;
+}
+
+.compras-cargar-confirm-box {
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 35%, transparent);
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 8%, var(--app-surface, #fff));
+  color: var(--app-text, #1a1a1a);
+}
+
+.btn-modal-cargar-costos {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  min-height: 2.375rem;
+  border-radius: 0.5rem !important;
+  border: 1px solid color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 10%, var(--app-surface, #fff)) !important;
+  color: var(--app-text, #1a1a1a) !important;
+}
+
+.btn-modal-cargar-costos:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 18%, var(--app-surface, #fff)) !important;
+}
+
+.btn-modal-cargar-costos:disabled {
+  opacity: 0.65;
+  cursor: wait !important;
 }
 
 .swal2-popup.modal-catalogo .swal2-actions .btn-catalogo-eliminar {

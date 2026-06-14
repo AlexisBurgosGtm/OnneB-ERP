@@ -183,6 +183,96 @@ async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
   return { totalCosto, totalPrecio, totalIva, totalSinIva };
 }
 
+async function assertCompraEditable(transaction, empnit, coddoc, correlativo) {
+  const docRow = await transaction
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT STATUS FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+    `);
+  if (!docRow.recordset.length) {
+    const err = new Error('Compra no encontrada');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!isStatusEditable(docRow.recordset[0].STATUS)) {
+    const err = new Error('La compra no está operada');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+async function cargarCostosDesdeLinea(pool, empnit, coddoc, correlativo, lineId) {
+  const lineRes = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .input('ID', sql.Int, lineId)
+    .query(`
+      SELECT Id AS ID, CODPROD, DESPROD, COSTO, EQUIVALE
+      FROM dbo.DOCPRODUCTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO AND Id = @ID
+    `);
+  if (!lineRes.recordset.length) {
+    const err = new Error('Línea no encontrada');
+    err.statusCode = 404;
+    throw err;
+  }
+  const line = lineRes.recordset[0];
+  const equivale = Number(line.EQUIVALE) || 0;
+  if (equivale <= 0) {
+    const err = new Error('Equivalente inválido en la línea');
+    err.statusCode = 400;
+    throw err;
+  }
+  const costoLinea = Number(line.COSTO) || 0;
+  const costoUnitario = roundMoney(costoLinea / equivale);
+
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+  try {
+    await assertCompraEditable(transaction, empnit, coddoc, correlativo);
+    const prodUpd = await transaction
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODPROD', sql.VarChar, line.CODPROD)
+      .input('COSTO', sql.Decimal(18, 3), costoUnitario)
+      .query(`
+        UPDATE dbo.PRODUCTOS SET COSTO = @COSTO
+        WHERE EMPNIT = @EMPNIT AND CODPROD = @CODPROD
+      `);
+    if (prodUpd.rowsAffected[0] === 0) {
+      const err = new Error(`Producto ${line.CODPROD} no encontrado`);
+      err.statusCode = 404;
+      throw err;
+    }
+    const precUpd = await transaction
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODPROD', sql.VarChar, line.CODPROD)
+      .input('COSTO_UNIT', sql.Decimal(18, 3), costoUnitario)
+      .query(`
+        UPDATE dbo.PRECIOS
+        SET COSTO = ROUND(@COSTO_UNIT * CAST(EQUIVALE AS decimal(18, 3)), 3)
+        WHERE EMPNIT = @EMPNIT AND CODPROD = @CODPROD
+      `);
+    await transaction.commit();
+    return {
+      codprod: line.CODPROD,
+      desprod: line.DESPROD,
+      costoUnitario,
+      preciosActualizados: precUpd.rowsAffected[0] ?? 0,
+    };
+  } catch (inner) {
+    await transaction.rollback();
+    throw inner;
+  }
+}
+
 async function loadCompra(pool, empnit, coddoc, correlativo) {
   const headerRes = await pool
     .request()
@@ -865,6 +955,28 @@ router.delete('/compras/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
   }
 });
 
+router.post('/compras/:coddoc/:correlativo/cargar-costos', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  const lineId = parseInt(req.body?.lineId ?? req.body?.line_id, 10);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+  if (Number.isNaN(lineId)) return res.status(400).json({ error: 'lineId requerido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await cargarCostosDesdeLinea(pool, empnit, coddoc, correlativo, lineId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.warn('[API POST /compras/compras/cargar-costos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -873,11 +985,11 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   const correlativo = parseCorrelativo(req.params.correlativo);
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
-  const seriefac = String(req.body?.SERIEFAC || '').trim();
-  const nofac = String(req.body?.NOFAC || '').trim();
+  let seriefac = String(req.body?.SERIEFAC || '').trim();
+  let nofac = String(req.body?.NOFAC || '').trim();
+  if (!seriefac) seriefac = coddoc;
+  if (!nofac) nofac = String(correlativo);
   const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
-  if (!seriefac) return res.status(400).json({ error: 'Serie factura requerida' });
-  if (!nofac) return res.status(400).json({ error: 'Número factura requerido' });
   if (concre !== 'CON' && concre !== 'CRE') {
     return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
   }
