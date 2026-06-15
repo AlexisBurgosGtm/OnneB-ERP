@@ -5,6 +5,7 @@ const { InventarioError, aplicarMovimientoInventarioDocumento } = require('../li
 const { parseFechaInput, applyDocumentoFecha } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { lineProductMeta, getPrecioFromPreciosRow, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -681,8 +682,9 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       `);
     if (!prodRes.recordset.length) return res.status(404).json({ error: 'Producto o precio no encontrado' });
     const prod = prodRes.recordset[0];
+    const { tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const precio = Number(prod.PRECIO) || 0;
+    const precio = getPrecioFromPreciosRow(prod, DEFAULT_PRECIOS_FIELD);
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
@@ -715,7 +717,8 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TOTALCOSTO', sql.Decimal(18, 3), totalCosto)
         .input('TOTALPRECIO', sql.Decimal(18, 3), totalPrecio)
         .input('EXENTO', sql.Decimal(18, 3), exento)
-        .input('TIPOPROD', sql.VarChar, prod.TIPOPROD || 'P')
+        .input('TIPOPROD', sql.VarChar, tipoprod)
+        .input('TIPOPRECIO', sql.VarChar, tipoprecio)
         .query(`
           INSERT INTO dbo.DOCPRODUCTOS (
             EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -724,7 +727,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO
+            TIPOPROD, TIPOPRECIO, LASTUPDATE
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -732,7 +735,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, 'C'
+            @TIPOPROD, @TIPOPRECIO, CAST(GETDATE() AS DATE)
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);
@@ -803,7 +806,8 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
             TOTALPRECIO = @TOTALPRECIO,
             ENTREGADOS_TOTALUNIDADES = @TOTALUNIDADES,
             ENTREGADOS_TOTALCOSTO = @TOTALCOSTO,
-            ENTREGADOS_TOTALPRECIO = @TOTALPRECIO
+            ENTREGADOS_TOTALPRECIO = @TOTALPRECIO,
+            LASTUPDATE = CAST(GETDATE() AS DATE)
           WHERE ID = @ID
         `);
       const docTotals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);

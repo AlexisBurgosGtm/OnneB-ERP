@@ -17,61 +17,6 @@
   const mainContent = document.getElementById('main-content');
   const mainTitle = document.getElementById('main-title');
 
-  const LOGIN_REMEMBER_KEY = 'onneb-login-remember';
-
-  function getLoginRemember() {
-    try {
-      const raw = localStorage.getItem(LOGIN_REMEMBER_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  function saveLoginRemember({ username, empNit, enabled }) {
-    try {
-      if (!enabled) {
-        localStorage.removeItem(LOGIN_REMEMBER_KEY);
-        return;
-      }
-      localStorage.setItem(
-        LOGIN_REMEMBER_KEY,
-        JSON.stringify({ username: username || '', empNit: empNit || '' }),
-      );
-    } catch (err) {
-      console.warn('[Login] Recordarme:', err);
-    }
-  }
-
-  function applyLoginRememberFields() {
-    const saved = getLoginRemember();
-    const rememberCheck = document.getElementById('login-remember');
-    const userInput = document.getElementById('username');
-    if (!saved) {
-      if (rememberCheck) rememberCheck.checked = false;
-      return '';
-    }
-    if (rememberCheck) rememberCheck.checked = true;
-    if (userInput && saved.username) userInput.value = saved.username;
-    return saved.empNit || '';
-  }
-
-  function restoreLoginFieldsAfterLogout() {
-    const saved = getLoginRemember();
-    const userInput = document.getElementById('username');
-    const passInput = document.getElementById('password');
-    const rememberCheck = document.getElementById('login-remember');
-    if (passInput) passInput.value = '';
-    if (saved?.username && userInput) {
-      userInput.value = saved.username;
-      if (rememberCheck) rememberCheck.checked = true;
-      return saved.empNit || '';
-    }
-    if (userInput) userInput.value = '';
-    if (rememberCheck) rememberCheck.checked = false;
-    return '';
-  }
-
   let socket = null;
   let currentView = 'login';
 
@@ -153,7 +98,7 @@
     const userInput = document.getElementById('username');
     const passInput = document.getElementById('password');
     if (passInput) passInput.value = '';
-    if (userInput && !getLoginRemember()?.username) userInput.value = '';
+    if (userInput) userInput.value = '';
 
     if (mainTitle) mainTitle.textContent = 'OnneB POS';
     clearHeaderSessionInfo();
@@ -164,7 +109,7 @@
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
 
     setViewImmediate(true);
-    loadLoginEmpresas(restoreLoginFieldsAfterLogout());
+    loadLoginEmpresas();
   }
 
   function updateFabVisibility() {
@@ -369,23 +314,26 @@
         return;
       }
       const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
-      const username = document.getElementById('username').value.trim() || 'invitado';
+      const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
+      if (!username || !password) {
+        F.toast('Usuario y contraseña son obligatorios', 'warning');
+        return;
+      }
       if (window.OnnebPace) OnnebPace.start();
       try {
-        let authUser = null;
-        if (password) {
-          const auth = await F.fetchJson('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usuario: username, password }),
-          });
-          authUser = auth.user;
-        }
+        const auth = await F.fetchJson('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario: username, password, empnit: empNit }),
+        });
+        const authUser = auth.user;
+        const displayName = authUser?.nomempleado || authUser?.usuario || username;
         const sessionData = {
-          username: authUser?.usuario || username,
-          userId: authUser?.id ?? null,
-          nivel: authUser?.nivel ?? null,
+          username: displayName,
+          usuario: authUser?.usuario || username,
+          codempleado: authUser?.codempleado ?? null,
+          superUser: Boolean(authUser?.superUser),
           email: authUser?.email ?? '',
           empNit,
           empNombre,
@@ -393,16 +341,11 @@
         };
         F.session('user', sessionData);
         F.setEmpresaGlobal(empNit, empNombre);
-        saveLoginRemember({
-          username,
-          empNit,
-          enabled: Boolean(document.getElementById('login-remember')?.checked),
-        });
         document.getElementById('password').value = '';
         stopLoadingOverlays();
         setViewImmediate(false);
         updateHeaderSessionInfo();
-        loadInicio();
+        loadFacturacionDefault();
         F.toast(`Bienvenido — ${empNombre}`, 'success');
         if (typeof EmpresaLogo !== 'undefined') {
           EmpresaLogo.loadForSession(empNit)
@@ -415,10 +358,6 @@
       }
     });
   }
-
-  document.getElementById('btn-login-forgot')?.addEventListener('click', () => {
-    F.toast('Contacte al administrador del sistema para restablecer su contraseña.', 'info');
-  });
 
   function setMenuExpanded(expanded) {
     const value = expanded ? 'true' : 'false';
@@ -455,6 +394,16 @@
     document.querySelector('.sidebar-link[data-menu="inicio"]')?.classList.add('is-active');
     mainContent.className = 'main-content flex-grow-1 d-flex p-3';
     PosView.load(mainContent);
+  }
+
+  /** Provisional: vista por defecto al iniciar sesión. */
+  function loadFacturacionDefault() {
+    if (!mainContent || typeof FacturacionView === 'undefined') return;
+    if (mainTitle) mainTitle.textContent = menuLabels.facturacion || 'Facturación';
+    document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
+    document.querySelector('.sidebar-link[data-menu="facturacion"]')?.classList.add('is-active');
+    mainContent.className = 'main-content flex-grow-1 d-flex p-3';
+    FacturacionView.load(mainContent);
   }
 
   const menuLabels = {
@@ -513,6 +462,8 @@
         ComprasView.load(mainContent);
       } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
         PosView.load(mainContent);
+      } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
+        FacturacionView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
@@ -603,7 +554,7 @@
     if (typeof OnnebThemes !== 'undefined') OnnebThemes.init();
 
     ensureLoginView();
-    await loadLoginEmpresas(applyLoginRememberFields());
+    await loadLoginEmpresas();
 
     if (F.isLoggedIn()) {
       updateHeaderSessionInfo();

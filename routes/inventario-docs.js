@@ -12,6 +12,7 @@ const {
 } = require('../lib/documento-status');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { lineProductMeta, getPrecioFromPreciosRow, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
 
 const SEARCH_LIMIT = 80;
 const DEFAULT_BODEGA = 1;
@@ -524,8 +525,9 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         `);
       if (!prodRes.recordset.length) return res.status(404).json({ error: 'Producto o medida no encontrado' });
       const prod = prodRes.recordset[0];
+      const { tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
       const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-      const precio = Number(prod.PRECIO) || 0;
+      const precio = getPrecioFromPreciosRow(prod, DEFAULT_PRECIOS_FIELD);
       const equivale = Number(prod.EQUIVALE) || 1;
       const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
         cantidad,
@@ -558,7 +560,8 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           .input('TOTALCOSTO', sql.Decimal(18, 3), totalCosto)
           .input('TOTALPRECIO', sql.Decimal(18, 3), totalPrecio)
           .input('EXENTO', sql.Decimal(18, 3), exento)
-          .input('TIPOPROD', sql.VarChar, prod.TIPOPROD || 'P')
+          .input('TIPOPROD', sql.VarChar, tipoprod)
+          .input('TIPOPRECIO', sql.VarChar, tipoprecio)
           .query(`
             INSERT INTO dbo.DOCPRODUCTOS (
               EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -567,7 +570,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
               ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
               COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
               DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-              TIPOPROD, TIPOPRECIO
+              TIPOPROD, TIPOPRECIO, LASTUPDATE
             ) VALUES (
               @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
               @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -575,7 +578,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
               @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
               0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
               0, 0, 'SN', @EXENTO, 'SN',
-              @TIPOPROD, 'C'
+              @TIPOPROD, @TIPOPRECIO, CAST(GETDATE() AS DATE)
             );
             SELECT SCOPE_IDENTITY() AS ID;
           `);
@@ -652,7 +655,8 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
               TOTALCOSTO = @TOTALCOSTO, TOTALPRECIO = @TOTALPRECIO,
               ENTREGADOS_TOTALUNIDADES = @ENTREGADOS_TOTALUNIDADES,
               ENTREGADOS_TOTALCOSTO = @ENTREGADOS_TOTALCOSTO,
-              ENTREGADOS_TOTALPRECIO = @ENTREGADOS_TOTALPRECIO
+              ENTREGADOS_TOTALPRECIO = @ENTREGADOS_TOTALPRECIO,
+              LASTUPDATE = CAST(GETDATE() AS DATE)
             WHERE ID = @ID
           `);
         const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);

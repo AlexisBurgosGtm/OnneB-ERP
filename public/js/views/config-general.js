@@ -1,35 +1,48 @@
 /**
- * Vista Config general — Config PASS y opciones SINO
+ * Vista Config general — SETTINGS (OPCION / VALOR)
  */
 const ConfigGeneralView = {
-  ADMIN_CONFIG_ID: 2,
-  OPERATOR_CONFIG_ID: 4,
-  INVENTARIO_CONFIG_ID: 3,
-  TICKET_VENTA_CONFIG_ID: 11,
-  CLAVE_VENDEDOR_CONFIG_ID: 17,
-  COBRO_PREDETERMINADO_CONFIG_ID: 15,
+  SETTING_OPCION: {
+    CLAVE_ADMIN: 'CLAVE ADMIN',
+    CLAVE_OPERADOR: 'CLAVE OPERADOR',
+    INVENTARIO_NEGATIVO: 'INVENTARIO NEGATIVO',
+    SOLICITA_CLAVE_VENDEDOR: 'SOLICITA CLAVE VENDEDOR',
+    IMPRIME_TICKET: 'IMPRIME TICKET AL GUARDAR VENTA',
+    COBRO_PREDETERMINADO: 'COBRO PREDETERMINADO',
+    URL_FEL: 'URL FEL',
+  },
+
+  TEXT_CARDS: [
+    {
+      opcion: 'URL FEL',
+      slug: 'url-fel',
+      title: 'URL FEL',
+      fallbackDesc: 'Dirección del servicio web de facturación electrónica (FEL)',
+      placeholder: 'https://servicio-fel.ejemplo.com/api',
+    },
+  ],
 
   SINO_OPTIONS: [
     {
-      id: 3,
+      opcion: 'INVENTARIO NEGATIVO',
       title: 'Permite inventario negativo',
       icon: 'fa-boxes-stacked',
       fallbackDesc: 'Permite vender en negativo',
     },
     {
-      id: 17,
+      opcion: 'SOLICITA CLAVE VENDEDOR',
       title: 'Solicita clave del vendedor en ventas',
       icon: 'fa-user-lock',
       fallbackDesc: 'Exige clave del vendedor al registrar ventas',
     },
     {
-      id: 11,
+      opcion: 'IMPRIME TICKET AL GUARDAR VENTA',
       title: 'Imprime ticket al guardar venta',
       icon: 'fa-receipt',
       fallbackDesc: 'Imprime ticket automáticamente al finalizar la venta',
     },
     {
-      id: 15,
+      opcion: 'COBRO PREDETERMINADO',
       title: 'Tipo de cobro predeterminado',
       icon: 'fa-money-bill-wave',
       fallbackDesc: 'Determina si las nuevas facturas están por contado o crédito',
@@ -39,24 +52,24 @@ const ConfigGeneralView = {
 
   PASS_CARDS: [
     {
-      id: 2,
+      opcion: 'CLAVE ADMIN',
       slug: 'admin',
       title: 'Clave de administrador',
       fallbackDesc: 'Clave para autorizar movimientos',
       placeholder: 'Clave de administrador',
     },
     {
-      id: 4,
+      opcion: 'CLAVE OPERADOR',
       slug: 'operador',
       title: 'Clave de Operador',
       fallbackDesc: 'Clave del operador',
       placeholder: 'Clave de operador',
-      ignoreDbDesc: true,
     },
   ],
 
   _container: null,
   _passMeta: {},
+  _textMeta: {},
   _sinoMeta: {},
   _invSaldoPendientes: null,
 
@@ -80,8 +93,8 @@ const ConfigGeneralView = {
     return this.normalizeSino(sino) === 'SI' ? 'btn-empleado-activo--si' : 'btn-empleado-activo--no';
   },
 
-  getSinoOption(configId) {
-    return this.SINO_OPTIONS.find((opt) => opt.id === configId) || null;
+  getSinoOption(opcion) {
+    return this.SINO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
   },
 
   getSinoLabel(option, sino) {
@@ -104,7 +117,7 @@ const ConfigGeneralView = {
       <button
         type="button"
         class="btn btn-empleado-activo config-sino-toggle${wideClass} ${this.sinoButtonClass(val)}"
-        data-config-id="${option.id}"
+        data-setting-opcion="${this.escapeHtml(option.opcion)}"
         data-sino="${val}"
         aria-pressed="${val === 'SI'}"
         title="${this.escapeHtml(this.getSinoToggleTitle(option, val))}"
@@ -115,7 +128,7 @@ const ConfigGeneralView = {
     const desc = meta.descripcion || option.fallbackDesc;
     const sino = this.normalizeSino(meta.sino);
     return `
-      <div class="card config-card-compact" data-sino-card="${option.id}">
+      <div class="card config-card-compact" data-sino-card="${this.escapeHtml(option.opcion)}">
         <div class="card-body">
           <div class="config-card-row">
             <div class="config-card-info">
@@ -131,7 +144,7 @@ const ConfigGeneralView = {
   },
 
   renderPassCard(card, meta = {}) {
-    const desc = card.ignoreDbDesc ? card.fallbackDesc : meta.descripcion || card.fallbackDesc;
+    const desc = meta.descripcion || card.fallbackDesc;
     return `
       <div class="card config-card-compact mb-2">
         <div class="card-body">
@@ -167,6 +180,35 @@ const ConfigGeneralView = {
       </div>`;
   },
 
+  renderTextCard(card, meta = {}) {
+    const desc = meta.descripcion || card.fallbackDesc;
+    return `
+      <div class="card config-card-compact mb-2">
+        <div class="card-body">
+          <h6 class="card-title mb-1">
+            <i class="fa-solid fa-link me-1 text-primary"></i>${this.escapeHtml(card.title)}
+          </h6>
+          <p class="card-text mb-2">${this.escapeHtml(desc)}</p>
+          <label for="input-${card.slug}-text" class="form-label config-field-label">URL del servicio</label>
+          <div class="input-group input-group-sm">
+            <input
+              type="text"
+              class="form-control font-monospace"
+              id="input-${card.slug}-text"
+              name="${card.slug}-text"
+              autocomplete="off"
+              spellcheck="false"
+              inputmode="url"
+              placeholder="${this.escapeHtml(card.placeholder)}"
+            >
+            <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-actualizar-${card.slug}-text">
+              <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Actualizar
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
   renderInvSaldoCard(pendientes = 0) {
     const count = Number(pendientes) || 0;
     const statusText =
@@ -193,11 +235,12 @@ const ConfigGeneralView = {
 
   renderAll() {
     const sinoCards = this.SINO_OPTIONS.map((opt) =>
-      this.renderSinoCard(opt, this._sinoMeta[opt.id] || {})
+      this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
     ).join('');
     return `
       <div class="config-general-panel">
-        ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.id] || {})).join('')}
+        ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.opcion] || {})).join('')}
+        ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
         <div class="config-sino-grid">${sinoCards}</div>
         ${this.renderInvSaldoCard(this._invSaldoPendientes)}
       </div>`;
@@ -205,7 +248,7 @@ const ConfigGeneralView = {
 
   updateSinoButton(btn, sino, option) {
     const val = this.normalizeSino(sino);
-    const opt = option || this.getSinoOption(parseInt(btn.getAttribute('data-config-id'), 10));
+    const opt = option || this.getSinoOption(btn.getAttribute('data-setting-opcion'));
     btn.textContent = this.getSinoLabel(opt, val);
     btn.dataset.sino = val;
     btn.setAttribute('aria-pressed', val === 'SI' ? 'true' : 'false');
@@ -229,8 +272,15 @@ const ConfigGeneralView = {
     });
   },
 
+  bindTextEvents(card) {
+    document.getElementById(`btn-actualizar-${card.slug}-text`)?.addEventListener('click', () => {
+      this.onActualizarText(card);
+    });
+  },
+
   bindEvents() {
     this.PASS_CARDS.forEach((card) => this.bindPassEvents(card));
+    this.TEXT_CARDS.forEach((card) => this.bindTextEvents(card));
 
     this._container?.querySelectorAll('.config-sino-toggle').forEach((btn) => {
       btn.addEventListener('click', () => this.onToggleSino(btn));
@@ -241,37 +291,65 @@ const ConfigGeneralView = {
     });
   },
 
-  async fetchPass(configId) {
-    return F.fetchJson(`/api/config/${configId}/pass?_=${Date.now()}`, {
+  configQuery(opcion) {
+    return `opcion=${encodeURIComponent(opcion)}`;
+  },
+
+  async fetchPass(opcion) {
+    return F.fetchJson(`/api/config/pass?${this.configQuery(opcion)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
   },
 
-  async fetchSino(configId) {
-    return F.fetchJson(`/api/config/${configId}/sino?_=${Date.now()}`, {
+  async fetchSino(opcion) {
+    return F.fetchJson(`/api/config/sino?${this.configQuery(opcion)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
   },
 
   async onToggleSino(btn) {
-    const configId = parseInt(btn.getAttribute('data-config-id'), 10);
-    if (Number.isNaN(configId)) return;
+    const opcion = btn.getAttribute('data-setting-opcion');
+    if (!opcion) return;
     const current = this.normalizeSino(btn.getAttribute('data-sino'));
     const next = current === 'SI' ? 'NO' : 'SI';
     btn.disabled = true;
     try {
-      await F.fetchJson(`/api/config/${configId}/sino`, {
+      await F.fetchJson(`/api/config/sino?${this.configQuery(opcion)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sino: next }),
+        body: JSON.stringify({ opcion, sino: next }),
       });
-      this._sinoMeta[configId] = { ...(this._sinoMeta[configId] || {}), sino: next };
-      this.updateSinoButton(btn, next, this.getSinoOption(configId));
+      this._sinoMeta[opcion] = { ...(this._sinoMeta[opcion] || {}), sino: next };
+      this.updateSinoButton(btn, next, this.getSinoOption(opcion));
       F.toast('Configuración actualizada', 'success');
     } catch (err) {
       F.toast(err.message || 'Error al actualizar', 'error');
     } finally {
       btn.disabled = false;
+    }
+  },
+
+  async onActualizarText(card) {
+    const input = document.getElementById(`input-${card.slug}-text`);
+    const value = (input?.value ?? '').trim();
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Actualizar URL?',
+      text: `Se guardará la URL del servicio FEL.`,
+      icon: 'question',
+      confirmText: 'Guardar',
+    });
+    if (!ok) return;
+
+    try {
+      await F.fetchJson(`/api/config/pass?${this.configQuery(card.opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion: card.opcion, pass: value }),
+      });
+      F.toast('URL FEL actualizada', 'success');
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
     }
   },
 
@@ -292,10 +370,10 @@ const ConfigGeneralView = {
     if (!ok) return;
 
     try {
-      await F.fetchJson(`/api/config/${card.id}/pass`, {
+      await F.fetchJson(`/api/config/pass?${this.configQuery(card.opcion)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: pass.trim() }),
+        body: JSON.stringify({ opcion: card.opcion, pass: pass.trim() }),
       });
       F.toast('Clave actualizada', 'success');
     } catch (err) {
@@ -375,32 +453,45 @@ const ConfigGeneralView = {
 
     try {
       const empNit = F.getEmpNit();
-      const passFetches = this.PASS_CARDS.map((card) => this.fetchPass(card.id));
-      const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.id));
-      const fetches = [...passFetches, ...sinoFetches];
+      const passFetches = this.PASS_CARDS.map((card) => this.fetchPass(card.opcion));
+      const textFetches = this.TEXT_CARDS.map((card) => this.fetchPass(card.opcion));
+      const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.opcion));
+      const fetches = [...passFetches, ...textFetches, ...sinoFetches];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
       const results = await Promise.all(fetches);
       const passResults = results.slice(0, this.PASS_CARDS.length);
-      const sinoResults = results.slice(
+      const textResults = results.slice(
         this.PASS_CARDS.length,
-        this.PASS_CARDS.length + this.SINO_OPTIONS.length
+        this.PASS_CARDS.length + this.TEXT_CARDS.length
+      );
+      const sinoResults = results.slice(
+        this.PASS_CARDS.length + this.TEXT_CARDS.length,
+        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length
       );
       const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
 
       this._passMeta = {};
       this.PASS_CARDS.forEach((card, i) => {
-        this._passMeta[card.id] = passResults[i];
+        this._passMeta[card.opcion] = passResults[i];
+      });
+      this._textMeta = {};
+      this.TEXT_CARDS.forEach((card, i) => {
+        this._textMeta[card.opcion] = textResults[i];
       });
       this._sinoMeta = {};
       this.SINO_OPTIONS.forEach((opt, i) => {
-        this._sinoMeta[opt.id] = sinoResults[i];
+        this._sinoMeta[opt.opcion] = sinoResults[i];
       });
       this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
 
       container.innerHTML = this.renderAll();
       this.PASS_CARDS.forEach((card) => {
         const input = document.getElementById(`input-${card.slug}-pass`);
-        if (input) input.value = this._passMeta[card.id]?.pass ?? '';
+        if (input) input.value = this._passMeta[card.opcion]?.pass ?? '';
+      });
+      this.TEXT_CARDS.forEach((card) => {
+        const input = document.getElementById(`input-${card.slug}-text`);
+        if (input) input.value = this._textMeta[card.opcion]?.pass ?? '';
       });
       this.bindEvents();
     } catch (err) {

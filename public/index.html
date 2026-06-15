@@ -77,20 +77,13 @@
           <div class="login-field-line">
             <i class="fa-solid fa-user login-field-icon" aria-hidden="true"></i>
             <input type="text" class="login-input login-input-line" id="username" name="onneb-user"
-              placeholder="Usuario" autocomplete="off" autocapitalize="off" spellcheck="false"
+              placeholder="Usuario" required autocomplete="off" autocapitalize="off" spellcheck="false"
               data-lpignore="true" data-form-type="other">
           </div>
           <div class="login-field-line">
             <i class="fa-solid fa-lock login-field-icon" aria-hidden="true"></i>
             <input type="password" class="login-input login-input-line" id="password" name="onneb-pass"
-              placeholder="Contraseña" autocomplete="off" data-lpignore="true" data-form-type="other">
-          </div>
-          <div class="login-options-row">
-            <label class="login-remember">
-              <input type="checkbox" id="login-remember" class="login-remember-check">
-              <span>Recordarme</span>
-            </label>
-            <button type="button" class="login-forgot" id="btn-login-forgot">¿Olvidó contraseña?</button>
+              placeholder="Contraseña" required autocomplete="off" data-lpignore="true" data-form-type="other">
           </div>
           <button type="submit" class="btn btn-login w-100">
             INICIAR SESIÓN
@@ -297,6 +290,7 @@
   <script src="/js/print-report.js"></script>
   <script src="/js/pos-doc-search-ui.js"></script>
   <script src="/js/views/pos.js"></script>
+  <script src="/js/views/facturacion.js"></script>
   <script src="/js/views/compras.js"></script>
   <script src="/js/views/inventario-mov-view.js"></script>
   <script src="/js/views/inventario.js"></script>
