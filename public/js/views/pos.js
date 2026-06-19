@@ -8,11 +8,20 @@ const PosView = {
   _productos: [],
   _pedidosList: [],
   _listFilter: '',
+  _selectedCoddoc: '',
   _screen: 'list',
   _loadingProducts: false,
   _searchTimer: null,
   _cartBusy: false,
   _vendedores: [],
+  _precioCampo: 'PRECIO',
+
+  PRECIO_CAMPO_OPTIONS: [
+    { value: 'PRECIO', label: 'PRECIO PUBLICO' },
+    { value: 'MAYOREOC', label: 'MAYORISTA C' },
+    { value: 'MAYOREOB', label: 'MAYORISTA B' },
+    { value: 'MAYOREOA', label: 'MAYORISTA A' },
+  ],
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -127,16 +136,18 @@ const PosView = {
   },
 
   async fetchProductos(q) {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40' });
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40', campoPrecio: this._precioCampo });
     if (q) params.set('q', q);
     params.set('_', String(Date.now()));
     return F.fetchJson(`/api/pos/productos?${params}`);
   },
 
+  activeCoddoc() {
+    return DocTipoSelect.active(this);
+  },
+
   async fetchPedidosList() {
-    const coddoc = this._config?.coddocDefault || '';
     const params = new URLSearchParams({ empnit: F.getEmpNit(), status: 'O' });
-    if (coddoc) params.set('coddoc', coddoc);
     params.set('_', String(Date.now()));
     const data = await F.fetchJson(`/api/pos/pedidos?${params}`);
     this._pedidosList = data.rows || [];
@@ -169,7 +180,7 @@ const PosView = {
 
   async crearPedido() {
     const body = {
-      CODDOC: this._config?.coddocDefault,
+      CODDOC: this.activeCoddoc(),
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
@@ -277,7 +288,12 @@ const PosView = {
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CODPROD: codprod, CODMEDIDA: codmedida, CANTIDAD: cantidad }),
+      body: JSON.stringify({
+        CODPROD: codprod,
+        CODMEDIDA: codmedida,
+        CANTIDAD: cantidad,
+        CAMPO_PRECIO: this._precioCampo,
+      }),
     });
     this._pedido = res.pedido;
     this.renderCart();
@@ -322,7 +338,9 @@ const PosView = {
       F.toast('Producto no disponible', 'warning');
       return;
     }
-    const precios = this._productos.filter((p) => String(p.CODPROD) === String(row.CODPROD));
+    const precios = this._productos.filter(
+      (p) => String(p.CODPROD).trim() === String(row.CODPROD).trim()
+    );
     if (!precios.length) {
       F.toast('Sin precios habilitados', 'warning');
       return;
@@ -501,6 +519,20 @@ const PosView = {
     }
   },
 
+  renderPrecioCampoSelector(editable) {
+    const disabled = !editable ? ' disabled' : '';
+    const opts = this.PRECIO_CAMPO_OPTIONS.map(
+      (o) =>
+        `<option value="${o.value}"${o.value === this._precioCampo ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+    ).join('');
+    return `
+      <div class="pos-precio-campo-wrap ms-auto">
+        <select class="form-select form-select-sm" id="pos-precio-campo" title="Columna de precio"${disabled}>
+          ${opts}
+        </select>
+      </div>`;
+  },
+
   renderVendedorField() {
     const h = this._pedido?.header;
     const codven = h?.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
@@ -524,7 +556,7 @@ const PosView = {
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
     PosDocSearchUI.syncControls(this._container, 'pos', editable);
-    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor'].forEach((sel) => {
+    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -674,16 +706,25 @@ const PosView = {
           <h2 class="pos-list-title">Seleccione un pedido o cree uno nuevo</h2>
           <p class="pos-list-sub text-muted mb-0">${count} pedido(s) operados</p>
         </div>
-        <div class="pos-list-search mb-3">
-          <div class="input-group">
-            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input type="search" class="form-control pos-search-glow" id="pos-list-search"
-              placeholder="Buscar pedido, cliente, negocio…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+        <div class="pos-list-toolbar mb-3">
+          ${DocTipoSelect.renderSelectHtml({
+            selectId: 'pos-list-coddoc',
+            tipos: this._config?.tiposDocumento,
+            selected: this.activeCoddoc(),
+            label: 'Serie',
+          })}
+          <div class="pos-list-search flex-grow-1">
+            <label class="form-label small mb-1" for="pos-list-search">Buscar</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input type="search" class="form-control pos-search-glow" id="pos-list-search"
+                placeholder="Buscar pedido, cliente, negocio…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+            </div>
           </div>
         </div>
         <div class="pos-pedido-cards" id="pos-pedido-cards">${this.renderListCardsHtml()}</div>
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-pos-list-nuevo"
-          aria-label="Nuevo pedido" title="Nuevo pedido">
+          aria-label="Nuevo pedido" title="Nuevo pedido"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
         </button>
       </div>`;
@@ -717,10 +758,11 @@ const PosView = {
         </div>
         <div class="pos-main">
           <div class="pos-panel pos-panel-search card shadow-sm">
-            <div class="card-header py-2 d-flex align-items-center gap-2">
+            <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap w-100">
               <i class="fa-solid fa-box"></i>
               <span class="fw-semibold">Productos</span>
               <span class="small text-muted">(${this.escapeHtml(tipoLabel)})</span>
+              ${this.renderPrecioCampoSelector(editable)}
             </div>
             <div class="card-body">
               <div class="input-group input-group-sm mb-2 pos-search-group">
@@ -741,8 +783,12 @@ const PosView = {
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Cliente</label>
-                <input type="search" class="form-control form-control-sm pos-search-glow" id="pos-cliente-search"
-                  placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
+                <div class="input-group input-group-sm">
+                  <input type="search" class="form-control pos-search-glow" id="pos-cliente-search"
+                    placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
+                  <button type="button" class="btn btn-outline-primary text-nowrap" id="pos-cliente-nuevo"
+                    title="Crear cliente nuevo"${editable ? '' : ' disabled'}>NUEVO (+)</button>
+                </div>
                 <div id="pos-cliente-nombre" class="small text-muted mt-1"></div>
                 <div id="pos-cliente-results" class="list-group position-absolute w-100 shadow-sm d-none"
                   style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>
@@ -778,6 +824,8 @@ const PosView = {
       this.refreshListDom();
     });
 
+    DocTipoSelect.bind(this._container, 'pos-list-coddoc', this);
+
     this._container?.querySelector('#pos-pedido-cards')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('.inv-card-btn');
       if (!btn) return;
@@ -806,6 +854,20 @@ const PosView = {
       getEditable: () => this.docEditable(this._pedido?.header),
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
+    });
+
+    const precioCampoSel = this._container?.querySelector('#pos-precio-campo');
+    if (precioCampoSel) {
+      precioCampoSel.addEventListener('change', () => {
+        if (precioCampoSel.disabled) return;
+        this._precioCampo = precioCampoSel.value || 'PRECIO';
+        const q = this._container?.querySelector('#pos-product-search')?.value?.trim() || '';
+        this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
+
+    this._container?.querySelector('#pos-cliente-nuevo')?.addEventListener('click', () => {
+      this.onNuevoCliente().catch((err) => F.toast(err.message, 'error'));
     });
 
     this._container?.querySelector('#pos-cart-tbody')?.addEventListener('click', async (e) => {
@@ -989,13 +1051,38 @@ const PosView = {
     F.toast('Cliente actualizado', 'success');
   },
 
+  async onNuevoCliente() {
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('El pedido no está en edición', 'warning');
+      return;
+    }
+    const data = await ClientesView.showForm('Nuevo cliente', {}, false, { profile: 'facturacion' });
+    if (!data) return;
+    try {
+      const res = await F.fetchJson(ClientesView.apiBase(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const cod = res.CODCLIENTE;
+      if (!cod) throw new Error('No se recibió el código del cliente');
+      await this.aplicarCliente(cod);
+      const inp = this._container?.querySelector('#pos-cliente-search');
+      if (inp) inp.value = data.NOMBRECLIENTE || data.NEGOCIO || String(cod);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
   async showList() {
     this._screen = 'list';
     this._pedido = null;
     PosDocSearchUI.teardown('pos');
-    await this.fetchPedidosList();
+    if (this._config) DocTipoSelect.initView(this);
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();
+    await this.fetchPedidosList();
+    this.refreshListDom();
   },
 
   async showEditor(coddoc, correlativo) {
@@ -1013,6 +1100,9 @@ const PosView = {
 
   async onNuevoPedido() {
     try {
+      if (this._container?.querySelector('#pos-list-coddoc')) {
+        DocTipoSelect.syncFromDom(this._container, 'pos-list-coddoc', this);
+      }
       await this.crearPedido();
       const key = this.docKey();
       if (key) await this.showEditor(key.coddoc, key.correlativo);
@@ -1039,6 +1129,7 @@ const PosView = {
 
     try {
       this._config = await this.fetchConfig();
+      DocTipoSelect.initView(this);
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">

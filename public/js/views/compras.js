@@ -8,6 +8,7 @@ const ComprasView = {
   _productos: [],
   _comprasList: [],
   _listFilter: '',
+  _selectedCoddoc: '',
   _screen: 'list',
   _loadingProducts: false,
   _searchTimer: null,
@@ -112,10 +113,12 @@ const ComprasView = {
     return F.fetchJson(`/api/compras/productos?${params}`);
   },
 
+  activeCoddoc() {
+    return DocTipoSelect.active(this);
+  },
+
   async fetchComprasList() {
-    const coddoc = this._config?.coddocDefault || '';
     const params = new URLSearchParams({ empnit: F.getEmpNit(), status: 'O' });
-    if (coddoc) params.set('coddoc', coddoc);
     params.set('_', String(Date.now()));
     const data = await F.fetchJson(`/api/compras/compras?${params}`);
     this._comprasList = data.rows || [];
@@ -148,7 +151,7 @@ const ComprasView = {
 
   async crearCompra() {
     const body = {
-      CODDOC: this._config?.coddocDefault,
+      CODDOC: this.activeCoddoc(),
       CODPROV: this._config?.proveedorDefault?.CODPROV,
       USUARIO: this.usuario(),
     };
@@ -903,16 +906,25 @@ const ComprasView = {
           <h2 class="pos-list-title">Seleccione una compra o cree una nueva</h2>
           <p class="pos-list-sub text-muted mb-0">${count} compra(s) operadas</p>
         </div>
-        <div class="pos-list-search mb-3">
-          <div class="input-group">
-            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input type="search" class="form-control pos-search-glow" id="compras-list-search"
-              placeholder="Buscar compra, proveedor…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+        <div class="pos-list-toolbar mb-3">
+          ${DocTipoSelect.renderSelectHtml({
+            selectId: 'compras-list-coddoc',
+            tipos: this._config?.tiposDocumento,
+            selected: this.activeCoddoc(),
+            label: 'Serie',
+          })}
+          <div class="pos-list-search flex-grow-1">
+            <label class="form-label small mb-1" for="compras-list-search">Buscar</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input type="search" class="form-control pos-search-glow" id="compras-list-search"
+                placeholder="Buscar compra, proveedor…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
+            </div>
           </div>
         </div>
         <div class="pos-pedido-cards" id="compras-list-cards">${this.renderListCardsHtml()}</div>
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-compras-list-nuevo"
-          aria-label="Nueva compra" title="Nueva compra">
+          aria-label="Nueva compra" title="Nueva compra"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
         </button>
       </div>`;
@@ -1017,6 +1029,8 @@ const ComprasView = {
       this._listFilter = search.value;
       this.refreshListDom();
     });
+
+    DocTipoSelect.bind(this._container, 'compras-list-coddoc', this);
 
     this._container?.querySelector('#compras-list-cards')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('.inv-card-btn');
@@ -1241,6 +1255,9 @@ const ComprasView = {
 
   async onNuevaCompra() {
     try {
+      if (this._container?.querySelector('#compras-list-coddoc')) {
+        DocTipoSelect.syncFromDom(this._container, 'compras-list-coddoc', this);
+      }
       await this.crearCompra();
       const key = this.docKey();
       if (key) await this.showEditor(key.coddoc, key.correlativo);
@@ -1267,6 +1284,7 @@ const ComprasView = {
 
     try {
       this._config = await this.fetchConfig();
+      DocTipoSelect.initView(this);
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">

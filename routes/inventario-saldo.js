@@ -2,7 +2,8 @@ const express = require('express');
 const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
-const { countMissingInvSaldo, syncMissingInvSaldo } = require('../lib/invsaldo');
+const { countMissingInvSaldo, syncMissingInvSaldo, deduplicateInvSaldo, countDuplicateInvSaldo } = require('../lib/invsaldo');
+const { previewRecalcInventario, ejecutarRecalcInventario } = require('../lib/inventario-recalc');
 
 const router = express.Router();
 
@@ -61,8 +62,21 @@ const LIST_SELECT = `
 `;
 
 const LIST_FROM = `
-  FROM dbo.INVSALDO i
-  LEFT JOIN dbo.PRODUCTOS p ON i.EMPNIT = p.EMPNIT AND i.CODPROD = p.CODPROD
+  FROM (
+    SELECT i.*
+    FROM (
+      SELECT
+        i2.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY i2.EMPNIT, LTRIM(RTRIM(i2.CODPROD))
+          ORDER BY i2.ID
+        ) AS _rn
+      FROM dbo.INVSALDO i2
+      WHERE i2.EMPNIT = @EMPNIT
+    ) i
+    WHERE i._rn = 1
+  ) i
+  LEFT JOIN dbo.PRODUCTOS p ON i.EMPNIT = p.EMPNIT AND LTRIM(RTRIM(i.CODPROD)) = LTRIM(RTRIM(p.CODPROD))
   LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
 `;
 
@@ -263,6 +277,62 @@ router.post('/saldo/sincronizar', async (req, res) => {
     res.json({ ok: true, empnit, creados, pendientes });
   } catch (err) {
     console.error('[API POST /inventario/saldo/sincronizar]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.post('/saldo/deduplicar', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await deduplicateInvSaldo(pool, empnit);
+    const duplicados = await countDuplicateInvSaldo(pool, empnit);
+    res.json({ ok: true, empnit, ...result, duplicadosRestantes: duplicados });
+  } catch (err) {
+    console.error('[API POST /inventario/saldo/deduplicar]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.get('/recalcular/preview', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const preview = await previewRecalcInventario(pool, empnit);
+    res.json(preview);
+  } catch (err) {
+    console.error('[API GET /inventario/recalcular/preview]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.post('/recalcular', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await ejecutarRecalcInventario(pool, empnit);
+    res.json(result);
+  } catch (err) {
+    console.error('[API POST /inventario/recalcular]', err.message);
     res.status(500).json({ error: err.message });
   }
   return undefined;

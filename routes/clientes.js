@@ -196,16 +196,6 @@ function validateCliente(data) {
   return null;
 }
 
-async function nextCodCliente(pool, empnit) {
-  const result = await pool
-    .request()
-    .input('EMPNIT', sql.VarChar, empnit)
-    .query(
-      'SELECT ISNULL(MAX(CODCLIENTE), 0) + 1 AS nextCod FROM dbo.CLIENTES WHERE EMPNIT = @EMPNIT'
-    );
-  return result.recordset[0].nextCod;
-}
-
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {
@@ -432,23 +422,21 @@ router.post('/', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const codcliente = await nextCodCliente(pool, empnit);
-    const request = pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODCLIENTE', sql.Int, codcliente);
+    const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
     bindClienteRequest(request, data);
     request.input('HABILITADO', sql.VarChar, 'SI');
-    await request.query(`
+    const result = await request.query(`
       INSERT INTO dbo.CLIENTES (
-        EMPNIT, CODCLIENTE,
+        EMPNIT,
         NIT, NOMBRECLIENTE, DIRCLIENTE, CODMUNICIPIO, CODDEPARTAMENTO,
         TELEFONOCLIENTE, EMAILCLIENTE, LATITUDCLIENTE, LONGITUDCLIENTE,
         CODRUTA, SALDO, FECHAINICIO,
         HABILITADO, DIAVISITA, LIMITECREDITO, DIASCREDITO, PROVINCIA,
         TIPONEGOCIO, NEGOCIO, TIPO
-      ) VALUES (
-        @EMPNIT, @CODCLIENTE,
+      )
+      OUTPUT INSERTED.CODCLIENTE AS CODCLIENTE
+      VALUES (
+        @EMPNIT,
         @NIT, @NOMBRECLIENTE, @DIRCLIENTE, @CODMUNICIPIO, @CODDEPARTAMENTO,
         @TELEFONOCLIENTE, @EMAILCLIENTE, @LATITUDCLIENTE, @LONGITUDCLIENTE,
         @CODRUTA, @SALDO, @FECHAINICIO,
@@ -456,6 +444,7 @@ router.post('/', async (req, res) => {
         @TIPONEGOCIO, @NEGOCIO, @TIPO
       )
     `);
+    const codcliente = result.recordset[0]?.CODCLIENTE;
     res.status(201).json({ ok: true, CODCLIENTE: codcliente, ...data });
   } catch (err) {
     console.warn('[API POST /clientes]', err.message);

@@ -7,7 +7,14 @@ const DocFecha = {
   },
 
   inputValueFromHeader(header) {
-    if (!header?.FECHA) return '';
+    if (!header) return '';
+    const anio = Number(header.ANIO);
+    const mes = Number(header.MES);
+    const dia = Number(header.DIA);
+    if (Number.isFinite(anio) && Number.isFinite(mes) && Number.isFinite(dia) && mes >= 1 && mes <= 12 && dia >= 1) {
+      return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    }
+    if (!header.FECHA) return '';
     const s = String(header.FECHA);
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
     const d = new Date(s);

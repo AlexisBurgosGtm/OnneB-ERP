@@ -422,6 +422,7 @@
     'entradas-inventario': 'Entradas de inventario',
     'salidas-inventario': 'Salidas de inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
+    'actualizacion-inventario': 'Actualización de inventario',
     documentos: 'Documentos',
     empleados: 'Empleados',
     municipios: 'Municipios',
@@ -429,6 +430,7 @@
     marcas: 'Marcas',
     medidas: 'Medidas',
     clientes: 'Clientes',
+    'tipo-negocios': 'Tipo de Negocios',
     rutas: 'Rutas',
     proveedores: 'Proveedores',
     fabricantes: 'Fabricantes',
@@ -438,7 +440,6 @@
     'tipo-documentos': 'Tipo documentos',
     'credenciales-fel': 'Credenciales FEL',
     cajas: 'Cajas',
-    usuarios: 'Usuarios',
   };
 
   if (btnMenuToggle) btnMenuToggle.addEventListener('click', toggleSidebar);
@@ -464,12 +465,19 @@
         PosView.load(mainContent);
       } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
         FacturacionView.load(mainContent);
+      } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
+        CorteCajaView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
         SalidasInventarioView.load(mainContent);
       } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
         InventarioView.load(mainContent);
+      } else if (
+        key === 'actualizacion-inventario' &&
+        typeof InventarioActualizacionView !== 'undefined'
+      ) {
+        InventarioActualizacionView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
       } else if (
@@ -495,6 +503,8 @@
         UbicacionesView.load(mainContent);
       } else if (key === 'clientes' && typeof ClientesView !== 'undefined') {
         ClientesView.load(mainContent);
+      } else if (key === 'tipo-negocios' && typeof TipoNegociosView !== 'undefined') {
+        TipoNegociosView.load(mainContent);
       } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
         ProveedoresView.load(mainContent);
       } else if (key === 'municipios' && typeof MunicipiosView !== 'undefined') {
@@ -507,8 +517,6 @@
         TipoDocumentosView.load(mainContent);
       } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
         CajasView.load(mainContent);
-      } else if (key === 'usuarios' && typeof UsuariosView !== 'undefined') {
-        UsuariosView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
       } else {

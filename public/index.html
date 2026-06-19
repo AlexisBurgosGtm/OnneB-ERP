@@ -22,12 +22,12 @@
   <link rel="stylesheet" href="/css/pace.css">
   <link rel="stylesheet" href="/css/empresas.css">
   <link rel="stylesheet" href="/css/marcas.css">
-  <link rel="stylesheet" href="/css/usuarios.css">
   <link rel="stylesheet" href="/css/catalogos.css">
   <link rel="stylesheet" href="/css/config-general.css">
   <link rel="stylesheet" href="/css/developer.css">
   <link rel="stylesheet" href="/css/updater.css">
   <link rel="stylesheet" href="/css/pos.css">
+  <link rel="stylesheet" href="/css/corte-caja.css">
   <link rel="stylesheet" href="/css/documentos.css">
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
@@ -146,6 +146,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="entradas-inventario"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i> Entradas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="salidas-inventario"><i class="fa-solid fa-arrow-up-wide-short" aria-hidden="true"></i> Salidas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario-retroactivo"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Inventario Retroactivo</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="actualizacion-inventario"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Actualización de inventario</a></li>
                 </ul>
               </div>
             </div>
@@ -188,6 +189,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="medidas"><i class="fa-solid fa-ruler-combined" aria-hidden="true"></i> Medidas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="proveedores"><i class="fa-solid fa-truck" aria-hidden="true"></i> Proveedores</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="clientes"><i class="fa-solid fa-users" aria-hidden="true"></i> Clientes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="tipo-negocios"><i class="fa-solid fa-store" aria-hidden="true"></i> Tipo de Negocios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="municipios"><i class="fa-solid fa-city" aria-hidden="true"></i> Municipios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="departamentos"><i class="fa-solid fa-map" aria-hidden="true"></i> Departamentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="rutas"><i class="fa-solid fa-route" aria-hidden="true"></i> Rutas</a></li>
@@ -210,7 +212,6 @@
                   <li><a href="#" class="sidebar-link" data-menu="config-general"><i class="fa-solid fa-gear" aria-hidden="true"></i> Config general</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tipo-documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Tipo documentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="credenciales-fel"><i class="fa-solid fa-key" aria-hidden="true"></i> Credenciales FEL</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="usuarios"><i class="fa-solid fa-users" aria-hidden="true"></i> Usuarios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="updater"><i class="fa-solid fa-database" aria-hidden="true"></i> Actualizador BD</a></li>
                 </ul>
               </div>
@@ -275,13 +276,13 @@
   <script src="/js/views/fabricantes.js"></script>
   <script src="/js/views/ubicaciones.js"></script>
   <script src="/js/views/clientes.js"></script>
+  <script src="/js/views/tipo-negocios.js"></script>
   <script src="/js/views/proveedores.js"></script>
   <script src="/js/views/municipios.js"></script>
   <script src="/js/views/departamentos.js"></script>
   <script src="/js/views/empleados.js"></script>
   <script src="/js/views/tipo-documentos.js"></script>
   <script src="/js/views/cajas.js"></script>
-  <script src="/js/views/usuarios.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/views/developer.js"></script>
   <script src="/js/views/updater.js"></script>
@@ -289,11 +290,14 @@
   <script src="/js/empresa-logo.js"></script>
   <script src="/js/print-report.js"></script>
   <script src="/js/pos-doc-search-ui.js"></script>
+  <script src="/js/doc-tipo-select.js"></script>
   <script src="/js/views/pos.js"></script>
   <script src="/js/views/facturacion.js"></script>
+  <script src="/js/views/corte-caja.js"></script>
   <script src="/js/views/compras.js"></script>
   <script src="/js/views/inventario-mov-view.js"></script>
   <script src="/js/views/inventario.js"></script>
+  <script src="/js/views/inventario-actualizacion.js"></script>
   <script src="/js/views/documentos.js"></script>
   <script src="/js/views/productos.js"></script>
   <script src="/js/db.js"></script>

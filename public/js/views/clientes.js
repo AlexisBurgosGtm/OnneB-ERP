@@ -92,11 +92,12 @@ const ClientesView = {
       return this._lookups;
     }
     const rutasUrl = `/api/rutas?empnit=${encodeURIComponent(empNit)}&_=${ts}`;
+    const tiposUrl = `/api/tipo-negocios?empnit=${encodeURIComponent(empNit)}&_=${ts}`;
     const [muniRes, deptRes, rutasRes, tiposRes] = await Promise.all([
       F.fetchJson(`/api/municipios?_=${ts}`, { cache: 'no-store' }),
       F.fetchJson(`/api/departamentos?_=${ts}`, { cache: 'no-store' }),
       F.fetchJson(rutasUrl, { cache: 'no-store' }),
-      F.fetchJson(`/api/tipo-negocios?_=${ts}`, { cache: 'no-store' }),
+      F.fetchJson(tiposUrl, { cache: 'no-store' }),
     ]);
     this._lookups = {
       municipios: (muniRes.rows || []).map((m) => ({
@@ -112,8 +113,8 @@ const ClientesView = {
         label: String(r.DESRUTA || r.CODRUTA).trim(),
       })),
       tiposNegocio: (tiposRes.rows || []).map((t) => ({
-        value: String(t.TIPO || '').trim(),
-        label: String(t.TIPO || '').trim(),
+        value: String(t.TIPONEGOCIO || '').trim(),
+        label: String(t.TIPONEGOCIO || '').trim(),
       })),
     };
     this._lookupsEmpNit = empNit;
@@ -312,8 +313,9 @@ const ClientesView = {
     };
   },
 
-  buildFormHtml(row = {}, isEdit = false) {
+  buildFormHtml(row = {}, isEdit = false, profile = 'full') {
     const r = this.normalizeRowForForm(row, isEdit);
+    const compact = profile === 'facturacion' && !isEdit;
     const L = this._lookups || {
       municipios: [],
       departamentos: [],
@@ -325,7 +327,7 @@ const ClientesView = {
       ? this.inputField('CODCLIENTE', 'Código', r.CODCLIENTE, { type: 'number', readonly: true })
       : '<p class="small text-muted mb-0">El código se asignará al guardar.</p>';
 
-    return [
+    const parts = [
       this.row2(
         codigoHtml,
         this.selectField('TIPO', 'Tipo', CLIENTES_TIPO_OPTIONS, r.TIPO, true)
@@ -349,18 +351,31 @@ const ClientesView = {
         this.selectField('CODRUTA', 'Ruta', L.rutas, r.CODRUTA),
         this.selectField('DIAVISITA', 'Día visita', CLIENTES_DIAVISITA_OPTIONS, r.DIAVISITA)
       ),
-      this.fieldBlock(this.inputField('FECHAINICIO', 'Fecha inicio', r.FECHAINICIO, { type: 'date' })),
-      this.row2(
-        this.inputField('LIMITECREDITO', 'Límite crédito', r.LIMITECREDITO, { type: 'number', step: '0.01' }),
-        this.inputField('DIASCREDITO', 'Días crédito', r.DIASCREDITO, { type: 'number' })
-      ),
-      this.fieldBlock(this.inputField('SALDO', 'Saldo', r.SALDO, { type: 'number', step: '0.01' })),
-      this.fieldBlock(this.inputField('PROVINCIA', 'Provincia / referencia', r.PROVINCIA)),
-      this.row2(
-        this.inputField('LATITUDCLIENTE', 'Latitud', r.LATITUDCLIENTE),
-        this.inputField('LONGITUDCLIENTE', 'Longitud', r.LONGITUDCLIENTE)
-      ),
-    ].join('');
+    ];
+
+    if (!compact) {
+      parts.push(
+        this.fieldBlock(this.inputField('FECHAINICIO', 'Fecha inicio', r.FECHAINICIO, { type: 'date' })),
+        this.row2(
+          this.inputField('LIMITECREDITO', 'Límite crédito', r.LIMITECREDITO, { type: 'number', step: '0.01' }),
+          this.inputField('DIASCREDITO', 'Días crédito', r.DIASCREDITO, { type: 'number' })
+        ),
+        this.fieldBlock(this.inputField('SALDO', 'Saldo', r.SALDO, { type: 'number', step: '0.01' }))
+      );
+    }
+
+    parts.push(this.fieldBlock(this.inputField('PROVINCIA', 'Provincia / referencia', r.PROVINCIA)));
+
+    if (!compact) {
+      parts.push(
+        this.row2(
+          this.inputField('LATITUDCLIENTE', 'Latitud', r.LATITUDCLIENTE),
+          this.inputField('LONGITUDCLIENTE', 'Longitud', r.LONGITUDCLIENTE)
+        )
+      );
+    }
+
+    return parts.join('');
   },
 
   readFormData() {
@@ -395,13 +410,13 @@ const ClientesView = {
     return data;
   },
 
-  mapFormToApi(data) {
+  mapFormToApi(data, profile = 'full') {
     const num = (v) => (v === '' || v === undefined ? null : Number(v));
     const n = (key) => {
       const x = num(data[key]);
       return Number.isNaN(x) ? null : x;
     };
-    return {
+    const payload = {
       NIT: data.NIT || null,
       NOMBRECLIENTE: data.NOMBRECLIENTE,
       DIRCLIENTE: data.DIRCLIENTE || null,
@@ -422,6 +437,15 @@ const ClientesView = {
       NEGOCIO: data.NEGOCIO || null,
       TIPO: data.TIPO || null,
     };
+    if (profile === 'facturacion') {
+      delete payload.LATITUDCLIENTE;
+      delete payload.LONGITUDCLIENTE;
+      delete payload.SALDO;
+      delete payload.FECHAINICIO;
+      delete payload.LIMITECREDITO;
+      delete payload.DIASCREDITO;
+    }
+    return payload;
   },
 
   validateForm(data) {
@@ -430,7 +454,8 @@ const ClientesView = {
     return null;
   },
 
-  async showForm(title, row = {}, isEdit = false) {
+  async showForm(title, row = {}, isEdit = false, options = {}) {
+    const profile = options.profile || 'full';
     try {
       await this.loadLookups();
     } catch (err) {
@@ -440,7 +465,7 @@ const ClientesView = {
     const view = this;
     return CatalogosUI.fireForm({
       title,
-      html: view.buildFormHtml(row, isEdit),
+      html: view.buildFormHtml(row, isEdit, profile),
       width: 620,
       preConfirm() {
         const data = view.readFormData();
@@ -449,7 +474,7 @@ const ClientesView = {
           Swal.showValidationMessage(err);
           return false;
         }
-        return view.mapFormToApi(data);
+        return view.mapFormToApi(data, profile);
       },
     });
   },

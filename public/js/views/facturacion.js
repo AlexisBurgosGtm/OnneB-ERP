@@ -9,12 +9,26 @@ const FacturacionView = {
   _pedidosList: [],
   _listFilter: '',
   _listFecha: null,
+  _selectedCoddoc: '',
   _screen: 'list',
   _loadingProducts: false,
   _searchTimer: null,
   _cartBusy: false,
   _vendedores: [],
+  _cajas: [],
+  _selectedCodcaja: null,
+  _precioCampo: 'PRECIO',
   _urlFel: '',
+  _pedidosEnvList: [],
+  _pedidoEnvModalOpen: false,
+  _pedidoEnvFilter: '',
+
+  PRECIO_CAMPO_OPTIONS: [
+    { value: 'PRECIO', label: 'PRECIO PUBLICO' },
+    { value: 'MAYOREOC', label: 'MAYORISTA C' },
+    { value: 'MAYOREOB', label: 'MAYORISTA B' },
+    { value: 'MAYOREOA', label: 'MAYORISTA A' },
+  ],
 
   FEL_URL_OPCION: 'URL FEL',
   escapeHtml(value) {
@@ -244,12 +258,16 @@ const FacturacionView = {
     sel.classList.toggle('pos-doc-vendedor-required', highlight);
   },
 
+  activeCoddoc() {
+    return DocTipoSelect.active(this);
+  },
+
   async fetchConfig() {
     return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
   },
 
   async fetchProductos(q) {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40' });
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40', campoPrecio: this._precioCampo });
     if (q) params.set('q', q);
     params.set('_', String(Date.now()));
     return F.fetchJson(`/api/facturacion/productos?${params}`);
@@ -299,7 +317,7 @@ const FacturacionView = {
 
   async crearPedido() {
     const body = {
-      CODDOC: this._config?.coddocDefault,
+      CODDOC: this.activeCoddoc(),
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
@@ -313,7 +331,111 @@ const FacturacionView = {
   },
 
   docEditable(header) {
-    return DocFecha.editableStatus(header?.STATUS);
+    return (
+      DocFecha.editableStatus(header?.STATUS) &&
+      String(header?.CORTE || 'NO').trim().toUpperCase() !== 'SI'
+    );
+  },
+
+  docTotalPrecio(header) {
+    const n = Number(header?.TOTALPRECIO ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  },
+
+  fpagoInputValue(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    return String(Math.round(n * 100) / 100);
+  },
+
+  renderFinalizarFpagoCardHtml(totalPrecio, concreVal) {
+    const isCre = concreVal === 'CRE';
+    const total = this.fpagoInputValue(totalPrecio);
+    const hidden = isCre ? ' d-none' : '';
+    return `
+          <div class="card fac-finalizar-fpago-card mb-2${hidden}" id="fac-finalizar-fpago-card">
+            <div class="card-header py-2 px-3 small fw-semibold bg-light border-0">
+              <i class="fa-solid fa-wallet me-1 text-primary"></i>Formas de pago
+            </div>
+            <div class="card-body py-2 px-3">
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="fac-finalizar-fpago-efectivo">Efectivo</label>
+                  <input type="number" id="fac-finalizar-fpago-efectivo" class="form-control form-control-sm fac-fpago-input"
+                    min="0" step="0.01" value="${isCre ? '0' : total}"${isCre ? ' disabled' : ''}>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="fac-finalizar-fpago-tarjeta">Tarjeta</label>
+                  <input type="number" id="fac-finalizar-fpago-tarjeta" class="form-control form-control-sm fac-fpago-input"
+                    min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="fac-finalizar-fpago-deposito">Depósito</label>
+                  <input type="number" id="fac-finalizar-fpago-deposito" class="form-control form-control-sm fac-fpago-input"
+                    min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="fac-finalizar-fpago-cheque">Cheque</label>
+                  <input type="number" id="fac-finalizar-fpago-cheque" class="form-control form-control-sm fac-fpago-input"
+                    min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
+                </div>
+              </div>
+              <div class="mt-2">
+                <label class="form-label small mb-0" for="fac-finalizar-fpago-desc">Detalles del pago</label>
+                <input type="text" id="fac-finalizar-fpago-desc" class="form-control form-control-sm"
+                  placeholder="No. boleta, cheque o tarjeta (opcional)" maxlength="200"${isCre ? ' disabled' : ''}>
+              </div>
+            </div>
+          </div>`;
+  },
+
+  bindFinalizarFpagoToggle(totalPrecio) {
+    const concreSel = document.getElementById('fac-finalizar-concre');
+    const card = document.getElementById('fac-finalizar-fpago-card');
+    const efectivo = document.getElementById('fac-finalizar-fpago-efectivo');
+    const tarjeta = document.getElementById('fac-finalizar-fpago-tarjeta');
+    const deposito = document.getElementById('fac-finalizar-fpago-deposito');
+    const cheque = document.getElementById('fac-finalizar-fpago-cheque');
+    const desc = document.getElementById('fac-finalizar-fpago-desc');
+    const inputs = [efectivo, tarjeta, deposito, cheque, desc];
+    const toggle = () => {
+      const isCre = concreSel?.value === 'CRE';
+      card?.classList.toggle('d-none', isCre);
+      inputs.forEach((el) => {
+        if (!el) return;
+        el.disabled = isCre;
+      });
+      if (isCre) {
+        if (efectivo) efectivo.value = '0';
+        if (tarjeta) tarjeta.value = '0';
+        if (deposito) deposito.value = '0';
+        if (cheque) cheque.value = '0';
+        if (desc) desc.value = '';
+      } else if (efectivo && Number(efectivo.value) === 0) {
+        efectivo.value = this.fpagoInputValue(totalPrecio);
+      }
+    };
+    concreSel?.addEventListener('change', toggle);
+    toggle();
+  },
+
+  readFinalizarFpagoFromDom(concre) {
+    if (concre === 'CRE') {
+      return {
+        FPAGO_EFECTIVO: 0,
+        FPAGO_TARJETA: 0,
+        FPAGO_DEPOSITO: 0,
+        FPAGO_CHEQUE: 0,
+        FPAGO_DESCRIPCION: '',
+      };
+    }
+    return {
+      FPAGO_EFECTIVO: Number(document.getElementById('fac-finalizar-fpago-efectivo')?.value ?? 0),
+      FPAGO_TARJETA: Number(document.getElementById('fac-finalizar-fpago-tarjeta')?.value ?? 0),
+      FPAGO_DEPOSITO: Number(document.getElementById('fac-finalizar-fpago-deposito')?.value ?? 0),
+      FPAGO_CHEQUE: Number(document.getElementById('fac-finalizar-fpago-cheque')?.value ?? 0),
+      FPAGO_DESCRIPCION: document.getElementById('fac-finalizar-fpago-desc')?.value?.trim() || '',
+    };
   },
 
   async finalizarPedido() {
@@ -345,12 +467,16 @@ const FacturacionView = {
     const nombre = this.escapeHtml(h.DOC_NOMCLIE || h.CLI_NOMBRE || '—');
     const dir = this.escapeHtml(h.DOC_DIRCLIE || h.CLI_DIR || '—');
     const obsVal = this.escapeHtml(h.OBS || '');
+    const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
+    const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
+    const totalPrecio = this.docTotalPrecio(h);
 
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Finalizar pedido',
+      title: 'Finalizar factura',
+      width: '36rem',
       html: `
-        <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())}</p>
+        <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
         <div class="text-start">
           <div class="mb-2">
             <label class="form-label small mb-0">Tipo negocio — Negocio</label>
@@ -364,9 +490,23 @@ const FacturacionView = {
             <label class="form-label small mb-0">Dirección cliente</label>
             <div class="form-control form-control-sm bg-light">${dir}</div>
           </div>
+          <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
+            <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
+              <label class="form-label small mb-0" for="fac-finalizar-concre">Forma de pago</label>
+              <select id="fac-finalizar-concre" class="form-select form-select-sm">
+                <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
+                <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
+              </select>
+            </div>
+            <div class="col-6${concreVal === 'CRE' ? '' : ' d-none'}" id="fac-finalizar-venc-wrap">
+              <label class="form-label small mb-0" for="fac-finalizar-venc">Vencimiento</label>
+              <input type="date" id="fac-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+            </div>
+          </div>
+          ${this.renderFinalizarFpagoCardHtml(totalPrecio, concreVal)}
           <div class="mb-0">
             <label class="form-label small mb-0" for="fac-finalizar-obs">Observaciones</label>
-            <textarea id="fac-finalizar-obs" class="form-control form-control-sm" rows="3"
+            <textarea id="fac-finalizar-obs" class="form-control form-control-sm" rows="2"
               placeholder="Observaciones del pedido…">${obsVal}</textarea>
           </div>
         </div>
@@ -376,8 +516,39 @@ const FacturacionView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => document.getElementById('fac-finalizar-obs')?.focus(),
-      preConfirm: () => document.getElementById('fac-finalizar-obs')?.value?.trim() || '',
+      didOpen: () => {
+        const concreSel = document.getElementById('fac-finalizar-concre');
+        const vencWrap = document.getElementById('fac-finalizar-venc-wrap');
+        const concreWrap = document.getElementById('fac-finalizar-concre-wrap');
+        const toggleVenc = () => {
+          const isCre = concreSel?.value === 'CRE';
+          vencWrap?.classList.toggle('d-none', !isCre);
+          if (concreWrap) {
+            concreWrap.classList.toggle('col-6', isCre);
+            concreWrap.classList.toggle('col-12', !isCre);
+          }
+        };
+        concreSel?.addEventListener('change', toggleVenc);
+        toggleVenc();
+        this.bindFinalizarFpagoToggle(totalPrecio);
+        document.getElementById('fac-finalizar-concre')?.focus();
+      },
+      preConfirm: () => {
+        const obs = document.getElementById('fac-finalizar-obs')?.value?.trim() || '';
+        const concre = document.getElementById('fac-finalizar-concre')?.value || 'CON';
+        const venc = document.getElementById('fac-finalizar-venc')?.value?.trim() || '';
+        if (concre === 'CRE' && !venc) {
+          Swal.showValidationMessage('Ingrese la fecha de vencimiento');
+          return false;
+        }
+        const fpago = this.readFinalizarFpagoFromDom(concre);
+        return {
+          obs,
+          concre,
+          vencimiento: concre === 'CRE' ? venc : null,
+          ...fpago,
+        };
+      },
     });
 
     if (!isConfirmed) return;
@@ -386,7 +557,17 @@ const FacturacionView = {
     await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ OBS: value }),
+      body: JSON.stringify({
+        OBS: value.obs,
+        CONCRE: value.concre,
+        VENCIMIENTO: value.vencimiento,
+        CODCAJA: this.readCodcajaForFinalizar(),
+        FPAGO_EFECTIVO: value.FPAGO_EFECTIVO,
+        FPAGO_TARJETA: value.FPAGO_TARJETA,
+        FPAGO_DEPOSITO: value.FPAGO_DEPOSITO,
+        FPAGO_CHEQUE: value.FPAGO_CHEQUE,
+        FPAGO_DESCRIPCION: value.FPAGO_DESCRIPCION,
+      }),
     });
     F.toast('Pedido finalizado', 'success');
     this._pedido = null;
@@ -407,7 +588,12 @@ const FacturacionView = {
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CODPROD: codprod, CODMEDIDA: codmedida, CANTIDAD: cantidad }),
+      body: JSON.stringify({
+        CODPROD: codprod,
+        CODMEDIDA: codmedida,
+        CANTIDAD: cantidad,
+        CAMPO_PRECIO: this._precioCampo,
+      }),
     });
     this._pedido = res.pedido;
     this.renderCart();
@@ -629,6 +815,64 @@ const FacturacionView = {
       const codven = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
       vendedorSel.value = codven;
     }
+    const cajaSel = this._container?.querySelector('#fac-doc-caja');
+    if (cajaSel && document.activeElement !== cajaSel) {
+      cajaSel.value = this.resolveCodcajaSelectValue(h);
+    }
+  },
+
+  resolveInitialCodcaja(header) {
+    const stored = header?.CODCAJA;
+    if (stored != null && stored !== '' && Number(stored) > 0) return String(stored);
+    if (this._cajas.length) return String(this._cajas[0].CODCAJA);
+    return '';
+  },
+
+  resolveCodcajaSelectValue(header) {
+    if (this._selectedCodcaja !== null) return this._selectedCodcaja;
+    return this.resolveInitialCodcaja(header);
+  },
+
+  readCodcajaForFinalizar() {
+    const sel = this._container?.querySelector('#fac-doc-caja');
+    const val = sel?.value?.trim() ?? '';
+    if (!val) return null;
+    const cod = parseInt(val, 10);
+    return Number.isNaN(cod) ? null : cod;
+  },
+
+  renderPrecioCampoSelector(editable) {
+    const disabled = !editable ? ' disabled' : '';
+    const opts = this.PRECIO_CAMPO_OPTIONS.map(
+      (o) =>
+        `<option value="${o.value}"${o.value === this._precioCampo ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+    ).join('');
+    return `
+      <div class="pos-precio-campo-wrap ms-auto">
+        <select class="form-select form-select-sm" id="fac-precio-campo" title="Columna de precio"${disabled}>
+          ${opts}
+        </select>
+      </div>`;
+  },
+
+  renderCajaField() {
+    const h = this._pedido?.header;
+    const codcaja = this.resolveCodcajaSelectValue(h);
+    const disabled = !this.docEditable(h) ? ' disabled' : '';
+    const opts = (this._cajas || [])
+      .map(
+        (c) =>
+          `<option value="${c.CODCAJA}"${String(c.CODCAJA) === codcaja ? ' selected' : ''}>${this.escapeHtml(c.DESCAJA)}</option>`
+      )
+      .join('');
+    return `
+      <div class="pos-header-caja-wrap">
+        <label class="form-label small mb-0" for="fac-doc-caja">Caja</label>
+        <select class="form-select form-select-sm" id="fac-doc-caja"${disabled}>
+          <option value="">— Sin caja —</option>
+          ${opts}
+        </select>
+      </div>`;
   },
 
   renderVendedorField() {
@@ -654,7 +898,7 @@ const FacturacionView = {
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
     PosDocSearchUI.syncControls(this._container, 'fac', editable);
-    ['#fac-cliente-search', '#fac-doc-fecha', '#fac-doc-vendedor'].forEach((sel) => {
+    ['#fac-cliente-search', '#fac-cliente-nuevo', '#fac-doc-fecha', '#fac-doc-vendedor', '#fac-doc-caja', '#fac-precio-campo'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -798,20 +1042,234 @@ const FacturacionView = {
       </div>`;
   },
 
+  renderPedidoEnvModalHtml() {
+    if (!this._pedidoEnvModalOpen) return '';
+    const rows = this.filteredPedidosEnvList();
+    const body =
+      rows.length === 0
+        ? `<div class="fac-env-modal-empty text-muted text-center py-4">
+            <i class="fa-solid fa-inbox fa-2x mb-2 opacity-50"></i>
+            <p class="mb-0 small">No hay pedidos de mostrador operados disponibles.</p>
+          </div>`
+        : `<div class="table-responsive fac-env-modal-table-wrap">
+            <table class="table table-sm table-hover align-middle mb-0 fac-env-modal-table">
+              <thead class="table-light">
+                <tr>
+                  <th>CODDOC</th>
+                  <th>CORRELATIVO</th>
+                  <th>FECHA</th>
+                  <th>CLIENTE</th>
+                  <th class="text-end">IMPORTE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .map(
+                    (r) => `
+                  <tr class="fac-env-pedido-row" role="button" tabindex="0"
+                    data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}">
+                    <td class="fw-semibold">${this.escapeHtml(r.CODDOC)}</td>
+                    <td>${this.escapeHtml(r.CORRELATIVO)}</td>
+                    <td class="text-nowrap">${this.escapeHtml(this.formatFechaPedido(r))}</td>
+                    <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || '—')}</td>
+                    <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>`;
+
+    return `
+      <div class="fac-env-modal-overlay" id="fac-pedido-env-overlay" role="dialog" aria-modal="true" aria-labelledby="fac-pedido-env-title">
+        <div class="fac-env-modal card shadow-lg border-0">
+          <div class="fac-env-modal-header card-header bg-white border-0 pb-0">
+            <div class="d-flex align-items-start justify-content-between gap-2">
+              <div>
+                <h5 class="fac-env-modal-title mb-1" id="fac-pedido-env-title">
+                  <i class="fa-solid fa-cart-shopping me-2 text-primary"></i>Pedidos de mostrador
+                </h5>
+                <p class="small text-muted mb-0">Seleccione un pedido operado (ENV) para cargarlo en facturación.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-light fac-env-modal-close" id="btn-fac-pedido-env-cerrar" aria-label="Cerrar">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div class="input-group input-group-sm mt-3">
+              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input type="search" class="form-control" id="fac-pedido-env-search"
+                placeholder="Buscar documento, cliente…" value="${this.escapeHtml(this._pedidoEnvFilter)}" autocomplete="off">
+            </div>
+          </div>
+          <div class="card-body fac-env-modal-body pt-2">${body}</div>
+        </div>
+      </div>`;
+  },
+
+  renderListHeaderAndModal(count) {
+    return `
+        <div class="pos-list-header">
+          <h2 class="pos-list-title">Facturación del día</h2>
+          <p class="pos-list-sub text-muted mb-0">${count} factura(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
+          <button type="button" class="btn btn-sm btn-outline-primary fac-btn-tomar-pedido mt-2" id="btn-fac-tomar-pedido">
+            <i class="fa-solid fa-file-import me-1"></i>Tomar datos de pedido
+          </button>
+        </div>
+        <div id="fac-pedido-env-modal-root">${this.renderPedidoEnvModalHtml()}</div>`;
+  },
+
+  filteredPedidosEnvList() {
+    const q = String(this._pedidoEnvFilter || '').trim().toLowerCase();
+    if (!q) return this._pedidosEnvList || [];
+    return (this._pedidosEnvList || []).filter((r) => {
+      const hay = [
+        r.CODDOC,
+        r.CORRELATIVO,
+        r.DOC_NOMCLIE,
+        r.NEGOCIO,
+        this.formatFechaPedido(r),
+        r.TOTALPRECIO,
+      ]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ');
+      return hay.includes(q);
+    });
+  },
+
+  async fetchPedidosEnv(q = '') {
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), _: String(Date.now()) });
+    if (q) params.set('q', q);
+    const data = await F.fetchJson(`/api/facturacion/pedidos-env?${params}`, { cache: 'no-store' });
+    this._pedidosEnvList = data.rows || [];
+    return this._pedidosEnvList;
+  },
+
+  refreshPedidoEnvModalDom() {
+    const root = this._container?.querySelector('#fac-pedido-env-modal-root');
+    if (root) root.innerHTML = this.renderPedidoEnvModalHtml();
+    if (this._pedidoEnvModalOpen) this.bindPedidoEnvModalEvents();
+  },
+
+  closePedidoEnvModal() {
+    this._pedidoEnvModalOpen = false;
+    this._pedidoEnvFilter = '';
+    this.refreshPedidoEnvModalDom();
+  },
+
+  async openPedidoEnvModal() {
+    this._pedidoEnvModalOpen = true;
+    this._pedidoEnvFilter = '';
+    this.refreshPedidoEnvModalDom();
+    const tbody = this._container?.querySelector('.fac-env-modal-body');
+    if (tbody) {
+      tbody.innerHTML = `<div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando pedidos…</div>`;
+    }
+    try {
+      await this.fetchPedidosEnv();
+      this.refreshPedidoEnvModalDom();
+    } catch (err) {
+      const root = this._container?.querySelector('#fac-pedido-env-modal-root');
+      if (root) {
+        root.innerHTML = `
+          <div class="fac-env-modal-overlay" id="fac-pedido-env-overlay">
+            <div class="fac-env-modal card shadow-lg border-0">
+              <div class="card-body">
+                <div class="alert alert-danger mb-3">${this.escapeHtml(err.message)}</div>
+                <button type="button" class="btn btn-sm btn-secondary" id="btn-fac-pedido-env-cerrar">Cerrar</button>
+              </div>
+            </div>
+          </div>`;
+        root.querySelector('#btn-fac-pedido-env-cerrar')?.addEventListener('click', () => this.closePedidoEnvModal());
+      }
+    }
+  },
+
+  bindPedidoEnvModalEvents() {
+    this._container?.querySelector('#btn-fac-pedido-env-cerrar')?.addEventListener('click', () => {
+      this.closePedidoEnvModal();
+    });
+    this._container?.querySelector('#fac-pedido-env-overlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'fac-pedido-env-overlay') this.closePedidoEnvModal();
+    });
+    const search = this._container?.querySelector('#fac-pedido-env-search');
+    search?.addEventListener('input', () => {
+      this._pedidoEnvFilter = search.value;
+      this.refreshPedidoEnvModalDom();
+    });
+    this._container?.querySelectorAll('.fac-env-pedido-row').forEach((row) => {
+      const pick = () => {
+        const coddoc = row.getAttribute('data-coddoc');
+        const correlativo = row.getAttribute('data-correlativo');
+        this.confirmarPedidoEnv(coddoc, correlativo).catch((err) => F.toast(err.message, 'error'));
+      };
+      row.addEventListener('click', pick);
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          pick();
+        }
+      });
+    });
+  },
+
+  async confirmarPedidoEnv(coddoc, correlativo) {
+    const row = (this._pedidosEnvList || []).find(
+      (r) => String(r.CODDOC) === String(coddoc) && String(r.CORRELATIVO) === String(correlativo),
+    );
+    const cliente = this.escapeHtml(row?.DOC_NOMCLIE || row?.NEGOCIO || '—');
+    const importe = this.escapeHtml(this.formatMoney(row?.TOTALPRECIO));
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Agregar a facturación?',
+      html: `<p class="mb-2">Se creará una nueva factura con el cliente y productos del pedido:</p>
+        <p class="mb-0"><strong>${this.escapeHtml(coddoc)}-${this.escapeHtml(correlativo)}</strong> · ${cliente}<br>
+        <span class="text-muted">${importe}</span></p>`,
+      icon: 'question',
+      confirmText: 'Sí, cargar',
+    });
+    if (!ok) return;
+    await this.crearFacturaDesdePedido(coddoc, correlativo);
+  },
+
+  async crearFacturaDesdePedido(coddocPedido, correlativoPedido) {
+    if (this._container?.querySelector('#fac-list-coddoc')) {
+      DocTipoSelect.syncFromDom(this._container, 'fac-list-coddoc', this);
+    }
+    const url = `/api/facturacion/pedidos/desde-pedido?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        CODDOC_PEDIDO: coddocPedido,
+        CORRELATIVO_PEDIDO: correlativoPedido,
+        CODDOC_FAC: this.activeCoddoc(),
+        USUARIO: this.usuario(),
+      }),
+    });
+    this.closePedidoEnvModal();
+    const fac = res.factura?.header;
+    if (!fac) throw new Error('No se recibió la factura creada');
+    F.toast(`Factura ${fac.CODDOC}-${fac.CORRELATIVO} creada desde pedido`, 'success');
+    await this.showEditor(fac.CODDOC, fac.CORRELATIVO);
+  },
+
   renderListScreen() {
     const count = this.filteredPedidosList().length;
     return `
       <div class="pos-list-wrap">
-        <div class="pos-list-header">
-          <h2 class="pos-list-title">Facturación del día</h2>
-          <p class="pos-list-sub text-muted mb-0">${count} factura(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
-        </div>
+        ${this.renderListHeaderAndModal(count)}
         <div class="fac-list-toolbar mb-3">
           <div class="fac-list-toolbar-fecha">
             <label class="form-label small mb-1" for="fac-list-fecha">Fecha</label>
             <input type="date" class="form-control form-control-sm" id="fac-list-fecha"
               value="${this.escapeHtml(this._listFecha || this.todayIsoDate())}" aria-label="Fecha del listado">
           </div>
+          ${DocTipoSelect.renderSelectHtml({
+            selectId: 'fac-list-coddoc',
+            tipos: this._config?.tiposDocumento,
+            selected: this.activeCoddoc(),
+            label: 'Serie',
+            className: 'doc-tipo-select-wrap fac-list-toolbar-serie',
+          })}
           <div class="fac-list-toolbar-search flex-grow-1">
             <label class="form-label small mb-1" for="fac-list-search">Buscar</label>
             <div class="input-group input-group-sm">
@@ -823,7 +1281,7 @@ const FacturacionView = {
         </div>
         ${this.renderListTableHtml()}
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-fac-list-nuevo"
-          aria-label="Nueva factura" title="Nueva factura">
+          aria-label="Nueva factura" title="Nueva factura"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
         </button>
       </div>`;
@@ -848,19 +1306,23 @@ const FacturacionView = {
                 ${DocFecha.renderField('fac-doc-fecha', this._pedido?.header)}
                 ${this.renderVendedorField()}
               </div>
-              <div class="pos-header-summary ms-auto text-end">
-                <h3 class="pos-header-total mb-0" id="fac-header-total">Q 0.00</h3>
-                <div class="pos-header-items" id="fac-header-items">0 items</div>
+              <div class="pos-header-summary-wrap ms-auto d-flex flex-wrap align-items-end gap-3">
+                ${this.renderCajaField()}
+                <div class="pos-header-summary text-end">
+                  <h3 class="pos-header-total mb-0" id="fac-header-total">Q 0.00</h3>
+                  <div class="pos-header-items" id="fac-header-items">0 items</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
         <div class="pos-main">
           <div class="pos-panel pos-panel-search card shadow-sm">
-            <div class="card-header py-2 d-flex align-items-center gap-2">
+            <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap w-100">
               <i class="fa-solid fa-box"></i>
               <span class="fw-semibold">Productos</span>
               <span class="small text-muted">(${this.escapeHtml(tipoLabel)})</span>
+              ${this.renderPrecioCampoSelector(editable)}
             </div>
             <div class="card-body">
               <div class="input-group input-group-sm mb-2 pos-search-group">
@@ -881,8 +1343,12 @@ const FacturacionView = {
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Cliente</label>
-                <input type="search" class="form-control form-control-sm pos-search-glow" id="fac-cliente-search"
-                  placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
+                <div class="input-group input-group-sm">
+                  <input type="search" class="form-control pos-search-glow" id="fac-cliente-search"
+                    placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
+                  <button type="button" class="btn btn-outline-primary text-nowrap" id="fac-cliente-nuevo"
+                    title="Crear cliente nuevo"${editable ? '' : ' disabled'}>NUEVO (+)</button>
+                </div>
                 <div id="fac-cliente-nombre" class="small text-muted mt-1"></div>
                 <div id="fac-cliente-results" class="list-group position-absolute w-100 shadow-sm d-none"
                   style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>
@@ -932,6 +1398,8 @@ const FacturacionView = {
       }
     });
 
+    DocTipoSelect.bind(this._container, 'fac-list-coddoc', this);
+
     this._container?.querySelector('#fac-list-tbody')?.addEventListener('click', async (e) => {
       const felLink = e.target.closest('[data-action="fel-open"]');
       if (felLink) {
@@ -962,6 +1430,9 @@ const FacturacionView = {
     });
 
     this._container?.querySelector('#btn-fac-list-nuevo')?.addEventListener('click', () => this.onNuevoPedido());
+    this._container?.querySelector('#btn-fac-tomar-pedido')?.addEventListener('click', () => {
+      this.openPedidoEnvModal().catch((err) => F.toast(err.message, 'error'));
+    });
   },
 
   bindEditorEvents() {
@@ -970,6 +1441,16 @@ const FacturacionView = {
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
     });
+
+    const precioCampoSel = this._container?.querySelector('#fac-precio-campo');
+    if (precioCampoSel) {
+      precioCampoSel.addEventListener('change', () => {
+        if (precioCampoSel.disabled) return;
+        this._precioCampo = precioCampoSel.value || 'PRECIO';
+        const q = this._container?.querySelector('#fac-product-search')?.value?.trim() || '';
+        this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
 
     this._container?.querySelector('#fac-cart-tbody')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
@@ -1026,6 +1507,18 @@ const FacturacionView = {
         this.guardarVendedorDocumento(val).catch((err) => F.toast(err.message, 'error'));
       });
     }
+
+    const cajaSel = this._container?.querySelector('#fac-doc-caja');
+    if (cajaSel) {
+      cajaSel.addEventListener('change', () => {
+        if (cajaSel.disabled) return;
+        this._selectedCodcaja = cajaSel.value?.trim() || '';
+      });
+    }
+
+    this._container?.querySelector('#fac-cliente-nuevo')?.addEventListener('click', () => {
+      this.onNuevoCliente().catch((err) => F.toast(err.message, 'error'));
+    });
 
     const clienteSearch = this._container?.querySelector('#fac-cliente-search');
     const clienteList = this._container?.querySelector('#fac-cliente-results');
@@ -1120,6 +1613,12 @@ const FacturacionView = {
     return this._vendedores;
   },
 
+  async fetchCajasAbiertas() {
+    const data = await F.fetchJson(this.apiUrl('/cajas-abiertas', { _: Date.now() }));
+    this._cajas = data.rows || [];
+    return this._cajas;
+  },
+
   async guardarVendedorDocumento(codven) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
@@ -1152,6 +1651,29 @@ const FacturacionView = {
     F.toast('Cliente actualizado', 'success');
   },
 
+  async onNuevoCliente() {
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('El pedido no está en edición', 'warning');
+      return;
+    }
+    const data = await ClientesView.showForm('Nuevo cliente', {}, false, { profile: 'facturacion' });
+    if (!data) return;
+    try {
+      const res = await F.fetchJson(ClientesView.apiBase(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const cod = res.CODCLIENTE;
+      if (!cod) throw new Error('No se recibió el código del cliente');
+      await this.aplicarCliente(cod);
+      const inp = this._container?.querySelector('#fac-cliente-search');
+      if (inp) inp.value = data.NOMBRECLIENTE || data.NEGOCIO || String(cod);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
   async showList() {
     this._screen = 'list';
     this._pedido = null;
@@ -1168,6 +1690,8 @@ const FacturacionView = {
       await this.loadPedido(coddoc, correlativo, { skipRender: true });
     }
     await this.fetchVendedores();
+    await this.fetchCajasAbiertas();
+    this._selectedCodcaja = null;
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
     await this.buscarProductos('');
@@ -1176,6 +1700,9 @@ const FacturacionView = {
 
   async onNuevoPedido() {
     try {
+      if (this._container?.querySelector('#fac-list-coddoc')) {
+        DocTipoSelect.syncFromDom(this._container, 'fac-list-coddoc', this);
+      }
       await this.crearPedido();
       const key = this.docKey();
       if (key) await this.showEditor(key.coddoc, key.correlativo);
@@ -1203,6 +1730,7 @@ const FacturacionView = {
     try {
       const [config] = await Promise.all([this.fetchConfig(), this.fetchUrlFel().catch(() => '')]);
       this._config = config;
+      DocTipoSelect.initView(this);
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">

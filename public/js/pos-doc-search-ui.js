@@ -141,7 +141,9 @@ const PosDocSearchUI = {
       opts.findProductRow ||
       ((cod, med) =>
         (view._productos || []).find(
-          (p) => String(p.CODPROD) === String(cod) && String(p.CODMEDIDA) === String(med)
+          (p) =>
+            String(p.CODPROD).trim() === String(cod).trim() &&
+            String(p.CODMEDIDA).trim() === String(med).trim()
         ));
 
     const sheetEl = this.ensureSheet(container, prefix);

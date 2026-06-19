@@ -1,8 +1,14 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
-const { InventarioError, aplicarMovimientoInventarioDocumento } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha } = require('../lib/documento-fecha');
+const {
+  InventarioError,
+  getTipomDocumento,
+  aplicarMovimientoInventarioLineaInsert,
+  aplicarMovimientoInventarioLineaPatch,
+  revertirMovimientoInventarioLinea,
+} = require('../lib/inventario');
+const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -13,9 +19,17 @@ const {
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
+const {
+  SQL_PRECIOS_JOIN,
+  SQL_PRODUCTO_PRECIOS_HABILITADO,
+  fetchProductoPrecioForLinea,
+  mapProductoSearchRow,
+  pesoFromPreciosRow,
+  calcLinePeso,
+} = require('../lib/producto-precio-linea');
 
 const SEARCH_LIMIT = 80;
-const DEFAULT_BODEGA = 1;
+const DEFAULT_BODEGA = 0;
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -28,18 +42,6 @@ function requireEmpNit(req, res) {
     return null;
   }
   return empnit;
-}
-
-function nowParts() {
-  const d = new Date();
-  return {
-    anio: d.getFullYear(),
-    mes: d.getMonth() + 1,
-    dia: d.getDate(),
-    fecha: d,
-    hora: d.getHours(),
-    minuto: d.getMinutes(),
-  };
 }
 
 function parseCorrelativo(raw) {
@@ -258,23 +260,27 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           p.CODPROD, p.DESPROD, m.DESMARCA, p.COSTO AS COSTO_PROD, p.TIPOPROD, p.EXISTENCIA,
           pr.CODMEDIDA, pr.COSTO, pr.EQUIVALE, pr.PRECIO
         FROM dbo.PRODUCTOS p
-        INNER JOIN dbo.PRECIOS pr ON p.CODPROD = pr.CODPROD AND p.EMPNIT = pr.EMPNIT
+        ${SQL_PRECIOS_JOIN}
         LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
-        WHERE p.EMPNIT = @EMPNIT AND p.HABILITADO = 'SI' AND pr.HABILITADO = 'SI'
+        WHERE p.EMPNIT = @EMPNIT
+          ${SQL_PRODUCTO_PRECIOS_HABILITADO}
         ${whereExtra}
         ORDER BY p.DESPROD, pr.CODMEDIDA, pr.EQUIVALE DESC
       `);
-      const rows = result.recordset.map((row) => ({
-        CODPROD: row.CODPROD,
-        DESPROD: row.DESPROD,
-        DESMARCA: row.DESMARCA ?? '',
-        COSTO_PROD: row.COSTO_PROD,
-        TIPOPROD: row.TIPOPROD,
-        EXISTENCIA: row.EXISTENCIA,
-        CODMEDIDA: row.CODMEDIDA,
-        COSTO: row.COSTO ?? row.COSTO_PROD,
-        EQUIVALE: row.EQUIVALE,
-      }));
+      const rows = result.recordset.map((row) =>
+        mapProductoSearchRow({
+          CODPROD: row.CODPROD,
+          DESPROD: row.DESPROD,
+          DESMARCA: row.DESMARCA ?? '',
+          COSTO_PROD: row.COSTO_PROD,
+          TIPOPROD: row.TIPOPROD,
+          EXISTENCIA: row.EXISTENCIA,
+          CODMEDIDA: row.CODMEDIDA,
+          COSTO: row.COSTO ?? row.COSTO_PROD,
+          EQUIVALE: row.EQUIVALE,
+          PRECIO: row.PRECIO,
+        })
+      );
       res.json({ rows, q: q || null });
     } catch (err) {
       console.warn(`[API GET /${logPrefix}/productos]`, err.message);
@@ -510,21 +516,14 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         return res.status(400).json({ error: 'El documento ya no está en edición' });
       }
 
-      const prodRes = await pool
-        .request()
-        .input('EMPNIT', sql.VarChar, empnit)
-        .input('CODPROD', sql.VarChar, codprod)
-        .input('CODMEDIDA', sql.VarChar, codmedida)
-        .query(`
-          SELECT p.CODPROD, p.DESPROD, p.COSTO AS COSTO_PROD, p.TIPOPROD, p.EXENTO,
-            pr.PRECIO, pr.COSTO, pr.EQUIVALE
-          FROM dbo.PRODUCTOS p
-          INNER JOIN dbo.PRECIOS pr ON p.CODPROD = pr.CODPROD AND p.EMPNIT = pr.EMPNIT
-          WHERE p.EMPNIT = @EMPNIT AND p.CODPROD = @CODPROD AND pr.CODMEDIDA = @CODMEDIDA
-            AND p.HABILITADO = 'SI' AND pr.HABILITADO = 'SI'
-        `);
-      if (!prodRes.recordset.length) return res.status(404).json({ error: 'Producto o medida no encontrado' });
-      const prod = prodRes.recordset[0];
+      const found = await fetchProductoPrecioForLinea(pool, sql, {
+        empnit,
+        codprod,
+        codmedida,
+      });
+      if (!found) return res.status(404).json({ error: 'Producto o medida no encontrado' });
+      const prod = found.row;
+      const medidaLinea = found.codmedida;
       const { tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
       const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
       const precio = getPrecioFromPreciosRow(prod, DEFAULT_PRECIOS_FIELD);
@@ -537,6 +536,8 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       );
       const parts = nowParts();
       const exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+      const peso = pesoFromPreciosRow(prod);
+      const totalPeso = calcLinePeso(cantidad, peso);
 
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
@@ -551,7 +552,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
           .input('CODPROD', sql.VarChar, codprod)
           .input('DESPROD', sql.VarChar, prod.DESPROD)
-          .input('CODMEDIDA', sql.VarChar, codmedida)
+          .input('CODMEDIDA', sql.VarChar, medidaLinea)
           .input('CANTIDAD', sql.Float, cantidad)
           .input('EQUIVALE', sql.Int, equivale)
           .input('TOTALUNIDADES', sql.Float, totalUnidades)
@@ -562,6 +563,8 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           .input('EXENTO', sql.Decimal(18, 3), exento)
           .input('TIPOPROD', sql.VarChar, tipoprod)
           .input('TIPOPRECIO', sql.VarChar, tipoprecio)
+          .input('PESO', sql.Decimal(18, 3), peso)
+          .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
           .query(`
             INSERT INTO dbo.DOCPRODUCTOS (
               EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -570,7 +573,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
               ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
               COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
               DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-              TIPOPROD, TIPOPRECIO, LASTUPDATE
+              TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, LASTUPDATE
             ) VALUES (
               @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
               @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -578,20 +581,37 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
               @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
               0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
               0, 0, 'SN', @EXENTO, 'SN',
-              @TIPOPROD, @TIPOPRECIO, CAST(GETDATE() AS DATE)
+              @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, CAST(GETDATE() AS DATE)
             );
             SELECT SCOPE_IDENTITY() AS ID;
           `);
         const lineId = ins.recordset[0]?.ID;
+        await aplicarMovimientoInventarioLineaInsert(transaction, {
+          empnit,
+          coddoc,
+          correlativo,
+          codprod,
+          desprod: prod.DESPROD,
+          totalUnidades,
+          tipoprod,
+          codbodegaEntrada: DEFAULT_BODEGA,
+          codbodegaSalida: DEFAULT_BODEGA,
+        });
         const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
         await transaction.commit();
         const doc = await loadDocumento(pool, empnit, coddoc, correlativo);
         res.status(201).json({ lineId, totals, documento: doc });
       } catch (inner) {
         await transaction.rollback();
+        if (inner instanceof InventarioError) {
+          return res.status(inner.statusCode).json({ error: inner.message, code: inner.code });
+        }
         throw inner;
       }
     } catch (err) {
+      if (err instanceof InventarioError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code });
+      }
       console.warn(`[API POST /${logPrefix}/documentos/lineas]`, err.message);
       res.status(500).json({ error: err.message });
     }
@@ -619,7 +639,10 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .query(`
-          SELECT l.COSTO, l.PRECIO, l.EQUIVALE, d.STATUS
+          SELECT
+            l.COSTO, l.PRECIO, l.EQUIVALE, l.PESO, l.TOTALUNIDADES,
+            l.CODPROD, l.DESPROD, l.TIPOPROD, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
+            d.STATUS
           FROM dbo.DOCPRODUCTOS l
           JOIN dbo.DOCUMENTOS d ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
           WHERE l.ID = @ID AND l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
@@ -635,10 +658,23 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         ln.PRECIO,
         ln.EQUIVALE
       );
+      const totalPeso = calcLinePeso(cantidad, ln.PESO);
 
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
       try {
+        await aplicarMovimientoInventarioLineaPatch(transaction, {
+          empnit,
+          coddoc,
+          correlativo,
+          codprod: ln.CODPROD,
+          desprod: ln.DESPROD,
+          anteriorTotalUnidades: ln.TOTALUNIDADES,
+          nuevoTotalUnidades: totalUnidades,
+          tipoprod: ln.TIPOPROD,
+          codbodegaEntrada: ln.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
+          codbodegaSalida: ln.CODBODEGASALIDA ?? DEFAULT_BODEGA,
+        });
         await transaction
           .request()
           .input('ID', sql.Int, lineId)
@@ -649,10 +685,12 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           .input('ENTREGADOS_TOTALUNIDADES', sql.Float, totalUnidades)
           .input('ENTREGADOS_TOTALCOSTO', sql.Decimal(18, 3), totalCosto)
           .input('ENTREGADOS_TOTALPRECIO', sql.Decimal(18, 3), totalPrecio)
+          .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
           .query(`
             UPDATE dbo.DOCPRODUCTOS SET
               CANTIDAD = @CANTIDAD, TOTALUNIDADES = @TOTALUNIDADES,
               TOTALCOSTO = @TOTALCOSTO, TOTALPRECIO = @TOTALPRECIO,
+              TOTALPESO = @TOTALPESO,
               ENTREGADOS_TOTALUNIDADES = @ENTREGADOS_TOTALUNIDADES,
               ENTREGADOS_TOTALCOSTO = @ENTREGADOS_TOTALCOSTO,
               ENTREGADOS_TOTALPRECIO = @ENTREGADOS_TOTALPRECIO,
@@ -665,9 +703,15 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         res.json({ totals, documento: doc });
       } catch (inner) {
         await transaction.rollback();
+        if (inner instanceof InventarioError) {
+          return res.status(inner.statusCode).json({ error: inner.message, code: inner.code });
+        }
         throw inner;
       }
     } catch (err) {
+      if (err instanceof InventarioError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code });
+      }
       console.warn(`[API PATCH /${logPrefix}/documentos/lineas]`, err.message);
       res.status(500).json({ error: err.message });
     }
@@ -689,21 +733,45 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
       try {
-        const del = await transaction
+        const lineRes = await transaction
           .request()
           .input('ID', sql.Int, lineId)
           .input('EMPNIT', sql.VarChar, empnit)
           .input('CODDOC', sql.VarChar, coddoc)
           .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
           .query(`
-            DELETE FROM dbo.DOCPRODUCTOS
-            WHERE ID = @ID AND EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-              AND EXISTS (
-                SELECT 1 FROM dbo.DOCUMENTOS d
-                WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
-                  AND d.STATUS = '${STATUS_OPERADO}'
-              )
+            SELECT
+              l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD,
+              l.CODBODEGAENTRADA, l.CODBODEGASALIDA, d.STATUS
+            FROM dbo.DOCPRODUCTOS l
+            JOIN dbo.DOCUMENTOS d
+              ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
+            WHERE l.ID = @ID AND l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
           `);
+        if (!lineRes.recordset.length) {
+          await transaction.rollback();
+          return res.status(404).json({ error: 'Línea no encontrada' });
+        }
+        const line = lineRes.recordset[0];
+        if (!isStatusEditable(line.STATUS)) {
+          await transaction.rollback();
+          return res.status(400).json({ error: 'El documento ya no está en edición' });
+        }
+        await revertirMovimientoInventarioLinea(transaction, {
+          empnit,
+          coddoc,
+          correlativo,
+          codprod: line.CODPROD,
+          desprod: line.DESPROD,
+          totalUnidades: line.TOTALUNIDADES,
+          tipoprod: line.TIPOPROD,
+          codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
+          codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
+        });
+        const del = await transaction
+          .request()
+          .input('ID', sql.Int, lineId)
+          .query(`DELETE FROM dbo.DOCPRODUCTOS WHERE ID = @ID`);
         if (del.rowsAffected[0] === 0) {
           await transaction.rollback();
           return res.status(404).json({ error: 'Línea no encontrada' });
@@ -714,9 +782,15 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         res.json({ totals, documento: doc });
       } catch (inner) {
         await transaction.rollback();
+        if (inner instanceof InventarioError) {
+          return res.status(inner.statusCode).json({ error: inner.message, code: inner.code });
+        }
         throw inner;
       }
     } catch (err) {
+      if (err instanceof InventarioError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code });
+      }
       console.warn(`[API DELETE /${logPrefix}/documentos/lineas]`, err.message);
       res.status(500).json({ error: err.message });
     }
@@ -784,11 +858,8 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         let inv = { tipom: 0, lineas: 0, productos: 0 };
         const corteAplicado = String(docMeta.CORTE || 'NO').trim().toUpperCase() === 'SI';
         if (!corteAplicado) {
-          inv = await aplicarMovimientoInventarioDocumento(transaction, {
-            empnit,
-            coddoc,
-            correlativo,
-          });
+          const tipom = await getTipomDocumento(transaction, empnit, coddoc);
+          inv = { tipom, lineas: 0, productos: 0 };
           const corteUpd = await transaction
             .request()
             .input('EMPNIT', sql.VarChar, empnit)
@@ -871,6 +942,9 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     } catch (err) {
       if (err instanceof DocumentoDeleteError) {
         return res.status(err.statusCode).json({ error: err.message });
+      }
+      if (err instanceof InventarioError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code });
       }
       if (err.statusCode === 401) {
         return res.status(401).json({ error: err.message });

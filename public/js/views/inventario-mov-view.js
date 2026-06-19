@@ -14,6 +14,7 @@ function createInventarioMovView(cfg) {
     _listFilter: '',
     _listMes: new Date().getMonth() + 1,
     _listAnio: new Date().getFullYear(),
+    _selectedCoddoc: '',
     _screen: 'list',
     _loadingProducts: false,
     _searchTimer: null,
@@ -104,15 +105,17 @@ function createInventarioMovView(cfg) {
       return F.fetchJson(`${apiBase}/productos?${params}`);
     },
 
+    activeCoddoc() {
+      return DocTipoSelect.active(this);
+    },
+
     async fetchDocsList() {
-      const coddoc = this._config?.coddocDefault || '';
       const params = {
         empnit: F.getEmpNit(),
         status: 'O',
         mes: String(this._listMes),
         anio: String(this._listAnio),
       };
-      if (coddoc) params.coddoc = coddoc;
       params._ = String(Date.now());
       const data = await F.fetchJson(this.apiUrl('/documentos', params));
       this._docsList = data.rows || [];
@@ -197,7 +200,7 @@ function createInventarioMovView(cfg) {
 
     async crearDocumento() {
       const body = {
-        CODDOC: this._config?.coddocDefault,
+        CODDOC: this.activeCoddoc(),
         USUARIO: this.usuario(),
       };
       this._documento = await F.fetchJson(this.apiUrl('/documentos'), {
@@ -600,6 +603,13 @@ function createInventarioMovView(cfg) {
               <label class="small text-muted mb-0" for="${NS}-list-anio">Año</label>
               <select class="form-select form-select-sm" id="${NS}-list-anio">${anioOpts}</select>
             </div>
+            ${DocTipoSelect.renderSelectHtml({
+              selectId: `${NS}-list-coddoc`,
+              tipos: this._config?.tiposDocumento,
+              selected: this.activeCoddoc(),
+              label: 'Serie',
+              className: 'doc-tipo-select-wrap inv-list-period',
+            })}
           </div>
           <div class="input-group inv-list-search">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -621,7 +631,7 @@ function createInventarioMovView(cfg) {
         ${this.renderListToolbar()}
         <div class="pos-pedido-cards" id="${NS}-doc-cards">${this.renderListCardsHtml()}</div>
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="${NS}-btn-nuevo"
-          aria-label="Nuevo documento" title="Nuevo documento">
+          aria-label="Nuevo documento" title="Nuevo documento"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
         </button>
       </div>`;
@@ -727,6 +737,8 @@ function createInventarioMovView(cfg) {
       anioSel?.addEventListener('change', () => {
         reloadPeriod().catch((err) => F.toast(err.message, 'error'));
       });
+
+      DocTipoSelect.bind(this._container, `${NS}-list-coddoc`, this);
 
       this._container?.querySelector(`#${NS}-doc-cards`)?.addEventListener('click', async (e) => {
         const btn = e.target.closest('.inv-card-btn');
@@ -846,6 +858,9 @@ function createInventarioMovView(cfg) {
 
     async onNuevo() {
       try {
+        if (this._container?.querySelector(`#${NS}-list-coddoc`)) {
+          DocTipoSelect.syncFromDom(this._container, `${NS}-list-coddoc`, this);
+        }
         await this.crearDocumento();
         const key = this.docKey();
         if (key) await this.showEditor(key.coddoc, key.correlativo);
@@ -872,6 +887,7 @@ function createInventarioMovView(cfg) {
 
       try {
         this._config = await this.fetchConfig();
+        DocTipoSelect.initView(this);
         if (!this._config.coddocDefault) {
           container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
