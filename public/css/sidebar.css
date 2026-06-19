@@ -198,26 +198,49 @@
   top: auto !important;
   right: auto !important;
   z-index: 99999 !important;
-  width: 3.5rem !important;
-  height: 3.5rem !important;
-  min-width: 3.5rem !important;
-  min-height: 3.5rem !important;
-  padding: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: unset !important;
+  min-height: unset !important;
+  padding: 0.62rem 1.15rem 0.62rem 1rem !important;
   margin: 0 !important;
-  border: none !important;
-  border-radius: 50% !important;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, #fff 32%, transparent) !important;
+  border-radius: 999px !important;
   display: none !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 1.2rem !important;
+  flex-direction: row !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.03em;
   line-height: 1 !important;
-  color: var(--fab-menu-color, #f5f5f5) !important;
-  background: var(--fab-menu-bg, linear-gradient(145deg, #4a4a4a, #1a1a1a)) !important;
+  color: var(--fab-menu-color, #fff) !important;
+  background: color-mix(in srgb, var(--onneb-brand, #7c3aed) 58%, transparent) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.35),
-    0 2px 6px rgba(0, 0, 0, 0.2) !important;
+    0 10px 28px color-mix(in srgb, var(--onneb-brand, #7c3aed) 38%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent) !important;
   cursor: pointer !important;
   -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+#btn-menu-fab .btn-menu-fab-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+#btn-menu-fab .btn-menu-fab-label {
+  line-height: 1;
+  text-transform: none;
 }
 
 #btn-menu-fab.btn-menu-fab.is-visible {
@@ -225,10 +248,16 @@
 }
 
 #btn-menu-fab.btn-menu-fab:hover {
-  transform: translateY(-2px) scale(1.05);
-  color: var(--fab-menu-color, #f5f5f5) !important;
+  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--onneb-brand, #7c3aed) 72%, transparent) !important;
+  border-color: color-mix(in srgb, #fff 42%, transparent) !important;
+  box-shadow:
+    0 14px 32px color-mix(in srgb, var(--onneb-brand, #7c3aed) 45%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent) !important;
+  color: var(--fab-menu-color, #fff) !important;
 }
 
 #btn-menu-fab.btn-menu-fab:active {
-  transform: scale(0.96);
+  transform: translateY(0) scale(0.98);
 }

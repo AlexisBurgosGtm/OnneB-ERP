@@ -54,6 +54,18 @@ const FacturacionView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  formatFormaPago(concre) {
+    return String(concre || 'CON').trim().toUpperCase() === 'CRE' ? 'Crédito' : 'Contado';
+  },
+
+  formatCajaLista(row) {
+    const desc = String(row?.DESCAJA || '').trim();
+    if (desc) return desc;
+    const cod = row?.CODCAJA;
+    if (cod != null && cod !== '' && Number(cod) !== 0) return `Caja ${cod}`;
+    return '—';
+  },
+
   formatProdLabel(desprod, desmarca) {
     const name = String(desprod ?? '').trim();
     const marca = String(desmarca ?? '').trim();
@@ -358,11 +370,12 @@ const FacturacionView = {
               <i class="fa-solid fa-wallet me-1 text-primary"></i>Formas de pago
             </div>
             <div class="card-body py-2 px-3">
+              <p class="small text-muted mb-2">Distribuya el total <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong> entre efectivo, tarjeta, depósito y/o cheque.</p>
               <div class="row g-2">
                 <div class="col-6">
                   <label class="form-label small mb-0" for="fac-finalizar-fpago-efectivo">Efectivo</label>
                   <input type="number" id="fac-finalizar-fpago-efectivo" class="form-control form-control-sm fac-fpago-input"
-                    min="0" step="0.01" value="${isCre ? '0' : total}"${isCre ? ' disabled' : ''}>
+                    min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
                 </div>
                 <div class="col-6">
                   <label class="form-label small mb-0" for="fac-finalizar-fpago-tarjeta">Tarjeta</label>
@@ -380,6 +393,7 @@ const FacturacionView = {
                     min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
                 </div>
               </div>
+              <div class="mt-2 small text-end text-muted" id="fac-finalizar-fpago-sum">Suma: Q 0.00 / ${this.escapeHtml(total)}</div>
               <div class="mt-2">
                 <label class="form-label small mb-0" for="fac-finalizar-fpago-desc">Detalles del pago</label>
                 <input type="text" id="fac-finalizar-fpago-desc" class="form-control form-control-sm"
@@ -387,6 +401,27 @@ const FacturacionView = {
               </div>
             </div>
           </div>`;
+  },
+
+  sumFinalizarFpagoInputs() {
+    const ids = [
+      'fac-finalizar-fpago-efectivo',
+      'fac-finalizar-fpago-tarjeta',
+      'fac-finalizar-fpago-deposito',
+      'fac-finalizar-fpago-cheque',
+    ];
+    return ids.reduce((acc, id) => acc + (Number(document.getElementById(id)?.value ?? 0) || 0), 0);
+  },
+
+  validateFinalizarFpago(concre, totalPrecio) {
+    if (concre === 'CRE') return null;
+    const sum = Math.round(this.sumFinalizarFpagoInputs() * 1000) / 1000;
+    const total = Math.round(Number(totalPrecio) * 1000) / 1000;
+    if (sum <= 0) return 'Indique la forma de pago por el monto total de la factura';
+    if (Math.abs(sum - total) > 0.001) {
+      return `La suma (${this.formatMoney(sum)}) debe ser igual al total (${this.formatMoney(total)})`;
+    }
+    return null;
   },
 
   bindFinalizarFpagoToggle(totalPrecio) {
@@ -397,7 +432,13 @@ const FacturacionView = {
     const deposito = document.getElementById('fac-finalizar-fpago-deposito');
     const cheque = document.getElementById('fac-finalizar-fpago-cheque');
     const desc = document.getElementById('fac-finalizar-fpago-desc');
+    const sumEl = document.getElementById('fac-finalizar-fpago-sum');
     const inputs = [efectivo, tarjeta, deposito, cheque, desc];
+    const refreshSum = () => {
+      if (!sumEl) return;
+      const sum = this.sumFinalizarFpagoInputs();
+      sumEl.textContent = `Suma: ${this.formatMoney(sum)} / ${this.formatMoney(totalPrecio)}`;
+    };
     const toggle = () => {
       const isCre = concreSel?.value === 'CRE';
       card?.classList.toggle('d-none', isCre);
@@ -411,10 +452,12 @@ const FacturacionView = {
         if (deposito) deposito.value = '0';
         if (cheque) cheque.value = '0';
         if (desc) desc.value = '';
-      } else if (efectivo && Number(efectivo.value) === 0) {
-        efectivo.value = this.fpagoInputValue(totalPrecio);
       }
+      refreshSum();
     };
+    [efectivo, tarjeta, deposito, cheque].forEach((el) => {
+      el?.addEventListener('input', refreshSum);
+    });
     concreSel?.addEventListener('change', toggle);
     toggle();
   },
@@ -539,6 +582,11 @@ const FacturacionView = {
         const venc = document.getElementById('fac-finalizar-venc')?.value?.trim() || '';
         if (concre === 'CRE' && !venc) {
           Swal.showValidationMessage('Ingrese la fecha de vencimiento');
+          return false;
+        }
+        const fpagoErr = this.validateFinalizarFpago(concre, totalPrecio);
+        if (fpagoErr) {
+          Swal.showValidationMessage(fpagoErr);
           return false;
         }
         const fpago = this.readFinalizarFpagoFromDom(concre);
@@ -994,7 +1042,7 @@ const FacturacionView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay facturas operadas en esta fecha</td></tr>`;
+      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay facturas operadas en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1002,12 +1050,17 @@ const FacturacionView = {
         const cliente = r.DOC_NOMCLIE || r.NEGOCIO || 'Sin cliente';
         const negocio = [r.TIPONEGOCIO, r.NEGOCIO].filter(Boolean).join(' · ') || '—';
         const vendedor = String(r.VENDEDOR || '').trim() || '—';
+        const caja = this.formatCajaLista(r);
+        const pago = this.formatFormaPago(r.CONCRE);
+        const pagoClass = String(r.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'text-warning' : 'text-success';
         return `
           <tr class="fac-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
             <td>${this.escapeHtml(cliente)}</td>
             <td class="small text-muted">${this.escapeHtml(negocio)}</td>
             <td class="small">${this.escapeHtml(vendedor)}</td>
+            <td class="small text-nowrap">${this.escapeHtml(caja)}</td>
+            <td class="small fw-semibold ${pagoClass}">${this.escapeHtml(pago)}</td>
             <td class="fac-fel-col">${this.formatFelCell(r)}</td>
             <td class="text-center">${Number(r.LINEAS) || 0}</td>
             <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
@@ -1029,6 +1082,8 @@ const FacturacionView = {
                 <th scope="col">Cliente</th>
                 <th scope="col">Negocio</th>
                 <th scope="col">Vendedor</th>
+                <th scope="col">Caja</th>
+                <th scope="col">Pago</th>
                 <th scope="col">FEL</th>
                 <th scope="col" class="text-center">Líneas</th>
                 <th scope="col" class="text-end">Total</th>

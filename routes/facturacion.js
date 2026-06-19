@@ -94,7 +94,7 @@ function parseFpagoAmount(raw) {
   return roundMoney(n);
 }
 
-/** Formas de pago al finalizar: contado usa montos del body; crédito todo en cero. */
+/** Formas de pago al finalizar: contado exige suma = total; crédito todo en cero. */
 function resolveFormasPago(concre, body, totalPrecio) {
   if (concre === 'CRE') {
     return {
@@ -105,15 +105,30 @@ function resolveFormasPago(concre, body, totalPrecio) {
       FPAGO_DESCRIPCION: '',
     };
   }
-  const total = roundMoney(totalPrecio);
-  const hasEfectivo = body?.FPAGO_EFECTIVO !== undefined && body?.FPAGO_EFECTIVO !== null && body?.FPAGO_EFECTIVO !== '';
-  return {
-    FPAGO_EFECTIVO: hasEfectivo ? parseFpagoAmount(body.FPAGO_EFECTIVO) : total,
+  const fpago = {
+    FPAGO_EFECTIVO: parseFpagoAmount(body?.FPAGO_EFECTIVO),
     FPAGO_TARJETA: parseFpagoAmount(body?.FPAGO_TARJETA),
     FPAGO_DEPOSITO: parseFpagoAmount(body?.FPAGO_DEPOSITO),
     FPAGO_CHEQUE: parseFpagoAmount(body?.FPAGO_CHEQUE),
     FPAGO_DESCRIPCION: String(body?.FPAGO_DESCRIPCION || '').trim(),
   };
+  const sum = roundMoney(
+    fpago.FPAGO_EFECTIVO + fpago.FPAGO_TARJETA + fpago.FPAGO_DEPOSITO + fpago.FPAGO_CHEQUE
+  );
+  const total = roundMoney(totalPrecio);
+  if (sum <= 0) {
+    const err = new Error('Indique la forma de pago por el monto total de la factura');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (Math.abs(sum - total) > 0.001) {
+    const err = new Error(
+      `La suma de formas de pago (${sum}) debe ser igual al total de la factura (${total})`
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+  return fpago;
 }
 
 async function applyFormasPagoDocumento(transaction, empnit, coddoc, correlativo, fpago) {
@@ -574,15 +589,17 @@ router.get('/pedidos', async (req, res) => {
       SELECT
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
-        d.FEL_UUDI,
+        d.FEL_UUDI, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
+        ISNULL(cj.DESCAJA, '') AS DESCAJA,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
       LEFT JOIN dbo.Empleados emp ON d.CODVEN = emp.CODEMPLEADO AND d.EMPNIT = emp.EMPNIT
+      LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
         AND t.TIPODOC IN (${TIPODOC_SQL_IN})
         AND d.STATUS = '${status}'
@@ -731,7 +748,11 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
         .input('OBS', sql.VarChar, String(pedido.OBS || ''))
         .input('SERIEFAC', sql.VarChar, pedCoddoc)
         .input('NOFAC', sql.VarChar, String(pedCorrelativo))
-        .input('CODCAJA', sql.Int, pedido.CODCAJA != null ? Number(pedido.CODCAJA) : 1)
+        .input(
+          'CODCAJA',
+          sql.Int,
+          pedido.CODCAJA != null && Number(pedido.CODCAJA) > 0 ? Number(pedido.CODCAJA) : null
+        )
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
@@ -879,6 +900,7 @@ router.post('/pedidos', async (req, res) => {
         .input('DOC_DIRCLIE', sql.VarChar, String(cliente.DIRCLIENTE || 'SN'))
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
+        .input('CODCAJA', sql.Int, null)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
@@ -891,7 +913,7 @@ router.post('/pedidos', async (req, res) => {
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
             0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
-            'SN', @OBS, 0, 0, 'SN', 0, 1,
+            'SN', @OBS, 0, 0, 'SN', 0, @CODCAJA,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',
             @FECHA, 0, 0, 0, 0, 0
           )
@@ -1413,7 +1435,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         txnUpd.input('OBS', sql.VarChar, obs);
       }
       const obsSql = obs !== null ? ', OBS = @OBS' : '';
-      let cajaSql = '';
+      let cajaSql = ', CODCAJA = NULL';
       if (codcaja !== null) {
         txnUpd.input('CODCAJA', sql.Int, codcaja);
         cajaSql = ', CODCAJA = @CODCAJA';
@@ -1504,11 +1526,17 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       if (inner instanceof InventarioError) {
         return res.status(inner.statusCode).json({ error: inner.message, code: inner.code });
       }
+      if (inner.statusCode === 400) {
+        return res.status(400).json({ error: inner.message });
+      }
       throw inner;
     }
   } catch (err) {
     if (err instanceof InventarioError) {
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
+    }
+    if (err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
     }
     console.warn('[API POST /facturacion/pedidos/finalizar]', err.message);
     res.status(500).json({ error: err.message });

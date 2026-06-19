@@ -83,7 +83,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     { key: 'CODDOC', label: 'Código' },
     { key: 'DESDOC', label: 'Descripción' },
     { key: 'TIPODOC', label: 'Tipo doc.' },
-    { key: 'TIPOM', label: 'Tipo M' },
+    { key: 'TIPOM', label: 'Tipo Inventario' },
     { key: 'FORMATO', label: 'Formato' },
     { key: 'ACTIVO', label: 'Activo' },
   ],
@@ -168,7 +168,7 @@ const TipoDocumentosView = {
       { key: 'CODDOC', label: 'Código' },
       { key: 'DESDOC', label: 'Descripción' },
       { key: 'TIPODOC', label: 'Tipo doc.' },
-      { key: 'TIPOM', label: 'Tipo M' },
+      { key: 'TIPOM', label: 'Tipo Inventario' },
       { key: 'FORMATO', label: 'Formato' },
       { key: 'ACTIVO', label: 'Activo' },
     ];
@@ -295,7 +295,7 @@ const TipoDocumentosView = {
       ]),
       this.rowCols([
         this.selectField('TIPODOC', 'Tipo documento', L.tiposDoc, r.TIPODOC),
-        this.selectField('TIPOM', 'Tipo M', tipomOptions, r.TIPOM),
+        this.selectField('TIPOM', 'Tipo Inventario', tipomOptions, r.TIPOM),
         this.inputField('FORMATO', 'Formato', r.FORMATO),
       ]),
       this.rowCols([

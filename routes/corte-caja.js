@@ -2,7 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
-const { sessionCorteDocsSql, SQL_TIPODOC_CORTE_IN } = require('../lib/corte-caja-docs');
+const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN } = require('../lib/corte-caja-docs');
 
 const router = express.Router();
 
@@ -232,6 +232,37 @@ router.get('/:codcaja/resumen', async (req, res) => {
     res.json({ caja, resumen });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/resumen]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codcaja/documentos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codcaja = parseCodcaja(req.params.codcaja);
+  if (!codcaja) return res.status(400).json({ error: 'CODCAJA inválido' });
+  const filtro = String(req.query.filtro || '').trim().toLowerCase();
+  const listSql = sessionCorteDocsListSql(filtro);
+  if (!listSql) return res.status(400).json({ error: 'Filtro inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const caja = await loadCaja(pool, empnit, codcaja);
+    if (!caja) return res.status(404).json({ error: 'Caja no encontrada' });
+    if (Number(caja.STATUS) !== 1) {
+      return res.status(400).json({ error: 'La caja no está abierta' });
+    }
+    const apertura = caja.LASTUPDATE || new Date();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCAJA', sql.Int, codcaja)
+      .input('APERTURA', sql.DateTime, apertura)
+      .query(listSql);
+    res.json({ filtro, rows: result.recordset });
+  } catch (err) {
+    console.warn('[API GET /corte-caja/:codcaja/documentos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

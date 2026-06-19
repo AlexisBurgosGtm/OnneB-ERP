@@ -1,53 +1,67 @@
+.config-general-wrap {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1rem;
+}
+
 .config-general-panel {
   width: 100%;
-  max-width: 520px;
-  align-self: flex-start;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  max-width: none;
+  align-self: stretch;
+}
+
+.config-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.45rem;
+  align-items: stretch;
 }
 
 .config-sino-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: contents;
 }
 
 .config-general-panel .config-card-compact {
   border: 1px solid var(--app-border, #e0e0e0);
-  border-radius: 0.55rem;
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--onneb-base-black) 5%, transparent);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--onneb-base-black) 4%, transparent);
+  height: 100%;
 }
 
 .config-general-panel .config-card-compact .card-body {
-  padding: 0.55rem 0.75rem;
+  padding: 0.45rem 0.65rem;
 }
 
 .config-general-panel .card-title {
   color: var(--app-text, #1a1a1a);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .config-general-panel .card-text,
 .config-general-panel .config-invsaldo-status {
   color: var(--app-text-muted, #666);
-  font-size: 0.74rem;
-  line-height: 1.35;
+  font-size: 0.7rem;
+  line-height: 1.3;
 }
 
 .config-general-panel .config-field-label {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--app-text-muted, #666);
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.15rem;
 }
 
 .config-card-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
+  gap: 0.5rem;
 }
 
 .config-card-info {
@@ -57,16 +71,16 @@
 
 .config-general-panel .config-sino-toggle {
   flex-shrink: 0;
-  min-width: 3.1rem;
-  padding: 0.28rem 0.65rem;
-  font-size: 0.78rem;
+  min-width: 2.85rem;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
 }
 
 .config-general-panel .config-sino-toggle--wide {
-  min-width: 5.75rem;
+  min-width: 5.25rem;
   letter-spacing: 0.02em;
 }
 
@@ -78,13 +92,16 @@
 .config-general-panel .input-group .form-control {
   border-color: var(--app-border, #ddd);
   color: var(--app-text, #1a1a1a);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }
 
 .config-general-panel .btn-toggle-pass {
   border-color: var(--app-border, #ddd);
   color: var(--app-text-muted, #666);
   background: var(--app-surface, #fafafa);
+  padding: 0.25rem 0.5rem;
 }
 
 .config-general-panel .btn-toggle-pass:hover {
@@ -95,16 +112,23 @@
 .config-general-panel .btn-actualizar-pass {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   font-weight: 600;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--btn-fg-guardar, #fff) !important;
   background: linear-gradient(145deg, #3b82f6, #2563eb) !important;
   border: 1px solid #2563eb !important;
   white-space: nowrap;
+  padding: 0.25rem 0.55rem;
 }
 
 .config-general-panel .btn-actualizar-pass:hover {
   color: var(--btn-fg-guardar, #fff) !important;
   opacity: 0.92;
+}
+
+@media (min-width: 1200px) {
+  .config-cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }

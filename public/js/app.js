@@ -519,6 +519,8 @@
         CajasView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
+      } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {
+        CredencialesFelView.load(mainContent);
       } else {
         mainContent.classList.add('align-items-center', 'justify-content-center');
         mainContent.classList.remove('align-items-stretch', 'justify-content-start');

@@ -43,6 +43,7 @@ const inventarioSaldoRouter = require('./routes/inventario-saldo');
 const documentosRouter = require('./routes/documentos');
 const productosRouter = require('./routes/productos');
 const suscripcionesRouter = require('./routes/suscripciones');
+const credencialesFelRouter = require('./routes/credenciales-fel');
 const updaterRouter = require('./routes/updater');
 
 async function getDbPool() {
@@ -135,6 +136,7 @@ app.use('/api/inventario', inventarioSaldoRouter);
 app.use('/api/documentos', documentosRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/suscripciones', suscripcionesRouter);
+app.use('/api/credenciales-fel', credencialesFelRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

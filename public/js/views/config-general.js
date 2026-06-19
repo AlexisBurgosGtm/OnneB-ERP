@@ -10,6 +10,7 @@ const ConfigGeneralView = {
     IMPRIME_TICKET: 'IMPRIME TICKET AL GUARDAR VENTA',
     COBRO_PREDETERMINADO: 'COBRO PREDETERMINADO',
     URL_FEL: 'URL FEL',
+    MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
   },
 
   TEXT_CARDS: [
@@ -47,6 +48,12 @@ const ConfigGeneralView = {
       icon: 'fa-money-bill-wave',
       fallbackDesc: 'Determina si las nuevas facturas están por contado o crédito',
       labels: { SI: 'CRÉDITO', NO: 'CONTADO' },
+    },
+    {
+      opcion: 'MUESTRA DATOS EN CORTE DE CAJA',
+      title: 'Muestra datos en corte de caja',
+      icon: 'fa-chart-pie',
+      fallbackDesc: 'Muestra totales del sistema y detalle al cerrar; en NO el arqueo es ciego (sin montos visibles)',
     },
   ],
 
@@ -146,7 +153,7 @@ const ConfigGeneralView = {
   renderPassCard(card, meta = {}) {
     const desc = meta.descripcion || card.fallbackDesc;
     return `
-      <div class="card config-card-compact mb-2">
+      <div class="card config-card-compact">
         <div class="card-body">
           <h6 class="card-title mb-1">
             <i class="fa-solid fa-key me-1 text-primary"></i>${this.escapeHtml(card.title)}
@@ -183,7 +190,7 @@ const ConfigGeneralView = {
   renderTextCard(card, meta = {}) {
     const desc = meta.descripcion || card.fallbackDesc;
     return `
-      <div class="card config-card-compact mb-2">
+      <div class="card config-card-compact">
         <div class="card-body">
           <h6 class="card-title mb-1">
             <i class="fa-solid fa-link me-1 text-primary"></i>${this.escapeHtml(card.title)}
@@ -216,7 +223,7 @@ const ConfigGeneralView = {
         ? 'Todos los productos tienen registro en INVSALDO.'
         : `${count} producto(s) sin registro en INVSALDO.`;
     return `
-      <div class="card config-card-compact mt-2">
+      <div class="card config-card-compact">
         <div class="card-body">
           <h6 class="card-title mb-1">
             <i class="fa-solid fa-warehouse me-1 text-primary"></i>Sincronizar saldos de inventario
@@ -238,11 +245,15 @@ const ConfigGeneralView = {
       this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
     ).join('');
     return `
-      <div class="config-general-panel">
-        ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.opcion] || {})).join('')}
-        ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
-        <div class="config-sino-grid">${sinoCards}</div>
-        ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+      <div class="config-general-wrap w-100">
+        <div class="config-general-panel">
+          <div class="config-cards-grid">
+            ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.opcion] || {})).join('')}
+            ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
+            ${sinoCards}
+            ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+          </div>
+        </div>
       </div>`;
   },
 
