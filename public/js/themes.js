@@ -74,23 +74,20 @@ const OnnebThemes = {
 
   _updateContrastVars() {
     const root = document.documentElement;
-    const appBg = this._getCssRgb(root, '--app-bg', '#ffffff');
     const tokens = [
-      ['--btn-fg-primary', '--bs-primary', 0.76, '#7c3aed'],
-      ['--btn-fg-success', '--btn-base-nuevo', 0.76, '#16a34a'],
-      ['--btn-fg-danger', '--btn-base-eliminar', 0.8, '#ef4444'],
-      ['--btn-fg-warning', '--btn-base-bloquear', 0.8, '#f59e0b'],
-      ['--btn-fg-info', '--btn-base-editar', 0.8, '#3b82f6'],
-      ['--btn-fg-muted', '--btn-base-ver', 0.8, '#64748b'],
-      ['--btn-fg-purple', '--btn-base-imprimir', 0.8, '#8b5cf6'],
-      ['--btn-fg-guardar', '--btn-base-guardar', 0.78, '#2563eb'],
-      ['--fab-action-fg', '--btn-base-finalizar', 0.76, '#2563eb'],
+      '--btn-fg-primary',
+      '--btn-fg-success',
+      '--btn-fg-danger',
+      '--btn-fg-warning',
+      '--btn-fg-info',
+      '--btn-fg-muted',
+      '--btn-fg-purple',
+      '--btn-fg-guardar',
+      '--fab-action-fg',
     ];
 
-    tokens.forEach(([outVar, srcVar, mix, fallback]) => {
-      const base = this._getCssRgb(root, srcVar, fallback);
-      const mixed = this._mixRgb(base, appBg, mix);
-      root.style.setProperty(outVar, this._contrastText(mixed));
+    tokens.forEach((outVar) => {
+      root.style.setProperty(outVar, '#ffffff');
     });
   },
 

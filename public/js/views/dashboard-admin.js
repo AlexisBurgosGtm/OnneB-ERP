@@ -181,16 +181,16 @@ const DashboardAdminView = {
       </div>
       <div class="card dashboard-chart-card shadow-sm mb-3">
         <div class="card-header py-2 px-3">
-          <h3 class="h6 mb-0">Proyección de ventas — 30 días</h3>
+          <h3 class="h6 mb-0">Proyección de cierre de mes</h3>
           <p class="small text-muted mb-0">
-            Promedio diario neto del periodo:
+            Promedio diario neto (${this._data?.proyeccion?.diasTranscurridos ?? 0} día(s) transcurridos):
             <strong>${this.escapeHtml(this.formatMoney(this._data?.proyeccion?.promedioDiario))}</strong>
-            · Total proyectado:
-            <strong>${this.escapeHtml(this.formatMoney(this._data?.proyeccion?.totalProyectado30))}</strong>
+            · Total proyectado al cierre:
+            <strong>${this.escapeHtml(this.formatMoney(this._data?.proyeccion?.totalProyectadoMes))}</strong>
           </p>
         </div>
         <div class="card-body">
-          <canvas id="dashboard-chart-proyeccion" height="90" aria-label="Proyección 30 días"></canvas>
+          <canvas id="dashboard-chart-proyeccion" height="90" aria-label="Proyección de cierre de mes"></canvas>
         </div>
       </div>
     `;
@@ -326,20 +326,31 @@ const DashboardAdminView = {
     const historico = proj.historico || [];
     const futuro = proj.futuro || [];
     const colors = this.chartColors();
+    const diasMes = proj.diasMes || historico.length + futuro.length || 30;
+    const diaCorte = proj.diasTranscurridos ?? historico.length;
+    const promedioDiario = Number(proj.promedioDiario) || 0;
 
-    const labels = [
-      ...historico.map((d) => `${d.dia}`),
-      ...futuro.map((d) => {
-        const parts = String(d.fecha).slice(5).split('-');
-        return `${parts[1]}/${parts[0]}`;
-      }),
-    ];
+    const netoPorDia = new Map();
+    historico.forEach((d) => netoPorDia.set(d.dia, d.neto));
+    futuro.forEach((d) => netoPorDia.set(d.dia, d.neto));
 
-    const realData = [...historico.map((d) => d.neto), ...futuro.map(() => null)];
-    const projData = [
-      ...historico.map((d, i) => (i === historico.length - 1 ? d.neto : null)),
-      ...futuro.map((d) => d.neto),
-    ];
+    const labels = [];
+    const realData = [];
+    const projData = [];
+    for (let dia = 1; dia <= diasMes; dia += 1) {
+      labels.push(String(dia));
+      if (dia < diaCorte) {
+        realData.push(netoPorDia.get(dia) ?? 0);
+        projData.push(null);
+      } else if (dia === diaCorte) {
+        const neto = netoPorDia.get(dia) ?? 0;
+        realData.push(diaCorte > 0 ? neto : null);
+        projData.push(diaCorte > 0 ? neto : promedioDiario);
+      } else {
+        realData.push(null);
+        projData.push(netoPorDia.get(dia) ?? promedioDiario);
+      }
+    }
 
     const chart = new Chart(canvas, {
       type: 'line',
@@ -347,7 +358,7 @@ const DashboardAdminView = {
         labels,
         datasets: [
           {
-            label: 'Ventas netas (mes)',
+            label: 'Ventas netas (real)',
             data: realData,
             borderColor: colors.primary,
             backgroundColor: `${colors.primary}22`,
@@ -356,7 +367,7 @@ const DashboardAdminView = {
             pointRadius: 2,
           },
           {
-            label: 'Proyección (30 días)',
+            label: 'Proyección (restante del mes)',
             data: projData,
             borderColor: colors.warning,
             borderDash: [6, 4],
@@ -383,7 +394,7 @@ const DashboardAdminView = {
         scales: {
           x: {
             ticks: { maxTicksLimit: 20, font: { size: 10 } },
-            title: { display: true, text: 'Días del mes · proyección siguiente' },
+            title: { display: true, text: 'Día del mes' },
           },
           y: {
             ticks: {

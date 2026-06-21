@@ -427,6 +427,7 @@
     'notas-debito': 'Notas de Débito',
     gastos: 'Gastos',
     'corte-caja': 'Corte de Caja',
+    tareas: 'Tareas',
     developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
@@ -487,6 +488,8 @@
         FacturacionView.load(mainContent);
       } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
         CorteCajaView.load(mainContent);
+      } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
+        TareasView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {

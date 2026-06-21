@@ -1,0 +1,78 @@
+.tareas-col-desc {
+  min-width: 10rem;
+  max-width: 22rem;
+  white-space: normal;
+}
+
+.tareas-estado-toggle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.tareas-estado-toggle:hover {
+  opacity: 0.88;
+  transform: scale(1.03);
+}
+
+.tareas-dias-badge {
+  background: #198754;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.75rem;
+}
+
+.tareas-dias-badge--alert {
+  background: #157347;
+}
+
+.tareas-filter-estado {
+  max-width: 11rem;
+}
+
+.tareas-table-wrap {
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+.tareas-prioridad-badge,
+.tareas-estado-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tareas-prioridad-baja {
+  background: #6c757d;
+  color: #fff;
+}
+
+.tareas-prioridad-media {
+  background: #ffc107;
+  color: #212529;
+}
+
+.tareas-prioridad-alta {
+  background: #dc3545;
+  color: #fff;
+}
+
+.tareas-estado-pendiente {
+  background: #198754;
+  color: #fff;
+}
+
+.tareas-estado-finalizada {
+  background: #dc3545;
+  color: #fff;
+}
+
+.catalogo-vista-wrap .table-responsive:not(.tareas-table-wrap) {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}

@@ -41,6 +41,7 @@ function parseValue(field, raw) {
  * @param {'int'|'varchar'} cfg.idType
  * @param {string} cfg.idRouteParam
  * @param {boolean} [cfg.autoId]
+ * @param {boolean} [cfg.identityColumn] — ID generado por SQL Server (IDENTITY); no insertar idColumn
  * @param {string[]} cfg.listColumns
  * @param {Array<{name:string,type:'varchar'|'int'|'float',required?:boolean}>} cfg.fields
  * @param {string[]} cfg.insertFields - sin idColumn si autoId
@@ -144,6 +145,33 @@ function createCatalogoRouter(cfg) {
         const validationErr = await cfg.validateInsert(pool, empnit, data, req);
         if (validationErr) return res.status(400).json({ error: validationErr });
       }
+
+      if (cfg.identityColumn) {
+        const insertCols = scoped
+          ? ['EMPNIT', ...cfg.insertFields]
+          : [...cfg.insertFields];
+        const valueParts = insertCols.map((c) => `@${c}`);
+        if (cfg.fechaOnInsert) {
+          insertCols.push('FECHA');
+          valueParts.push('CAST(GETDATE() AS DATE)');
+        }
+        const request = pool.request();
+        if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
+        bindBody(request, data, cfg.insertFields);
+
+        const result = await request.query(`
+          INSERT INTO dbo.[${cfg.table}] (${insertCols.join(', ')})
+          OUTPUT INSERTED.${cfg.idColumn}${cfg.fechaOnInsert ? ', INSERTED.FECHA' : ''}
+          VALUES (${valueParts.join(', ')})
+        `);
+        const idValue = result.recordset[0]?.[cfg.idColumn];
+        const response = { ok: true, [cfg.idColumn]: idValue, ...data };
+        if (cfg.fechaOnInsert && result.recordset[0]?.FECHA) {
+          response.FECHA = result.recordset[0].FECHA;
+        }
+        return res.status(201).json(response);
+      }
+
       const idValue = cfg.autoId ? await nextAutoId(pool, empnit) : data[cfg.idColumn];
       if (idValue === null || idValue === '') {
         return res.status(400).json({ error: `${cfg.idColumn} es obligatorio` });
