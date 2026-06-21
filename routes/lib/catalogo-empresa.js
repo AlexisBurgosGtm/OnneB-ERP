@@ -46,6 +46,8 @@ function parseValue(field, raw) {
  * @param {string[]} cfg.insertFields - sin idColumn si autoId
  * @param {string[]} cfg.updateFields
  * @param {boolean} [cfg.scopedByEmpresa=true] — filtra por EMPNIT
+ * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request) => Promise<string|null|void>} [cfg.validateInsert]
+ * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request, idValue: string|number) => Promise<string|null|void>} [cfg.validateUpdate]
  */
 function createCatalogoRouter(cfg) {
   const router = express.Router();
@@ -138,6 +140,10 @@ function createCatalogoRouter(cfg) {
 
     try {
       const pool = await req.app.locals.getDbPool();
+      if (typeof cfg.validateInsert === 'function') {
+        const validationErr = await cfg.validateInsert(pool, empnit, data, req);
+        if (validationErr) return res.status(400).json({ error: validationErr });
+      }
       const idValue = cfg.autoId ? await nextAutoId(pool, empnit) : data[cfg.idColumn];
       if (idValue === null || idValue === '') {
         return res.status(400).json({ error: `${cfg.idColumn} es obligatorio` });
@@ -188,6 +194,10 @@ function createCatalogoRouter(cfg) {
 
     try {
       const pool = await req.app.locals.getDbPool();
+      if (typeof cfg.validateUpdate === 'function') {
+        const validationErr = await cfg.validateUpdate(pool, empnit, data, req, idValue);
+        if (validationErr) return res.status(400).json({ error: validationErr });
+      }
       const setClause = cfg.updateFields.map((n) => `${n} = @${n}`).join(', ');
       const where = scoped
         ? `WHERE EMPNIT = @EMPNIT AND ${cfg.idColumn} = @ID_KEY`

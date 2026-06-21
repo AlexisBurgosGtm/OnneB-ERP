@@ -2,6 +2,20 @@ const express = require('express');
 const sql = require('mssql');
 const { createCatalogoRouter } = require('./lib/catalogo-empresa');
 const { isDbConfigured } = require('../config/database');
+const { assertAccesoUnico, normalizeUsuario, normalizeClave } = require('../lib/empleado-acceso');
+
+async function validateEmpleadoAcceso(pool, data, exclude) {
+  const usuario = normalizeUsuario(data.USUARIO);
+  const clave = normalizeClave(data.CLAVE);
+  if (!usuario) return 'USUARIO es obligatorio';
+  if (clave === '') return 'CLAVE es obligatoria';
+  try {
+    await assertAccesoUnico(pool, usuario, clave, exclude);
+  } catch (err) {
+    return err.message;
+  }
+  return null;
+}
 
 const router = createCatalogoRouter({
   logName: 'empleados',
@@ -25,6 +39,7 @@ const router = createCatalogoRouter({
     'WHATSAPP',
     'EMAIL',
     'ACTIVO',
+    'USUARIO',
     'CLAVE',
     'LATITUD',
     'LONGITUD',
@@ -44,6 +59,7 @@ const router = createCatalogoRouter({
     { name: 'WHATSAPP', type: 'varchar' },
     { name: 'EMAIL', type: 'varchar' },
     { name: 'ACTIVO', type: 'varchar' },
+    { name: 'USUARIO', type: 'varchar' },
     { name: 'CLAVE', type: 'varchar' },
     { name: 'LATITUD', type: 'varchar' },
     { name: 'LONGITUD', type: 'varchar' },
@@ -63,6 +79,7 @@ const router = createCatalogoRouter({
     'WHATSAPP',
     'EMAIL',
     'ACTIVO',
+    'USUARIO',
     'CLAVE',
     'LATITUD',
     'LONGITUD',
@@ -81,6 +98,7 @@ const router = createCatalogoRouter({
     'TELEFONOS',
     'WHATSAPP',
     'EMAIL',
+    'USUARIO',
     'CLAVE',
     'LATITUD',
     'LONGITUD',
@@ -88,6 +106,15 @@ const router = createCatalogoRouter({
     'CODCATALOGO',
     'CODDOC_REC',
   ],
+  async validateInsert(pool, empnit, data) {
+    return validateEmpleadoAcceso(pool, data);
+  },
+  async validateUpdate(pool, empnit, data, req, codempleado) {
+    return validateEmpleadoAcceso(pool, data, {
+      empnit,
+      codempleado,
+    });
+  },
 });
 
 function getEmpNitFromReq(req) {

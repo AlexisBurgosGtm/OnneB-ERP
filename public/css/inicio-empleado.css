@@ -1,0 +1,41 @@
+.inicio-empleado-wrap {
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+.inicio-empleado-card {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.inicio-empleado-icon {
+  font-size: 2.75rem;
+  color: var(--onneb-primary, #0d6efd);
+  opacity: 0.9;
+}
+
+.inicio-empleado-meta {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--bs-border-color-translucent, rgba(0, 0, 0, 0.08));
+}
+
+.empleados-acceso-card {
+  border-color: rgba(13, 110, 253, 0.25);
+  background: rgba(13, 110, 253, 0.04);
+}
+
+.empleados-acceso-card .card-body {
+  padding: 0.75rem 0.85rem;
+}
+
+.empleados-acceso-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--onneb-primary, #0d6efd);
+  margin-bottom: 0.25rem;
+}
+
+.empleados-acceso-card-desc {
+  font-size: 0.75rem;
+  color: var(--onneb-text-muted, #6c757d);
+  margin-bottom: 0.65rem;
+}

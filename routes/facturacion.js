@@ -589,7 +589,8 @@ router.get('/pedidos', async (req, res) => {
       SELECT
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
-        d.FEL_UUDI, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
+        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
+        t.TIPODOC,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
         ISNULL(cj.DESCAJA, '') AS DESCAJA,

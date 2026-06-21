@@ -49,7 +49,7 @@ router.post('/login', async (req, res) => {
       .input('EMPNIT', sql.VarChar, empnit)
       .input('USUARIO', sql.VarChar(100), usuario)
       .query(`
-        SELECT TOP 1 CODEMPLEADO, NOMEMPLEADO, USUARIO, CLAVE, EMAIL
+        SELECT TOP 1 CODEMPLEADO, NOMEMPLEADO, USUARIO, CLAVE, EMAIL, CODTIPOEMPLEADO
         FROM dbo.Empleados
         WHERE EMPNIT = @EMPNIT
           AND UPPER(LTRIM(RTRIM(USUARIO))) = UPPER(LTRIM(RTRIM(@USUARIO)))
@@ -57,6 +57,22 @@ router.post('/login', async (req, res) => {
       `);
 
     if (!result.recordset.length) {
+      const inactivo = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('USUARIO', sql.VarChar(100), usuario)
+        .input('CLAVE', sql.VarChar, String(password))
+        .query(`
+          SELECT TOP 1 CODEMPLEADO
+          FROM dbo.Empleados
+          WHERE EMPNIT = @EMPNIT
+            AND UPPER(LTRIM(RTRIM(USUARIO))) = UPPER(LTRIM(RTRIM(@USUARIO)))
+            AND CLAVE = @CLAVE
+            AND ISNULL(ACTIVO, 'NO') <> 'SI'
+        `);
+      if (inactivo.recordset.length) {
+        return res.status(403).json({ error: 'El empleado no está activo. Contacte al administrador.' });
+      }
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
 
@@ -72,6 +88,7 @@ router.post('/login', async (req, res) => {
         codempleado: row.CODEMPLEADO,
         usuario: row.USUARIO,
         nomempleado: row.NOMEMPLEADO,
+        codtipoempleado: row.CODTIPOEMPLEADO ?? null,
         superUser: false,
         email: row.EMAIL ?? '',
       },

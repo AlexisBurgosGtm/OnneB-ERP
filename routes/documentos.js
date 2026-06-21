@@ -1,6 +1,11 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
+const { assertAdminPass } = require('../lib/config-auth');
+const { deleteDocumentoOperado, DocumentoDeleteError } = require('../lib/documento-delete');
+const { InventarioError } = require('../lib/inventario');
+const { parseFechaInput, applyDocumentoFecha } = require('../lib/documento-fecha');
+const { STATUS_OPERADO } = require('../lib/documento-status');
 
 const router = express.Router();
 
@@ -87,21 +92,33 @@ const LIST_FROM = `
     ON d.CODVEN = emp.CODEMPLEADO AND d.EMPNIT = emp.EMPNIT
   LEFT OUTER JOIN dbo.CLIENTES c
     ON d.EMPNIT = c.EMPNIT AND d.CODCLIENTE = c.CODCLIENTE
+  LEFT OUTER JOIN dbo.Cajas cj
+    ON d.EMPNIT = cj.EMPNIT AND d.CODCAJA = cj.CODCAJA
 `;
 
 const LIST_SELECT = `
   d.FECHA,
+  d.ANIO,
+  d.MES,
+  d.DIA,
   d.CODDOC,
   t.DESDOC,
   t.TIPODOC,
   d.CORRELATIVO,
   d.DOC_NOMCLIE,
+  d.DOC_NIT,
   c.NEGOCIO,
   d.DOC_DIRCLIE,
   ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
   d.TOTALPRECIO,
   d.STATUS,
-  d.CONCRE
+  d.CONCRE,
+  ISNULL(d.CORTE, 'NO') AS CORTE,
+  d.CODCAJA,
+  ISNULL(cj.DESCAJA, '') AS DESCAJA,
+  d.FEL_UUDI,
+  d.FEL_SERIE,
+  d.FEL_NUMERO
 `;
 
 const LIST_WHERE = `
@@ -146,6 +163,16 @@ function mapDocumentoRow(r) {
     TOTALPRECIO: r.TOTALPRECIO ?? null,
     STATUS: r.STATUS ?? null,
     CONCRE: r.CONCRE ?? null,
+    CORTE: r.CORTE ?? null,
+    CODCAJA: r.CODCAJA ?? null,
+    DESCAJA: r.DESCAJA ?? null,
+    ANIO: r.ANIO ?? null,
+    MES: r.MES ?? null,
+    DIA: r.DIA ?? null,
+    DOC_NIT: r.DOC_NIT ?? null,
+    FEL_UUDI: r.FEL_UUDI ?? null,
+    FEL_SERIE: r.FEL_SERIE ?? null,
+    FEL_NUMERO: r.FEL_NUMERO ?? null,
   };
 }
 
@@ -224,6 +251,250 @@ router.get('/lista', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /documentos/lista]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+function parseCorrelativo(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function loadDocumentoMeta(pool, empnit, coddoc, correlativo) {
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT STATUS, ISNULL(CORTE, 'NO') AS CORTE, FEL_UUDI, CODCAJA
+      FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+    `);
+  return result.recordset[0] || null;
+}
+
+function assertDocumentoOperado(meta) {
+  if (String(meta?.STATUS || '').trim().toUpperCase() !== STATUS_OPERADO) {
+    const err = new Error('Solo documentos operados permiten esta operación');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+function assertSinCertificacionFel(meta) {
+  if (String(meta?.FEL_UUDI || '').trim()) {
+    const err = new Error('El documento está certificado FEL y no permite esta operación');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+function assertSinCorte(meta) {
+  if (String(meta?.CORTE || 'NO').trim().toUpperCase() === 'SI') {
+    const err = new Error('El documento está incluido en corte de caja');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+router.get('/detalle/:coddoc/:correlativo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const headerRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .query(`
+        SELECT d.*, t.DESDOC, t.TIPODOC
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+      `);
+    if (!headerRes.recordset.length) {
+      return res.status(404).json({ error: 'Documento no encontrado' });
+    }
+
+    const linesRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .query(`
+        SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
+          TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
+        FROM dbo.DOCPRODUCTOS
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        ORDER BY Id
+      `);
+
+    res.json({
+      header: headerRes.recordset[0],
+      lines: linesRes.recordset,
+    });
+  } catch (err) {
+    console.warn('[API GET /documentos/detalle]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/:coddoc/:correlativo/fecha', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const parts = parseFechaInput(req.body?.FECHA ?? req.body?.fecha);
+  if (!parts) {
+    return res.status(400).json({ error: 'Fecha inválida (use AAAA-MM-DD)' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const meta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
+    if (!meta) return res.status(404).json({ error: 'Documento no encontrado' });
+    assertSinCertificacionFel(meta);
+    assertDocumentoOperado(meta);
+
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    try {
+      await applyDocumentoFecha(transaction, sql, empnit, coddoc, correlativo, parts);
+      await transaction.commit();
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+
+    res.json({
+      ok: true,
+      CODDOC: coddoc,
+      CORRELATIVO: correlativo,
+      FECHA: parts.fecha,
+      ANIO: parts.anio,
+      MES: parts.mes,
+      DIA: parts.dia,
+    });
+  } catch (err) {
+    console.warn('[API PATCH /documentos/fecha]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.patch('/:coddoc/:correlativo/caja', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const codcaja = parseInt(req.body?.CODCAJA ?? req.body?.codcaja, 10);
+  if (Number.isNaN(codcaja) || codcaja <= 0) {
+    return res.status(400).json({ error: 'CODCAJA inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const meta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
+    if (!meta) return res.status(404).json({ error: 'Documento no encontrado' });
+    assertSinCertificacionFel(meta);
+    assertDocumentoOperado(meta);
+    assertSinCorte(meta);
+
+    const cajaRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCAJA', sql.Int, codcaja)
+      .query(`
+        SELECT CODCAJA, DESCAJA FROM dbo.Cajas
+        WHERE EMPNIT = @EMPNIT AND CODCAJA = @CODCAJA
+      `);
+    if (!cajaRes.recordset.length) {
+      return res.status(400).json({ error: 'Caja no encontrada para esta empresa' });
+    }
+
+    await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .input('CODCAJA', sql.Int, codcaja)
+      .query(`
+        UPDATE dbo.DOCUMENTOS
+        SET CODCAJA = @CODCAJA
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+          AND STATUS = '${STATUS_OPERADO}'
+          AND ISNULL(CORTE, 'NO') <> 'SI'
+          AND (FEL_UUDI IS NULL OR LTRIM(RTRIM(FEL_UUDI)) = '')
+      `);
+
+    const caja = cajaRes.recordset[0];
+    res.json({
+      ok: true,
+      CODDOC: coddoc,
+      CORRELATIVO: correlativo,
+      CODCAJA: caja.CODCAJA,
+      DESCAJA: caja.DESCAJA,
+    });
+  } catch (err) {
+    console.warn('[API PATCH /documentos/caja]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.delete('/:coddoc/:correlativo', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const pass = String(req.body?.pass ?? req.body?.adminPass ?? req.body?.PASS ?? '');
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await assertAdminPass(pool, pass);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof DocumentoDeleteError || err instanceof InventarioError) {
+      console.warn('[API DELETE /documentos]', err.message);
+      return res.status(err.statusCode || 400).json({ error: err.message });
+    }
+    console.warn('[API DELETE /documentos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

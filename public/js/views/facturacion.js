@@ -129,12 +129,16 @@ const FacturacionView = {
     return s || '—';
   },
 
+  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
+
   felUudiValue(row) {
     return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
   },
 
   needsCertificar(row) {
-    return !this.felUudiValue(row);
+    if (this.felUudiValue(row)) return false;
+    const tipodoc = String(row?.TIPODOC || '').trim().toUpperCase();
+    return this.FEL_TIPOS_CERTIFICABLES.includes(tipodoc);
   },
 
   formatFelCell(row) {
@@ -967,13 +971,30 @@ const FacturacionView = {
     const label = `${coddoc} #${correlativo}`;
     const confirm = await CatalogosUI.fireConfirm({
       title: 'Certificar factura',
-      html: `<p class="mb-0">¿Certificar la factura <strong>${this.escapeHtml(label)}</strong> (FEL)?</p>`,
+      html: `<p class="mb-0">¿Certificar la factura <strong>${this.escapeHtml(label)}</strong> ante SAT (Infile)?</p>`,
       icon: 'question',
       confirmText: 'CERTIFICAR',
       confirmClass: 'btn-catalogo-guardar',
     });
     if (!confirm) return;
-    F.toast('Certificación FEL pendiente de implementar', 'info');
+
+    try {
+      const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+      const data = await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const fel = data.fel || {};
+      F.toast(
+        `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
+        'success'
+      );
+      await this.fetchPedidosList();
+      this.refreshListDom();
+    } catch (err) {
+      F.alert('Error FEL', err.message || 'No se pudo certificar', 'error');
+    }
   },
 
   async eliminarPedido(coddoc, correlativo) {

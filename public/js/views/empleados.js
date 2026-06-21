@@ -2,8 +2,10 @@
  * Vista Empleados — formulario con combos (tipos, municipios, departamentos, rutas).
  */
 
-function empleadosValidateForm(data) {
+function empleadosValidateForm(data, isEdit = false) {
   if (!data.NOMEMPLEADO) return 'El nombre es obligatorio';
+  if (!String(data.USUARIO || '').trim()) return 'El usuario de acceso es obligatorio';
+  if (!isEdit && !String(data.CLAVE || '').trim()) return 'La clave de acceso es obligatoria';
   return null;
 }
 
@@ -30,6 +32,7 @@ function empleadosMapFormToApi(data, isEdit = false) {
     TELEFONOS: data.TELEFONOS || null,
     WHATSAPP: data.WHATSAPP || null,
     EMAIL: data.EMAIL || null,
+    USUARIO: String(data.USUARIO || '').trim() || null,
     CLAVE: data.CLAVE || null,
     LATITUD: data.LATITUD || null,
     LONGITUD: data.LONGITUD || null,
@@ -59,6 +62,7 @@ const EmpleadosViewBase = createCatalogoEmpresaView({
   searchKeys: [
     'CODEMPLEADO',
     'NOMEMPLEADO',
+    'USUARIO',
     'DPI',
     'TELEFONOS',
     'ACTIVO',
@@ -108,6 +112,7 @@ const EmpleadosView = {
       TELEFONOS: row.TELEFONOS ?? '',
       WHATSAPP: row.WHATSAPP ?? '',
       EMAIL: row.EMAIL ?? '',
+      USUARIO: row.USUARIO ?? '',
       CODRUTA: row.CODRUTA ?? '',
       CLAVE: row.CLAVE ?? '',
       CODCATALOGO: catStr,
@@ -221,6 +226,7 @@ const EmpleadosView = {
         this.rutaLabel(r.CODRUTA),
         r.CODTIPOEMPLEADO,
         this.tipoEmpleadoLabel(r.CODTIPOEMPLEADO),
+        r.USUARIO,
         r.CODCATALOGO,
         this.catalogoLabel(r.CODCATALOGO),
       ].map((v) => String(v ?? '').toLowerCase());
@@ -417,6 +423,24 @@ const EmpleadosView = {
     return `<div class="mb-2">${html}</div>`;
   },
 
+  accesoCardHtml(r) {
+    return `
+      <div class="card empleados-acceso-card mb-3">
+        <div class="card-body">
+          <p class="empleados-acceso-card-title mb-0">
+            <i class="fa-solid fa-right-to-bracket me-1" aria-hidden="true"></i>
+            Acceso al inicio de sesión
+          </p>
+          <p class="empleados-acceso-card-desc mb-0">Usuario y clave con los que el empleado ingresa al sistema.</p>
+          ${this.row2(
+            this.inputField('USUARIO', 'Usuario', r.USUARIO),
+            this.inputField('CLAVE', 'Clave', r.CLAVE)
+          )}
+        </div>
+      </div>
+    `;
+  },
+
   buildFormHtml(row = {}, isEdit = false) {
     const r = this.normalizeRowForForm(row);
     const L = this._lookups || {
@@ -436,6 +460,7 @@ const EmpleadosView = {
     const parts = [
       this.row2(codigoHtml, this.selectField('CODTIPOEMPLEADO', 'Tipo empleado', L.tipos, r.CODTIPOEMPLEADO)),
       this.fieldBlock(this.inputField('NOMEMPLEADO', 'Nombre', r.NOMEMPLEADO)),
+      this.accesoCardHtml(r),
       this.row2(this.inputField('DPI', 'DPI', r.DPI), this.inputField('IGSS', 'IGSS', r.IGSS)),
       this.fieldBlock(this.inputField('DIRECCION', 'Dirección', r.DIRECCION)),
       this.fieldBlock(this.selectField('CODDEPTO', 'Departamento', L.departamentos, r.CODDEPTO)),
@@ -444,10 +469,7 @@ const EmpleadosView = {
         this.selectField('CODRUTA', 'Ruta', L.rutas, r.CODRUTA),
         this.selectField('CODCATALOGO', 'Catálogo', L.catalogos, r.CODCATALOGO)
       ),
-      this.row2(
-        this.inputField('TELEFONOS', 'Teléfonos', r.TELEFONOS),
-        this.inputField('CLAVE', 'Clave', r.CLAVE)
-      ),
+      this.fieldBlock(this.inputField('TELEFONOS', 'Teléfonos', r.TELEFONOS)),
       this.fieldBlock(this.inputField('EMAIL', 'Email', r.EMAIL, { type: 'email' })),
       this.row2(
         this.selectField('WHATSAPP', 'Doc. Venta', L.docsWhatsapp, r.WHATSAPP),
@@ -471,6 +493,7 @@ const EmpleadosView = {
       'TELEFONOS',
       'WHATSAPP',
       'EMAIL',
+      'USUARIO',
       'CODRUTA',
       'CLAVE',
       'CODCATALOGO',

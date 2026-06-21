@@ -47,6 +47,9 @@ const DocumentosView = {
   _tipodoc: '',
   _tipos: [],
   _loading: false,
+  _urlFel: '',
+
+  FEL_TIPOS_ANULABLES: ['FEF', 'FEC', 'FNC'],
 
   tableColumns: [
     { key: 'FECHA', label: 'Fecha doc.', type: 'date' },
@@ -119,8 +122,12 @@ const DocumentosView = {
       return this.escapeHtml(documentosFormatDateDdMmYyyy(value));
     }
     if (col?.type === 'status') {
-      const s = String(value ?? '').trim() || '—';
-      return `<span class="documentos-status badge text-bg-light border">${this.escapeHtml(s)}</span>`;
+      const s = String(value ?? '').trim().toUpperCase() || '—';
+      const cls =
+        s === 'A'
+          ? 'documentos-status badge documentos-status-anulado'
+          : 'documentos-status badge text-bg-light border';
+      return `<span class="${cls}">${this.escapeHtml(s)}</span>`;
     }
     if (value === null || value === undefined || value === '') return '—';
     if (col?.type === 'money') {
@@ -129,8 +136,455 @@ const DocumentosView = {
     return this.escapeHtml(value);
   },
 
+  felUudiValue(row) {
+    return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
+  },
+
+  puedeAnularFel(row) {
+    if (!row) return false;
+    const status = String(row.STATUS ?? '').trim().toUpperCase();
+    if (status === 'A') return false;
+    if (!this.felUudiValue(row)) return false;
+    const tipodoc = String(row.TIPODOC ?? '').trim().toUpperCase();
+    return this.FEL_TIPOS_ANULABLES.includes(tipodoc);
+  },
+
+  isAnulado(row) {
+    return String(row?.STATUS ?? '').trim().toUpperCase() === 'A';
+  },
+
+  rowClass(row) {
+    const classes = ['documentos-row-clickable'];
+    if (this.isAnulado(row)) classes.push('documentos-row-anulado');
+    return classes.join(' ');
+  },
+
+  buildMenuOpciones(row) {
+    const items = [];
+    if (DocOpciones.puedeEditar(row)) {
+      items.push({
+        id: 'editar',
+        label: 'Editar',
+        icon: 'fa-pen',
+        className: 'documentos-menu-item-primary',
+      });
+    }
+    items.push({
+      id: 'imprimir',
+      label: 'Imprimir',
+      icon: 'fa-print',
+      className: 'documentos-menu-item-secondary',
+    });
+    if (DocOpciones.puedeCambiarFecha(row)) {
+      items.push({
+        id: 'cambiar-fecha',
+        label: 'Cambiar Fecha',
+        icon: 'fa-calendar-day',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
+    if (DocOpciones.puedeCambiarCaja(row)) {
+      items.push({
+        id: 'cambiar-caja',
+        label: 'Cambiar caja',
+        icon: 'fa-cash-register',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
+    if (DocOpciones.puedeCertificarFel(row)) {
+      items.push({
+        id: 'certificar',
+        label: 'Certificar',
+        icon: 'fa-certificate',
+        className: 'documentos-menu-item-success',
+      });
+    }
+    if (DocOpciones.puedeVerFelOnline(row)) {
+      items.push({
+        id: 'ver-fel',
+        label: 'Ver formato FEL online',
+        icon: 'fa-file-invoice',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
+    if (this.puedeAnularFel(row)) {
+      items.push({
+        id: 'anular',
+        label: 'Anular',
+        icon: 'fa-ban',
+        className: 'documentos-menu-item-danger',
+      });
+    }
+    items.push({
+      id: 'whatsapp',
+      label: 'Enviar por WhatsApp',
+      icon: 'fa-brands fa-whatsapp',
+      className: 'documentos-menu-item-whatsapp',
+    });
+    if (DocOpciones.puedeEliminar(row)) {
+      items.push({
+        id: 'eliminar',
+        label: 'Eliminar',
+        icon: 'fa-trash',
+        className: 'documentos-menu-item-danger',
+      });
+    }
+    return items;
+  },
+
+  renderMenuOpcionesHtml(row) {
+    const items = this.buildMenuOpciones(row);
+    if (!items.length) {
+      return '<p class="text-muted small mb-0">No hay acciones disponibles.</p>';
+    }
+    return `<div class="documentos-menu-opciones">${items
+      .map(
+        (item) => `<button type="button" class="documentos-menu-item ${item.className}"
+          data-doc-action="${this.escapeHtml(item.id)}">
+          <i class="fa-solid ${item.icon} documentos-menu-item-icon" aria-hidden="true"></i>
+          <span>${this.escapeHtml(item.label)}</span>
+        </button>`
+      )
+      .join('')}</div>`;
+  },
+
+  findRow(coddoc, correlativo) {
+    return this._rows.find(
+      (r) =>
+        String(r.CODDOC) === String(coddoc) &&
+        String(r.CORRELATIVO) === String(correlativo)
+    );
+  },
+
+  async showMenuDocumento(coddoc, correlativo) {
+    const row = this.findRow(coddoc, correlativo);
+    if (!row) {
+      F.toast('Documento no encontrado en la lista', 'warning');
+      return;
+    }
+
+    const label = this.docLabel(row);
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Opciones del documento',
+      html: `
+        <p class="small text-muted text-start mb-2">${this.escapeHtml(label)}</p>
+        ${this.renderMenuOpcionesHtml(row)}
+      `,
+      width: 360,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const popup = Swal.getPopup();
+        popup?.querySelectorAll('[data-doc-action]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const action = btn.getAttribute('data-doc-action');
+            Swal.close();
+            await this.handleDocMenuAction(action, row);
+          });
+        });
+      },
+    });
+  },
+
+  async handleDocMenuAction(action, row) {
+    const coddoc = row.CODDOC;
+    const correlativo = row.CORRELATIVO;
+    const label = this.docLabel(row);
+    try {
+      if (action === 'imprimir') {
+        await DocOpciones.imprimir(coddoc, correlativo, row);
+        return;
+      }
+      if (action === 'editar') {
+        const ok = await CatalogosUI.fireConfirm({
+          title: '¿Editar documento?',
+          html: `<p class="mb-0">Se abrirá el editor del documento <strong>${this.escapeHtml(label)}</strong>.</p>`,
+          icon: 'question',
+          confirmText: 'Editar',
+        });
+        if (!ok) return;
+        await DocOpciones.abrirEditor(row.TIPODOC, coddoc, correlativo);
+        return;
+      }
+      if (action === 'eliminar') {
+        const deleted = await DocOpciones.eliminar(coddoc, correlativo, label);
+        if (deleted) await this.reload();
+        return;
+      }
+      if (action === 'anular') {
+        await this.anularDocumentoFel(coddoc, correlativo);
+        return;
+      }
+      if (action === 'cambiar-fecha') {
+        await this.cambiarFechaDocumento(row);
+        return;
+      }
+      if (action === 'cambiar-caja') {
+        await this.cambiarCajaDocumento(row);
+        return;
+      }
+      if (action === 'certificar') {
+        await this.certificarDocumento(coddoc, correlativo, label);
+        return;
+      }
+      if (action === 'ver-fel') {
+        await this.abrirFelDocumento(this.felUudiValue(row));
+        return;
+      }
+      if (action === 'whatsapp') {
+        await DocOpciones.enviarWhatsapp(coddoc, correlativo, row);
+      }
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudo completar la acción', 'error');
+    }
+  },
+
+  docLabel(row) {
+    const coddoc = String(row?.CODDOC ?? '').trim();
+    const corr = String(row?.CORRELATIVO ?? '').trim();
+    const cliente = String(row?.DOC_NOMCLIE ?? '').trim();
+    const parts = [`${coddoc} · ${corr}`];
+    if (cliente) parts.push(cliente);
+    return parts.join(' — ');
+  },
+
+  async abrirFelDocumento(felValue) {
+    const fel = String(felValue ?? '').trim();
+    if (!fel) return;
+    if (!this._urlFel) {
+      try {
+        this._urlFel = await DocOpciones.fetchUrlFel();
+      } catch (err) {
+        F.toast(err.message || 'No se pudo leer la URL FEL', 'error');
+        return;
+      }
+    }
+    if (!this._urlFel) {
+      F.toast('Configure la URL FEL en Config general', 'warning');
+      return;
+    }
+    const url = DocOpciones.joinFelUrl(this._urlFel, fel);
+    if (!url) {
+      F.toast('No se pudo construir la URL del documento FEL', 'warning');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  },
+
+  async certificarDocumento(coddoc, correlativo, label) {
+    const ok = await CatalogosUI.fireConfirm({
+      title: 'Certificar documento',
+      html: `<p class="mb-0">¿Certificar el documento <strong>${this.escapeHtml(label)}</strong> ante SAT (Infile)?</p>`,
+      icon: 'question',
+      confirmText: 'CERTIFICAR',
+      confirmClass: 'btn-catalogo-guardar',
+    });
+    if (!ok) return;
+    await DocOpciones.certificar(coddoc, correlativo);
+    await this.reload();
+  },
+
+  async cambiarFechaDocumento(row) {
+    const coddoc = row.CODDOC;
+    const correlativo = row.CORRELATIVO;
+    const fechaActual = DocOpciones.fechaInputFromRow(row);
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cambiar fecha',
+      html: `
+        <form class="catalogo-form text-start" autocomplete="off" novalidate onsubmit="return false">
+          <label for="documentos-fecha-actual" class="form-label small mb-0">Fecha actual</label>
+          <input type="date" class="form-control form-control-sm mb-3" id="documentos-fecha-actual"
+            value="${this.escapeHtml(fechaActual)}" disabled>
+          <label for="documentos-fecha-nueva" class="form-label small mb-0">Nueva fecha</label>
+          <input type="date" class="form-control form-control-sm" id="documentos-fecha-nueva"
+            value="${this.escapeHtml(fechaActual)}">
+        </form>
+      `,
+      width: 400,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Aceptar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        document.getElementById('documentos-fecha-nueva')?.focus();
+      },
+      preConfirm: () => {
+        const nueva = String(document.getElementById('documentos-fecha-nueva')?.value ?? '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(nueva)) {
+          Swal.showValidationMessage('Seleccione una fecha válida');
+          return false;
+        }
+        if (nueva === fechaActual) {
+          Swal.showValidationMessage('La nueva fecha debe ser distinta a la actual');
+          return false;
+        }
+        return nueva;
+      },
+    });
+    if (!result.isConfirmed) return;
+    await DocOpciones.cambiarFecha(coddoc, correlativo, result.value);
+    await this.reload();
+  },
+
+  async cambiarCajaDocumento(row) {
+    const coddoc = row.CODDOC;
+    const correlativo = row.CORRELATIVO;
+    const codcajaActual = Number(row.CODCAJA) || 0;
+    let cajas = [];
+    try {
+      cajas = await DocOpciones.fetchCajas();
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudo cargar el listado de cajas', 'error');
+      return;
+    }
+    if (!cajas.length) {
+      F.toast('No hay cajas registradas', 'warning');
+      return;
+    }
+    const opts = cajas
+      .map((c) => {
+        const id = Number(c.CODCAJA);
+        const desc = String(c.DESCAJA || '').trim() || `Caja ${id}`;
+        const sel = id === codcajaActual ? ' selected' : '';
+        return `<option value="${id}"${sel}>${this.escapeHtml(desc)}</option>`;
+      })
+      .join('');
+    const descActual = String(row.DESCAJA || '').trim() || (codcajaActual ? `Caja ${codcajaActual}` : '—');
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cambiar caja',
+      html: `
+        <form class="catalogo-form text-start" autocomplete="off" novalidate onsubmit="return false">
+          <p class="small text-muted mb-2">Caja actual: <strong>${this.escapeHtml(descActual)}</strong></p>
+          <label for="documentos-caja-nueva" class="form-label small mb-0">Nueva caja</label>
+          <select class="form-select form-select-sm" id="documentos-caja-nueva">${opts}</select>
+        </form>
+      `,
+      width: 400,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Aceptar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      preConfirm: () => {
+        const val = parseInt(document.getElementById('documentos-caja-nueva')?.value, 10);
+        if (Number.isNaN(val) || val <= 0) {
+          Swal.showValidationMessage('Seleccione una caja válida');
+          return false;
+        }
+        if (val === codcajaActual) {
+          Swal.showValidationMessage('Seleccione una caja distinta a la actual');
+          return false;
+        }
+        return val;
+      },
+    });
+    if (!result.isConfirmed) return;
+    await DocOpciones.cambiarCaja(coddoc, correlativo, result.value);
+    await this.reload();
+  },
+
+  async solicitarMotivoAnulacion() {
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Motivo de anulación',
+      html: `
+        <form class="catalogo-form text-start" autocomplete="off" novalidate onsubmit="return false">
+          <p class="small text-muted mb-2">Indique el motivo que se enviará a SAT (máx. 255 caracteres).</p>
+          <label for="documentos-motivo-anulacion" class="form-label small mb-0">Motivo</label>
+          <textarea id="documentos-motivo-anulacion" class="form-control form-control-sm" rows="3"
+            maxlength="255" placeholder="Ej. Error en datos del cliente"></textarea>
+        </form>
+      `,
+      width: 460,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Continuar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        document.getElementById('documentos-motivo-anulacion')?.focus();
+      },
+      preConfirm: () => {
+        const motivo = String(document.getElementById('documentos-motivo-anulacion')?.value ?? '').trim();
+        if (!motivo) {
+          Swal.showValidationMessage('Ingrese el motivo de anulación');
+          return false;
+        }
+        return motivo;
+      },
+    });
+    return result.isConfirmed ? result.value : null;
+  },
+
+  async confirmAnularFel(row) {
+    const label = this.escapeHtml(this.docLabel(row));
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Anular documento FEL?',
+      html: `<p class="mb-2">Se anulará ante SAT el documento:</p>
+        <p class="mb-0"><strong>${label}</strong></p>
+        <p class="small text-muted mt-2 mb-0">UUID: ${this.escapeHtml(this.felUudiValue(row))}</p>`,
+      icon: 'warning',
+      confirmText: 'Continuar',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!ok) return null;
+
+    const motivo = await this.solicitarMotivoAnulacion();
+    if (!motivo) return null;
+
+    const adminPass = await F.solicitarClaveAdmin({
+      title: 'Autorizar anulación',
+      text: 'Ingrese la clave de administrador para anular el documento ante SAT.',
+      confirmText: 'Anular',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!adminPass) return null;
+
+    return { motivo, adminPass };
+  },
+
+  async anularDocumentoFel(coddoc, correlativo) {
+    const row = this._rows.find(
+      (r) =>
+        String(r.CODDOC) === String(coddoc) &&
+        String(r.CORRELATIVO) === String(correlativo)
+    );
+    if (!row || !this.puedeAnularFel(row)) {
+      F.toast('Este documento no se puede anular', 'warning');
+      return;
+    }
+
+    const auth = await this.confirmAnularFel(row);
+    if (!auth) return;
+
+    try {
+      const url = `/api/fel/anular/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+      const data = await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          motivo: auth.motivo,
+          adminPass: auth.adminPass,
+        }),
+      });
+      F.toast(
+        `Documento anulado — UUID ${data.fel?.uuid || this.felUudiValue(row)}`,
+        'success'
+      );
+      await this.reload();
+    } catch (err) {
+      F.alert('Error FEL', err.message || 'No se pudo anular el documento', 'error');
+    }
+  },
+
+  tableColSpan() {
+    return this.tableColumns.length;
+  },
+
   renderTableBodyHtml(rows) {
-    const colSpan = this.tableColumns.length;
+    const colSpan = this.tableColSpan();
     if (!rows.length) {
       const msg = this._filterQuery.trim()
         ? 'Ningún documento coincide con la búsqueda'
@@ -139,6 +593,8 @@ const DocumentosView = {
     }
     return rows
       .map((row) => {
+        const coddoc = this.escapeHtml(row.CODDOC);
+        const corr = this.escapeHtml(row.CORRELATIVO);
         const cells = this.tableColumns
           .map((c) => {
             const align = c.type === 'money' ? ' text-end' : '';
@@ -147,7 +603,8 @@ const DocumentosView = {
             return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(val, c)}</td>`;
           })
           .join('');
-        return `<tr>${cells}</tr>`;
+        return `<tr class="${this.rowClass(row)}" data-doc-row data-coddoc="${coddoc}" data-correlativo="${corr}"
+          role="button" tabindex="0" title="Opciones del documento" aria-label="Opciones del documento ${coddoc} ${corr}">${cells}</tr>`;
       })
       .join('');
   },
@@ -347,6 +804,24 @@ const DocumentosView = {
     document.getElementById('documentos-anio')?.addEventListener('change', refresh);
     document.getElementById('documentos-tipodoc')?.addEventListener('change', refresh);
     this.bindSearch();
+    this._container?.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-doc-row]');
+      if (!tr || !this._container.contains(tr)) return;
+      const coddoc = tr.getAttribute('data-coddoc');
+      const correlativo = tr.getAttribute('data-correlativo');
+      if (!coddoc || correlativo == null) return;
+      await this.showMenuDocumento(coddoc, correlativo);
+    });
+    this._container?.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const tr = e.target.closest('tr[data-doc-row]');
+      if (!tr || !this._container.contains(tr)) return;
+      e.preventDefault();
+      const coddoc = tr.getAttribute('data-coddoc');
+      const correlativo = tr.getAttribute('data-correlativo');
+      if (!coddoc || correlativo == null) return;
+      await this.showMenuDocumento(coddoc, correlativo);
+    });
   },
 
   async reload() {
@@ -359,7 +834,7 @@ const DocumentosView = {
     this._loading = true;
     const tbody = this._container.querySelector('#documentos-tbody');
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">
+      tbody.innerHTML = `<tr><td colspan="${this.tableColSpan()}" class="text-center text-muted py-4">
         <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</td></tr>`;
     }
     try {
@@ -368,7 +843,7 @@ const DocumentosView = {
     } catch (err) {
       this._rows = [];
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="${this.tableColumns.length}" class="text-center text-danger py-4">${this.escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${this.tableColSpan()}" class="text-center text-danger py-4">${this.escapeHtml(err.message)}</td></tr>`;
       }
       F.toast('Error al cargar documentos', 'error');
     } finally {
@@ -404,6 +879,7 @@ const DocumentosView = {
 
     try {
       await this.fetchTipos();
+      this._urlFel = await DocOpciones.fetchUrlFel().catch(() => '');
       container.innerHTML = this.render();
       this.bindEvents();
       await this.fetchData();

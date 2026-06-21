@@ -44,7 +44,9 @@ const documentosRouter = require('./routes/documentos');
 const productosRouter = require('./routes/productos');
 const suscripcionesRouter = require('./routes/suscripciones');
 const credencialesFelRouter = require('./routes/credenciales-fel');
+const felRouter = require('./routes/fel');
 const updaterRouter = require('./routes/updater');
+const dashboardRouter = require('./routes/dashboard');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -137,6 +139,8 @@ app.use('/api/documentos', documentosRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/suscripciones', suscripcionesRouter);
 app.use('/api/credenciales-fel', credencialesFelRouter);
+app.use('/api/fel', felRouter);
+app.use('/api/dashboard', dashboardRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

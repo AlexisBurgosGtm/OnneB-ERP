@@ -108,6 +108,10 @@
     }
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
 
+    if (typeof TipoEmpleadoAccess !== 'undefined') {
+      TipoEmpleadoAccess.resetSidebarVisibility();
+    }
+
     setViewImmediate(true);
     loadLoginEmpresas();
   }
@@ -333,6 +337,7 @@
           username: displayName,
           usuario: authUser?.usuario || username,
           codempleado: authUser?.codempleado ?? null,
+          codtipoempleado: authUser?.codtipoempleado ?? (authUser?.superUser ? 1 : null),
           superUser: Boolean(authUser?.superUser),
           email: authUser?.email ?? '',
           empNit,
@@ -345,7 +350,10 @@
         stopLoadingOverlays();
         setViewImmediate(false);
         updateHeaderSessionInfo();
-        loadFacturacionDefault();
+        if (typeof TipoEmpleadoAccess !== 'undefined') {
+          TipoEmpleadoAccess.applySidebarVisibility();
+        }
+        loadInicioDefault();
         F.toast(`Bienvenido — ${empNombre}`, 'success');
         if (typeof EmpresaLogo !== 'undefined') {
           EmpresaLogo.loadForSession(empNit)
@@ -387,23 +395,27 @@
     }
   }
 
-  function loadInicio() {
-    if (!mainContent || typeof PosView === 'undefined') return;
-    if (mainTitle) mainTitle.textContent = 'Inicio';
+  function loadInicioDefault() {
+    if (!mainContent) return;
+    if (mainTitle) mainTitle.textContent = menuLabels.inicio || 'Inicio';
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
     document.querySelector('.sidebar-link[data-menu="inicio"]')?.classList.add('is-active');
     mainContent.className = 'main-content flex-grow-1 d-flex p-3';
-    PosView.load(mainContent);
+    if (typeof InicioEmpleadoView !== 'undefined') {
+      InicioEmpleadoView.load(mainContent);
+    } else {
+      mainContent.classList.add('align-items-center', 'justify-content-center');
+      mainContent.innerHTML = '<p class="text-muted mb-0">Inicio</p>';
+    }
   }
 
-  /** Provisional: vista por defecto al iniciar sesión. */
+  function loadInicio() {
+    loadInicioDefault();
+  }
+
+  /** @deprecated Usar loadInicioDefault según tipo de empleado. */
   function loadFacturacionDefault() {
-    if (!mainContent || typeof FacturacionView === 'undefined') return;
-    if (mainTitle) mainTitle.textContent = menuLabels.facturacion || 'Facturación';
-    document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
-    document.querySelector('.sidebar-link[data-menu="facturacion"]')?.classList.add('is-active');
-    mainContent.className = 'main-content flex-grow-1 d-flex p-3';
-    FacturacionView.load(mainContent);
+    loadInicioDefault();
   }
 
   const menuLabels = {
@@ -451,6 +463,14 @@
       e.preventDefault();
       if (window.OnnebPace) OnnebPace.start();
       const key = link.dataset.menu;
+      if (
+        typeof TipoEmpleadoAccess !== 'undefined' &&
+        !TipoEmpleadoAccess.canAccessMenu(key)
+      ) {
+        F.toast('No tiene permiso para acceder a esta opción', 'warning');
+        closeSidebar();
+        return;
+      }
       const label = menuLabels[key] || key;
       document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
       link.classList.add('is-active');
