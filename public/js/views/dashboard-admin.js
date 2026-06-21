@@ -153,34 +153,68 @@ const DashboardAdminView = {
     `;
   },
 
+  renderTopProductosTable() {
+    const rows = this._data?.topProductos || [];
+    if (!rows.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin ventas de productos en el periodo</p>';
+    }
+    const body = rows
+      .map(
+        (p) => `<tr>
+          <td class="text-muted dashboard-top-rank">${p.rank}</td>
+          <td class="dashboard-top-cod">${this.escapeHtml(p.CODPROD)}</td>
+          <td class="dashboard-top-desc">${this.escapeHtml(p.DESPROD)}</td>
+          <td class="text-end">${this.escapeHtml(String(p.totalUnidades))}</td>
+          <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(p.totalPrecio))}</td>
+        </tr>`
+      )
+      .join('');
+    return `
+      <div class="table-responsive dashboard-top-table-wrap">
+        <table class="table table-sm table-hover table-striped mb-0 dashboard-top-table">
+          <thead class="table-light">
+            <tr>
+              <th scope="col" class="dashboard-top-rank">#</th>
+              <th scope="col">Cód.</th>
+              <th scope="col">Producto</th>
+              <th scope="col" class="text-end">Unid.</th>
+              <th scope="col" class="text-end">Total</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    `;
+  },
+
   renderCharts() {
     return `
-      <div class="row g-3 mb-3">
+      <div class="row g-2 mb-2">
         <div class="col-12 col-xl-8">
-          <div class="card dashboard-chart-card shadow-sm h-100">
-            <div class="card-header py-2 px-3">
+          <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm h-100">
+            <div class="card-header py-1 px-3">
               <h3 class="h6 mb-0">Ventas netas por día</h3>
               <p class="small text-muted mb-0">FAC, FEF, FEC, FES menos DEV y FNC (operados)</p>
             </div>
-            <div class="card-body">
-              <canvas id="dashboard-chart-ventas-dia" height="120" aria-label="Ventas por día"></canvas>
+            <div class="card-body py-2">
+              <canvas id="dashboard-chart-ventas-dia" class="dashboard-chart-canvas" aria-label="Ventas por día"></canvas>
             </div>
           </div>
         </div>
         <div class="col-12 col-xl-4">
-          <div class="card dashboard-chart-card shadow-sm h-100">
-            <div class="card-header py-2 px-3">
+          <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm h-100">
+            <div class="card-header py-1 px-3">
               <h3 class="h6 mb-0">Inventario por marca</h3>
               <p class="small text-muted mb-0">Valor a costo</p>
             </div>
-            <div class="card-body d-flex align-items-center justify-content-center">
-              <canvas id="dashboard-chart-inventario-marca" aria-label="Inventario por marca"></canvas>
+            <div class="card-body py-2 d-flex align-items-center justify-content-center">
+              <canvas id="dashboard-chart-inventario-marca" class="dashboard-chart-canvas dashboard-chart-canvas--donut" aria-label="Inventario por marca"></canvas>
             </div>
           </div>
         </div>
       </div>
-      <div class="card dashboard-chart-card shadow-sm mb-3">
-        <div class="card-header py-2 px-3">
+      <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm mb-2">
+        <div class="card-header py-1 px-3">
           <h3 class="h6 mb-0">Proyección de cierre de mes</h3>
           <p class="small text-muted mb-0">
             Promedio diario neto (${this._data?.proyeccion?.diasTranscurridos ?? 0} día(s) transcurridos):
@@ -189,8 +223,32 @@ const DashboardAdminView = {
             <strong>${this.escapeHtml(this.formatMoney(this._data?.proyeccion?.totalProyectadoMes))}</strong>
           </p>
         </div>
-        <div class="card-body">
-          <canvas id="dashboard-chart-proyeccion" height="90" aria-label="Proyección de cierre de mes"></canvas>
+        <div class="card-body py-2">
+          <canvas id="dashboard-chart-proyeccion" class="dashboard-chart-canvas dashboard-chart-canvas--line" aria-label="Proyección de cierre de mes"></canvas>
+        </div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-12 col-lg-6">
+          <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm h-100">
+            <div class="card-header py-1 px-3">
+              <h3 class="h6 mb-0">Ventas y devoluciones por vendedor</h3>
+              <p class="small text-muted mb-0">Documentos operados del periodo</p>
+            </div>
+            <div class="card-body py-2">
+              <canvas id="dashboard-chart-vendedor" class="dashboard-chart-canvas dashboard-chart-canvas--vendedor" aria-label="Ventas por vendedor"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm h-100">
+            <div class="card-header py-1 px-3">
+              <h3 class="h6 mb-0">Top 10 productos vendidos</h3>
+              <p class="small text-muted mb-0">Suma de DOCPRODUCTOS.TOTALPRECIO · facturas del mes</p>
+            </div>
+            <div class="card-body py-2">
+              ${this.renderTopProductosTable()}
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -251,7 +309,7 @@ const DashboardAdminView = {
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom' },
           tooltip: {
@@ -302,6 +360,7 @@ const DashboardAdminView = {
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
           tooltip: {
@@ -379,6 +438,7 @@ const DashboardAdminView = {
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { position: 'bottom' },
@@ -408,11 +468,74 @@ const DashboardAdminView = {
     this._charts.push(chart);
   },
 
+  buildVendedorChart() {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('dashboard-chart-vendedor');
+    if (!canvas) return;
+    const rows = (this._data?.ventasPorVendedor || []).slice(0, 12);
+    if (!rows.length) {
+      canvas.parentElement.innerHTML = '<p class="text-muted small text-center mb-0">Sin ventas por vendedor en el periodo</p>';
+      return;
+    }
+    const colors = this.chartColors();
+    const chart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: rows.map((r) => r.VENDEDOR),
+        datasets: [
+          {
+            label: 'Ventas',
+            data: rows.map((r) => r.ventas),
+            backgroundColor: `${colors.primary}99`,
+            borderColor: colors.primary,
+            borderWidth: 1,
+          },
+          {
+            label: 'Devoluciones',
+            data: rows.map((r) => r.devoluciones),
+            backgroundColor: `${colors.danger}88`,
+            borderColor: colors.danger,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label(ctx) {
+                const v = Math.abs(ctx.raw);
+                return `${ctx.dataset.label}: ${v.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' })}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              callback: (v) =>
+                Number(v).toLocaleString('es-GT', { style: 'currency', currency: 'GTQ', maximumFractionDigits: 0 }),
+            },
+          },
+          y: {
+            ticks: { font: { size: 11 }, autoSkip: false },
+          },
+        },
+      },
+    });
+    this._charts.push(chart);
+  },
+
   renderChartsAll() {
     this.destroyCharts();
     this.buildVentasDiaChart();
     this.buildInventarioMarcaChart();
     this.buildProyeccionChart();
+    this.buildVendedorChart();
   },
 
   async showSinStockModal() {

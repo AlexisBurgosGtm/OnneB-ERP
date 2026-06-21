@@ -422,9 +422,9 @@
     inicio: 'Inicio',
     'pedidos-mostrador': 'Pedidos de Mostrador',
     facturacion: 'Facturación',
-    'notas-credito': 'Notas de Crédito',
+    'notas-credito': 'Notas de Credito (clientes)',
     compras: 'Compras',
-    'notas-debito': 'Notas de Débito',
+    'notas-debito': 'Notas de credito (Proveedores)',
     gastos: 'Gastos',
     'corte-caja': 'Corte de Caja',
     tareas: 'Tareas',
@@ -486,6 +486,8 @@
         PosView.load(mainContent);
       } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
         FacturacionView.load(mainContent);
+      } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
+        NotasCreditoView.load(mainContent);
       } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
         CorteCajaView.load(mainContent);
       } else if (key === 'tareas' && typeof TareasView !== 'undefined') {

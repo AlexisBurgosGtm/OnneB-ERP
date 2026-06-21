@@ -81,7 +81,7 @@ router.use(
     logName: 'tareas',
     entityLabel: 'Tarea',
     table: 'TASKS',
-    orderBy: 'ID DESC',
+    orderBy: 'ID ASC',
     idColumn: 'ID',
     idType: 'int',
     idRouteParam: 'id',
