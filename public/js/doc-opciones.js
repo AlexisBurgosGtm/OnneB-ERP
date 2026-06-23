@@ -7,6 +7,7 @@ const DocOpciones = {
 
   EDITOR_BY_TIPODOC: {
     ENV: { menu: 'pedidos-mostrador', view: () => PosView },
+    COT: { menu: 'cotizaciones', view: () => CotizacionesView },
     FAC: { menu: 'facturacion', view: () => FacturacionView },
     FEF: { menu: 'facturacion', view: () => FacturacionView },
     FEC: { menu: 'facturacion', view: () => FacturacionView },

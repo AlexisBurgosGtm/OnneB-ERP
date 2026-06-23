@@ -1352,3 +1352,19 @@ body.pos-product-sheet-open {
   font-variant-numeric: tabular-nums;
 }
 
+.swal2-popup.modal-catalogo.fac-finalizar-modal {
+  width: min(52rem, calc(100vw - 1.5rem)) !important;
+  max-width: none;
+}
+
+.fac-finalizar-modal-body .fac-finalizar-datos-col,
+.fac-finalizar-modal-body .fac-finalizar-fpago-col {
+  min-width: 0;
+}
+
+@media (max-width: 767.98px) {
+  .fac-finalizar-modal-body .fac-finalizar-fpago-col {
+    margin-top: 0.25rem;
+  }
+}
+

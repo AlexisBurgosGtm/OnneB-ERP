@@ -369,13 +369,13 @@ const FacturacionView = {
     const total = this.fpagoInputValue(totalPrecio);
     const hidden = isCre ? ' d-none' : '';
     return `
-          <div class="card fac-finalizar-fpago-card mb-2${hidden}" id="fac-finalizar-fpago-card">
+          <div class="card fac-finalizar-fpago-card h-100${hidden}" id="fac-finalizar-fpago-card">
             <div class="card-header py-2 px-3 small fw-semibold bg-light border-0">
               <i class="fa-solid fa-wallet me-1 text-primary"></i>Formas de pago
             </div>
-            <div class="card-body py-2 px-3">
-              <p class="small text-muted mb-2">Distribuya el total <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong> entre efectivo, tarjeta, depósito y/o cheque.</p>
-              <div class="row g-2">
+            <div class="card-body py-2 px-3 d-flex flex-column">
+              <p class="small text-muted mb-2">Distribuya el total <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong> entre los medios de pago.</p>
+              <div class="row g-2 flex-grow-1">
                 <div class="col-6">
                   <label class="form-label small mb-0" for="fac-finalizar-fpago-efectivo">Efectivo</label>
                   <input type="number" id="fac-finalizar-fpago-efectivo" class="form-control form-control-sm fac-fpago-input"
@@ -398,7 +398,7 @@ const FacturacionView = {
                 </div>
               </div>
               <div class="mt-2 small text-end text-muted" id="fac-finalizar-fpago-sum">Suma: Q 0.00 / ${this.escapeHtml(total)}</div>
-              <div class="mt-2">
+              <div class="mt-2 mb-0">
                 <label class="form-label small mb-0" for="fac-finalizar-fpago-desc">Detalles del pago</label>
                 <input type="text" id="fac-finalizar-fpago-desc" class="form-control form-control-sm"
                   placeholder="No. boleta, cheque o tarjeta (opcional)" maxlength="200"${isCre ? ' disabled' : ''}>
@@ -431,6 +431,8 @@ const FacturacionView = {
   bindFinalizarFpagoToggle(totalPrecio) {
     const concreSel = document.getElementById('fac-finalizar-concre');
     const card = document.getElementById('fac-finalizar-fpago-card');
+    const fpagoCol = document.getElementById('fac-finalizar-fpago-col');
+    const datosCol = document.querySelector('.fac-finalizar-datos-col');
     const efectivo = document.getElementById('fac-finalizar-fpago-efectivo');
     const tarjeta = document.getElementById('fac-finalizar-fpago-tarjeta');
     const deposito = document.getElementById('fac-finalizar-fpago-deposito');
@@ -446,6 +448,9 @@ const FacturacionView = {
     const toggle = () => {
       const isCre = concreSel?.value === 'CRE';
       card?.classList.toggle('d-none', isCre);
+      fpagoCol?.classList.toggle('d-none', isCre);
+      datosCol?.classList.toggle('col-md-12', isCre);
+      datosCol?.classList.toggle('col-md-6', !isCre);
       inputs.forEach((el) => {
         if (!el) return;
         el.disabled = isCre;
@@ -518,43 +523,53 @@ const FacturacionView = {
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
     const totalPrecio = this.docTotalPrecio(h);
 
+    const fpagoColHidden = concreVal === 'CRE' ? ' d-none' : '';
+
     const { isConfirmed, value } = await Swal.fire({
-      ...CatalogosUI.modalBase(),
+      ...CatalogosUI.modalBase({
+        customClass: { popup: 'modal-catalogo fac-finalizar-modal' },
+      }),
       title: 'Finalizar factura',
-      width: '36rem',
+      width: '52rem',
       html: `
-        <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
-        <div class="text-start">
-          <div class="mb-2">
-            <label class="form-label small mb-0">Tipo negocio — Negocio</label>
-            <div class="form-control form-control-sm bg-light">${tipoNeg}</div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-0">Nombre cliente</label>
-            <div class="form-control form-control-sm bg-light">${nombre}</div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-0">Dirección cliente</label>
-            <div class="form-control form-control-sm bg-light">${dir}</div>
-          </div>
-          <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
-            <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
-              <label class="form-label small mb-0" for="fac-finalizar-concre">Forma de pago</label>
-              <select id="fac-finalizar-concre" class="form-select form-select-sm">
-                <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
-                <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
-              </select>
+        <p class="small text-muted mb-2">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
+        <div class="text-start fac-finalizar-modal-body">
+          <div class="row g-3 align-items-stretch">
+            <div class="col-md-6 fac-finalizar-datos-col">
+              <div class="mb-2">
+                <label class="form-label small mb-0">Tipo negocio — Negocio</label>
+                <div class="form-control form-control-sm bg-light">${tipoNeg}</div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label small mb-0">Nombre cliente</label>
+                <div class="form-control form-control-sm bg-light">${nombre}</div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label small mb-0">Dirección cliente</label>
+                <div class="form-control form-control-sm bg-light">${dir}</div>
+              </div>
+              <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
+                <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
+                  <label class="form-label small mb-0" for="fac-finalizar-concre">Forma de pago</label>
+                  <select id="fac-finalizar-concre" class="form-select form-select-sm">
+                    <option value="CON"${concreVal !== 'CRE' ? ' selected' : ''}>CONTADO</option>
+                    <option value="CRE"${concreVal === 'CRE' ? ' selected' : ''}>CREDITO</option>
+                  </select>
+                </div>
+                <div class="col-6${concreVal === 'CRE' ? '' : ' d-none'}" id="fac-finalizar-venc-wrap">
+                  <label class="form-label small mb-0" for="fac-finalizar-venc">Vencimiento</label>
+                  <input type="date" id="fac-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+                </div>
+              </div>
+              <div class="mb-0">
+                <label class="form-label small mb-0" for="fac-finalizar-obs">Observaciones</label>
+                <textarea id="fac-finalizar-obs" class="form-control form-control-sm" rows="1"
+                  placeholder="Observaciones de la factura…">${obsVal}</textarea>
+              </div>
             </div>
-            <div class="col-6${concreVal === 'CRE' ? '' : ' d-none'}" id="fac-finalizar-venc-wrap">
-              <label class="form-label small mb-0" for="fac-finalizar-venc">Vencimiento</label>
-              <input type="date" id="fac-finalizar-venc" class="form-control form-control-sm" value="${vencDefault}">
+            <div class="col-md-6 fac-finalizar-fpago-col${fpagoColHidden}" id="fac-finalizar-fpago-col">
+              ${this.renderFinalizarFpagoCardHtml(totalPrecio, concreVal)}
             </div>
-          </div>
-          ${this.renderFinalizarFpagoCardHtml(totalPrecio, concreVal)}
-          <div class="mb-0">
-            <label class="form-label small mb-0" for="fac-finalizar-obs">Observaciones</label>
-            <textarea id="fac-finalizar-obs" class="form-control form-control-sm" rows="2"
-              placeholder="Observaciones del pedido…">${obsVal}</textarea>
           </div>
         </div>
       `,
@@ -1125,12 +1140,13 @@ const FacturacionView = {
       rows.length === 0
         ? `<div class="fac-env-modal-empty text-muted text-center py-4">
             <i class="fa-solid fa-inbox fa-2x mb-2 opacity-50"></i>
-            <p class="mb-0 small">No hay pedidos de mostrador operados disponibles.</p>
+            <p class="mb-0 small">No hay pedidos (ENV) ni cotizaciones (COT) operados disponibles.</p>
           </div>`
         : `<div class="table-responsive fac-env-modal-table-wrap">
             <table class="table table-sm table-hover align-middle mb-0 fac-env-modal-table">
               <thead class="table-light">
                 <tr>
+                  <th>Tipo</th>
                   <th>CODDOC</th>
                   <th>CORRELATIVO</th>
                   <th>FECHA</th>
@@ -1144,6 +1160,7 @@ const FacturacionView = {
                     (r) => `
                   <tr class="fac-env-pedido-row" role="button" tabindex="0"
                     data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}">
+                    <td><span class="badge text-bg-secondary">${this.escapeHtml(r.TIPODOC || '—')}</span></td>
                     <td class="fw-semibold">${this.escapeHtml(r.CODDOC)}</td>
                     <td>${this.escapeHtml(r.CORRELATIVO)}</td>
                     <td class="text-nowrap">${this.escapeHtml(this.formatFechaPedido(r))}</td>
@@ -1163,9 +1180,9 @@ const FacturacionView = {
             <div class="d-flex align-items-start justify-content-between gap-2">
               <div>
                 <h5 class="fac-env-modal-title mb-1" id="fac-pedido-env-title">
-                  <i class="fa-solid fa-cart-shopping me-2 text-primary"></i>Pedidos de mostrador
+                  <i class="fa-solid fa-file-import me-2 text-primary"></i>Tomar datos
                 </h5>
-                <p class="small text-muted mb-0">Seleccione un pedido operado (ENV) para cargarlo en facturación.</p>
+                <p class="small text-muted mb-0">Seleccione un pedido (ENV) o cotización (COT) operado para cargarlo en facturación.</p>
               </div>
               <button type="button" class="btn btn-sm btn-light fac-env-modal-close" id="btn-fac-pedido-env-cerrar" aria-label="Cerrar">
                 <i class="fa-solid fa-xmark"></i>
@@ -1188,7 +1205,7 @@ const FacturacionView = {
           <h2 class="pos-list-title">Facturación del día</h2>
           <p class="pos-list-sub text-muted mb-0">${count} factura(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
           <button type="button" class="btn btn-sm btn-outline-primary fac-btn-tomar-pedido mt-2" id="btn-fac-tomar-pedido">
-            <i class="fa-solid fa-file-import me-1"></i>Tomar datos de pedido
+            <i class="fa-solid fa-file-import me-1"></i>Tomar datos (pedido / cotización)
           </button>
         </div>
         <div id="fac-pedido-env-modal-root">${this.renderPedidoEnvModalHtml()}</div>`;
@@ -1199,6 +1216,7 @@ const FacturacionView = {
     if (!q) return this._pedidosEnvList || [];
     return (this._pedidosEnvList || []).filter((r) => {
       const hay = [
+        r.TIPODOC,
         r.CODDOC,
         r.CORRELATIVO,
         r.DOC_NOMCLIE,
@@ -1238,7 +1256,7 @@ const FacturacionView = {
     this.refreshPedidoEnvModalDom();
     const tbody = this._container?.querySelector('.fac-env-modal-body');
     if (tbody) {
-      tbody.innerHTML = `<div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando pedidos…</div>`;
+      tbody.innerHTML = `<div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando documentos…</div>`;
     }
     try {
       await this.fetchPedidosEnv();
@@ -1294,10 +1312,12 @@ const FacturacionView = {
     );
     const cliente = this.escapeHtml(row?.DOC_NOMCLIE || row?.NEGOCIO || '—');
     const importe = this.escapeHtml(this.formatMoney(row?.TOTALPRECIO));
+    const tipo = this.escapeHtml(row?.TIPODOC || '');
     const ok = await CatalogosUI.fireConfirm({
       title: '¿Agregar a facturación?',
-      html: `<p class="mb-2">Se creará una nueva factura con el cliente y productos del pedido:</p>
-        <p class="mb-0"><strong>${this.escapeHtml(coddoc)}-${this.escapeHtml(correlativo)}</strong> · ${cliente}<br>
+      html: `<p class="mb-2">Se creará una nueva factura con el cliente y productos del documento:</p>
+        <p class="mb-0">${tipo ? `<span class="badge text-bg-secondary me-1">${tipo}</span>` : ''}
+        <strong>${this.escapeHtml(coddoc)}-${this.escapeHtml(correlativo)}</strong> · ${cliente}<br>
         <span class="text-muted">${importe}</span></p>`,
       icon: 'question',
       confirmText: 'Sí, cargar',
@@ -1324,7 +1344,7 @@ const FacturacionView = {
     this.closePedidoEnvModal();
     const fac = res.factura?.header;
     if (!fac) throw new Error('No se recibió la factura creada');
-    F.toast(`Factura ${fac.CODDOC}-${fac.CORRELATIVO} creada desde pedido`, 'success');
+    F.toast(`Factura ${fac.CODDOC}-${fac.CORRELATIVO} creada desde documento`, 'success');
     await this.showEditor(fac.CODDOC, fac.CORRELATIVO);
   },
 

@@ -427,6 +427,7 @@
     'notas-debito': 'Notas de credito (Proveedores)',
     gastos: 'Gastos',
     'corte-caja': 'Corte de Caja',
+    cotizaciones: 'Cotizaciones',
     tareas: 'Tareas',
     developer: 'Developer',
     updater: 'Actualizador BD',
@@ -490,6 +491,8 @@
         NotasCreditoView.load(mainContent);
       } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
         CorteCajaView.load(mainContent);
+      } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {
+        CotizacionesView.load(mainContent);
       } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
         TareasView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
