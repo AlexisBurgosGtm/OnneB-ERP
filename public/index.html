@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/css/pos.css">
   <link rel="stylesheet" href="/css/corte-caja.css">
   <link rel="stylesheet" href="/css/documentos.css">
+  <link rel="stylesheet" href="/css/cuentas-cxp.css">
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
   <link rel="stylesheet" href="/css/buttons-theme.css">
@@ -126,14 +127,28 @@
               <div id="collapseOperaciones" class="accordion-collapse collapse show">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-credito"><i class="fa-solid fa-file-circle-minus" aria-hidden="true"></i> Notas de Credito (clientes)</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-debito"><i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i> Notas de credito (Proveedores)</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="gastos"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Gastos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="corte-caja"><i class="fa-solid fa-money-check" aria-hidden="true"></i> Corte de Caja</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tareas"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Tareas</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseCuentasCxp" aria-expanded="false" aria-controls="collapseCuentasCxp">
+                  <i class="fa-solid fa-hand-holding-dollar sidebar-icon" aria-hidden="true"></i>
+                  <span>CUENTAS POR COBRAR / PAGAR</span>
+                </button>
+              </h2>
+              <div id="collapseCuentasCxp" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="cuentas-cobrar"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Cuentas por Cobrar</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="cuentas-pagar"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Cuentas por Pagar</a></li>
                 </ul>
               </div>
             </div>
@@ -308,6 +323,7 @@
   <script src="/js/views/inventario-mov-view.js"></script>
   <script src="/js/views/inventario.js"></script>
   <script src="/js/views/inventario-actualizacion.js"></script>
+  <script src="/js/views/cuentas-por-cobrar.js"></script>
   <script src="/js/doc-opciones.js"></script>
   <script src="/js/views/documentos.js"></script>
   <script src="/js/views/productos.js"></script>

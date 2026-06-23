@@ -429,6 +429,8 @@
     'corte-caja': 'Corte de Caja',
     cotizaciones: 'Cotizaciones',
     tareas: 'Tareas',
+    'cuentas-cobrar': 'Cuentas por Cobrar',
+    'cuentas-pagar': 'Cuentas por Pagar',
     developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
@@ -495,6 +497,8 @@
         CotizacionesView.load(mainContent);
       } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
         TareasView.load(mainContent);
+      } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
+        CuentasPorCobrarView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {

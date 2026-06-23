@@ -50,6 +50,7 @@ const felRouter = require('./routes/fel');
 const updaterRouter = require('./routes/updater');
 const dashboardRouter = require('./routes/dashboard');
 const tareasRouter = require('./routes/tareas');
+const cuentasCobrarRouter = require('./routes/cuentas-cobrar');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -147,6 +148,7 @@ app.use('/api/credenciales-fel', credencialesFelRouter);
 app.use('/api/fel', felRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/tareas', tareasRouter);
+app.use('/api/cuentas-cobrar', cuentasCobrarRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

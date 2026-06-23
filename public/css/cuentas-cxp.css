@@ -1,0 +1,29 @@
+.cxp-wrap {
+  max-width: 100%;
+}
+
+.cxp-summary .card-body {
+  min-width: 12rem;
+}
+
+.cxp-table tbody tr.cxp-row {
+  cursor: pointer;
+}
+
+.cxp-table tbody tr.cxp-row-vencido td {
+  background-color: rgba(220, 53, 69, 0.06);
+}
+
+.cxp-table tfoot td {
+  border-top: 2px solid var(--bs-border-color, #dee2e6);
+}
+
+@media (max-width: 767.98px) {
+  .cxp-summary {
+    width: 100%;
+  }
+
+  .cxp-summary .card-body {
+    justify-content: space-between;
+  }
+}
