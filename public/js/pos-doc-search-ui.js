@@ -4,6 +4,17 @@
 const PosDocSearchUI = {
   breakpoint: 992,
 
+  searchPlaceholder: 'Código o descripción… (Enter)',
+
+  searchHintHtml() {
+    return '<p class="text-muted small text-center py-3 mb-0">Escriba código o descripción y presione Enter</p>';
+  },
+
+  resetProductSearch(view, prefix) {
+    if (view) view._productos = [];
+    this.setListsHtml(view?._container, prefix, this.searchHintHtml());
+  },
+
   isMobileView() {
     return window.matchMedia(`(max-width: ${this.breakpoint - 0.02}px)`).matches;
   },
@@ -46,7 +57,7 @@ const PosDocSearchUI = {
             <div class="input-group input-group-sm mb-2 pos-search-group flex-shrink-0">
               <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
               <input type="search" class="form-control pos-search-glow" id="${prefix}-product-search-modal"
-                placeholder="Código o descripción…" autocomplete="off">
+                placeholder="${this.searchPlaceholder}" autocomplete="off">
             </div>
             <div class="pos-product-list pos-product-list-modal" id="${prefix}-product-list-modal"></div>
           </div>
@@ -168,13 +179,16 @@ const PosDocSearchUI = {
 
     const runSearch = (q) => {
       this.syncSearchValues(container, prefix);
-      buscarProductos.call(view, q);
+      const term = String(q ?? '').trim();
+      if (!term) {
+        this.resetProductSearch(view, prefix);
+        return;
+      }
+      buscarProductos.call(view, term);
     };
 
     this.searchInputs(container, prefix).forEach((inp) => {
       if (!inp) return;
-      const debounced = F.debounce(() => runSearch(inp.value.trim()), 300);
-      inp.addEventListener('input', debounced);
       inp.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -194,7 +208,6 @@ const PosDocSearchUI = {
       this.showSheet(sheetEl);
       window.setTimeout(() => {
         modalSearch?.focus();
-        runSearch((modalSearch?.value || desktopSearch?.value || '').trim());
       }, 50);
     };
 

@@ -54,6 +54,12 @@ const FacturacionView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  formatQty(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  },
+
   formatFormaPago(concre) {
     return String(concre || 'CON').trim().toUpperCase() === 'CRE' ? 'Crédito' : 'Contado';
   },
@@ -516,8 +522,8 @@ const FacturacionView = {
     }
 
     const tipoNeg = this.escapeHtml(this.clienteTipoNegocio(h));
-    const nombre = this.escapeHtml(h.DOC_NOMCLIE || h.CLI_NOMBRE || '—');
-    const dir = this.escapeHtml(h.DOC_DIRCLIE || h.CLI_DIR || '—');
+    const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
+    const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
     const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
@@ -541,12 +547,14 @@ const FacturacionView = {
                 <div class="form-control form-control-sm bg-light">${tipoNeg}</div>
               </div>
               <div class="mb-2">
-                <label class="form-label small mb-0">Nombre cliente</label>
-                <div class="form-control form-control-sm bg-light">${nombre}</div>
+                <label class="form-label small mb-0" for="fac-finalizar-nomclie">Nombre cliente</label>
+                <input type="text" id="fac-finalizar-nomclie" class="form-control form-control-sm"
+                  value="${this.escapeHtml(nomRaw)}" autocomplete="off">
               </div>
               <div class="mb-2">
-                <label class="form-label small mb-0">Dirección cliente</label>
-                <div class="form-control form-control-sm bg-light">${dir}</div>
+                <label class="form-label small mb-0" for="fac-finalizar-dirclie">Dirección cliente</label>
+                <input type="text" id="fac-finalizar-dirclie" class="form-control form-control-sm"
+                  value="${this.escapeHtml(dirRaw)}" autocomplete="off">
               </div>
               <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
                 <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
@@ -593,9 +601,14 @@ const FacturacionView = {
         concreSel?.addEventListener('change', toggleVenc);
         toggleVenc();
         this.bindFinalizarFpagoToggle(totalPrecio);
-        document.getElementById('fac-finalizar-concre')?.focus();
+        document.getElementById('fac-finalizar-nomclie')?.focus();
       },
       preConfirm: () => {
+        const nom = document.getElementById('fac-finalizar-nomclie')?.value?.trim() || '';
+        if (!nom) {
+          Swal.showValidationMessage('Ingrese el nombre del cliente');
+          return false;
+        }
         const obs = document.getElementById('fac-finalizar-obs')?.value?.trim() || '';
         const concre = document.getElementById('fac-finalizar-concre')?.value || 'CON';
         const venc = document.getElementById('fac-finalizar-venc')?.value?.trim() || '';
@@ -611,6 +624,8 @@ const FacturacionView = {
         const fpago = this.readFinalizarFpagoFromDom(concre);
         return {
           obs,
+          nomclie: nom,
+          dirclie: document.getElementById('fac-finalizar-dirclie')?.value?.trim() || '',
           concre,
           vencimiento: concre === 'CRE' ? venc : null,
           ...fpago,
@@ -626,6 +641,8 @@ const FacturacionView = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         OBS: value.obs,
+        DOC_NOMCLIE: value.nomclie,
+        DOC_DIRCLIE: value.dirclie,
         CONCRE: value.concre,
         VENCIMIENTO: value.vencimiento,
         CODCAJA: this.readCodcajaForFinalizar(),
@@ -718,7 +735,7 @@ const FacturacionView = {
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
-        return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(p.CODMEDIDA)} — ${this.escapeHtml(this.formatMoney(p.PRECIO))} (eq. ${this.escapeHtml(p.EQUIVALE)})</option>`;
+        return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(p.CODMEDIDA)} — ${this.escapeHtml(this.formatMoney(p.PRECIO))} (eq. ${this.escapeHtml(p.EQUIVALE)}, exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))})</option>`;
       })
       .join('');
     const { value: picked } = await Swal.fire({
@@ -784,7 +801,7 @@ const FacturacionView = {
     if (!targets.length) return;
     if (!this._productos.length) {
       const empty =
-        '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+        '<p class="text-muted small text-center py-3 mb-0">Escriba código o descripción y presione Enter</p>';
       targets.forEach((el) => {
         el.innerHTML = empty;
       });
@@ -801,7 +818,10 @@ const FacturacionView = {
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(p.CODMEDIDA)}</div>
               <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
             </div>
-            <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+            <div class="pos-prod-meta text-end">
+              <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
+              <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+            </div>
           </div>
         `
       )
@@ -819,7 +839,7 @@ const FacturacionView = {
     const editable = this.docEditable(h);
     if (!lines.length) {
       tbody.innerHTML =
-        '<tr><td colspan="5" class="text-center text-muted py-3">Sin productos en el pedido</td></tr>';
+        '<tr><td colspan="6" class="text-center text-muted py-3">Sin productos en el pedido</td></tr>';
       return;
     }
     tbody.innerHTML = lines
@@ -842,6 +862,7 @@ const FacturacionView = {
         return `<tr>
           <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
+          <td class="text-end small pos-cart-exist">${this.escapeHtml(this.formatQty(ln.EXISTENCIA))}</td>
           <td class="text-center">${qtyCell}</td>
           <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
           <td class="text-end">${delBtn}</td>
@@ -1424,7 +1445,7 @@ const FacturacionView = {
               <div class="input-group input-group-sm mb-2 pos-search-group">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="fac-product-search"
-                  placeholder="Código o descripción…" autocomplete="off"${editable ? '' : ' disabled'}>
+                  placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
               </div>
               <div class="pos-product-list" id="fac-product-list"></div>
             </div>
@@ -1456,6 +1477,7 @@ const FacturacionView = {
                       <tr>
                         <th>Cód.</th>
                         <th>Producto</th>
+                        <th class="text-end">Exist.</th>
                         <th class="text-center">Cant. / Precio</th>
                         <th class="text-end">Total</th>
                         <th></th>
@@ -1544,7 +1566,7 @@ const FacturacionView = {
         if (precioCampoSel.disabled) return;
         this._precioCampo = precioCampoSel.value || 'PRECIO';
         const q = this._container?.querySelector('#fac-product-search')?.value?.trim() || '';
-        this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
+        if (q) this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
       });
     }
 
@@ -1664,13 +1686,26 @@ const FacturacionView = {
   },
 
   async buscarProductos(q) {
+    const term = String(q ?? '').trim();
+    if (!term) {
+      PosDocSearchUI.resetProductSearch(this, 'fac');
+      return;
+    }
     if (this._loadingProducts) return;
     this._loadingProducts = true;
     const spinner = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
     PosDocSearchUI.setListsHtml(this._container, 'fac', spinner);
     try {
-      const data = await this.fetchProductos(q);
+      const data = await this.fetchProductos(term);
       this._productos = data.rows || [];
+      if (!this._productos.length) {
+        PosDocSearchUI.setListsHtml(
+          this._container,
+          'fac',
+          '<p class="text-muted small text-center py-3 mb-0">Sin resultados para la búsqueda</p>'
+        );
+        return;
+      }
       this.renderProductList();
     } catch (err) {
       const errHtml = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
@@ -1790,7 +1825,7 @@ const FacturacionView = {
     this._selectedCodcaja = null;
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
-    await this.buscarProductos('');
+    PosDocSearchUI.resetProductSearch(this, 'fac');
     this.renderAll();
   },
 

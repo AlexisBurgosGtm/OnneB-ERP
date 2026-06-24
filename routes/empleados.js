@@ -25,7 +25,7 @@ const router = createCatalogoRouter({
   idColumn: 'CODEMPLEADO',
   idType: 'int',
   idRouteParam: 'codempleado',
-  autoId: true,
+  identityColumn: true,
   listColumns: [
     'CODEMPLEADO',
     'NOMEMPLEADO',

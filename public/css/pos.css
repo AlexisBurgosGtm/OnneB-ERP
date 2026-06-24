@@ -656,6 +656,22 @@ body.pos-product-sheet-open {
 
 }
 
+.pos-product-item .pos-prod-meta {
+  flex-shrink: 0;
+  min-width: 4.5rem;
+}
+
+.pos-product-item .pos-prod-stock {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pos-cart-exist {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 3rem;
+}
+
 
 
 .pos-cart-table {

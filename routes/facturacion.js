@@ -14,13 +14,13 @@ const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
 const {
-  SQL_PRECIOS_JOIN,
-  SQL_PRODUCTO_PRECIOS_HABILITADO,
   fetchProductoPrecioForLinea,
-  mapProductoSearchRow,
   pesoFromPreciosRow,
   calcLinePeso,
 } = require('../lib/producto-precio-linea');
+const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
+const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
+const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -42,6 +42,14 @@ const TIPODOC_MOSTRADOR = 'ENV';
 const TIPODOC_COTIZACION = 'COT';
 const TIPODOC_TOMAR_DATOS = [TIPODOC_MOSTRADOR, TIPODOC_COTIZACION];
 const TIPODOC_TOMAR_DATOS_SQL_IN = TIPODOC_TOMAR_DATOS.map((t) => `'${t}'`).join(', ');
+
+/** Factura que referencia pedido/cotización (SERIEFAC + NOFAC), excluyendo anuladas */
+const SQL_FACTURA_VINCULADA_PEDIDO = `
+  f.EMPNIT = d.EMPNIT
+  AND f.SERIEFAC = d.CODDOC
+  AND TRY_CAST(LTRIM(RTRIM(f.NOFAC)) AS DECIMAL(18, 0)) = d.CORRELATIVO
+  AND f.STATUS <> '${STATUS_ANULADO}'
+`;
 
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
@@ -302,11 +310,13 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
     .input('CODDOC', sql.VarChar, coddoc)
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
-      SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
-        TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
-      FROM dbo.DOCPRODUCTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-      ORDER BY Id
+      SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
+        l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO,
+        ${sqlExistenciaMedidaExpr('l.EQUIVALE')}
+      FROM dbo.DOCPRODUCTOS l
+      ${SQL_INVSALDO_UNICO_JOIN_LINEA}
+      WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
+      ORDER BY l.Id
     `);
   return { header: headerRes.recordset[0], lines: linesRes.recordset };
 }
@@ -507,57 +517,14 @@ router.get('/productos', async (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || DEFAULT_LIMIT, 1), SEARCH_LIMIT);
   try {
     const pool = await req.app.locals.getDbPool();
-    const request = pool.request().input('EMPNIT', sql.VarChar, empnit).input('limit', sql.Int, limit);
-    let whereExtra = '';
-    if (q) {
-      request.input('qLike', sql.NVarChar, `%${q}%`);
-      whereExtra = `
-        AND (
-          p.CODPROD LIKE @qLike OR p.CODPROD2 LIKE @qLike
-          OR p.DESPROD LIKE @qLike OR p.DESPROD2 LIKE @qLike
-          OR m.DESMARCA LIKE @qLike
-        )
-      `;
-    }
-    const result = await request.query(`
-      SELECT TOP (@limit)
-        p.CODPROD,
-        p.DESPROD,
-        m.DESMARCA,
-        p.COSTO AS COSTO_PROD,
-        p.TIPOPROD,
-        pr.CODMEDIDA,
-        pr.PRECIO,
-        pr.MAYOREOA,
-        pr.MAYOREOB,
-        pr.MAYOREOC,
-        pr.COSTO,
-        pr.EQUIVALE
-      FROM dbo.PRODUCTOS p
-      ${SQL_PRECIOS_JOIN}
-      LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
-      WHERE p.EMPNIT = @EMPNIT
-        ${SQL_PRODUCTO_PRECIOS_HABILITADO}
-        ${whereExtra}
-      ORDER BY p.DESPROD, pr.CODMEDIDA, pr.EQUIVALE DESC
-    `);
-    const rows = result.recordset.map((row) =>
-      mapProductoSearchRow({
-        CODPROD: row.CODPROD,
-        DESPROD: row.DESPROD,
-        DESMARCA: row.DESMARCA ?? '',
-        COSTO_PROD: row.COSTO_PROD,
-        TIPOPROD: row.TIPOPROD,
-        CODMEDIDA: row.CODMEDIDA,
-        PRECIO: row.PRECIO,
-        MAYOREOA: row.MAYOREOA,
-        MAYOREOB: row.MAYOREOB,
-        MAYOREOC: row.MAYOREOC,
-        COSTO: row.COSTO ?? row.COSTO_PROD,
-        EQUIVALE: row.EQUIVALE,
-      }, campoPrecio)
-    );
-    res.json({ rows, q: q || null, campoPrecio });
+    const result = await searchMovimientoProductos(pool, {
+      empnit,
+      q,
+      limit,
+      campoPrecio,
+      includeMayoreo: true,
+    });
+    res.json(result);
   } catch (err) {
     console.warn('[API GET /facturacion/productos]', err.message);
     res.status(500).json({ error: err.message });
@@ -669,12 +636,10 @@ router.get('/pedidos-env', async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM dbo.DOCUMENTOS f
           JOIN dbo.TIPODOCUMENTOS tf ON f.CODDOC = tf.CODDOC AND f.EMPNIT = tf.EMPNIT
-          WHERE f.EMPNIT = d.EMPNIT
-            AND tf.TIPODOC IN (${TIPODOC_SQL_IN})
-            AND f.STATUS = '${STATUS_OPERADO}'
-            AND f.SERIEFAC = d.CODDOC
-            AND f.NOFAC = CAST(d.CORRELATIVO AS VARCHAR(30))
+          WHERE tf.TIPODOC IN (${TIPODOC_SQL_IN})
+            AND ${SQL_FACTURA_VINCULADA_PEDIDO}
         )
+        AND (d.SERIEFAC IS NULL OR LTRIM(RTRIM(d.SERIEFAC)) = '')
       ORDER BY d.FECHA DESC, d.HORA DESC, d.MINUTO DESC, d.ID DESC
     `);
     res.json({ rows: result.recordset });
@@ -707,17 +672,21 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .input('SERIEFAC', sql.VarChar, pedCoddoc)
-      .input('NOFAC', sql.VarChar, String(pedCorrelativo))
+      .input('CORR_PED', sql.Decimal(18, 0), pedCorrelativo)
       .query(`
-        SELECT TOP 1 CODDOC, CORRELATIVO
-        FROM dbo.DOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND SERIEFAC = @SERIEFAC AND NOFAC = @NOFAC
-          AND STATUS = '${STATUS_OPERADO}'
+        SELECT TOP 1 d.CODDOC, d.CORRELATIVO
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT
+          AND t.TIPODOC IN (${TIPODOC_SQL_IN})
+          AND d.SERIEFAC = @SERIEFAC
+          AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR_PED
+          AND d.STATUS <> '${STATUS_ANULADO}'
       `);
     if (dupCheck.recordset.length) {
       const dup = dupCheck.recordset[0];
       return res.status(409).json({
-        error: `Ya existe una factura operada (${dup.CODDOC}-${dup.CORRELATIVO}) para este documento`,
+        error: `Ya existe una factura (${dup.CODDOC}-${dup.CORRELATIVO}) para este documento`,
       });
     }
 
@@ -1403,6 +1372,10 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   const correlativo = parseCorrelativo(req.params.correlativo);
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
+  const clienteFinalize = parseFinalizeClienteBody(req.body);
+  if (clienteFinalize.error) {
+    return res.status(400).json({ error: clienteFinalize.error });
+  }
   const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
   if (concre !== 'CON' && concre !== 'CRE') {
     return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
@@ -1441,6 +1414,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         txnUpd.input('OBS', sql.VarChar, obs);
       }
       const obsSql = obs !== null ? ', OBS = @OBS' : '';
+      let clienteSql = '';
+      if (clienteFinalize.nomClie !== null) {
+        txnUpd.input('DOC_NOMCLIE', sql.VarChar, clienteFinalize.nomClie);
+        txnUpd.input('DOC_DIRCLIE', sql.VarChar, clienteFinalize.dirClie);
+        clienteSql = ', DOC_NOMCLIE = @DOC_NOMCLIE, DOC_DIRCLIE = @DOC_DIRCLIE';
+      }
       let cajaSql = ', CODCAJA = NULL';
       if (codcaja !== null) {
         txnUpd.input('CODCAJA', sql.Int, codcaja);
@@ -1448,7 +1427,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       }
       await txnUpd.query(`
         UPDATE dbo.DOCUMENTOS
-        SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO${vencSql}${obsSql}${cajaSql}
+        SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO${vencSql}${obsSql}${clienteSql}${cajaSql}
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
           AND ${SQL_DOCUMENTO_EDITABLE}
       `);

@@ -20,13 +20,12 @@ const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
 const {
-  SQL_PRECIOS_JOIN,
-  SQL_PRODUCTO_PRECIOS_HABILITADO,
   fetchProductoPrecioForLinea,
-  mapProductoSearchRow,
   pesoFromPreciosRow,
   calcLinePeso,
 } = require('../lib/producto-precio-linea');
+const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
+const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 
 const SEARCH_LIMIT = 80;
 const DEFAULT_BODEGA = 0;
@@ -198,11 +197,13 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
-        SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
-          TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
-        FROM dbo.DOCPRODUCTOS
-        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-        ORDER BY Id
+        SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
+          l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO,
+          ${sqlExistenciaMedidaExpr('l.EQUIVALE')}
+        FROM dbo.DOCPRODUCTOS l
+        ${SQL_INVSALDO_UNICO_JOIN_LINEA}
+        WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
+        ORDER BY l.Id
       `);
     return { header: headerRes.recordset[0], lines: linesRes.recordset };
   }
@@ -249,39 +250,14 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     const q = String(req.query.q || '').trim();
     try {
       const pool = await req.app.locals.getDbPool();
-      const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
-      let whereExtra = " AND p.TIPOPROD <> 'S'";
-      if (q) {
-        request.input('Q', sql.VarChar, `%${q}%`);
-        whereExtra += ' AND (p.CODPROD LIKE @Q OR p.DESPROD LIKE @Q OR m.DESMARCA LIKE @Q)';
-      }
-      const result = await request.query(`
-        SELECT TOP ${SEARCH_LIMIT}
-          p.CODPROD, p.DESPROD, m.DESMARCA, p.COSTO AS COSTO_PROD, p.TIPOPROD, p.EXISTENCIA,
-          pr.CODMEDIDA, pr.COSTO, pr.EQUIVALE, pr.PRECIO
-        FROM dbo.PRODUCTOS p
-        ${SQL_PRECIOS_JOIN}
-        LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
-        WHERE p.EMPNIT = @EMPNIT
-          ${SQL_PRODUCTO_PRECIOS_HABILITADO}
-        ${whereExtra}
-        ORDER BY p.DESPROD, pr.CODMEDIDA, pr.EQUIVALE DESC
-      `);
-      const rows = result.recordset.map((row) =>
-        mapProductoSearchRow({
-          CODPROD: row.CODPROD,
-          DESPROD: row.DESPROD,
-          DESMARCA: row.DESMARCA ?? '',
-          COSTO_PROD: row.COSTO_PROD,
-          TIPOPROD: row.TIPOPROD,
-          EXISTENCIA: row.EXISTENCIA,
-          CODMEDIDA: row.CODMEDIDA,
-          COSTO: row.COSTO ?? row.COSTO_PROD,
-          EQUIVALE: row.EQUIVALE,
-          PRECIO: row.PRECIO,
-        })
-      );
-      res.json({ rows, q: q || null });
+      const result = await searchMovimientoProductos(pool, {
+        empnit,
+        q,
+        limit: SEARCH_LIMIT,
+        includeMayoreo: false,
+        extraWhereSql: " AND p.TIPOPROD <> 'S'",
+      });
+      res.json({ rows: result.rows, q: result.q });
     } catch (err) {
       console.warn(`[API GET /${logPrefix}/productos]`, err.message);
       res.status(500).json({ error: err.message });

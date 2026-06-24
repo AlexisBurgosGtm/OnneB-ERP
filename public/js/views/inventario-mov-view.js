@@ -43,6 +43,12 @@ function createInventarioMovView(cfg) {
       return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
     },
 
+    formatQty(value) {
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      return n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+    },
+
     formatFecha(row) {
       if (!row?.FECHA) return '—';
       const s = String(row.FECHA).slice(0, 10);
@@ -409,7 +415,7 @@ function createInventarioMovView(cfg) {
       const options = precios
         .map((p) => {
           const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
-          return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))}</option>`;
+          return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))} — exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</option>`;
         })
         .join('');
       const { value: picked } = await Swal.fire({
@@ -449,7 +455,7 @@ function createInventarioMovView(cfg) {
       if (!targets.length) return;
       if (!this._productos.length) {
         const empty =
-          '<p class="text-muted small text-center py-3 mb-0">Busque productos por código o descripción</p>';
+          '<p class="text-muted small text-center py-3 mb-0">Escriba código o descripción y presione Enter</p>';
         targets.forEach((el) => {
           el.innerHTML = empty;
         });
@@ -464,6 +470,9 @@ function createInventarioMovView(cfg) {
             <div>
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(this.formatMedidaLine(p.CODMEDIDA, p.EQUIVALE))}</div>
               <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
+            </div>
+            <div class="pos-prod-meta text-end">
+              <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
             </div>
           </div>`
         )
@@ -481,7 +490,7 @@ function createInventarioMovView(cfg) {
       const editable = this.docEditable(h);
       if (!lines.length) {
         tbody.innerHTML =
-          '<tr><td colspan="4" class="text-center text-muted py-3">Sin productos</td></tr>';
+          '<tr><td colspan="5" class="text-center text-muted py-3">Sin productos</td></tr>';
         return;
       }
       tbody.innerHTML = lines
@@ -501,6 +510,7 @@ function createInventarioMovView(cfg) {
           return `<tr>
           <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(this.formatMedidaLine(ln))}</span></td>
+          <td class="text-end small pos-cart-exist">${this.escapeHtml(this.formatQty(ln.EXISTENCIA))}</td>
           <td class="text-center">${qtyControls}</td>
           <td class="text-end">${delBtn}</td>
         </tr>`;
@@ -671,7 +681,7 @@ function createInventarioMovView(cfg) {
               <div class="input-group input-group-sm mb-2 pos-search-group">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="${NS}-product-search"
-                  placeholder="Código o descripción…" autocomplete="off"${editable ? '' : ' disabled'}>
+                  placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
               </div>
               <div class="pos-product-list" id="${NS}-product-list"></div>
             </div>
@@ -691,6 +701,7 @@ function createInventarioMovView(cfg) {
                       <tr>
                         <th>Cód.</th>
                         <th>Producto</th>
+                        <th class="text-end">Exist.</th>
                         <th class="text-center">Cant.</th>
                         <th></th>
                       </tr>
@@ -819,13 +830,26 @@ function createInventarioMovView(cfg) {
     },
 
     async buscarProductos(q) {
+      const term = String(q ?? '').trim();
+      if (!term) {
+        PosDocSearchUI.resetProductSearch(this, NS);
+        return;
+      }
       if (this._loadingProducts) return;
       this._loadingProducts = true;
       const spinner = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
       PosDocSearchUI.setListsHtml(this._container, NS, spinner);
       try {
-        const data = await this.fetchProductos(q);
+        const data = await this.fetchProductos(term);
         this._productos = data.rows || [];
+        if (!this._productos.length) {
+          PosDocSearchUI.setListsHtml(
+            this._container,
+            NS,
+            '<p class="text-muted small text-center py-3 mb-0">Sin resultados para la búsqueda</p>'
+          );
+          return;
+        }
         this.renderProductList();
       } catch (err) {
         const errHtml = `<p class="text-danger small text-center py-3">${this.escapeHtml(err.message)}</p>`;
@@ -852,7 +876,7 @@ function createInventarioMovView(cfg) {
       }
       this._container.innerHTML = this.renderEditorShell();
       this.bindEditorEvents();
-      await this.buscarProductos('');
+      PosDocSearchUI.resetProductSearch(this, NS);
       this.renderAll();
     },
 
