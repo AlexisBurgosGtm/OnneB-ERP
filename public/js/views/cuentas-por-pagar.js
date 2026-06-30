@@ -1,7 +1,7 @@
 /**
- * Vista Cuentas por cobrar — facturas al crédito con saldo pendiente.
+ * Vista Cuentas por pagar — compras al crédito con saldo pendiente.
  */
-const CuentasPorCobrarView = {
+const CuentasPorPagarView = {
   _container: null,
   _rows: [],
   _total: 0,
@@ -12,7 +12,7 @@ const CuentasPorCobrarView = {
   _loading: false,
 
   MENU_OPCIONES: [
-    { action: 'nuevo-abono', label: 'NUEVO ABONO', icon: 'fa-solid fa-money-bill-transfer', className: 'btn-success text-white' },
+    { action: 'nuevo-pago', label: 'NUEVO PAGO', icon: 'fa-solid fa-money-bill-transfer', className: 'btn-success text-white' },
     { action: 'historial', label: 'HISTORIAL', icon: 'fa-solid fa-clock-rotate-left', className: 'btn-outline-primary' },
     { action: 'estado-cuenta', label: 'ESTADO CUENTA', icon: 'fa-solid fa-file-invoice', className: 'btn-outline-secondary' },
     { action: 'reimprimir', label: 'REIMPRIMIR', icon: 'fa-solid fa-print', className: 'btn-outline-secondary' },
@@ -32,36 +32,36 @@ const CuentasPorCobrarView = {
     const emp = F.getEmpNit();
     if (!emp) throw new Error('No hay empresa activa');
     const params = new URLSearchParams({ empnit: emp, limit: '500', ...extraParams });
-    return `/api/cuentas-cobrar/documentos?${params}`;
+    return `/api/cuentas-pagar/documentos?${params}`;
   },
 
-  facturaUrl(coddoc, correlativo) {
+  compraUrl(coddoc, correlativo) {
     const emp = F.getEmpNit();
-    return `/api/cuentas-cobrar/facturas/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(emp)}`;
+    return `/api/cuentas-pagar/compras/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(emp)}`;
   },
 
-  abonosUrl(coddoc, correlativo) {
+  pagosUrl(coddoc, correlativo) {
     const emp = F.getEmpNit();
-    return `/api/cuentas-cobrar/facturas/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/abonos?empnit=${encodeURIComponent(emp)}`;
+    return `/api/cuentas-pagar/compras/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/pagos?empnit=${encodeURIComponent(emp)}`;
   },
 
-  async fetchRccTipos() {
+  async fetchRcpTipos() {
     const emp = F.getEmpNit();
-    return F.fetchJson(`/api/cuentas-cobrar/rcc/tipos?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`, {
+    return F.fetchJson(`/api/cuentas-pagar/rcp/tipos?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
   },
 
-  async fetchSiguienteRcc(coddoc) {
+  async fetchSiguienteRcp(coddoc) {
     const emp = F.getEmpNit();
     const params = new URLSearchParams({ empnit: emp, _: String(Date.now()) });
     if (coddoc) params.set('coddoc', coddoc);
-    return F.fetchJson(`/api/cuentas-cobrar/rcc/siguiente?${params}`, { cache: 'no-store' });
+    return F.fetchJson(`/api/cuentas-pagar/rcp/siguiente?${params}`, { cache: 'no-store' });
   },
 
-  renderRccCoddocSelectHtml(tipos, selectedCoddoc) {
+  renderRcpCoddocSelectHtml(tipos, selectedCoddoc) {
     if (!tipos?.length) {
-      return '<p class="small text-danger mb-0">No hay documentos RCC activos</p>';
+      return '<p class="small text-danger mb-0">No hay documentos RCP activos</p>';
     }
     const options = tipos
       .map((t) => {
@@ -77,7 +77,7 @@ const CuentasPorCobrarView = {
       </select>`;
   },
 
-  async wireCoddocRccChange() {
+  async wireCoddocRcpChange() {
     const select = document.getElementById('cxp-abono-coddoc');
     const corrInp = document.getElementById('cxp-abono-correlativo');
     if (!select || !corrInp) return;
@@ -86,8 +86,8 @@ const CuentasPorCobrarView = {
       corrInp.value = '…';
       corrInp.disabled = true;
       try {
-        const data = await this.fetchSiguienteRcc(coddoc);
-        corrInp.value = String(data.rcc?.CORRELATIVO ?? '');
+        const data = await this.fetchSiguienteRcp(coddoc);
+        corrInp.value = String(data.rcp?.CORRELATIVO ?? '');
       } catch (err) {
         corrInp.value = '';
         F.toast(err.message || 'No se pudo cargar el correlativo', 'error');
@@ -103,7 +103,7 @@ const CuentasPorCobrarView = {
 
   usuario() {
     const u = F.session('user');
-    return u?.username || u?.usuario || 'CXC';
+    return u?.username || u?.usuario || 'CXP';
   },
 
   todayIsoDate() {
@@ -166,7 +166,7 @@ const CuentasPorCobrarView = {
   renderTableBodyHtml() {
     const rows = this.filteredRows();
     if (!rows.length) {
-      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay facturas al crédito con saldo pendiente</td></tr>`;
+      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay compras al crédito con saldo pendiente</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -196,8 +196,8 @@ const CuentasPorCobrarView = {
       <div class="cxp-wrap w-100">
         <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
           <div>
-            <h2 class="h5 mb-1"><i class="fa-solid fa-hand-holding-dollar me-2 text-primary"></i>Cuentas por cobrar</h2>
-            <p class="text-muted small mb-0">Facturas al crédito (CONCRE = CRE) con saldo pendiente</p>
+            <h2 class="h5 mb-1"><i class="fa-solid fa-file-invoice me-2 text-primary"></i>Cuentas por pagar</h2>
+            <p class="text-muted small mb-0">Compras al crédito (CONCRE = CRE) con saldo pendiente</p>
           </div>
           <div class="cxp-summary card border-0 shadow-sm">
             <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
@@ -217,7 +217,7 @@ const CuentasPorCobrarView = {
             <div class="input-group input-group-sm">
               <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
               <input type="search" class="form-control" id="cxp-search"
-                placeholder="Buscar documento, cliente, empleado, NIT…"
+                placeholder="Buscar documento, proveedor, empleado, NIT…"
                 value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
             </div>
             ${truncHint}
@@ -232,10 +232,10 @@ const CuentasPorCobrarView = {
                   <th>Fecha</th>
                   <th>Vence</th>
                   <th>Documento</th>
-                  <th>Cliente</th>
-                  <th>Negocio</th>
+                  <th>Proveedor</th>
+                  <th>Empresa</th>
                   <th class="text-end">Total</th>
-                  <th class="text-end">Abonos</th>
+                  <th class="text-end">Pagos</th>
                   <th class="text-end">Doc.Saldo</th>
                 </tr>
               </thead>
@@ -273,7 +273,7 @@ const CuentasPorCobrarView = {
           <i class="fa-solid fa-wallet me-1 text-primary"></i>Formas de pago
         </div>
         <div class="card-body py-2 px-3">
-          <p class="small text-muted mb-2">El monto del abono es la suma de las formas de pago (máx. ${this.escapeHtml(this.formatMoney(saldoMax))}).</p>
+          <p class="small text-muted mb-2">El monto del pago es la suma de las formas de pago (máx. ${this.escapeHtml(this.formatMoney(saldoMax))}).</p>
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label small mb-0" for="${prefix}-efectivo">Efectivo</label>
@@ -292,7 +292,7 @@ const CuentasPorCobrarView = {
               <input type="number" id="${prefix}-cheque" class="form-control form-control-sm cxp-fpago-input" min="0" step="0.01" value="0">
             </div>
           </div>
-          <div class="mt-2 small text-end fw-semibold text-primary" id="${prefix}-sum">Monto abono: ${this.escapeHtml(this.formatMoney(0))}</div>
+          <div class="mt-2 small text-end fw-semibold text-primary" id="${prefix}-sum">Monto pago: ${this.escapeHtml(this.formatMoney(0))}</div>
           <div class="mt-2 mb-0">
             <label class="form-label small mb-0" for="${prefix}-desc">Detalles del pago</label>
             <input type="text" id="${prefix}-desc" class="form-control form-control-sm" placeholder="No. boleta, cheque o tarjeta (opcional)" maxlength="200">
@@ -311,7 +311,7 @@ const CuentasPorCobrarView = {
     const refresh = () => {
       if (!sumEl) return;
       const sum = this.sumFpagoInputs(prefix);
-      sumEl.textContent = `Monto abono: ${this.formatMoney(sum)}`;
+      sumEl.textContent = `Monto pago: ${this.formatMoney(sum)}`;
       if (sum > saldoMax + 0.001) {
         sumEl.classList.add('text-danger');
         sumEl.classList.remove('text-primary');
@@ -336,15 +336,15 @@ const CuentasPorCobrarView = {
     };
   },
 
-  renderAbonosTableHtml(abonos) {
-    if (!abonos?.length) {
-      return '<p class="text-muted small text-center mb-0 py-3">Sin abonos ni notas de crédito registrados</p>';
+  renderPagosTableHtml(pagos) {
+    if (!pagos?.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin pagos ni notas de crédito registrados</p>';
     }
-    const rows = abonos
+    const rows = pagos
       .map((a) => {
         const tipo = String(a.TIPODOC || '').trim();
         const tipoCls =
-          tipo === 'RCC' ? 'bg-success' : tipo === 'DEV' || tipo === 'FNC' ? 'bg-warning text-dark' : 'bg-secondary';
+          tipo === 'RCP' ? 'bg-success' : tipo === 'DVP' ? 'bg-warning text-dark' : 'bg-secondary';
         const docLabel = a.DESDOC
           ? `${a.CODDOC} — ${a.DESDOC} #${a.CORRELATIVO}`
           : `${a.CODDOC} #${a.CORRELATIVO}`;
@@ -380,76 +380,42 @@ const CuentasPorCobrarView = {
     );
   },
 
-  async fetchFacturaDetalle(coddoc, correlativo) {
-    return F.fetchJson(`${this.facturaUrl(coddoc, correlativo)}&_=${Date.now()}`, { cache: 'no-store' });
+  async fetchCompraDetalle(coddoc, correlativo) {
+    return F.fetchJson(`${this.compraUrl(coddoc, correlativo)}&_=${Date.now()}`, { cache: 'no-store' });
   },
 
-  estadoCuentaUrl(codcliente) {
+  estadoCuentaUrl(codprov) {
     const emp = F.getEmpNit();
-    return `/api/cuentas-cobrar/clientes/${encodeURIComponent(codcliente)}/estado-cuenta?empnit=${encodeURIComponent(emp)}`;
+    return `/api/cuentas-pagar/proveedores/${encodeURIComponent(codprov)}/estado-cuenta?empnit=${encodeURIComponent(emp)}`;
   },
 
-  async fetchEstadoCuentaCliente(codcliente) {
-    return F.fetchJson(`${this.estadoCuentaUrl(codcliente)}&_=${Date.now()}`, { cache: 'no-store' });
+  async fetchEstadoCuentaProveedor(codprov) {
+    return F.fetchJson(`${this.estadoCuentaUrl(codprov)}&_=${Date.now()}`, { cache: 'no-store' });
   },
 
-  async resolveCodcliente(row) {
-    if (row?.CODCLIENTE != null && row.CODCLIENTE !== '') {
-      return Number(row.CODCLIENTE);
+  async resolveCodprov(row) {
+    if (row?.CODPROV != null && row.CODPROV !== '') {
+      return Number(row.CODPROV);
     }
-    const det = await this.fetchFacturaDetalle(row.CODDOC, row.CORRELATIVO);
-    const cod = det?.factura?.CODCLIENTE;
+    const det = await this.fetchCompraDetalle(row.CODDOC, row.CORRELATIVO);
+    const cod = det?.compra?.CODPROV ?? det?.compra?.CODCLIENTE;
     return cod != null ? Number(cod) : null;
   },
 
-  renderEstadoCuentaFacturasTableHtml(facturas) {
-    if (!facturas?.length) {
-      return '<p class="text-muted small text-center mb-0 py-2">Sin facturas al crédito</p>';
+  renderEstadoCuentaPagosTableHtml(pagos) {
+    if (!pagos?.length) {
+      return '<p class="text-muted small text-center mb-0 py-2">Sin pagos ni notas de crédito</p>';
     }
-    const rows = facturas
-      .map(
-        (f) => `<tr>
-          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(f.FECHA))}</td>
-          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(f.VENCIMIENTO))}</td>
-          <td class="fw-semibold text-nowrap">${this.escapeHtml(f.CODDOC)} #${this.escapeHtml(f.CORRELATIVO)}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(f.TOTALPRECIO))}</td>
-          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(f.DOC_ABONO))}</td>
-          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(f.DOC_SALDO))}</td>
-        </tr>`
-      )
-      .join('');
-    return `
-      <div class="table-responsive" style="max-height: 240px">
-        <table class="table table-sm table-striped mb-0">
-          <thead class="table-light sticky-top">
-            <tr>
-              <th>Fecha</th>
-              <th>Vence</th>
-              <th>Documento</th>
-              <th class="text-end">Total</th>
-              <th class="text-end">Abonos</th>
-              <th class="text-end">Doc.Saldo</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-  },
-
-  renderEstadoCuentaAbonosTableHtml(abonos) {
-    if (!abonos?.length) {
-      return '<p class="text-muted small text-center mb-0 py-2">Sin abonos ni notas de crédito</p>';
-    }
-    const rows = abonos
+    const rows = pagos
       .map((a) => {
         const tipo = String(a.TIPODOC || '').trim();
         const tipoCls =
-          tipo === 'RCC' ? 'bg-success' : tipo === 'DEV' || tipo === 'FNC' ? 'bg-warning text-dark' : 'bg-secondary';
+          tipo === 'RCP' ? 'bg-success' : tipo === 'DVP' ? 'bg-warning text-dark' : 'bg-secondary';
         return `<tr>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(a.FECHA))}</td>
           <td><span class="badge ${tipoCls}">${this.escapeHtml(tipo || '—')}</span></td>
           <td class="fw-semibold text-nowrap">${this.escapeHtml(a.CODDOC)} #${this.escapeHtml(a.CORRELATIVO)}</td>
-          <td class="small text-muted">${this.escapeHtml(a.FACTURA_REF || '—')}</td>
+          <td class="small text-muted">${this.escapeHtml(a.COMPRA_REF || '—')}</td>
           <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(a.TOTALPRECIO))}</td>
           <td class="small">${this.escapeHtml(a.USUARIO || '—')}</td>
         </tr>`;
@@ -463,7 +429,7 @@ const CuentasPorCobrarView = {
               <th>Fecha</th>
               <th>Tipo</th>
               <th>Documento</th>
-              <th>Factura ref.</th>
+              <th>Compra ref.</th>
               <th class="text-end">Monto</th>
               <th>Usuario</th>
             </tr>
@@ -481,8 +447,8 @@ const CuentasPorCobrarView = {
       .map((m) => {
         const tipo = String(m.TIPODOC || '').trim();
         const docLabel = `${m.CODDOC} #${m.CORRELATIVO}`;
-        const ref = m.MOV === 'A' && m.FACTURA_REF
-          ? `<div class="text-muted" style="font-size:.72rem">Ref: ${this.escapeHtml(m.FACTURA_REF)}</div>`
+        const ref = m.MOV === 'A' && m.COMPRA_REF
+          ? `<div class="text-muted" style="font-size:.72rem">Ref: ${this.escapeHtml(m.COMPRA_REF)}</div>`
           : '';
         return `<tr>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(m.FECHA))}</td>
@@ -503,7 +469,7 @@ const CuentasPorCobrarView = {
               <th>Tipo</th>
               <th>Documento</th>
               <th class="text-end">Créditos</th>
-              <th class="text-end">Abonos</th>
+              <th class="text-end">Pagos</th>
               <th class="text-end">Saldo</th>
             </tr>
           </thead>
@@ -521,27 +487,27 @@ const CuentasPorCobrarView = {
   },
 
   renderEstadoCuentaBodyHtml(data) {
-    const c = data.cliente || {};
+    const p = data.proveedor || {};
     const t = data.totales || {};
-    const nombre = c.DOC_NOMCLIE || c.NOMBRECLIENTE || c.NEGOCIO || '—';
+    const nombre = p.DOC_NOMCLIE || p.RAZONSOCIAL || p.EMPRESA || '—';
     return `
       <div class="text-start small">
-        <p class="mb-1"><strong>Cliente:</strong> ${this.escapeHtml(nombre)}</p>
-        <p class="mb-1"><strong>Negocio:</strong> ${this.escapeHtml(c.NEGOCIO || '—')}</p>
-        <p class="mb-2"><strong>NIT:</strong> ${this.escapeHtml(c.NIT || '—')}</p>
+        <p class="mb-1"><strong>Proveedor:</strong> ${this.escapeHtml(nombre)}</p>
+        <p class="mb-1"><strong>Empresa:</strong> ${this.escapeHtml(p.EMPRESA || '—')}</p>
+        <p class="mb-2"><strong>NIT:</strong> ${this.escapeHtml(p.NIT || '—')}</p>
         <div class="row g-2 mb-3">
           <div class="col-4">
             <div class="border rounded p-2 text-center">
               <div class="text-muted">Total créditos</div>
               <strong>${this.escapeHtml(this.formatMoney(t.totalCreditos))}</strong>
-              <div class="text-muted" style="font-size:.75rem">${t.countFacturas || 0} doc.</div>
+              <div class="text-muted" style="font-size:.75rem">${t.countCompras || 0} doc.</div>
             </div>
           </div>
           <div class="col-4">
             <div class="border rounded p-2 text-center">
-              <div class="text-muted">Total abonos</div>
+              <div class="text-muted">Total pagos</div>
               <strong class="text-success">${this.escapeHtml(this.formatMoney(t.totalAbonosMov))}</strong>
-              <div class="text-muted" style="font-size:.75rem">${t.countAbonos || 0} mov.</div>
+              <div class="text-muted" style="font-size:.75rem">${t.countPagos || 0} mov.</div>
             </div>
           </div>
           <div class="col-4">
@@ -557,10 +523,10 @@ const CuentasPorCobrarView = {
   },
 
   imprimirEstadoCuenta(data) {
-    const c = data.cliente || {};
+    const p = data.proveedor || {};
     const t = data.totales || {};
     const movimientos = data.movimientos || [];
-    const nombre = c.DOC_NOMCLIE || c.NOMBRECLIENTE || c.NEGOCIO || '';
+    const nombre = p.DOC_NOMCLIE || p.RAZONSOCIAL || p.EMPRESA || '';
     const hoy = this.formatFecha(this.todayIsoDate());
 
     const rows = movimientos.length
@@ -568,7 +534,7 @@ const CuentasPorCobrarView = {
           .map((m) => {
             const tipo = String(m.TIPODOC || '').trim();
             const docLabel = `${m.CODDOC} #${m.CORRELATIVO}`;
-            const ref = m.MOV === 'A' && m.FACTURA_REF ? ` (Ref: ${m.FACTURA_REF})` : '';
+            const ref = m.MOV === 'A' && m.COMPRA_REF ? ` (Ref: ${m.COMPRA_REF})` : '';
             return `<tr>
               <td>${PrintReport.escapeHtml(this.formatFecha(m.FECHA))}</td>
               <td>${PrintReport.escapeHtml(tipo || '—')}</td>
@@ -583,11 +549,11 @@ const CuentasPorCobrarView = {
 
     const bodyHtml = `
       ${PrintReport.reportHeaderHtml({
-        title: 'Estado de cuenta — cliente',
+        title: 'Estado de cuenta — proveedor',
         subtitleHtml: `
-          <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(nombre)}</p>
-          ${c.NEGOCIO ? `<p><strong>Negocio:</strong> ${PrintReport.escapeHtml(c.NEGOCIO)}</p>` : ''}
-          ${c.NIT ? `<p><strong>NIT:</strong> ${PrintReport.escapeHtml(c.NIT)}</p>` : ''}
+          <p><strong>Proveedor:</strong> ${PrintReport.escapeHtml(nombre)}</p>
+          ${p.EMPRESA ? `<p><strong>Empresa:</strong> ${PrintReport.escapeHtml(p.EMPRESA)}</p>` : ''}
+          ${p.NIT ? `<p><strong>NIT:</strong> ${PrintReport.escapeHtml(p.NIT)}</p>` : ''}
           <p><strong>Fecha:</strong> ${PrintReport.escapeHtml(hoy)}</p>
         `,
       })}
@@ -598,7 +564,7 @@ const CuentasPorCobrarView = {
             <th>Tipo</th>
             <th>Documento</th>
             <th class="text-end">Créditos</th>
-            <th class="text-end">Abonos</th>
+            <th class="text-end">Pagos</th>
             <th class="text-end">Saldo</th>
           </tr>
         </thead>
@@ -615,7 +581,7 @@ const CuentasPorCobrarView = {
     `;
 
     const html = PrintReport.wrapDocument({
-      title: 'Estado de cuenta — cliente',
+      title: 'Estado de cuenta — proveedor',
       bodyHtml,
       extraStyles: `
         .ecc-table{font-size:11px}
@@ -661,8 +627,8 @@ const CuentasPorCobrarView = {
     const coddoc = row.CODDOC;
     const correlativo = row.CORRELATIVO;
     try {
-      if (action === 'nuevo-abono') {
-        await this.nuevoAbono(row);
+      if (action === 'nuevo-pago') {
+        await this.nuevoPago(row);
         return;
       }
       if (action === 'historial') {
@@ -693,69 +659,69 @@ const CuentasPorCobrarView = {
     }
   },
 
-  async nuevoAbono(row) {
+  async nuevoPago(row) {
     const coddoc = row.CODDOC;
     const correlativo = row.CORRELATIVO;
     const fechaHoy = this.todayIsoDate();
     const saldo = Number(row.DOC_SALDO) || 0;
-    const totalFactura = Number(row.TOTALPRECIO) || 0;
-    const abonos = Number(row.DOC_ABONO) || 0;
-    const cliente = String(row.DOC_NOMCLIE || row.NEGOCIO || '—');
+    const totalCompra = Number(row.TOTALPRECIO) || 0;
+    const pagosAcum = Number(row.DOC_ABONO) || 0;
+    const proveedor = String(row.DOC_NOMCLIE || row.NEGOCIO || '—');
 
-    let rccTipos;
-    let rccPreview;
+    let rcpTipos;
+    let rcpPreview;
     try {
-      const tiposData = await this.fetchRccTipos();
-      rccTipos = tiposData.rows || [];
-      if (!rccTipos.length) {
-        F.alert('Error', 'No hay tipo de documento RCC activo', 'error');
+      const tiposData = await this.fetchRcpTipos();
+      rcpTipos = tiposData.rows || [];
+      if (!rcpTipos.length) {
+        F.alert('Error', 'No hay tipo de documento RCP activo', 'error');
         return;
       }
-      const firstCoddoc = rccTipos[0].CODDOC;
-      const prevData = await this.fetchSiguienteRcc(firstCoddoc);
-      rccPreview = prevData.rcc;
+      const firstCoddoc = rcpTipos[0].CODDOC;
+      const prevData = await this.fetchSiguienteRcp(firstCoddoc);
+      rcpPreview = prevData.rcp;
     } catch (err) {
-      F.alert('Error', err.message || 'No se pudo obtener el documento RCC', 'error');
+      F.alert('Error', err.message || 'No se pudo obtener el documento RCP', 'error');
       return;
     }
-    if (!rccPreview?.CODDOC) {
-      F.alert('Error', 'No hay tipo de documento RCC activo', 'error');
+    if (!rcpPreview?.CODDOC) {
+      F.alert('Error', 'No hay tipo de documento RCP activo', 'error');
       return;
     }
 
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase({ customClass: { popup: 'modal-catalogo fac-finalizar-modal' } }),
-      title: 'Nuevo abono',
+      title: 'Nuevo pago',
       width: '44rem',
       html: `
         <div class="text-start fac-finalizar-modal-body">
-          <p class="small text-muted mb-2">Factura <strong>${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</strong></p>
+          <p class="small text-muted mb-2">Compra <strong>${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</strong></p>
           <div class="row g-2 mb-2">
             <div class="col-md-3">
               <label class="form-label small mb-0">Fecha</label>
               <input type="date" id="cxp-abono-fecha" class="form-control form-control-sm" value="${fechaHoy}" disabled>
             </div>
             <div class="col-md-3">
-              <label class="form-label small mb-0" for="cxp-abono-coddoc">CODDOC (RCC)</label>
-              ${this.renderRccCoddocSelectHtml(rccTipos, rccPreview.CODDOC)}
+              <label class="form-label small mb-0" for="cxp-abono-coddoc">CODDOC (RCP)</label>
+              ${this.renderRcpCoddocSelectHtml(rcpTipos, rcpPreview.CODDOC)}
             </div>
             <div class="col-md-3">
               <label class="form-label small mb-0" for="cxp-abono-correlativo">Correlativo</label>
-              <input type="text" id="cxp-abono-correlativo" class="form-control form-control-sm bg-light fw-semibold text-end" value="${this.escapeHtml(rccPreview.CORRELATIVO)}" readonly>
+              <input type="text" id="cxp-abono-correlativo" class="form-control form-control-sm bg-light fw-semibold text-end" value="${this.escapeHtml(rcpPreview.CORRELATIVO)}" readonly>
             </div>
             <div class="col-md-3">
-              <label class="form-label small mb-0">Cliente</label>
-              <input type="text" class="form-control form-control-sm bg-light" value="${this.escapeHtml(cliente)}" readonly title="${this.escapeHtml(cliente)}">
+              <label class="form-label small mb-0">Proveedor</label>
+              <input type="text" class="form-control form-control-sm bg-light" value="${this.escapeHtml(proveedor)}" readonly title="${this.escapeHtml(proveedor)}">
             </div>
           </div>
           <div class="row g-2 mb-2">
             <div class="col-4">
-              <label class="form-label small mb-0">Total factura</label>
-              <input type="text" class="form-control form-control-sm bg-light text-end" value="${this.escapeHtml(this.formatMoney(totalFactura))}" readonly>
+              <label class="form-label small mb-0">Total compra</label>
+              <input type="text" class="form-control form-control-sm bg-light text-end" value="${this.escapeHtml(this.formatMoney(totalCompra))}" readonly>
             </div>
             <div class="col-4">
-              <label class="form-label small mb-0">Abonos</label>
-              <input type="text" class="form-control form-control-sm bg-light text-end" value="${this.escapeHtml(this.formatMoney(abonos))}" readonly>
+              <label class="form-label small mb-0">Pagos</label>
+              <input type="text" class="form-control form-control-sm bg-light text-end" value="${this.escapeHtml(this.formatMoney(pagosAcum))}" readonly>
             </div>
             <div class="col-4">
               <label class="form-label small mb-0">Saldo</label>
@@ -767,32 +733,32 @@ const CuentasPorCobrarView = {
       `,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar abono'),
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar pago'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
       didOpen: () => {
         this.bindFpagoRefresh(saldo);
-        this.wireCoddocRccChange();
+        this.wireCoddocRcpChange();
         document.getElementById('cxp-abono-fpago-efectivo')?.focus();
       },
       preConfirm: () => {
-        const coddocRcc = document.getElementById('cxp-abono-coddoc')?.value?.trim();
-        if (!coddocRcc) {
-          Swal.showValidationMessage('Seleccione el documento RCC');
+        const coddocRcp = document.getElementById('cxp-abono-coddoc')?.value?.trim();
+        if (!coddocRcp) {
+          Swal.showValidationMessage('Seleccione el documento RCP');
           return false;
         }
         const monto = Math.round(this.sumFpagoInputs() * 1000) / 1000;
         if (!Number.isFinite(monto) || monto <= 0) {
-          Swal.showValidationMessage('Indique el monto del abono en las formas de pago');
+          Swal.showValidationMessage('Indique el monto del pago en las formas de pago');
           return false;
         }
         if (monto > saldo + 0.001) {
-          Swal.showValidationMessage(`El abono no puede superar el saldo (${this.formatMoney(saldo)})`);
+          Swal.showValidationMessage(`El pago no puede superar el saldo (${this.formatMoney(saldo)})`);
           return false;
         }
         return {
           MONTO: monto,
-          CODDOC_RCC: coddocRcc,
+          CODDOC_RCP: coddocRcp,
           ...this.readFpagoFromDom(),
         };
       },
@@ -800,7 +766,7 @@ const CuentasPorCobrarView = {
 
     if (!isConfirmed) return;
 
-    const res = await F.fetchJson(this.abonosUrl(coddoc, correlativo), {
+    const res = await F.fetchJson(this.pagosUrl(coddoc, correlativo), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -808,26 +774,26 @@ const CuentasPorCobrarView = {
         USUARIO: this.usuario(),
       }),
     });
-    F.toast(`Abono ${res.abono?.CODDOC}-${res.abono?.CORRELATIVO} registrado`, 'success');
+    F.toast(`Pago ${res.pago?.CODDOC}-${res.pago?.CORRELATIVO} registrado`, 'success');
     await this.fetchDocumentos();
     this._container.innerHTML = this.renderShell();
     this.bindEvents();
   },
 
   async mostrarHistorial(row) {
-    const data = await this.fetchFacturaDetalle(row.CODDOC, row.CORRELATIVO);
-    const abonos = data.abonos || [];
-    const totalMov = abonos.reduce((s, a) => s + (Number(a.TOTALPRECIO) || 0), 0);
+    const data = await this.fetchCompraDetalle(row.CODDOC, row.CORRELATIVO);
+    const pagos = data.pagos || [];
+    const totalMov = pagos.reduce((s, a) => s + (Number(a.TOTALPRECIO) || 0), 0);
     await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Historial de abonos y notas de crédito',
+      title: 'Historial de pagos y notas de crédito',
       html: `
         <p class="small text-muted text-start mb-2">
-          Factura <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
+          Compra <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
           · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
         </p>
-        <p class="small text-muted text-start mb-2">RCC, DEV y FNC vinculados por SERIEFAC / NOFAC</p>
-        ${this.renderAbonosTableHtml(abonos)}
+        <p class="small text-muted text-start mb-2">RCP y DVP vinculados por SERIEFAC / NOFAC</p>
+        ${this.renderPagosTableHtml(pagos)}
         <p class="text-end mt-2 mb-0 small"><strong>Total: ${this.escapeHtml(this.formatMoney(totalMov))}</strong></p>
       `,
       width: 620,
@@ -838,18 +804,18 @@ const CuentasPorCobrarView = {
   },
 
   async mostrarEstadoCuenta(row) {
-    let codcliente;
+    let codprov;
     try {
-      codcliente = await this.resolveCodcliente(row);
-      if (!codcliente) {
-        F.alert('Error', 'No se pudo identificar el cliente del documento', 'error');
+      codprov = await this.resolveCodprov(row);
+      if (!codprov) {
+        F.alert('Error', 'No se pudo identificar el proveedor del documento', 'error');
         return;
       }
-      const data = await this.fetchEstadoCuentaCliente(codcliente);
+      const data = await this.fetchEstadoCuentaProveedor(codprov);
       const bodyHtml = this.renderEstadoCuentaBodyHtml(data);
       await Swal.fire({
         ...CatalogosUI.modalBase(),
-        title: 'Estado de cuenta — cliente',
+        title: 'Estado de cuenta — proveedor',
         html: bodyHtml,
         width: 760,
         showCancelButton: true,
@@ -922,7 +888,7 @@ const CuentasPorCobrarView = {
       return;
     }
 
-    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cuentas por cobrar…</div>`;
+    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cuentas por pagar…</div>`;
     try {
       await this.fetchDocumentos();
       container.innerHTML = this.renderShell();

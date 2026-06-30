@@ -89,6 +89,7 @@
             <input type="password" class="login-input login-input-line" id="password" name="onneb-pass"
               placeholder="Contraseña" required autocomplete="off" data-lpignore="true" data-form-type="other">
           </div>
+          <br>
           <button type="submit" class="btn btn-login w-100">
             INICIAR SESIÓN
           </button>
@@ -221,6 +222,21 @@
             </div>
             <div class="accordion-item">
               <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTransportes" aria-expanded="false" aria-controls="collapseTransportes">
+                  <i class="fa-solid fa-truck-fast sidebar-icon" aria-hidden="true"></i>
+                  <span>TRANSPORTES</span>
+                </button>
+              </h2>
+              <div id="collapseTransportes" class="accordion-collapse collapse">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="servicio-mecanica"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> SERVICIO MECANICA</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="mantenimiento-llantas"><i class="fa-solid fa-compact-disc" aria-hidden="true"></i> Mantenimiento de llantas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="vehiculos"><i class="fa-solid fa-car" aria-hidden="true"></i> VEHICULOS</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseConfig" aria-expanded="false" aria-controls="collapseConfig">
                   <i class="fa-solid fa-sliders sidebar-icon" aria-hidden="true"></i>
                   <span>CONFIGURACIONES</span>
@@ -305,11 +321,14 @@
   <script src="/js/views/empleados.js"></script>
   <script src="/js/views/tipo-documentos.js"></script>
   <script src="/js/views/cajas.js"></script>
+  <script src="/js/views/vehiculos.js"></script>
+  <script src="/js/views/mantenimiento-llantas.js"></script>
   <script src="/js/views/credenciales-fel.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/views/developer.js"></script>
   <script src="/js/views/updater.js"></script>
   <script src="/js/doc-fecha.js"></script>
+  <script src="/js/doc-vendedor-clave.js"></script>
   <script src="/js/empresa-logo.js"></script>
   <script src="/js/print-report.js"></script>
   <script src="/js/pos-doc-search-ui.js"></script>
@@ -324,12 +343,14 @@
   <script src="/js/views/inventario.js"></script>
   <script src="/js/views/inventario-actualizacion.js"></script>
   <script src="/js/views/cuentas-por-cobrar.js"></script>
+  <script src="/js/views/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
   <script src="/js/views/documentos.js"></script>
   <script src="/js/views/productos.js"></script>
   <script src="/js/tipo-empleado-access.js"></script>
-  <script src="/js/views/inicio-empleado.js"></script>
   <script src="/js/views/dashboard-admin.js"></script>
+  <script src="/js/views/vendedor-inicio.js"></script>
+  <script src="/js/views/inicio-empleado.js"></script>
   <script src="/js/views/tareas.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>

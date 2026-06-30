@@ -1098,6 +1098,18 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
         return res.status(400).json({ error: 'Agregue al menos un producto a la compra' });
       }
       await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
+      if (concre === 'CRE') {
+        await transaction
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddoc)
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+          .query(`
+            UPDATE dbo.DOCUMENTOS
+            SET DOC_SALDO = ISNULL(TOTALPRECIO, 0), DOC_ABONO = 0
+            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+          `);
+      }
       let inv = { tipom: 0, lineas: 0, productos: 0 };
       const corteAplicado = String(docMeta.CORTE || 'NO').trim().toUpperCase() === 'SI';
       if (!corteAplicado) {

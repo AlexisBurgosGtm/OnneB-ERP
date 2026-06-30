@@ -27,3 +27,60 @@
     justify-content: space-between;
   }
 }
+
+.swal2-popup .cxp-menu-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.swal2-popup .cxp-menu-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 6rem;
+  height: 5.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+  font-size: 0.68rem;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
+}
+
+.swal2-popup .cxp-menu-btn i {
+  font-size: 1.4rem;
+}
+
+.swal2-popup .cxp-menu-btn span {
+  display: block;
+}
+
+.swal2-popup .cxp-menu-btn.btn-success {
+  background-color: #198754;
+  border-color: #198754;
+  color: #fff;
+}
+
+.swal2-popup .cxp-menu-btn.btn-success:hover {
+  background-color: #157347;
+  border-color: #146c43;
+  color: #fff;
+}
+
+@media (max-width: 575.98px) {
+  .swal2-popup .cxp-menu-btn {
+    height: 5rem;
+    font-size: 0.6rem;
+  }
+
+  .swal2-popup .cxp-menu-btn i {
+    font-size: 1.2rem;
+  }
+}

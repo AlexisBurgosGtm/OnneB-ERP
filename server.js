@@ -31,6 +31,8 @@ const departamentosRouter = require('./routes/departamentos');
 const empleadosRouter = require('./routes/empleados');
 const tipoDocumentosRouter = require('./routes/tipo-documentos');
 const cajasRouter = require('./routes/cajas');
+const vehiculosRouter = require('./routes/vehiculos');
+const mantenimientoLlantasRouter = require('./routes/mantenimiento-llantas');
 const authRouter = require('./routes/auth');
 const { router: configRouter } = require('./routes/config');
 const developerRouter = require('./routes/developer');
@@ -51,6 +53,7 @@ const updaterRouter = require('./routes/updater');
 const dashboardRouter = require('./routes/dashboard');
 const tareasRouter = require('./routes/tareas');
 const cuentasCobrarRouter = require('./routes/cuentas-cobrar');
+const cuentasPagarRouter = require('./routes/cuentas-pagar');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -129,6 +132,8 @@ app.use('/api/departamentos', departamentosRouter);
 app.use('/api/empleados', empleadosRouter);
 app.use('/api/tipo-documentos', tipoDocumentosRouter);
 app.use('/api/cajas', cajasRouter);
+app.use('/api/vehiculos', vehiculosRouter);
+app.use('/api/mantenimiento-llantas', mantenimientoLlantasRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
 app.use('/api/developer', developerRouter);
@@ -149,6 +154,7 @@ app.use('/api/fel', felRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/tareas', tareasRouter);
 app.use('/api/cuentas-cobrar', cuentasCobrarRouter);
+app.use('/api/cuentas-pagar', cuentasPagarRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

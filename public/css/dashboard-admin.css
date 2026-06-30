@@ -122,3 +122,31 @@
     height: 220px !important;
   }
 }
+
+/* Inicio vendedor */
+.vendedor-inicio-docs-table-wrap {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.vendedor-inicio-docs-table-wrap table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.vendedor-inicio-doc-ref {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.vendedor-inicio-tareas-wrap {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.vendedor-inicio-tareas-wrap table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

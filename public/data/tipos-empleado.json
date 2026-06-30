@@ -3,5 +3,6 @@
   { "value": 2, "code": "SUPERVISOR", "label": "SUPERVISOR" },
   { "value": 3, "code": "VENDEDOR", "label": "VENDEDOR" },
   { "value": 4, "code": "VISITADOR", "label": "VISITADOR" },
-  { "value": 5, "code": "BODEGA", "label": "BODEGA" }
+  { "value": 5, "code": "BODEGA", "label": "BODEGA" },
+  { "value": 6, "code": "TRANSPORTE", "label": "TRANSPORTE" }
 ]

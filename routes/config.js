@@ -4,8 +4,10 @@ const {
   SETTING_OPCION,
   normalizeOpcion,
   normalizeSino,
+  normalizeConcre,
   getSettingValue,
   getSettingSino,
+  getSettingConcre,
   setSettingValue,
   verifySettingPass,
 } = require('../lib/settings');
@@ -110,6 +112,43 @@ router.put('/sino', async (req, res) => {
     res.json({ ok: true, opcion, sino: raw });
   } catch (err) {
     console.warn('[API PUT /config/sino]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/concre', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const concre = await getSettingConcre(pool, opcion);
+    res.json({ opcion, concre });
+  } catch (err) {
+    console.warn('[API GET /config/concre]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/concre', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const concre = normalizeConcre(req.body?.concre);
+  if (concre !== 'CON' && concre !== 'CRE') {
+    return res.status(400).json({ error: 'El valor debe ser CON o CRE' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await setSettingValue(pool, opcion, concre);
+    res.json({ ok: true, opcion, concre });
+  } catch (err) {
+    console.warn('[API PUT /config/concre]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

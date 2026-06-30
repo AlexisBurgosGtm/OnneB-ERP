@@ -221,7 +221,16 @@ const PosView = {
       this._container?.querySelector('#pos-cliente-search')?.focus();
       return;
     }
-    if (!this.hasVendedor(h)) {
+
+    const solicitaClave = await DocVendedorClave.fetchSolicitaClave();
+    if (solicitaClave) {
+      const ok = await DocVendedorClave.promptAndApply({
+        apiLookupUrl: `/api/pos/vendedores/por-clave?empnit=${encodeURIComponent(F.getEmpNit())}`,
+        vendedorSelectId: '#pos-doc-vendedor',
+        view: this,
+      });
+      if (!ok) return;
+    } else if (!this.hasVendedor(h)) {
       F.toast('Seleccione un vendedor antes de finalizar', 'warning');
       this.syncVendedorEmphasis();
       this._container?.querySelector('#pos-doc-vendedor')?.focus();

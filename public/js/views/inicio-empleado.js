@@ -88,6 +88,10 @@ const InicioEmpleadoView = {
       return DashboardAdminView.load(container);
     }
 
+    if (codtipo === 3 && typeof VendedorInicioView !== 'undefined') {
+      return VendedorInicioView.load(container);
+    }
+
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');

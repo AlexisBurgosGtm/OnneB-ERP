@@ -20,6 +20,7 @@ const {
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
+const { findVendedorByClave } = require('../lib/vendedor-clave');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -251,6 +252,25 @@ router.get('/vendedores', async (req, res) => {
     res.json({ rows: result.recordset });
   } catch (err) {
     console.warn('[API GET /pos/vendedores]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/vendedores/por-clave', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const clave = String(req.body?.clave ?? '').trim();
+  if (!clave) return res.status(400).json({ error: 'Clave requerida' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const vendedor = await findVendedorByClave(pool, empnit, clave);
+    if (!vendedor) {
+      return res.status(404).json({ error: 'No se encontró un vendedor activo con esa clave' });
+    }
+    res.json(vendedor);
+  } catch (err) {
+    console.warn('[API POST /pos/vendedores/por-clave]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

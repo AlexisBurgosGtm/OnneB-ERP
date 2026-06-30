@@ -456,6 +456,9 @@
     'tipo-documentos': 'Tipo documentos',
     'credenciales-fel': 'Credenciales FEL',
     cajas: 'Cajas',
+    'servicio-mecanica': 'SERVICIO MECANICA',
+    'mantenimiento-llantas': 'Mantenimiento de llantas',
+    vehiculos: 'VEHICULOS',
   };
 
   if (btnMenuToggle) btnMenuToggle.addEventListener('click', toggleSidebar);
@@ -499,6 +502,8 @@
         TareasView.load(mainContent);
       } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
         CuentasPorCobrarView.load(mainContent);
+      } else if (key === 'cuentas-pagar' && typeof CuentasPorPagarView !== 'undefined') {
+        CuentasPorPagarView.load(mainContent);
       } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
         EntradasInventarioView.load(mainContent);
       } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
@@ -549,6 +554,10 @@
         TipoDocumentosView.load(mainContent);
       } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
         CajasView.load(mainContent);
+      } else if (key === 'vehiculos' && typeof VehiculosView !== 'undefined') {
+        VehiculosView.load(mainContent);
+      } else if (key === 'mantenimiento-llantas' && typeof MantenimientoLlantasView !== 'undefined') {
+        MantenimientoLlantasView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
       } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {

@@ -63,10 +63,16 @@ function createCatalogoEmpresaView(cfg) {
         `;
       }
 
+      const inputType = f.type || 'text';
+      let displayVal = val;
+      if (inputType === 'date' && val) {
+        displayVal = String(val).slice(0, 10);
+      }
+
       return `
         <label class="form-label small mb-0">${this.escapeHtml(f.label)}</label>
-        <input type="${f.type || 'text'}" class="form-control form-control-sm" name="${f.key}"
-          value="${this.escapeHtml(val)}" ${req} ${ro} ${step}>
+        <input type="${inputType}" class="form-control form-control-sm" name="${f.key}"
+          value="${this.escapeHtml(displayVal)}" ${req} ${ro} ${step}>
       `;
     },
 

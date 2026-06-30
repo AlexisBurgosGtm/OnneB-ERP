@@ -77,6 +77,64 @@ const CatalogosUI = {
     return `<i class="fa-solid fa-trash"></i> ${label}`;
   },
 
+  aceptarButtonHtml(label = 'Aceptar') {
+    return label;
+  },
+
+  /**
+   * Campo de clave enmascarado (type=text + CSS) para evitar que el navegador ofrezca guardar contraseña.
+   */
+  secretInputFormHtml({
+    inputId,
+    label = 'Clave',
+    placeholder = '',
+    name = 'onneb-secret-auth',
+    beforeInput = '',
+    afterInput = '',
+    formClass = '',
+  } = {}) {
+    const extraClass = formClass ? ` ${formClass}` : '';
+    return `
+      <form class="catalogo-form text-start secret-input-modal${extraClass}" autocomplete="off" novalidate
+        onsubmit="return false">
+        ${beforeInput}
+        <label for="${this.escapeAttr(inputId)}" class="form-label small mb-0">${label}</label>
+        <input
+          type="text"
+          id="${this.escapeAttr(inputId)}"
+          class="form-control form-control-sm config-pass-mask"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          inputmode="text"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-bwignore="true"
+          data-form-type="other"
+          name="${this.escapeAttr(name)}"
+          placeholder="${this.escapeAttr(placeholder)}"
+        >
+        ${afterInput}
+      </form>`;
+  },
+
+  /** Enfoca el input y permite confirmar con Enter sin ocultar el botón Aceptar/Continuar. */
+  wireSecretInputModal(inputId, { onInput } = {}) {
+    const form = Swal.getPopup()?.querySelector('.secret-input-modal');
+    form?.setAttribute('autocomplete', 'off');
+    const input = document.getElementById(inputId);
+    input?.focus();
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        Swal.clickConfirm();
+      }
+    });
+    if (onInput) input?.addEventListener('input', onInput);
+    return input;
+  },
+
   /** Modal formulario — Guardar a la derecha */
   async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen } = {}) {
     const result = await Swal.fire({
@@ -157,6 +215,7 @@ const CatalogosUI = {
     verificarEnTiempoReal = true,
   } = {}) {
     const isEliminar = confirmText === 'Eliminar';
+    const isPlainConfirm = confirmText === 'Aceptar' || confirmText === 'Continuar';
     const confirmCls = confirmClass || (isEliminar ? 'btn-catalogo-eliminar' : 'btn-modal-guardar');
     let lastVerifyOk = false;
     let verifySeq = 0;
@@ -197,52 +256,32 @@ const CatalogosUI = {
       ...this.modalBase({ customClass: { confirmButton: confirmCls } }),
       title,
       html: `
-        <form class="catalogo-form text-start config-pass-modal" autocomplete="off" novalidate
-          onsubmit="return false">
-          <p class="small text-muted mb-2 mb-sm-3">${text}</p>
-          <label for="config-pass-input" class="form-label small mb-0">Clave</label>
-          <input
-            type="text"
-            id="config-pass-input"
-            class="form-control form-control-sm config-pass-mask"
-            autocomplete="off"
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck="false"
-            inputmode="text"
-            data-lpignore="true"
-            data-1p-ignore="true"
-            data-bwignore="true"
-            data-form-type="other"
-            name="onneb-admin-auth"
-            placeholder="Clave de administrador"
-          >
-          <div id="config-pass-feedback" class="small mt-1 config-pass-feedback" aria-live="polite"></div>
-        </form>
+        ${this.secretInputFormHtml({
+          inputId: 'config-pass-input',
+          label: 'Clave',
+          placeholder: 'Clave de administrador',
+          name: 'onneb-admin-auth',
+          formClass: 'config-pass-modal',
+          beforeInput: `<p class="small text-muted mb-2 mb-sm-3">${text}</p>`,
+          afterInput:
+            '<div id="config-pass-feedback" class="small mt-1 config-pass-feedback" aria-live="polite"></div>',
+        })}
       `,
       width: 420,
       showCancelButton: true,
       confirmButtonText: isEliminar
         ? this.eliminarButtonHtml(confirmText)
-        : this.guardarButtonHtml(confirmText),
+        : isPlainConfirm
+          ? this.aceptarButtonHtml(confirmText)
+          : this.guardarButtonHtml(confirmText),
       cancelButtonText: this.cancelButtonHtml(cancelText),
       focusConfirm: false,
       didOpen: () => {
-        const form = Swal.getPopup()?.querySelector('.config-pass-modal');
-        form?.setAttribute('autocomplete', 'off');
-        const input = document.getElementById('config-pass-input');
         const feedback = document.getElementById('config-pass-feedback');
-        input?.focus();
-        if (verificarEnTiempoReal && input) {
-          input.addEventListener('input', () => {
-            debouncedVerify(input.value, feedback);
-          });
-        }
-        input?.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            Swal.clickConfirm();
-          }
+        this.wireSecretInputModal('config-pass-input', {
+          onInput: verificarEnTiempoReal
+            ? (e) => debouncedVerify(e.target.value, feedback)
+            : undefined,
         });
       },
       preConfirm: async () => {

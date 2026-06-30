@@ -43,17 +43,20 @@ const ConfigGeneralView = {
       fallbackDesc: 'Imprime ticket automáticamente al finalizar la venta',
     },
     {
-      opcion: 'COBRO PREDETERMINADO',
-      title: 'Tipo de cobro predeterminado',
-      icon: 'fa-money-bill-wave',
-      fallbackDesc: 'Determina si las nuevas facturas están por contado o crédito',
-      labels: { SI: 'CRÉDITO', NO: 'CONTADO' },
-    },
-    {
       opcion: 'MUESTRA DATOS EN CORTE DE CAJA',
       title: 'Muestra datos en corte de caja',
       icon: 'fa-chart-pie',
       fallbackDesc: 'Muestra totales del sistema y detalle al cerrar; en NO el arqueo es ciego (sin montos visibles)',
+    },
+  ],
+
+  CONCRE_OPTIONS: [
+    {
+      opcion: 'COBRO PREDETERMINADO',
+      title: 'Tipo de cobro predeterminado',
+      icon: 'fa-money-bill-wave',
+      fallbackDesc: 'Determina si las nuevas facturas están por contado o crédito',
+      labels: { CON: 'CONTADO', CRE: 'CRÉDITO' },
     },
   ],
 
@@ -78,6 +81,7 @@ const ConfigGeneralView = {
   _passMeta: {},
   _textMeta: {},
   _sinoMeta: {},
+  _concreMeta: {},
   _invSaldoPendientes: null,
 
   escapeHtml(value) {
@@ -94,6 +98,68 @@ const ConfigGeneralView = {
       .trim()
       .toUpperCase();
     return s === 'SI' ? 'SI' : 'NO';
+  },
+
+  normalizeConcre(value) {
+    const s = String(value ?? 'CON')
+      .trim()
+      .toUpperCase();
+    if (s === 'CRE' || s === 'SI') return 'CRE';
+    return 'CON';
+  },
+
+  concreButtonClass(concre) {
+    return this.normalizeConcre(concre) === 'CRE' ? 'btn-empleado-activo--si' : 'btn-empleado-activo--no';
+  },
+
+  getConcreOption(opcion) {
+    return this.CONCRE_OPTIONS.find((opt) => opt.opcion === opcion) || null;
+  },
+
+  getConcreLabel(option, concre) {
+    const val = this.normalizeConcre(concre);
+    if (option?.labels?.[val]) return option.labels[val];
+    return val;
+  },
+
+  getConcreToggleTitle(option, concre) {
+    const val = this.normalizeConcre(concre);
+    const next = val === 'CRE' ? 'CON' : 'CRE';
+    return `Clic para cambiar a ${this.getConcreLabel(option, next)}`;
+  },
+
+  renderConcreToggleButton(option, concre) {
+    const val = this.normalizeConcre(concre);
+    const label = this.getConcreLabel(option, val);
+    const wideClass = option.labels ? ' config-sino-toggle--wide' : '';
+    return `
+      <button
+        type="button"
+        class="btn btn-empleado-activo config-sino-toggle${wideClass} ${this.concreButtonClass(val)}"
+        data-setting-opcion="${this.escapeHtml(option.opcion)}"
+        data-concre="${val}"
+        aria-pressed="${val === 'CRE'}"
+        title="${this.escapeHtml(this.getConcreToggleTitle(option, val))}"
+      >${this.escapeHtml(label)}</button>`;
+  },
+
+  renderConcreCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const concre = this.normalizeConcre(meta.concre);
+    return `
+      <div class="card config-card-compact" data-concre-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            ${this.renderConcreToggleButton(option, concre)}
+          </div>
+        </div>
+      </div>`;
   },
 
   sinoButtonClass(sino) {
@@ -244,6 +310,9 @@ const ConfigGeneralView = {
     const sinoCards = this.SINO_OPTIONS.map((opt) =>
       this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
     ).join('');
+    const concreCards = this.CONCRE_OPTIONS.map((opt) =>
+      this.renderConcreCard(opt, this._concreMeta[opt.opcion] || {})
+    ).join('');
     return `
       <div class="config-general-wrap w-100">
         <div class="config-general-panel">
@@ -251,10 +320,22 @@ const ConfigGeneralView = {
             ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.opcion] || {})).join('')}
             ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
             ${sinoCards}
+            ${concreCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
           </div>
         </div>
       </div>`;
+  },
+
+  updateConcreButton(btn, concre, option) {
+    const val = this.normalizeConcre(concre);
+    const opt = option || this.getConcreOption(btn.getAttribute('data-setting-opcion'));
+    btn.textContent = this.getConcreLabel(opt, val);
+    btn.dataset.concre = val;
+    btn.setAttribute('aria-pressed', val === 'CRE' ? 'true' : 'false');
+    btn.title = this.getConcreToggleTitle(opt, val);
+    btn.classList.remove('btn-empleado-activo--si', 'btn-empleado-activo--no');
+    btn.classList.add(this.concreButtonClass(val));
   },
 
   updateSinoButton(btn, sino, option) {
@@ -294,7 +375,11 @@ const ConfigGeneralView = {
     this.TEXT_CARDS.forEach((card) => this.bindTextEvents(card));
 
     this._container?.querySelectorAll('.config-sino-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => this.onToggleSino(btn));
+      if (btn.hasAttribute('data-concre')) {
+        btn.addEventListener('click', () => this.onToggleConcre(btn));
+      } else {
+        btn.addEventListener('click', () => this.onToggleSino(btn));
+      }
     });
 
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
@@ -316,6 +401,34 @@ const ConfigGeneralView = {
     return F.fetchJson(`/api/config/sino?${this.configQuery(opcion)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
+  },
+
+  async fetchConcre(opcion) {
+    return F.fetchJson(`/api/config/concre?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  async onToggleConcre(btn) {
+    const opcion = btn.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const current = this.normalizeConcre(btn.getAttribute('data-concre'));
+    const next = current === 'CRE' ? 'CON' : 'CRE';
+    btn.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/concre?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, concre: next }),
+      });
+      this._concreMeta[opcion] = { ...(this._concreMeta[opcion] || {}), concre: next };
+      this.updateConcreButton(btn, next, this.getConcreOption(opcion));
+      F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      btn.disabled = false;
+    }
   },
 
   async onToggleSino(btn) {
@@ -467,7 +580,8 @@ const ConfigGeneralView = {
       const passFetches = this.PASS_CARDS.map((card) => this.fetchPass(card.opcion));
       const textFetches = this.TEXT_CARDS.map((card) => this.fetchPass(card.opcion));
       const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.opcion));
-      const fetches = [...passFetches, ...textFetches, ...sinoFetches];
+      const concreFetches = this.CONCRE_OPTIONS.map((opt) => this.fetchConcre(opt.opcion));
+      const fetches = [...passFetches, ...textFetches, ...sinoFetches, ...concreFetches];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
       const results = await Promise.all(fetches);
       const passResults = results.slice(0, this.PASS_CARDS.length);
@@ -478,6 +592,10 @@ const ConfigGeneralView = {
       const sinoResults = results.slice(
         this.PASS_CARDS.length + this.TEXT_CARDS.length,
         this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length
+      );
+      const concreResults = results.slice(
+        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length,
+        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length
       );
       const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
 
@@ -492,6 +610,10 @@ const ConfigGeneralView = {
       this._sinoMeta = {};
       this.SINO_OPTIONS.forEach((opt, i) => {
         this._sinoMeta[opt.opcion] = sinoResults[i];
+      });
+      this._concreMeta = {};
+      this.CONCRE_OPTIONS.forEach((opt, i) => {
+        this._concreMeta[opt.opcion] = concreResults[i];
       });
       this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
 

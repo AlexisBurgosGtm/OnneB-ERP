@@ -21,6 +21,7 @@ const {
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
+const { findVendedorByClave } = require('../lib/vendedor-clave');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -437,6 +438,25 @@ router.get('/vendedores', async (req, res) => {
     res.json({ rows: result.recordset });
   } catch (err) {
     console.warn('[API GET /facturacion/vendedores]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/vendedores/por-clave', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const clave = String(req.body?.clave ?? '').trim();
+  if (!clave) return res.status(400).json({ error: 'Clave requerida' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const vendedor = await findVendedorByClave(pool, empnit, clave);
+    if (!vendedor) {
+      return res.status(404).json({ error: 'No se encontró un vendedor activo con esa clave' });
+    }
+    res.json(vendedor);
+  } catch (err) {
+    console.warn('[API POST /facturacion/vendedores/por-clave]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1476,6 +1496,18 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       const totalPrecio = Number(totalRow.recordset[0]?.TOTALPRECIO) || 0;
       const fpago = resolveFormasPago(concre, req.body, totalPrecio);
       await applyFormasPagoDocumento(transaction, empnit, coddoc, correlativo, fpago);
+      if (concre === 'CRE') {
+        await transaction
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddoc)
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+          .query(`
+            UPDATE dbo.DOCUMENTOS
+            SET DOC_SALDO = ISNULL(TOTALPRECIO, 0), DOC_ABONO = 0
+            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+          `);
+      }
 
       const refRow = await transaction
         .request()

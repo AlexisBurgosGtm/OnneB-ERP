@@ -31,6 +31,7 @@ const FacturacionView = {
   ],
 
   FEL_URL_OPCION: 'URL FEL',
+  COBRO_PREDETERMINADO_OPCION: 'COBRO PREDETERMINADO',
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
     return String(value)
@@ -264,6 +265,33 @@ const FacturacionView = {
     return cod != null && cod !== '' && Number(cod) > 0;
   },
 
+  documentoTieneOrigen(h) {
+    const serie = String(h?.SERIEFAC ?? '').trim();
+    const nofac = String(h?.NOFAC ?? '').trim();
+    return serie.length > 0 && nofac.length > 0;
+  },
+
+  async fetchCobroPredeterminado() {
+    const params = new URLSearchParams({
+      opcion: this.COBRO_PREDETERMINADO_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/concre?${params}`, { cache: 'no-store' });
+    const val = String(data.concre || 'CON').trim().toUpperCase();
+    return val === 'CRE' ? 'CRE' : 'CON';
+  },
+
+  async resolveDefaultConcre(h) {
+    if (this.documentoTieneOrigen(h)) {
+      return String(h.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
+    }
+    try {
+      return await this.fetchCobroPredeterminado();
+    } catch {
+      return String(h.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
+    }
+  },
+
   syncClienteSearchEmphasis() {
     const h = this._pedido?.header;
     const inp = this._container?.querySelector('#fac-cliente-search');
@@ -373,6 +401,7 @@ const FacturacionView = {
   renderFinalizarFpagoCardHtml(totalPrecio, concreVal) {
     const isCre = concreVal === 'CRE';
     const total = this.fpagoInputValue(totalPrecio);
+    const efectivoDefault = isCre ? '0' : total;
     const hidden = isCre ? ' d-none' : '';
     return `
           <div class="card fac-finalizar-fpago-card h-100${hidden}" id="fac-finalizar-fpago-card">
@@ -385,7 +414,7 @@ const FacturacionView = {
                 <div class="col-6">
                   <label class="form-label small mb-0" for="fac-finalizar-fpago-efectivo">Efectivo</label>
                   <input type="number" id="fac-finalizar-fpago-efectivo" class="form-control form-control-sm fac-fpago-input"
-                    min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
+                    min="0" step="0.01" value="${efectivoDefault}"${isCre ? ' disabled' : ''}>
                 </div>
                 <div class="col-6">
                   <label class="form-label small mb-0" for="fac-finalizar-fpago-tarjeta">Tarjeta</label>
@@ -403,7 +432,7 @@ const FacturacionView = {
                     min="0" step="0.01" value="0"${isCre ? ' disabled' : ''}>
                 </div>
               </div>
-              <div class="mt-2 small text-end text-muted" id="fac-finalizar-fpago-sum">Suma: Q 0.00 / ${this.escapeHtml(total)}</div>
+              <div class="mt-2 small text-end text-muted" id="fac-finalizar-fpago-sum">Suma: ${this.escapeHtml(isCre ? 'Q 0.00' : this.formatMoney(totalPrecio))} / ${this.escapeHtml(total)}</div>
               <div class="mt-2 mb-0">
                 <label class="form-label small mb-0" for="fac-finalizar-fpago-desc">Detalles del pago</label>
                 <input type="text" id="fac-finalizar-fpago-desc" class="form-control form-control-sm"
@@ -467,6 +496,8 @@ const FacturacionView = {
         if (deposito) deposito.value = '0';
         if (cheque) cheque.value = '0';
         if (desc) desc.value = '';
+      } else if (efectivo && Number(efectivo.value || 0) <= 0) {
+        efectivo.value = this.fpagoInputValue(totalPrecio);
       }
       refreshSum();
     };
@@ -514,7 +545,17 @@ const FacturacionView = {
       this._container?.querySelector('#fac-cliente-search')?.focus();
       return;
     }
-    if (!this.hasVendedor(h)) {
+
+    const skipClaveVendedor = this.documentoTieneOrigen(h);
+    const solicitaClave = !skipClaveVendedor && (await DocVendedorClave.fetchSolicitaClave());
+    if (solicitaClave) {
+      const ok = await DocVendedorClave.promptAndApply({
+        apiLookupUrl: `/api/facturacion/vendedores/por-clave?empnit=${encodeURIComponent(F.getEmpNit())}`,
+        vendedorSelectId: '#fac-doc-vendedor',
+        view: this,
+      });
+      if (!ok) return;
+    } else if (!this.hasVendedor(h)) {
       F.toast('Seleccione un vendedor antes de finalizar', 'warning');
       this.syncVendedorEmphasis();
       this._container?.querySelector('#fac-doc-vendedor')?.focus();
@@ -525,7 +566,7 @@ const FacturacionView = {
     const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
     const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
-    const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
+    const concreVal = await this.resolveDefaultConcre(h);
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
     const totalPrecio = this.docTotalPrecio(h);
 
