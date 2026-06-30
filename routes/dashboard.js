@@ -9,6 +9,10 @@ const {
   loadVendedorResumen,
   loadVendedorDocumentos,
 } = require('../lib/dashboard-vendedor');
+const {
+  parseMesAnio: parseMesAnioTransporte,
+  loadTransporteDashboard,
+} = require('../lib/dashboard-transporte');
 
 const router = express.Router();
 
@@ -105,6 +109,32 @@ router.get('/vendedor/documentos', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.warn('[API GET /dashboard/vendedor/documentos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/transporte', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const fallback = defaultPeriod();
+  const period = parseMesAnioTransporte(req.query.mes ?? fallback.mes, req.query.anio ?? fallback.anio);
+  if (!period) {
+    return res.status(400).json({ error: 'MES o ANIO inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const sql = require('mssql');
+    const data = await loadTransporteDashboard(pool, sql, empnit, period.mes, period.anio);
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /dashboard/transporte]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

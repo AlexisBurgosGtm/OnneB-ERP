@@ -18,8 +18,6 @@ const VEHICULOS_FORM_FIELDS = [
   { key: 'MODELO', label: 'Modelo (año)', type: 'number' },
   { key: 'CHASIS', label: 'Chasis' },
   { key: 'MOTOR', label: 'Motor' },
-  { key: 'NIT', label: 'NIT' },
-  { key: 'TITULAR', label: 'Titular' },
   { key: 'KILOMETRAJE_INICIAL', label: 'Kilometraje inicial', type: 'number', step: '0.01' },
   { key: 'KILOMETRAJE_ACTUAL', label: 'Kilometraje actual', type: 'number', step: '0.01' },
   { key: 'F_ACEITE', label: 'Fecha aceite', type: 'date' },
@@ -41,8 +39,6 @@ function vehiculosMapFormToApi(data) {
     MODELO: toNum(data.MODELO),
     CHASIS: data.CHASIS || null,
     MOTOR: data.MOTOR || null,
-    NIT: data.NIT || null,
-    TITULAR: data.TITULAR || null,
     KILOMETRAJE_INICIAL: toNum(data.KILOMETRAJE_INICIAL),
     KILOMETRAJE_ACTUAL: toNum(data.KILOMETRAJE_ACTUAL),
     F_ACEITE: data.F_ACEITE || null,
@@ -93,8 +89,6 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'MODELO',
     'CHASIS',
     'MOTOR',
-    'NIT',
-    'TITULAR',
     'KILOMETRAJE_INICIAL',
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
@@ -109,8 +103,6 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'MODELO',
     'CHASIS',
     'MOTOR',
-    'NIT',
-    'TITULAR',
     'KILOMETRAJE_INICIAL',
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
@@ -123,8 +115,6 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'MODELO',
     'CHASIS',
     'MOTOR',
-    'NIT',
-    'TITULAR',
     'KILOMETRAJE_INICIAL',
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
@@ -133,14 +123,12 @@ const VehiculosViewBase = createCatalogoEmpresaView({
   mapFormToApi: vehiculosMapFormToApi,
   validateForm: vehiculosValidateForm,
   tableColumns: [
-    { key: 'CODVEHICULO', label: 'Código', type: 'number' },
     { key: 'PLACA', label: 'Placa' },
     { key: 'TIPO', label: 'Tipo' },
     { key: 'DESCRIPCION', label: 'Descripción' },
     { key: 'MARCA', label: 'Marca' },
     { key: 'LINEA', label: 'Línea' },
     { key: 'MODELO', label: 'Modelo', type: 'number' },
-    { key: 'TITULAR', label: 'Titular' },
     { key: 'KILOMETRAJE_ACTUAL', label: 'Km actual', type: 'number' },
   ],
   getRowLabel(row) {
@@ -151,12 +139,219 @@ const VehiculosViewBase = createCatalogoEmpresaView({
 const VehiculosView = {
   ...VehiculosViewBase,
 
+  formatMoney(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return 'Q 0.00';
+    return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  formatKm(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('es-GT', { maximumFractionDigits: 2 });
+  },
+
+  formatFecha(value) {
+    if (!value) return '—';
+    const s = String(value).slice(0, 10);
+    const [y, m, day] = s.split('-');
+    if (day && m && y) return `${day}/${m}/${y}`;
+    return s;
+  },
+
+  vehiculoHistorialLabel(row) {
+    const placa = row?.PLACA || '';
+    const extra = [row?.DESCRIPCION, row?.MARCA, row?.LINEA].filter(Boolean).join(' · ');
+    if (placa && extra) return `${placa} — ${extra}`;
+    return placa || extra || `Vehículo #${row?.CODVEHICULO ?? ''}`;
+  },
+
+  accionesRowHtml(id) {
+    return `<div class="catalogo-acciones d-flex flex-wrap justify-content-end gap-1">
+      <button type="button" class="btn btn-sm btn-outline-secondary btn-vehiculo-historial" data-codvehiculo="${this.escapeHtml(id)}" title="Historial">
+        <i class="fa-solid fa-clock-rotate-left"></i> Historial
+      </button>
+      ${CatalogosUI.btnEditar(id, 'codvehiculo')}
+      ${CatalogosUI.btnEliminar(id, 'codvehiculo')}
+    </div>`;
+  },
+
+  renderTableBodyHtml(rows) {
+    const colSpan = 8;
+    const cols = [
+      { key: 'PLACA', label: 'Placa' },
+      { key: 'TIPO', label: 'Tipo' },
+      { key: 'DESCRIPCION', label: 'Descripción' },
+      { key: 'MARCA', label: 'Marca' },
+      { key: 'LINEA', label: 'Línea' },
+      { key: 'MODELO', label: 'Modelo', type: 'number' },
+      { key: 'KILOMETRAJE_ACTUAL', label: 'Km actual', type: 'number' },
+    ];
+    if (!rows.length) {
+      const msg = this._filterQuery.trim()
+        ? 'Ningún registro coincide con la búsqueda'
+        : 'Sin registros';
+      return `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">${msg}</td></tr>`;
+    }
+    return rows
+      .map((row) => {
+        const cells = cols
+          .map((c) => `<td>${this.formatCell(row[c.key], c)}</td>`)
+          .join('');
+        return `<tr>${cells}<td class="text-end">${this.accionesRowHtml(row.CODVEHICULO)}</td></tr>`;
+      })
+      .join('');
+  },
+
+  updateTableView() {
+    const filtered = this.getFilteredRows();
+    const tbody = this._container?.querySelector('#vehiculos-tbody');
+    const badge = this._container?.querySelector('#vehiculos-count');
+    if (tbody) {
+      tbody.innerHTML = this.renderTableBodyHtml(filtered);
+      this.bindRowActions();
+    }
+    if (badge) badge.innerHTML = this.badgeText(filtered.length, this._rows.length);
+  },
+
+  bindRowActions() {
+    this._container?.querySelectorAll('.btn-catalogo-editar').forEach((btn) => {
+      btn.addEventListener('click', () => this.onEditar(btn.dataset.codvehiculo));
+    });
+    this._container?.querySelectorAll('.btn-catalogo-eliminar').forEach((btn) => {
+      btn.addEventListener('click', () => this.onEliminar(btn.dataset.codvehiculo));
+    });
+    this._container?.querySelectorAll('.btn-vehiculo-historial').forEach((btn) => {
+      btn.addEventListener('click', () => this.onHistorial(btn.dataset.codvehiculo));
+    });
+  },
+
+  async fetchHistorial(codvehiculo) {
+    return F.fetchJson(
+      `${this.apiBase(`/${encodeURIComponent(codvehiculo)}/historial`)}&_=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+  },
+
+  imprimirHistorial(data) {
+    if (typeof PrintReport === 'undefined') {
+      F.toast('Impresión no disponible', 'warning');
+      return;
+    }
+    const v = data.vehiculo || {};
+    const vehLabel = this.vehiculoHistorialLabel(v);
+    const hoy = this.formatFecha(new Date().toISOString());
+
+    const kmRows = (data.kilometrajes || [])
+      .map(
+        (r) => `<tr>
+          <td>${PrintReport.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td>${PrintReport.escapeHtml(r.NOMEMPLEADO || '—')}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatKm(r.KMS_INICIAL))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatKm(r.KMS_FINAL))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatKm(r.KMS_RECORRIDO))}</td>
+          <td class="text-center">${PrintReport.escapeHtml(r.TIPO_COMBUSTIBLE || '—')}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(r.IMPORTE_COMBUSTIBLE))}</td>
+        </tr>`
+      )
+      .join('');
+
+    const mecRows = (data.mecanica || [])
+      .map(
+        (r) => `<tr>
+          <td>${PrintReport.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td>${PrintReport.escapeHtml(String(r.FALLA_REPORTADA || '—').slice(0, 120))}</td>
+          <td>${PrintReport.escapeHtml(String(r.SERVICIO_REALIZADO || '—').slice(0, 120))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+        </tr>`
+      )
+      .join('');
+
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({
+        title: 'Historial del vehículo',
+        subtitleHtml: `
+          <p><strong>Vehículo:</strong> ${PrintReport.escapeHtml(vehLabel)}</p>
+          <p><strong>Km actual:</strong> ${PrintReport.escapeHtml(this.formatKm(v.KILOMETRAJE_ACTUAL))}</p>
+          <p><strong>Fecha reporte:</strong> ${PrintReport.escapeHtml(hoy)}</p>
+        `,
+      })}
+      <section class="vh-report-section">
+        <h2 class="vh-report-title">Kilometrajes (${(data.kilometrajes || []).length})</h2>
+        <table class="vh-report-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Empleado</th>
+              <th class="text-end">Km ini.</th>
+              <th class="text-end">Km fin.</th>
+              <th class="text-end">Km rec.</th>
+              <th class="text-center">Combustible</th>
+              <th class="text-end">Importe</th>
+            </tr>
+          </thead>
+          <tbody>${kmRows || '<tr><td colspan="7" class="text-center text-muted">Sin registros</td></tr>'}</tbody>
+        </table>
+      </section>
+      <section class="vh-report-section">
+        <h2 class="vh-report-title">Servicio mecánica (${(data.mecanica || []).length})</h2>
+        <table class="vh-report-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Falla reportada</th>
+              <th>Servicio realizado</th>
+              <th class="text-end">Importe</th>
+            </tr>
+          </thead>
+          <tbody>${mecRows || '<tr><td colspan="4" class="text-center text-muted">Sin registros</td></tr>'}</tbody>
+        </table>
+      </section>`;
+
+    const html = PrintReport.wrapDocument({
+      title: `Historial — ${vehLabel}`,
+      bodyHtml,
+      extraStyles: `
+        .vh-report-section{margin-bottom:1.25rem;page-break-inside:avoid}
+        .vh-report-title{font-size:13px;margin:0 0 .35rem;padding:.35rem .5rem;background:#f0f0f0;border:1px solid #ccc}
+        .vh-report-table{width:100%;border-collapse:collapse;font-size:11px}
+        .vh-report-table th,.vh-report-table td{padding:4px 6px;border:1px solid #ddd}
+      `,
+    });
+    PrintReport.openAndPrint(html, 'width=900,height=700');
+  },
+
+  async onHistorial(id) {
+    try {
+      const data = await this.fetchHistorial(id);
+      if (!(data.kilometrajes || []).length && !(data.mecanica || []).length) {
+        F.toast('Sin registros de historial para este vehículo', 'warning');
+        return;
+      }
+      this.imprimirHistorial(data);
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudo cargar el historial', 'error');
+    }
+  },
+
+  todayIsoDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
   fieldDef(key) {
     return VEHICULOS_FORM_FIELDS.find((f) => f.key === key);
   },
 
   buildFormHtml(row = {}, isEdit = false) {
-    const field = (key) => this.fieldHtml(this.fieldDef(key), row, isEdit);
+    const today = this.todayIsoDate();
+    const formRow = { ...row };
+    if (!isEdit) {
+      if (!formRow.F_ACEITE) formRow.F_ACEITE = today;
+      if (!formRow.F_SERVICIO) formRow.F_SERVICIO = today;
+    }
+
+    const field = (key) => this.fieldHtml(this.fieldDef(key), formRow, isEdit);
 
     const pair = (key1, key2) => {
       const html1 = field(key1);
@@ -174,7 +369,6 @@ const VehiculosView = {
       ${pair('DESCRIPCION', 'MARCA')}
       ${pair('LINEA', 'MODELO')}
       ${pair('CHASIS', 'MOTOR')}
-      ${pair('NIT', 'TITULAR')}
       ${pair('KILOMETRAJE_INICIAL', 'KILOMETRAJE_ACTUAL')}
       ${pair('F_ACEITE', 'F_SERVICIO')}
     `;

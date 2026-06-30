@@ -150,3 +150,15 @@
   top: 0;
   z-index: 1;
 }
+
+.transporte-inicio-table-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.transporte-inicio-table-wrap table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  white-space: nowrap;
+}

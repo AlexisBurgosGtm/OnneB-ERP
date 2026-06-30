@@ -30,6 +30,11 @@ const InicioEmpleadoView = {
       title: 'Bodega',
       hint: 'Gestione productos, existencias y movimientos de inventario.',
     },
+    6: {
+      icon: 'fa-truck',
+      title: 'Transporte',
+      hint: 'Consulte vehículos, kilometrajes y mantenimiento de la flota.',
+    },
   },
 
   escapeHtml(value) {
@@ -90,6 +95,10 @@ const InicioEmpleadoView = {
 
     if (codtipo === 3 && typeof VendedorInicioView !== 'undefined') {
       return VendedorInicioView.load(container);
+    }
+
+    if (codtipo === 6 && typeof TransporteInicioView !== 'undefined') {
+      return TransporteInicioView.load(container);
     }
 
     this._container = container;

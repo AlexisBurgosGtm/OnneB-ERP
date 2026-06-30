@@ -261,6 +261,10 @@ function createCatalogoRouter(cfg) {
     }
     try {
       const pool = await req.app.locals.getDbPool();
+      if (typeof cfg.validateDelete === 'function') {
+        const validationErr = await cfg.validateDelete(pool, empnit, idValue, req);
+        if (validationErr) return res.status(400).json({ error: validationErr });
+      }
       const request = pool.request().input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue);
       if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
       const where = scoped

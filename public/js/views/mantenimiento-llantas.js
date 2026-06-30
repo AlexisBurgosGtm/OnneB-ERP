@@ -5,6 +5,7 @@ const MantenimientoLlantasView = {
   _container: null,
   _rows: [],
   _filterQuery: '',
+  _filterVehiculo: '',
   _vehiculos: [],
   _nollantas: [],
 
@@ -104,6 +105,16 @@ const MantenimientoLlantasView = {
         value="${this.escapeHtml(displayVal)}" ${req}${stepAttr}>`;
   },
 
+  esquemaImgHtml() {
+    return `
+      <div class="mll-esquema-panel h-100 d-flex flex-column">
+        <p class="small text-muted mb-2 text-center">Esquema de llantas</p>
+        <div class="mll-esquema-img-wrap flex-grow-1 d-flex align-items-center justify-content-center">
+          <img src="/data/esquema_auto.png" alt="Esquema del vehículo" class="mll-esquema-img img-fluid">
+        </div>
+      </div>`;
+  },
+
   buildFormHtml(row = {}) {
     const vehiculoOpts = this._vehiculos.map((v) => ({
       value: v.CODVEHICULO,
@@ -120,7 +131,7 @@ const MantenimientoLlantasView = {
         <div class="col-6">${col2}</div>
       </div>`;
 
-    return `
+    const fieldsHtml = `
       ${pair(
         this.selectField('CODVEHICULO', 'Vehículo', vehiculoOpts, row.CODVEHICULO, true),
         this.selectField('NOLLANTA', 'No. llanta', nollantaOpts, row.NOLLANTA, true)
@@ -136,6 +147,12 @@ const MantenimientoLlantasView = {
         <label class="form-label small mb-0" for="mll-DETALLES">Detalles</label>
         <textarea id="mll-DETALLES" name="DETALLES" class="form-control form-control-sm" rows="3"
           maxlength="600">${this.escapeHtml(row.DETALLES || '')}</textarea>
+      </div>`;
+
+    return `
+      <div class="row g-3 mll-modal-layout align-items-stretch">
+        <div class="col-8">${fieldsHtml}</div>
+        <div class="col-4">${this.esquemaImgHtml()}</div>
       </div>`;
   },
 
@@ -206,7 +223,7 @@ const MantenimientoLlantasView = {
     return CatalogosUI.fireForm({
       title,
       html: view.buildFormHtml(row),
-      width: 640,
+      width: 920,
       preConfirm: async () => {
         const data = view.readFormData();
         const err = view.validateForm(data);
@@ -230,8 +247,151 @@ const MantenimientoLlantasView = {
     });
   },
 
+  vehiculoFilterLabel() {
+    if (!this._filterVehiculo) return 'Todos los vehículos';
+    const v = this._vehiculos.find((x) => String(x.CODVEHICULO) === String(this._filterVehiculo));
+    return v ? this.vehiculoOptionLabel(v) : `Vehículo #${this._filterVehiculo}`;
+  },
+
+  renderVehiculoFilterHtml() {
+    const options = [
+      '<option value="">Todos los vehículos</option>',
+      ...this._vehiculos.map((v) => {
+        const val = String(v.CODVEHICULO);
+        const sel = String(this._filterVehiculo) === val ? ' selected' : '';
+        return `<option value="${this.escapeHtml(val)}"${sel}>${this.escapeHtml(this.vehiculoOptionLabel(v))}</option>`;
+      }),
+    ].join('');
+    return `
+      <div class="mll-filter-vehiculo">
+        <label class="form-label small mb-0" for="mll-filter-vehiculo">Vehículo</label>
+        <select id="mll-filter-vehiculo" class="form-select form-select-sm">
+          ${options}
+        </select>
+      </div>`;
+  },
+
+  sortRowsChrono(rows) {
+    return [...rows].sort((a, b) => {
+      const fa = String(a.FECHA || '').slice(0, 10);
+      const fb = String(b.FECHA || '').slice(0, 10);
+      if (fa !== fb) return fa.localeCompare(fb);
+      return (Number(a.ID) || 0) - (Number(b.ID) || 0);
+    });
+  },
+
+  groupRowsByVehiculo(rows) {
+    const sorted = this.sortRowsChrono(rows);
+    const map = new Map();
+    sorted.forEach((row) => {
+      const key = String(row.CODVEHICULO ?? '');
+      if (!map.has(key)) {
+        map.set(key, { vehiculo: row, items: [] });
+      }
+      map.get(key).items.push(row);
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const pa = String(a.vehiculo.PLACA || '');
+      const pb = String(b.vehiculo.PLACA || '');
+      if (pa !== pb) return pa.localeCompare(pb, 'es');
+      return (Number(a.vehiculo.CODVEHICULO) || 0) - (Number(b.vehiculo.CODVEHICULO) || 0);
+    });
+  },
+
+  imprimirReporte() {
+    if (typeof PrintReport === 'undefined') {
+      F.toast('Impresión no disponible', 'warning');
+      return;
+    }
+    const rows = this.getFilteredRows();
+    if (!rows.length) {
+      F.toast('No hay registros para imprimir', 'warning');
+      return;
+    }
+
+    const groups = this.groupRowsByVehiculo(rows);
+    const hoy = this.formatFecha(this.todayIsoDate());
+    const filtroVehiculo = this.vehiculoFilterLabel();
+    let grandTotal = 0;
+    let grandCount = 0;
+
+    const sections = groups
+      .map((group) => {
+        const vehLabel = this.vehiculoLabel(group.vehiculo);
+        const subtotal = group.items.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+        grandTotal += subtotal;
+        grandCount += group.items.length;
+        const bodyRows = group.items
+          .map(
+            (r) => `<tr>
+              <td>${PrintReport.escapeHtml(this.formatFecha(r.FECHA))}</td>
+              <td class="text-center">${PrintReport.escapeHtml(r.NOLLANTA || '—')}</td>
+              <td>${PrintReport.escapeHtml(r.DETALLES || '—')}</td>
+              <td>${PrintReport.escapeHtml(r.ENCARGADO || '—')}</td>
+              <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+            </tr>`
+          )
+          .join('');
+        return `
+          <section class="mll-report-section">
+            <h2 class="mll-report-vehiculo">${PrintReport.escapeHtml(vehLabel)}</h2>
+            <table class="mll-report-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th class="text-center">Llanta</th>
+                  <th>Detalles</th>
+                  <th>Encargado</th>
+                  <th class="text-end">Importe</th>
+                </tr>
+              </thead>
+              <tbody>${bodyRows}</tbody>
+              <tfoot>
+                <tr class="totals">
+                  <td colspan="4" class="text-end"><strong>Subtotal (${group.items.length} servicio(s))</strong></td>
+                  <td class="text-end"><strong>${PrintReport.escapeHtml(this.formatMoney(subtotal))}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>`;
+      })
+      .join('');
+
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({
+        title: 'Mantenimiento de llantas',
+        subtitleHtml: `
+          <p><strong>Fecha reporte:</strong> ${PrintReport.escapeHtml(hoy)}</p>
+          <p><strong>Filtro vehículo:</strong> ${PrintReport.escapeHtml(filtroVehiculo)}</p>
+          <p><strong>Total servicios:</strong> ${grandCount}</p>
+        `,
+      })}
+      ${sections}
+      <table class="mll-report-table mll-report-grand">
+        <tfoot>
+          <tr class="totals">
+            <td class="text-end"><strong>Total general (${grandCount} servicio(s))</strong></td>
+            <td class="text-end" style="width:8rem"><strong>${PrintReport.escapeHtml(this.formatMoney(grandTotal))}</strong></td>
+          </tr>
+        </tfoot>
+      </table>`;
+
+    const html = PrintReport.wrapDocument({
+      title: 'Mantenimiento de llantas',
+      bodyHtml,
+      extraStyles: `
+        .mll-report-section{margin-bottom:1.25rem;page-break-inside:avoid}
+        .mll-report-vehiculo{font-size:13px;margin:0 0 .35rem;padding:.35rem .5rem;background:#f0f0f0;border:1px solid #ccc}
+        .mll-report-table{font-size:11px}
+        .mll-report-grand{margin-top:.5rem}
+        .mll-report-table th,.mll-report-table td{padding:4px 6px}
+      `,
+    });
+    PrintReport.openAndPrint(html, 'width=900,height=700');
+  },
+
   getFilteredRows() {
-    return this._rows;
+    return this.sortRowsChrono(this._rows);
   },
 
   renderTableBodyHtml(rows) {
@@ -271,11 +431,17 @@ const MantenimientoLlantasView = {
     return `
       <div class="catalogo-empresa-panel catalogo-vista-wrap">
         <h2 class="catalogo-vista-title h5 mb-2 px-1">Mantenimiento de llantas</h2>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2 px-1">
           <span class="catalogo-empresa-badge" id="mll-count">${this.badgeText(rows.length, this._rows.length)}</span>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-mll-refresh">
-            <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
-          </button>
+          <div class="d-flex flex-wrap align-items-end gap-2">
+            ${this.renderVehiculoFilterHtml()}
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-mll-imprimir">
+              <i class="fa-solid fa-print me-1"></i>Imprimir reporte
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-mll-refresh">
+              <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
+            </button>
+          </div>
         </div>
         <div class="catalogo-empresa-search-wrap px-1 mb-2">
           <div class="input-group input-group-sm catalogo-empresa-search">
@@ -315,6 +481,7 @@ const MantenimientoLlantasView = {
   async fetchRows() {
     const params = { _: String(Date.now()) };
     if (this._filterQuery.trim()) params.q = this._filterQuery.trim();
+    if (this._filterVehiculo) params.codvehiculo = this._filterVehiculo;
     const data = await F.fetchJson(this.apiUrl(params), { cache: 'no-store' });
     this._rows = data.rows || [];
     return this._rows;
@@ -396,9 +563,22 @@ const MantenimientoLlantasView = {
   bindEvents() {
     document.getElementById('btn-mll-refresh')?.addEventListener('click', () => {
       this._filterQuery = '';
+      this._filterVehiculo = '';
       this.load(this._container);
     });
+    document.getElementById('btn-mll-imprimir')?.addEventListener('click', () => this.imprimirReporte());
     document.getElementById('btn-mll-nuevo')?.addEventListener('click', () => this.onNuevo());
+
+    const filterVehiculo = document.getElementById('mll-filter-vehiculo');
+    filterVehiculo?.addEventListener('change', async () => {
+      this._filterVehiculo = filterVehiculo.value;
+      try {
+        await this.fetchRows();
+        this.updateTableView();
+      } catch (err) {
+        F.toast(err.message || 'Error al filtrar', 'error');
+      }
+    });
 
     const search = document.getElementById('mll-search');
     let timer = null;
@@ -438,6 +618,7 @@ const MantenimientoLlantasView = {
 
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando mantenimiento de llantas…</div>`;
     try {
+      await this.loadLookups();
       await this.fetchRows();
       container.innerHTML = this.renderShell();
       this.bindEvents();

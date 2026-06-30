@@ -459,3 +459,33 @@
   font-family: Verdana, sans-serif;
   letter-spacing: 0.05em;
 }
+
+/* Modal mantenimiento de llantas — esquema vehículo */
+.mll-modal-layout .mll-esquema-panel {
+  min-height: 100%;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--app-border, #e0e0e0);
+}
+
+.mll-modal-layout .mll-esquema-img-wrap {
+  min-height: 220px;
+}
+
+.mll-modal-layout .mll-esquema-img {
+  max-height: 320px;
+  width: 100%;
+  object-fit: contain;
+}
+
+.mll-filter-vehiculo {
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.km-filter-fecha {
+  min-width: 140px;
+}
+
+.km-filter-fecha .form-control {
+  min-width: 130px;
+}

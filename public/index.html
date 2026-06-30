@@ -120,12 +120,12 @@
           <div class="accordion sidebar-accordion" id="sidebarAccordion">
             <div class="accordion-item">
               <h2 class="accordion-header">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="true" aria-controls="collapseOperaciones">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="false" aria-controls="collapseOperaciones">
                   <i class="fa-solid fa-cart-shopping sidebar-icon" aria-hidden="true"></i>
                   <span>OPERACIONES</span>
                 </button>
               </h2>
-              <div id="collapseOperaciones" class="accordion-collapse collapse show">
+              <div id="collapseOperaciones" class="accordion-collapse collapse">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
@@ -229,9 +229,11 @@
               </h2>
               <div id="collapseTransportes" class="accordion-collapse collapse">
                 <ul class="sidebar-submenu list-unstyled mb-0">
-                  <li><a href="#" class="sidebar-link" data-menu="servicio-mecanica"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> SERVICIO MECANICA</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="servicio-mecanica"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Servicio Mecánica</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="mantenimiento-llantas"><i class="fa-solid fa-compact-disc" aria-hidden="true"></i> Mantenimiento de llantas</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="vehiculos"><i class="fa-solid fa-car" aria-hidden="true"></i> VEHICULOS</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="registro-kilometrajes"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Registro de Kilometrajes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="vehiculos"><i class="fa-solid fa-car" aria-hidden="true"></i> Vehículos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="plataformas"><i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i> Plataformas</a></li>
                 </ul>
               </div>
             </div>
@@ -322,7 +324,10 @@
   <script src="/js/views/tipo-documentos.js"></script>
   <script src="/js/views/cajas.js"></script>
   <script src="/js/views/vehiculos.js"></script>
+  <script src="/js/views/plataformas.js"></script>
   <script src="/js/views/mantenimiento-llantas.js"></script>
+  <script src="/js/views/kilometrajes.js"></script>
+  <script src="/js/views/servicio-mecanica.js"></script>
   <script src="/js/views/credenciales-fel.js"></script>
   <script src="/js/views/config-general.js"></script>
   <script src="/js/views/developer.js"></script>
@@ -350,6 +355,7 @@
   <script src="/js/tipo-empleado-access.js"></script>
   <script src="/js/views/dashboard-admin.js"></script>
   <script src="/js/views/vendedor-inicio.js"></script>
+  <script src="/js/views/transporte-inicio.js"></script>
   <script src="/js/views/inicio-empleado.js"></script>
   <script src="/js/views/tareas.js"></script>
   <script src="/js/db.js"></script>

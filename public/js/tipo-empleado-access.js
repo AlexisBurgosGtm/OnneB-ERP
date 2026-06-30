@@ -7,6 +7,7 @@ const TipoEmpleadoAccess = {
   TIPO_VENDEDOR: 3,
   TIPO_VISITADOR: 4,
   TIPO_BODEGA: 5,
+  TIPO_TRANSPORTE: 6,
 
   ALL_MENUS: [
     'inicio',
@@ -42,7 +43,9 @@ const TipoEmpleadoAccess = {
     'cajas',
     'servicio-mecanica',
     'mantenimiento-llantas',
+    'registro-kilometrajes',
     'vehiculos',
+    'plataformas',
     'empresas',
     'config-general',
     'tipo-documentos',
@@ -97,6 +100,14 @@ const TipoEmpleadoAccess = {
       'salidas-inventario',
       'actualizacion-inventario',
     ],
+    6: [
+      'inicio',
+      'servicio-mecanica',
+      'mantenimiento-llantas',
+      'registro-kilometrajes',
+      'vehiculos',
+      'plataformas',
+    ],
   },
 
   getSessionUser() {
@@ -135,6 +146,7 @@ const TipoEmpleadoAccess = {
       3: 'VENDEDOR',
       4: 'VISITADOR',
       5: 'BODEGA',
+      6: 'TRANSPORTE',
     };
     return fallback[codtipo] || 'Empleado';
   },
