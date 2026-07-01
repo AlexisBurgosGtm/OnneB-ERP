@@ -21,6 +21,9 @@ const ProductosView = {
   _loadingList: false,
   _loadingPrecios: false,
   _savingForm: false,
+  _preciosModalCodprod: null,
+  _preciosPanelRoot: null,
+  _suppressPreciosModalClear: false,
 
   tableColumns: [
     { key: 'CODPROD', label: 'Código' },
@@ -52,6 +55,96 @@ const ProductosView = {
     const n = Number(value);
     if (Number.isNaN(n)) return '—';
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  formatQty(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString('es-GT', { maximumFractionDigits: 4 });
+  },
+
+  formatHoraDoc(hora, minuto) {
+    const h = Number(hora);
+    const m = Number(minuto);
+    if (!Number.isFinite(h)) return '—';
+    const mm = Number.isFinite(m) ? m : 0;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  },
+
+  formatFecha(value) {
+    if (!value) return '—';
+    const s = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  },
+
+  calcMargenUtilidad(precio, costo) {
+    const p = Number(precio);
+    const c = Number(costo);
+    if (!Number.isFinite(p) || p <= 0) return 0;
+    if (!Number.isFinite(c)) return 0;
+    return Math.round((((p - c) / p) * 100) * 100) / 100;
+  },
+
+  formatMargenPct(precio, costo) {
+    return `${this.calcMargenUtilidad(precio, costo).toFixed(2)}%`;
+  },
+
+  opcionesRowHtml(codprod) {
+    return `
+      <button type="button" class="btn btn-sm btn-outline-secondary btn-productos-opciones"
+        data-codprod="${this.escapeHtml(codprod)}" data-stop-row="1"
+        title="Opciones del producto" aria-label="Opciones">
+        <i class="fa-solid fa-cog" aria-hidden="true"></i>
+      </button>`;
+  },
+
+  preciosRowHtml(codprod) {
+    return `
+      <button type="button" class="btn btn-sm btn-outline-primary btn-productos-precios"
+        data-codprod="${this.escapeHtml(codprod)}" data-stop-row="1"
+        title="Precios" aria-label="Precios">
+        <i class="fa-solid fa-dollar-sign me-1" aria-hidden="true"></i>Precios
+      </button>`;
+  },
+
+  accionesRowHtml(codprod) {
+    return `<div class="catalogo-acciones d-inline-flex flex-wrap gap-1 justify-content-end">
+      ${this.preciosRowHtml(codprod)}
+      ${CatalogosUI.btnEditar(codprod, 'codprod')}
+      ${CatalogosUI.btnEliminar(codprod, 'codprod')}
+    </div>`;
+  },
+
+  sumMovimientos(rows) {
+    let entradas = 0;
+    let salidas = 0;
+    (rows || []).forEach((r) => {
+      if (r.ENTRADAS != null) entradas += Number(r.ENTRADAS) || 0;
+      if (r.SALIDAS != null) salidas += Number(r.SALIDAS) || 0;
+    });
+    return {
+      entradas,
+      salidas,
+      existencia: entradas - salidas,
+    };
+  },
+
+  sumDocLineas(rows) {
+    let unidades = 0;
+    let totalPrecio = 0;
+    (rows || []).forEach((r) => {
+      unidades += Number(r.TOTALUNIDADES) || 0;
+      totalPrecio += Number(r.TOTALPRECIO) || 0;
+    });
+    return { unidades, totalPrecio };
+  },
+
+  movQtyCell(value) {
+    if (value == null || value === '') return '';
+    return `<span class="fw-bold">${this.escapeHtml(this.formatQty(value))}</span>`;
   },
 
   precioUnitarioLabelHtml(precio, equivale) {
@@ -222,7 +315,7 @@ const ProductosView = {
   },
 
   renderTableBodyHtml(rows) {
-    const colSpan = this.tableColumns.length + 1;
+    const colSpan = this.tableColumns.length + 2;
     if (!rows.length) {
       const msg = this._filterQuery.trim()
         ? 'Ningún producto coincide con la búsqueda'
@@ -243,8 +336,9 @@ const ProductosView = {
           })
           .join('');
         return `<tr class="productos-row${selected}" data-codprod="${this.escapeHtml(row.CODPROD)}" role="button" tabindex="0">
+          <td class="productos-row-menu" data-stop-row="1">${this.opcionesRowHtml(row.CODPROD)}</td>
           ${cells}
-          <td class="text-end" data-stop-row="1">${CatalogosUI.accionesRow(row.CODPROD, 'codprod')}</td>
+          <td class="text-end" data-stop-row="1">${this.accionesRowHtml(row.CODPROD)}</td>
         </tr>`;
       })
       .join('');
@@ -451,6 +545,11 @@ const ProductosView = {
           <i class="fa-solid fa-trash me-1"></i>Eliminar
         </button>`
       : '';
+    const opcionesBtn = isEdit
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" id="btn-productos-form-opciones">
+          <i class="fa-solid fa-cog me-1" aria-hidden="true"></i>Opciones
+        </button>`
+      : '';
 
     return `
       <div class="${pageClass}" id="productos-form">
@@ -459,7 +558,7 @@ const ProductosView = {
             <i class="fa-solid fa-arrow-left me-1"></i>Volver al listado
           </button>
           <span class="productos-form-title">${this.escapeHtml(title)}</span>
-          <div class="d-flex flex-wrap gap-2 ms-auto">${deleteBtn}</div>
+          <div class="d-flex flex-wrap gap-2 ms-auto">${opcionesBtn}${deleteBtn}</div>
         </div>
         <div class="row g-3">
           <div class="col-lg-7">
@@ -480,7 +579,6 @@ const ProductosView = {
           </div>
         </div>
         ${isEdit ? `<div id="productos-form-precios-wrap" class="productos-form-precios-section">
-          <div id="productos-form-opciones-panel" class="productos-opciones-slot mb-3"></div>
           <div id="productos-form-precios-panel"></div>
         </div>` : ''}
         ${this.btnGuardarFab()}
@@ -529,7 +627,17 @@ const ProductosView = {
   },
 
   activeCodprod() {
-    return this._screen === 'form' ? this._formCodprod : this._selectedCodprod;
+    if (this._preciosModalCodprod) return this._preciosModalCodprod;
+    if (this._screen === 'form') return this._formCodprod;
+    return this._selectedCodprod;
+  },
+
+  getPreciosPanelElement() {
+    if (this._preciosPanelRoot) return this._preciosPanelRoot;
+    if (this._screen === 'form') {
+      return this._container?.querySelector('#productos-form-precios-panel') || null;
+    }
+    return null;
   },
 
   async showList() {
@@ -546,7 +654,6 @@ const ProductosView = {
     this.renderStatsCards();
     this.bindListEvents();
     this.updateTableView();
-    this.renderPreciosPanel();
   },
 
   async showListWithProduct(codprod) {
@@ -575,14 +682,11 @@ const ProductosView = {
     this.bindListEvents();
     this.updateTableView();
     if (codprod) {
-      await this.loadPrecios(codprod);
       requestAnimationFrame(() => {
         this._container
           ?.querySelector('.productos-row-selected')
           ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
-    } else {
-      this.renderPreciosPanel();
     }
   },
 
@@ -629,6 +733,9 @@ const ProductosView = {
     document.getElementById('btn-productos-form-guardar')?.addEventListener('click', () => this.onFormGuardar());
     document.getElementById('btn-productos-form-eliminar')?.addEventListener('click', () => {
       if (this._formCodprod) this.onEliminar(this._formCodprod, true);
+    });
+    document.getElementById('btn-productos-form-opciones')?.addEventListener('click', () => {
+      if (this._formCodprod) this.showOpcionesProducto(this._formCodprod);
     });
     this._container?.querySelectorAll('.btn-producto-facturar').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -697,20 +804,31 @@ const ProductosView = {
     if (!root) return;
     const equiv = root.querySelector('[name="EQUIVALE"]');
     const costo = root.querySelector('[name="COSTO"]');
+    const precio = root.querySelector('[name="PRECIO"]');
+    const margenEl = root.querySelector('#productos-precio-margen');
     const applyEquiv = () => {
       if (!equiv) return 1;
       const normalized = this.normalizePrecioEquivalente(equiv.value);
       if (String(equiv.value) !== String(normalized)) equiv.value = String(normalized);
       return normalized;
     };
+    const updateMargen = () => {
+      if (!margenEl) return;
+      const p = Number(precio?.value);
+      const c = Number(costo?.value);
+      margenEl.textContent = this.formatMargenPct(p, c);
+    };
     const update = () => {
       const eq = applyEquiv();
       const total = this.calcPrecioCosto(costoUnitario, eq);
       if (costo) costo.value = this.formatPrecioCostoValue(total);
+      updateMargen();
     };
     equiv?.addEventListener('input', update);
     equiv?.addEventListener('change', update);
     equiv?.addEventListener('blur', update);
+    precio?.addEventListener('input', updateMargen);
+    precio?.addEventListener('change', updateMargen);
     update();
   },
 
@@ -721,6 +839,7 @@ const ProductosView = {
     const costoCalc = this.formatPrecioCostoValue(
       isEdit && r.COSTO != null ? r.COSTO : this.calcPrecioCosto(costoUnitario, equiv)
     );
+    const margenInicial = this.formatMargenPct(r.PRECIO ?? 0, costoCalc);
     const medidaField = isEdit
       ? this.inputField('CODMEDIDA', 'Medida', r.CODMEDIDA, { readonly: true })
       : this.selectField('CODMEDIDA', 'Medida', L.medidas, r.CODMEDIDA, true);
@@ -731,9 +850,17 @@ const ProductosView = {
           this.inputField('EQUIVALE', 'Equivalente', equiv, { type: 'number', step: '1', required: true, min: '1' }),
           this.inputField('COSTO', 'Costo', costoCalc, { type: 'number', step: '0.0001', readonly: true })
         )}
-        ${this.precioFormRowFull(
-          this.inputField('PRECIO', 'Precio', r.PRECIO ?? 0, { type: 'number', step: '0.0001', required: true })
-        )}
+        ${this.precioFormRowFull(`
+          <div class="d-flex align-items-end gap-2 flex-wrap">
+            <div class="flex-grow-1" style="min-width: 8rem;">
+              ${this.inputField('PRECIO', 'Precio', r.PRECIO ?? 0, { type: 'number', step: '0.0001', required: true })}
+            </div>
+            <div class="productos-precio-margen-wrap text-end">
+              <label class="form-label small mb-0 d-block">Margen</label>
+              <span id="productos-precio-margen" class="productos-precio-margen fw-semibold text-primary">${this.escapeHtml(margenInicial)}</span>
+            </div>
+          </div>
+        `)}
         ${this.precioFormRowFull(
           this.inputField('MAYOREOC', 'Mayoreo C', r.MAYOREOC ?? 0, { type: 'number', step: '0.0001' })
         )}
@@ -806,76 +933,312 @@ const ProductosView = {
     });
   },
 
-  renderOpcionesReportes() {
-    const panel =
-      this._screen === 'form'
-        ? this._container?.querySelector('#productos-form-opciones-panel')
-        : this._container?.querySelector('#productos-opciones-panel');
-    if (!panel) return;
-    if (!this._selectedCodprod && this._screen !== 'form') {
-      panel.innerHTML = '';
-      panel.classList.add('d-none');
-      return;
-    }
-    const cod = this.activeCodprod();
-    if (!cod) {
-      panel.innerHTML = '';
-      panel.classList.add('d-none');
-      return;
-    }
-    panel.classList.remove('d-none');
-    const row = this.findRow(cod) || this._formRow;
-    const label = row?.DESPROD || cod;
-    panel.innerHTML = `
-      <div class="card productos-opciones-inner shadow-sm">
-        <div class="card-body py-2 px-3">
-          <div class="small text-muted mb-2 text-truncate" title="${this.escapeHtml(label)}">
-            <i class="fa-solid fa-box me-1"></i>${this.escapeHtml(label)}
-          </div>
-          <div class="productos-opciones-grid">
-            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="kardex">
-              <i class="fa-solid fa-book me-1"></i>Kardex
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="movimientos">
-              <i class="fa-solid fa-arrows-rotate me-1"></i>Movimientos
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="ventas">
-              <i class="fa-solid fa-cart-shopping me-1"></i>Ventas
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary productos-opcion-btn" data-reporte="compras">
-              <i class="fa-solid fa-truck me-1"></i>Compras
-            </button>
-          </div>
-        </div>
-      </div>`;
-    panel.querySelectorAll('.productos-opcion-btn').forEach((btn) => {
-      btn.addEventListener('click', () => this.onReportePendiente(btn.dataset.reporte));
+  productoLabel(codprod) {
+    const row = this.findRow(codprod) || (this._formRow?.CODPROD === codprod ? this._formRow : null);
+    const desc = row?.DESPROD || '';
+    return desc ? `${codprod} — ${desc}` : codprod;
+  },
+
+  opcionPickBtn(opcion, iconClass, label) {
+    return `
+      <button type="button" class="btn btn-outline-secondary productos-opcion-pick" data-opcion="${this.escapeHtml(opcion)}">
+        <i class="${iconClass}" aria-hidden="true"></i>
+        <span>${this.escapeHtml(label)}</span>
+      </button>`;
+  },
+
+  async showOpcionesProducto(codprod) {
+    const label = this.productoLabel(codprod);
+    await Swal.fire({
+      ...CatalogosUI.modalBase({ customClass: { popup: 'modal-catalogo productos-opciones-modal' } }),
+      title: 'Opciones del producto',
+      html: `
+        <p class="small text-muted mb-3 text-start">${this.escapeHtml(label)}</p>
+        <div class="productos-opciones-grid w-100">
+          ${this.opcionPickBtn('movimientos', 'fa-solid fa-arrows-rotate', 'Movimientos')}
+          ${this.opcionPickBtn('movimientos-fiscales', 'fa-solid fa-file-invoice', 'Movimientos Fiscales')}
+          ${this.opcionPickBtn('ventas', 'fa-solid fa-cart-shopping', 'Ventas')}
+          ${this.opcionPickBtn('compras', 'fa-solid fa-truck', 'Compras')}
+        </div>`,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      showConfirmButton: false,
+      didOpen: (popup) => {
+        popup.querySelectorAll('.productos-opcion-pick').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const opcion = btn.getAttribute('data-opcion');
+            Swal.close();
+            if (opcion === 'movimientos') await this.showReporteMovimientos(codprod);
+            else if (opcion === 'movimientos-fiscales') await this.showReporteMovimientos(codprod, { fiscal: true });
+            else if (opcion === 'ventas') await this.showReporteVentas(codprod);
+            else if (opcion === 'compras') await this.showReporteCompras(codprod);
+          });
+        });
+      },
     });
   },
 
-  onReportePendiente(tipo) {
-    const labels = {
-      kardex: 'Kardex',
-      movimientos: 'Movimientos',
-      ventas: 'Ventas',
-      compras: 'Compras',
+  reporteModalBase(title, html) {
+    return {
+      ...CatalogosUI.modalBase({
+        customClass: { popup: 'modal-catalogo productos-reporte-modal modal-xl' },
+      }),
+      title,
+      html,
+      width: 'min(1140px, 96vw)',
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
     };
-    F.toast(`Reporte ${labels[tipo] || tipo} — pendiente de definir.`, 'info');
+  },
+
+  renderMovimientosTableHtml(rows, { emptyMsg } = {}) {
+    if (!rows?.length) {
+      const msg = emptyMsg || 'Sin movimientos de entrada o salida';
+      return `<p class="text-muted small text-center mb-0 py-3">${this.escapeHtml(msg)}</p>`;
+    }
+    const totals = this.sumMovimientos(rows);
+    const body = rows
+      .map(
+        (r) => `<tr>
+          <td class="text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatHoraDoc(r.HORA, r.MINUTO))}</td>
+          <td>${this.escapeHtml(r.DOC_NOMCLIE || '')}</td>
+          <td class="text-end text-success">${this.movQtyCell(r.ENTRADAS)}</td>
+          <td class="text-end text-danger">${this.movQtyCell(r.SALIDAS)}</td>
+        </tr>`
+      )
+      .join('');
+    return `
+      <div class="table-responsive productos-reporte-table-wrap">
+        <table class="table table-sm table-striped table-hover mb-0 productos-reporte-table">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>Nombre</th>
+              <th class="text-end">Entradas</th>
+              <th class="text-end">Salidas</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="4" class="text-end fw-semibold">Totales</td>
+              <td class="text-end text-success">${this.movQtyCell(totals.entradas)}</td>
+              <td class="text-end text-danger">${this.movQtyCell(totals.salidas)}</td>
+            </tr>
+            <tr>
+              <td colspan="4" class="text-end fw-semibold">Existencia:</td>
+              <td colspan="2" class="text-end">${this.movQtyCell(totals.existencia)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+  },
+
+  renderDocLineasTableHtml(rows, { tipo = 'venta' } = {}) {
+    if (!rows?.length) {
+      const msg = tipo === 'compra' ? 'Sin compras registradas' : 'Sin ventas registradas';
+      return `<p class="text-muted small text-center mb-0 py-3">${msg}</p>`;
+    }
+    const totals = this.sumDocLineas(rows);
+    const body = rows
+      .map(
+        (r) => `<tr>
+          <td class="text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatHoraDoc(r.HORA, r.MINUTO))}</td>
+          <td class="text-nowrap">${this.escapeHtml(r.TIPODOC || '')}</td>
+          <td>${this.escapeHtml(r.DOC_NOMCLIE || '')}</td>
+          <td class="text-nowrap">${this.escapeHtml(r.CODMEDIDA || '')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.PRECIO))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+        </tr>`
+      )
+      .join('');
+    return `
+      <div class="table-responsive productos-reporte-table-wrap">
+        <table class="table table-sm table-striped table-hover mb-0 productos-reporte-table">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Fecha</th>
+              <th>Hora</th>
+              <th>Tipo</th>
+              <th>Nombre</th>
+              <th>Medida</th>
+              <th class="text-end">Unidades</th>
+              <th class="text-end">Precio</th>
+              <th class="text-end">Total</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="6" class="text-end fw-semibold">Totales</td>
+              <td class="text-end fw-bold">${this.escapeHtml(this.formatQty(totals.unidades))}</td>
+              <td></td>
+              <td class="text-end fw-bold">${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+  },
+
+  async fetchReporteMovimientos(codprod, q = '') {
+    const params = new URLSearchParams({ _: String(Date.now()) });
+    if (q) params.set('q', q);
+    return F.fetchJson(
+      `${this.apiBase(`/${encodeURIComponent(codprod)}/reporte/movimientos`)}&${params}`,
+      { cache: 'no-store' }
+    );
+  },
+
+  async fetchReporteMovimientosFiscales(codprod, q = '') {
+    const params = new URLSearchParams({ _: String(Date.now()) });
+    if (q) params.set('q', q);
+    return F.fetchJson(
+      `${this.apiBase(`/${encodeURIComponent(codprod)}/reporte/movimientos-fiscales`)}&${params}`,
+      { cache: 'no-store' }
+    );
+  },
+
+  async fetchReporteVentas(codprod) {
+    return F.fetchJson(
+      `${this.apiBase(`/${encodeURIComponent(codprod)}/reporte/ventas`)}&_=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+  },
+
+  async fetchReporteCompras(codprod) {
+    return F.fetchJson(
+      `${this.apiBase(`/${encodeURIComponent(codprod)}/reporte/compras`)}&_=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+  },
+
+  async showReporteMovimientos(codprod, { fiscal = false } = {}) {
+    const label = this.productoLabel(codprod);
+    const title = fiscal ? 'Movimientos Fiscales' : 'Movimientos';
+    const searchId = fiscal ? 'productos-mov-fiscal-search' : 'productos-mov-search';
+    const hostId = fiscal ? 'productos-mov-fiscal-table-host' : 'productos-mov-table-host';
+    const emptyMsg = fiscal
+      ? 'Sin movimientos fiscales de entrada o salida (FEF, FEC, FES, FNC)'
+      : 'Sin movimientos de entrada o salida';
+    let rows = [];
+    let filterQ = '';
+    let searchTimer = null;
+
+    const renderContent = () => `
+      <div class="productos-reporte-shell text-start">
+        <p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+        ${fiscal ? '<p class="small text-muted mb-2">Documentos: FEF, FEC, FES, FNC</p>' : ''}
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+          <input type="search" class="form-control" id="${searchId}"
+            placeholder="Buscar documento, nombre, tipo…" value="${this.escapeHtml(filterQ)}" autocomplete="off">
+        </div>
+        <div id="${hostId}">${this.renderMovimientosTableHtml(rows, { emptyMsg })}</div>
+        <p class="small text-muted mb-0 mt-2 productos-mov-count">${rows.length} movimiento(s)</p>
+      </div>`;
+
+    const reload = async () => {
+      const host = document.getElementById(hostId);
+      const countEl = document.querySelector('.productos-reporte-shell .productos-mov-count');
+      if (host) host.innerHTML = '<p class="small text-muted text-center py-3 mb-0"><i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando…</p>';
+      try {
+        const data = fiscal
+          ? await this.fetchReporteMovimientosFiscales(codprod, filterQ)
+          : await this.fetchReporteMovimientos(codprod, filterQ);
+        rows = data.rows || [];
+        if (host) host.innerHTML = this.renderMovimientosTableHtml(rows, { emptyMsg });
+        if (countEl) countEl.textContent = `${rows.length} movimiento(s)`;
+      } catch (err) {
+        if (host) host.innerHTML = `<p class="small text-danger text-center py-3 mb-0">${this.escapeHtml(err.message)}</p>`;
+      }
+    };
+
+    await Swal.fire({
+      ...this.reporteModalBase(title, renderContent()),
+      didOpen: () => {
+        const search = document.getElementById(searchId);
+        search?.addEventListener('input', () => {
+          filterQ = search.value;
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => reload().catch(() => {}), 350);
+        });
+        reload().catch((err) => F.toast(err.message, 'error'));
+      },
+    });
+  },
+
+  async showReporteVentas(codprod) {
+    const label = this.productoLabel(codprod);
+    let html = '<p class="small text-muted text-center py-3 mb-0"><i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando…</p>';
+    const swalPromise = Swal.fire({
+      ...this.reporteModalBase('Ventas', `
+        <div class="productos-reporte-shell text-start">
+          <p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+          <div id="productos-ventas-host">${html}</div>
+        </div>`),
+      didOpen: async () => {
+        const host = document.getElementById('productos-ventas-host');
+        try {
+          const data = await this.fetchReporteVentas(codprod);
+          const rows = data.rows || [];
+          if (host) {
+            host.innerHTML = this.renderDocLineasTableHtml(rows, { tipo: 'venta' });
+            host.insertAdjacentHTML(
+              'afterend',
+              `<p class="small text-muted mb-0 mt-2">${rows.length} línea(s)</p>`
+            );
+          }
+        } catch (err) {
+          if (host) host.innerHTML = `<p class="small text-danger text-center py-3 mb-0">${this.escapeHtml(err.message)}</p>`;
+        }
+      },
+    });
+    await swalPromise;
+  },
+
+  async showReporteCompras(codprod) {
+    const label = this.productoLabel(codprod);
+    let html = '<p class="small text-muted text-center py-3 mb-0"><i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando…</p>';
+    await Swal.fire({
+      ...this.reporteModalBase('Compras', `
+        <div class="productos-reporte-shell text-start">
+          <p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+          <div id="productos-compras-host">${html}</div>
+        </div>`),
+      didOpen: async () => {
+        const host = document.getElementById('productos-compras-host');
+        try {
+          const data = await this.fetchReporteCompras(codprod);
+          const rows = data.rows || [];
+          if (host) {
+            host.innerHTML = this.renderDocLineasTableHtml(rows, { tipo: 'compra' });
+            host.insertAdjacentHTML(
+              'afterend',
+              `<p class="small text-muted mb-0 mt-2">${rows.length} línea(s)</p>`
+            );
+          }
+        } catch (err) {
+          if (host) host.innerHTML = `<p class="small text-danger text-center py-3 mb-0">${this.escapeHtml(err.message)}</p>`;
+        }
+      },
+    });
   },
 
   renderPreciosPanel() {
-    const panel =
-      this._screen === 'form'
-        ? this._container?.querySelector('#productos-form-precios-panel')
-        : this._container?.querySelector('#productos-precios-panel');
+    const panel = this.getPreciosPanelElement();
     if (!panel) return;
-    if (!this._selectedCodprod) {
-      if (this._screen === 'form') return;
-      panel.innerHTML = `
-        <p class="text-muted small mb-0 py-2">
-          Seleccione un producto de la lista para ver y editar sus precios.
-        </p>`;
-      this.renderOpcionesReportes();
+    const cod = this.activeCodprod();
+    if (!cod) {
+      panel.innerHTML = `<p class="text-muted small mb-0 py-2">Producto no seleccionado</p>`;
       return;
     }
     const rows = this._precios;
@@ -902,8 +1265,8 @@ const ProductosView = {
       : `<tr><td colspan="5" class="text-center text-muted py-3">Sin precios — agregue uno</td></tr>`;
 
     panel.innerHTML = `
-      <div class="productos-precios-panel-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <span><i class="fa-solid fa-tags me-1"></i>Precios — <strong>${this.escapeHtml(this.activeCodprod())}</strong></span>
+      <div class="productos-precios-panel-header d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+        <span><i class="fa-solid fa-tags me-1"></i><strong>${this.escapeHtml(cod)}</strong></span>
         <button type="button" class="btn btn-sm btn-onneb-nuevo" id="btn-productos-precio-nuevo">
           <i class="fa-solid fa-plus me-1"></i>Agregar
         </button>
@@ -922,20 +1285,64 @@ const ProductosView = {
           <tbody id="productos-precios-tbody">${body}</tbody>
         </table>
       </div>`;
-    panel.querySelector('#btn-productos-precio-nuevo')?.addEventListener('click', () => this.onPrecioNuevo());
-    panel.querySelectorAll('.btn-precio-edit').forEach((btn) => {
-      btn.addEventListener('click', () => this.onPrecioEditar(parseInt(btn.getAttribute('data-id'), 10)));
-    });
-    panel.querySelectorAll('.btn-precio-del').forEach((btn) => {
-      btn.addEventListener('click', () => this.onPrecioEliminar(parseInt(btn.getAttribute('data-id'), 10)));
-    });
-    this.renderOpcionesReportes();
+    this.bindPreciosPanelEvents(panel);
   },
 
-  async loadPrecios(codprod) {
+  bindPreciosPanelEvents(panel) {
+    const root = panel || this.getPreciosPanelElement();
+    if (!root) return;
+    root.querySelector('#btn-productos-precio-nuevo')?.addEventListener('click', () => this.onPrecioNuevo());
+    root.querySelectorAll('.btn-precio-edit').forEach((btn) => {
+      btn.addEventListener('click', () => this.onPrecioEditar(parseInt(btn.getAttribute('data-id'), 10)));
+    });
+    root.querySelectorAll('.btn-precio-del').forEach((btn) => {
+      btn.addEventListener('click', () => this.onPrecioEliminar(parseInt(btn.getAttribute('data-id'), 10)));
+    });
+  },
+
+  async openPreciosModal(codprod) {
+    if (!codprod) return;
+    this._preciosModalCodprod = codprod;
+    this._selectedCodprod = codprod;
+    await this.loadPrecios(codprod, false);
+    const label = this.productoLabel(codprod);
+
+    await Swal.fire({
+      ...CatalogosUI.modalBase({
+        customClass: { popup: 'modal-catalogo productos-precios-modal' },
+      }),
+      title: 'Precios',
+      html: `
+        <div class="productos-precios-modal-body text-start">
+          <p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+          <div class="card productos-glass-card productos-precios-card-modal border-0 shadow-sm">
+            <div class="card-body p-2">
+              <div id="productos-precios-panel"></div>
+            </div>
+          </div>
+        </div>`,
+      width: 'min(720px, 96vw)',
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const panel = Swal.getHtmlContainer()?.querySelector('#productos-precios-panel');
+        this._preciosPanelRoot = panel;
+        this.renderPreciosPanel();
+      },
+      willClose: () => {
+        if (!this._suppressPreciosModalClear) {
+          this._preciosModalCodprod = null;
+          this._preciosPanelRoot = null;
+        }
+      },
+    });
+  },
+
+  async loadPrecios(codprod, shouldRender = true) {
     if (!codprod) {
       this._precios = [];
-      this.renderPreciosPanel();
+      if (shouldRender) this.renderPreciosPanel();
       return;
     }
     this._loadingPrecios = true;
@@ -950,14 +1357,13 @@ const ProductosView = {
       F.toast(err.message, 'error');
     } finally {
       this._loadingPrecios = false;
-      this.renderPreciosPanel();
+      if (shouldRender) this.renderPreciosPanel();
     }
   },
 
   async selectProduct(codprod) {
     this._selectedCodprod = codprod;
     this.updateTableView();
-    await this.loadPrecios(codprod);
   },
 
   updateTableView() {
@@ -985,7 +1391,7 @@ const ProductosView = {
     this._loadingList = true;
     const tbody = this._container?.querySelector('#productos-tbody');
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="${this.tableColumns.length + 1}" class="text-center text-muted py-4">
+      tbody.innerHTML = `<tr><td colspan="${this.tableColumns.length + 2}" class="text-center text-muted py-4">
         <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</td></tr>`;
     }
     try {
@@ -995,7 +1401,6 @@ const ProductosView = {
       if (this._selectedCodprod && !this._rows.find((r) => r.CODPROD === this._selectedCodprod)) {
         this._selectedCodprod = null;
         this._precios = [];
-        this.renderPreciosPanel();
       }
     } catch (err) {
       F.toast(err.message, 'error');
@@ -1107,8 +1512,6 @@ const ProductosView = {
       await this.reloadList();
       if (fromForm) {
         await this.showList();
-      } else {
-        this.renderPreciosPanel();
       }
     } catch (err) {
       F.alert('Error', err.message, 'error');
@@ -1118,8 +1521,16 @@ const ProductosView = {
   async onPrecioNuevo() {
     const cod = this.activeCodprod();
     if (!cod) return;
+    const backToModal = this._preciosModalCodprod === cod;
+    if (backToModal) this._suppressPreciosModalClear = true;
+
     const data = await this.showPrecioForm('Nuevo precio');
-    if (!data) return;
+    if (backToModal) this._suppressPreciosModalClear = false;
+
+    if (!data) {
+      if (backToModal) await this.openPreciosModal(cod);
+      return;
+    }
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(cod)}/precios`), {
         method: 'POST',
@@ -1127,9 +1538,11 @@ const ProductosView = {
         body: JSON.stringify(data),
       });
       F.toast('Precio agregado', 'success');
-      await this.loadPrecios(cod);
+      await this.loadPrecios(cod, !backToModal);
+      if (backToModal) await this.openPreciosModal(cod);
     } catch (err) {
       F.alert('Error', err.message, 'error');
+      if (backToModal) await this.openPreciosModal(cod);
     }
   },
 
@@ -1137,8 +1550,16 @@ const ProductosView = {
     const cod = this.activeCodprod();
     const row = this._precios.find((p) => p.ID === id);
     if (!row || !cod) return;
+    const backToModal = this._preciosModalCodprod === cod;
+    if (backToModal) this._suppressPreciosModalClear = true;
+
     const data = await this.showPrecioForm('Editar precio', row, true);
-    if (!data) return;
+    if (backToModal) this._suppressPreciosModalClear = false;
+
+    if (!data) {
+      if (backToModal) await this.openPreciosModal(cod);
+      return;
+    }
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(cod)}/precios/${id}`), {
         method: 'PUT',
@@ -1146,29 +1567,41 @@ const ProductosView = {
         body: JSON.stringify(data),
       });
       F.toast('Precio actualizado', 'success');
-      await this.loadPrecios(cod);
+      await this.loadPrecios(cod, !backToModal);
+      if (backToModal) await this.openPreciosModal(cod);
     } catch (err) {
       F.alert('Error', err.message, 'error');
+      if (backToModal) await this.openPreciosModal(cod);
     }
   },
 
   async onPrecioEliminar(id) {
     const cod = this.activeCodprod();
     const row = this._precios.find((p) => p.ID === id);
+    const backToModal = this._preciosModalCodprod === cod;
+    if (backToModal) this._suppressPreciosModalClear = true;
+
     const ok = await CatalogosUI.fireConfirm({
       title: '¿Eliminar precio?',
       html: `<p class="mb-0">Medida <strong>${this.escapeHtml(row?.CODMEDIDA)}</strong></p>`,
       icon: 'warning',
     });
-    if (!ok) return;
+    if (backToModal) this._suppressPreciosModalClear = false;
+
+    if (!ok) {
+      if (backToModal) await this.openPreciosModal(cod);
+      return;
+    }
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(cod)}/precios/${id}`), {
         method: 'DELETE',
       });
       F.toast('Precio eliminado', 'success');
-      await this.loadPrecios(cod);
+      await this.loadPrecios(cod, !backToModal);
+      if (backToModal) await this.openPreciosModal(cod);
     } catch (err) {
       F.alert('Error', err.message, 'error');
+      if (backToModal) await this.openPreciosModal(cod);
     }
   },
 
@@ -1229,6 +1662,20 @@ const ProductosView = {
   },
 
   bindRowActions() {
+    this._container?.querySelectorAll('.btn-productos-opciones[data-codprod]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cod = btn.getAttribute('data-codprod');
+        if (cod) this.showOpcionesProducto(cod).catch((err) => F.toast(err.message, 'error'));
+      });
+    });
+    this._container?.querySelectorAll('.btn-productos-precios[data-codprod]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cod = btn.getAttribute('data-codprod');
+        if (cod) this.openPreciosModal(cod).catch((err) => F.toast(err.message, 'error'));
+      });
+    });
     this._container?.querySelectorAll('.btn-catalogo-editar[data-codprod]').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1292,6 +1739,7 @@ const ProductosView = {
       )
       .join('');
     const headers = [
+      '<th scope="col" class="productos-th-menu" aria-label="Opciones"></th>',
       ...this.tableColumns.map((c) => {
         const align = c.type === 'money' || c.type === 'num' ? ' text-end' : '';
         return `<th scope="col" class="${align.trim()}">${this.escapeHtml(c.label)}</th>`;
@@ -1302,8 +1750,8 @@ const ProductosView = {
     return `
       <div class="productos-vista-wrap catalogo-vista-wrap">
         <div class="productos-stats-row" id="productos-stats"></div>
-        <div class="row g-2 productos-list-layout">
-          <div class="productos-list-col">
+        <div class="row g-2 productos-list-layout productos-list-layout--full">
+          <div class="productos-list-col productos-list-col--full">
             <div class="card productos-glass-card productos-list-card d-flex flex-column">
               <div class="card-body d-flex flex-column min-h-0">
                 <div class="productos-list-toolbar d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -1342,15 +1790,6 @@ const ProductosView = {
               </div>
             </div>
             ${CatalogosUI.btnNuevoFab('btn-productos-nuevo')}
-          </div>
-          <div class="productos-precios-sidebar d-flex flex-column">
-            <div class="card productos-glass-card productos-precios-card d-flex flex-column">
-              <div class="card-header py-2"><i class="fa-solid fa-tags me-1"></i>Precios</div>
-              <div class="card-body productos-panel-scroll d-flex flex-column gap-2">
-                <div id="productos-opciones-panel" class="productos-opciones-slot d-none"></div>
-                <div id="productos-precios-panel" class="flex-grow-1 min-h-0"></div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

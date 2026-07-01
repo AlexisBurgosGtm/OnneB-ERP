@@ -58,17 +58,16 @@
   color: #dc3545;
 }
 
-/* Layout principal: lista + panel precios */
+/* Layout principal: lista a pantalla completa */
 .productos-list-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 34%);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.65rem;
   min-height: 0;
   overflow: hidden;
 }
 
-.productos-list-col,
-.productos-precios-sidebar {
+.productos-list-col {
   min-height: 0;
   min-width: 0;
   display: flex;
@@ -166,13 +165,99 @@
 
 .productos-opciones-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.35rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
 }
 
-.productos-opcion-btn {
-  justify-content: flex-start;
+.productos-opciones-modal .productos-opciones-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.productos-opcion-btn,
+.productos-opcion-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 4.75rem;
+  padding: 0.55rem 0.35rem;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+  border-radius: 0.35rem;
+}
+
+.productos-opcion-pick i {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.productos-opcion-pick span {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.productos-precio-margen-wrap {
+  min-width: 4.5rem;
+}
+
+.productos-precio-margen {
+  font-size: 0.95rem;
+  line-height: 1.8;
+}
+
+.productos-reporte-modal.swal2-popup {
+  max-width: min(1140px, 96vw);
+}
+
+.productos-reporte-modal .productos-reporte-table {
+  font-size: 0.78rem;
+}
+
+.productos-reporte-modal .productos-reporte-table th,
+.productos-reporte-modal .productos-reporte-table td {
+  padding: 0.25rem 0.4rem;
+  vertical-align: middle;
+}
+
+.productos-reporte-table-wrap {
+  max-height: min(65vh, 520px);
+  overflow: auto;
+}
+
+.productos-th-menu,
+.productos-row-menu {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  max-width: 2.25rem;
+  padding-left: 0.35rem;
+  padding-right: 0.2rem;
+  vertical-align: middle;
+}
+
+.productos-row-menu .btn-productos-opciones {
+  padding: 0.15rem 0.4rem;
+}
+
+/* Fallback: fal → solid en Font Awesome Free */
+.productos-view-root .fal::before {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+}
+
+.btn-productos-precios {
   white-space: nowrap;
+}
+
+.productos-precios-modal .productos-precios-card-modal {
+  margin-bottom: 0;
+}
+
+.productos-precios-modal .productos-precios-table-wrap,
+.productos-precios-modal .table-responsive {
+  max-height: min(55vh, 420px);
+  overflow: auto;
 }
 
 .productos-precios-panel-header {
@@ -403,13 +488,12 @@
 
   .productos-list-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
     gap: 0.75rem;
   }
 
-  .productos-list-col,
-  .productos-precios-sidebar {
+  .productos-list-col {
     min-height: 0;
   }
 
@@ -440,7 +524,8 @@
     grid-template-rows: minmax(0, 1.35fr) minmax(0, 0.65fr);
   }
 
-  .productos-opciones-grid {
+  .productos-opciones-grid,
+  .productos-opciones-modal .productos-opciones-grid {
     grid-template-columns: 1fr;
   }
 

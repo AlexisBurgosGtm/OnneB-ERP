@@ -3,6 +3,12 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
 const { assertAdminPass } = require('../lib/config-auth');
+const {
+  listMovimientosProducto,
+  listMovimientosFiscalesProducto,
+  listVentasProducto,
+  listComprasProducto,
+} = require('../lib/producto-reportes');
 
 const router = express.Router();
 
@@ -569,6 +575,76 @@ router.get('/:codprod/movimientos', async (req, res) => {
     res.json({ codprod, empnit, count, tieneMovimientos: count > 0 });
   } catch (err) {
     console.warn('[API GET /productos/:codprod/movimientos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codprod/reporte/movimientos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  const q = String(req.query.q || '').trim();
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listMovimientosProducto(pool, sql, empnit, codprod, q);
+    res.json({ rows, codprod, empnit, q: q || null });
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/reporte/movimientos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codprod/reporte/movimientos-fiscales', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  const q = String(req.query.q || '').trim();
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listMovimientosFiscalesProducto(pool, sql, empnit, codprod, q);
+    res.json({ rows, codprod, empnit, q: q || null, tiposFiscal: ['FEF', 'FEC', 'FES', 'FNC'] });
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/reporte/movimientos-fiscales]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codprod/reporte/ventas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listVentasProducto(pool, sql, empnit, codprod);
+    res.json({ rows, codprod, empnit });
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/reporte/ventas]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codprod/reporte/compras', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listComprasProducto(pool, sql, empnit, codprod);
+    res.json({ rows, codprod, empnit });
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/reporte/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

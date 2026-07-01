@@ -207,7 +207,7 @@ const InventarioView = {
               <div class="input-group input-group-sm">
                 <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control" id="inventario-search"
-                  placeholder="Código, descripción, marca, tipo…"
+                  placeholder="Código, descripción, marca, tipo… (Enter)"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off" spellcheck="false">
                 <button type="button" class="btn btn-outline-secondary" id="btn-inventario-search-clear"
                   title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
@@ -324,12 +324,26 @@ const InventarioView = {
     const search = document.getElementById('inventario-search');
     const clearBtn = document.getElementById('btn-inventario-search-clear');
     if (!search) return;
-    const applySearch = F.debounce(() => {
+
+    const applySearch = () => {
       this._filterQuery = search.value;
       this.reload();
-    }, 350);
-    search.addEventListener('input', applySearch);
-    search.addEventListener('search', applySearch);
+    };
+
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applySearch();
+      }
+    });
+
+    search.addEventListener('search', () => {
+      if (!search.value.trim()) {
+        this._filterQuery = '';
+        this.reload();
+      }
+    });
+
     clearBtn?.addEventListener('click', () => {
       search.value = '';
       this._filterQuery = '';
