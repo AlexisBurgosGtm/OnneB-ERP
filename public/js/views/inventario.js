@@ -462,8 +462,9 @@ const InventarioView = {
       const data = await F.fetchJson(this.printFetchUrl(), { cache: 'no-store' });
       const rows = data.rows || [];
       const totals = data.totals || { SALDO: 0, TOTALCOSTO: 0 };
-      const html = this.buildPrintHtml(rows, totals, Boolean(data.truncated));
-      PrintReport.openAndPrint(html);
+      await PrintReport.openAndPrint(
+        () => this.buildPrintHtml(rows, totals, Boolean(data.truncated))
+      );
     } catch (err) {
       F.alert('Error', err.message || 'Error al imprimir', 'error');
     } finally {

@@ -182,7 +182,7 @@ const KilometrajesView = {
       </div>`;
   },
 
-  imprimirReporte() {
+  async imprimirReporte() {
     if (typeof PrintReport === 'undefined') {
       F.toast('Impresión no disponible', 'warning');
       return;
@@ -282,10 +282,12 @@ const KilometrajesView = {
         </tfoot>
       </table>`;
 
-    const html = PrintReport.wrapDocument({
-      title: 'Registro de Kilometrajes',
-      bodyHtml,
-      extraStyles: `
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: 'Registro de Kilometrajes',
+          bodyHtml,
+          extraStyles: `
         .km-report-section{margin-bottom:1.25rem;page-break-inside:avoid}
         .km-report-vehiculo{font-size:13px;margin:0 0 .35rem;padding:.35rem .5rem;background:#f0f0f0;border:1px solid #ccc}
         .km-report-table{font-size:11px;width:100%;border-collapse:collapse}
@@ -293,8 +295,9 @@ const KilometrajesView = {
         .km-report-table th,.km-report-table td{padding:4px 6px;border:1px solid #ddd}
         .km-report-table .totals td{background:#f8f8f8}
       `,
-    });
-    PrintReport.openAndPrint(html, 'width=900,height=700');
+        }),
+      'width=900,height=700'
+    );
   },
 
   async loadLookups() {

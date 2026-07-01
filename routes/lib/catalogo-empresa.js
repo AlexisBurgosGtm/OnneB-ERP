@@ -19,6 +19,7 @@ function sqlTypeFor(field) {
   if (field.type === 'int') return sql.Int;
   if (field.type === 'float') return sql.Float;
   if (field.type === 'numeric') return sql.Decimal(18, 0);
+  if (field.type === 'varcharmax') return sql.VarChar(sql.MAX);
   return sql.VarChar;
 }
 

@@ -496,6 +496,8 @@
         FacturacionView.load(mainContent);
       } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
         NotasCreditoView.load(mainContent);
+      } else if (key === 'notas-debito' && typeof NotasDebitoView !== 'undefined') {
+        NotasDebitoView.load(mainContent);
       } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
         CorteCajaView.load(mainContent);
       } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {

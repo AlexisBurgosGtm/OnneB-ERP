@@ -14,6 +14,7 @@ const DocOpciones = {
     FES: { menu: 'facturacion', view: () => FacturacionView },
     DEV: { menu: 'notas-credito', view: () => NotasCreditoView },
     FNC: { menu: 'notas-credito', view: () => NotasCreditoView },
+    DVP: { menu: 'notas-debito', view: () => NotasDebitoView },
     COM: { menu: 'compras', view: () => ComprasView },
     ENT: { menu: 'entradas-inventario', view: () => EntradasInventarioView },
     SAL: { menu: 'salidas-inventario', view: () => SalidasInventarioView },
@@ -267,9 +268,11 @@ const DocOpciones = {
       )
       .join('');
 
-    const html = PrintReport.wrapDocument({
-      title: titulo,
-      bodyHtml: `
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: titulo,
+          bodyHtml: `
         ${PrintReport.reportHeaderHtml({
           title: titulo,
           subtitleHtml: `
@@ -288,8 +291,9 @@ const DocOpciones = {
         </table>
         <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
       `,
-    });
-    PrintReport.openAndPrint(html, 'width=800,height=600');
+        }),
+      'width=800,height=600'
+    );
   },
 
   async eliminar(coddoc, correlativo, label) {

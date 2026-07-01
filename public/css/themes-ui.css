@@ -71,8 +71,17 @@
   flex-shrink: 0;
 }
 
-.header-empresa-icon-fallback[hidden] {
+.header-empresa-icon-fallback[hidden],
+.header-app-icon-fallback[hidden] {
   display: none !important;
+}
+
+.header-app-icon-fallback {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .header-empresa-badge span,

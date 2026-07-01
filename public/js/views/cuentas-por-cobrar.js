@@ -10,6 +10,8 @@ const CuentasPorCobrarView = {
   _truncated: false,
   _filterQuery: '',
   _loading: false,
+  _guardandoRecibo: false,
+  _corregiendoSaldos: false,
 
   MENU_OPCIONES: [
     { action: 'nuevo-abono', label: 'NUEVO ABONO', icon: 'fa-solid fa-money-bill-transfer', className: 'btn-success text-white' },
@@ -163,6 +165,55 @@ const CuentasPorCobrarView = {
     return this._rows;
   },
 
+  async corregirSaldos() {
+    if (this._corregiendoSaldos) return;
+    const ok = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Corregir saldos',
+      html: `
+        <p class="small text-muted mb-0 text-start">
+          Se recalcularán <strong>abonos</strong> y <strong>saldo</strong> de todas las facturas al crédito,
+          sumando los pagos de clientes (RCC) y notas de crédito (DEV/FNC) asociados a cada factura.
+        </p>
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Corregir'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+    });
+    if (!ok.isConfirmed) return;
+
+    this._corregiendoSaldos = true;
+    const btn = this._container?.querySelector('#cxp-btn-corregir-saldos');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Corrigiendo…';
+    }
+    try {
+      const emp = F.getEmpNit();
+      const data = await F.fetchJson(`/api/cuentas-cobrar/corregir-saldos?empnit=${encodeURIComponent(emp)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      F.toast(
+        `Saldos corregidos: ${data.actualizadas ?? 0} de ${data.totalFacturas ?? 0} factura(s)`,
+        'success'
+      );
+      await this.fetchDocumentos();
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    } catch (err) {
+      F.toast(err.message || 'No se pudieron corregir los saldos', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos';
+      }
+    } finally {
+      this._corregiendoSaldos = false;
+    }
+  },
+
   renderTableBodyHtml() {
     const rows = this.filteredRows();
     if (!rows.length) {
@@ -214,11 +265,17 @@ const CuentasPorCobrarView = {
         </div>
         <div class="card shadow-sm mb-3">
           <div class="card-body py-2">
-            <div class="input-group input-group-sm">
-              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <input type="search" class="form-control" id="cxp-search"
-                placeholder="Buscar documento, cliente, empleado, NIT…"
-                value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
+                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="search" class="form-control" id="cxp-search"
+                  placeholder="Buscar documento, cliente, empleado, NIT…"
+                  value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
+                title="Recalcular saldos y abonos de facturas al crédito">
+                <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
+              </button>
             </div>
             ${truncHint}
           </div>
@@ -358,7 +415,7 @@ const CuentasPorCobrarView = {
       })
       .join('');
     return `
-      <div class="table-responsive" style="max-height: 360px">
+      <div class="table-responsive cxp-historial-table" style="max-height: 360px">
         <table class="table table-sm table-striped mb-0">
           <thead class="table-light sticky-top">
             <tr>
@@ -556,7 +613,7 @@ const CuentasPorCobrarView = {
       </div>`;
   },
 
-  imprimirEstadoCuenta(data) {
+  async imprimirEstadoCuenta(data) {
     const c = data.cliente || {};
     const t = data.totales || {};
     const movimientos = data.movimientos || [];
@@ -614,17 +671,20 @@ const CuentasPorCobrarView = {
       </table>
     `;
 
-    const html = PrintReport.wrapDocument({
-      title: 'Estado de cuenta — cliente',
-      bodyHtml,
-      extraStyles: `
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: 'Estado de cuenta — cliente',
+          bodyHtml,
+          extraStyles: `
         .ecc-table{font-size:11px}
         .ecc-table th,.ecc-table td{padding:5px 7px}
         .ecc-table tbody tr:nth-child(even){background:#fafafa}
         .ecc-table tfoot td{background:#f0f0f0;border-top:2px solid #999}
       `,
-    });
-    PrintReport.openAndPrint(html, 'width=900,height=700');
+        }),
+      'width=900,height=700'
+    );
   },
 
   async showMenuDocumento(coddoc, correlativo) {
@@ -694,6 +754,7 @@ const CuentasPorCobrarView = {
   },
 
   async nuevoAbono(row) {
+    if (this._guardandoRecibo) return;
     const coddoc = row.CODDOC;
     const correlativo = row.CORRELATIVO;
     const fechaHoy = this.todayIsoDate();
@@ -775,7 +836,7 @@ const CuentasPorCobrarView = {
         this.wireCoddocRccChange();
         document.getElementById('cxp-abono-fpago-efectivo')?.focus();
       },
-      preConfirm: () => {
+      preConfirm: async () => {
         const coddocRcc = document.getElementById('cxp-abono-coddoc')?.value?.trim();
         if (!coddocRcc) {
           Swal.showValidationMessage('Seleccione el documento RCC');
@@ -790,25 +851,38 @@ const CuentasPorCobrarView = {
           Swal.showValidationMessage(`El abono no puede superar el saldo (${this.formatMoney(saldo)})`);
           return false;
         }
-        return {
+        const payload = {
           MONTO: monto,
           CODDOC_RCC: coddocRcc,
           ...this.readFpagoFromDom(),
+          USUARIO: this.usuario(),
         };
+        Swal.showLoading();
+        Swal.getCancelButton()?.setAttribute('disabled', 'true');
+        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
+        this._guardandoRecibo = true;
+        try {
+          const res = await F.fetchJson(this.abonosUrl(coddoc, correlativo), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          return res;
+        } catch (e) {
+          Swal.hideLoading();
+          Swal.getCancelButton()?.removeAttribute('disabled');
+          Swal.getConfirmButton()?.removeAttribute('disabled');
+          Swal.showValidationMessage(e.message || 'Error al guardar el abono');
+          return false;
+        } finally {
+          this._guardandoRecibo = false;
+        }
       },
     });
 
-    if (!isConfirmed) return;
+    if (!isConfirmed || !value) return;
 
-    const res = await F.fetchJson(this.abonosUrl(coddoc, correlativo), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...value,
-        USUARIO: this.usuario(),
-      }),
-    });
-    F.toast(`Abono ${res.abono?.CODDOC}-${res.abono?.CORRELATIVO} registrado`, 'success');
+    F.toast(`Abono ${value.abono?.CODDOC}-${value.abono?.CORRELATIVO} registrado`, 'success');
     await this.fetchDocumentos();
     this._container.innerHTML = this.renderShell();
     this.bindEvents();
@@ -838,14 +912,25 @@ const CuentasPorCobrarView = {
   },
 
   async mostrarEstadoCuenta(row) {
+    Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Generando estado de cuenta',
+      html: '<p class="small text-muted mb-0">Consultando movimientos del cliente…</p>',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
     let codcliente;
     try {
       codcliente = await this.resolveCodcliente(row);
       if (!codcliente) {
+        Swal.close();
         F.alert('Error', 'No se pudo identificar el cliente del documento', 'error');
         return;
       }
       const data = await this.fetchEstadoCuentaCliente(codcliente);
+      Swal.close();
       const bodyHtml = this.renderEstadoCuentaBodyHtml(data);
       await Swal.fire({
         ...CatalogosUI.modalBase(),
@@ -862,6 +947,7 @@ const CuentasPorCobrarView = {
         }
       });
     } catch (err) {
+      Swal.close();
       F.alert('Error', err.message || 'No se pudo cargar el estado de cuenta', 'error');
     }
   },
@@ -888,6 +974,10 @@ const CuentasPorCobrarView = {
           this._loading = false;
         }
       }, 350);
+    });
+
+    this._container?.querySelector('#cxp-btn-corregir-saldos')?.addEventListener('click', () => {
+      this.corregirSaldos().catch((err) => F.toast(err.message || 'Error al corregir saldos', 'error'));
     });
 
     const onRowPick = (row) => {

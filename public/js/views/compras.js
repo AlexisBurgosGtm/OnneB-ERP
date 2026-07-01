@@ -834,9 +834,11 @@ const ComprasView = {
           </tr>`
         )
         .join('');
-      const html = PrintReport.wrapDocument({
-        title: 'Compra',
-        bodyHtml: `
+      await PrintReport.openAndPrint(
+        () =>
+          PrintReport.wrapDocument({
+            title: 'Compra',
+            bodyHtml: `
           ${PrintReport.reportHeaderHtml({
             title: 'Compra a proveedor',
             subtitleHtml: `
@@ -850,8 +852,9 @@ const ComprasView = {
           <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
           <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALCOSTO))}</strong></p>
         `,
-      });
-      PrintReport.openAndPrint(html, 'width=800,height=600');
+          }),
+        'width=800,height=600'
+      );
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }

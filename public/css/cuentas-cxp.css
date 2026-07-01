@@ -84,3 +84,22 @@
     font-size: 1.2rem;
   }
 }
+
+.cxp-historial-table {
+  font-size: 0.72rem;
+}
+
+.cxp-historial-table .table {
+  font-size: inherit;
+}
+
+.cxp-historial-table th,
+.cxp-historial-table td {
+  padding: 0.2rem 0.35rem;
+  vertical-align: middle;
+}
+
+.cxp-historial-table .badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+}

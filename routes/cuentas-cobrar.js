@@ -11,6 +11,7 @@ const {
   loadFacturaCxc,
   fetchAbonosFactura,
   crearAbonoRcc,
+  corregirSaldosCxc,
   listTiposDocRcc,
   previewSiguienteRcc,
 } = require('../lib/cuentas-abono');
@@ -284,6 +285,20 @@ router.get('/facturas/:coddoc/:correlativo/abonos', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /cuentas-cobrar/facturas/abonos]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/corregir-saldos', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await corregirSaldosCxc(pool, sql, empnit);
+    res.json({ ...result, empnit });
+  } catch (err) {
+    console.warn('[API POST /cuentas-cobrar/corregir-saldos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

@@ -298,7 +298,7 @@ const MantenimientoLlantasView = {
     });
   },
 
-  imprimirReporte() {
+  async imprimirReporte() {
     if (typeof PrintReport === 'undefined') {
       F.toast('Impresión no disponible', 'warning');
       return;
@@ -376,18 +376,21 @@ const MantenimientoLlantasView = {
         </tfoot>
       </table>`;
 
-    const html = PrintReport.wrapDocument({
-      title: 'Mantenimiento de llantas',
-      bodyHtml,
-      extraStyles: `
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: 'Mantenimiento de llantas',
+          bodyHtml,
+          extraStyles: `
         .mll-report-section{margin-bottom:1.25rem;page-break-inside:avoid}
         .mll-report-vehiculo{font-size:13px;margin:0 0 .35rem;padding:.35rem .5rem;background:#f0f0f0;border:1px solid #ccc}
         .mll-report-table{font-size:11px}
         .mll-report-grand{margin-top:.5rem}
         .mll-report-table th,.mll-report-table td{padding:4px 6px}
       `,
-    });
-    PrintReport.openAndPrint(html, 'width=900,height=700');
+        }),
+      'width=900,height=700'
+    );
   },
 
   getFilteredRows() {

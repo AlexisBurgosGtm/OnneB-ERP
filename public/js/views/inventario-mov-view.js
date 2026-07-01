@@ -321,9 +321,11 @@ function createInventarioMovView(cfg) {
             </tr>`
           )
           .join('');
-        const html = PrintReport.wrapDocument({
-          title: cfg.printTitle || 'Inventario',
-          bodyHtml: `
+        await PrintReport.openAndPrint(
+          () =>
+            PrintReport.wrapDocument({
+              title: cfg.printTitle || 'Inventario',
+              bodyHtml: `
             ${PrintReport.reportHeaderHtml({
               title: cfg.printTitle || 'Movimiento inventario',
               subtitleHtml: `
@@ -334,8 +336,9 @@ function createInventarioMovView(cfg) {
             <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Unidades</th></tr></thead>
             <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
           `,
-        });
-        PrintReport.openAndPrint(html, 'width=800,height=600');
+            }),
+          'width=800,height=600'
+        );
       } catch (err) {
         F.toast(err.message || 'Error al imprimir', 'error');
       }

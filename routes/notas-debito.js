@@ -13,17 +13,17 @@ const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError } = require('../lib/documento-delete');
 const { calcLinePeso } = require('../lib/producto-precio-linea');
 const {
-  TIPODOC_NOTAS_CREDITO,
-  fetchFacturasReferencia,
+  TIPODOC_NOTAS_DEBITO,
+  fetchComprasReferencia,
   fetchProductosDisponibles,
-  loadFacturaReferencia,
+  loadCompraReferencia,
   assertCantidadDisponible,
-  tiposFacturaReferenciaParaNota,
-  assertFacturaReferenciaPermitida,
-} = require('../lib/notas-credito-disponible');
+  tiposCompraReferenciaParaNota,
+  assertCompraReferenciaPermitida,
+} = require('../lib/notas-debito-disponible');
 const {
-  SQL_TIPODOC_CUENTAS_COBRAR_IN,
-} = require('../lib/cuentas-docs');
+  SQL_TIPODOC_CUENTAS_PAGAR_IN,
+} = require('../lib/cuentas-pagar-docs');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -36,7 +36,7 @@ const {
 
 const router = express.Router();
 
-const TIPODOC_NOTAS = [...TIPODOC_NOTAS_CREDITO];
+const TIPODOC_NOTAS = [...TIPODOC_NOTAS_DEBITO];
 const TIPODOC_SQL_IN = TIPODOC_NOTAS.map((t) => `'${t}'`).join(', ');
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
@@ -162,7 +162,7 @@ function calcLineTotals(cantidad, costo, precio, equivale) {
 
 async function resolveTipodocNota(pool, empnit, { tipodocNota, coddocNota }) {
   const direct = String(tipodocNota || '').trim().toUpperCase();
-  if (direct === 'DEV' || direct === 'FNC') return direct;
+  if (direct === 'DVP') return direct;
   const cod = String(coddocNota || '').trim();
   if (!cod) return null;
   const result = await pool
@@ -176,7 +176,7 @@ async function resolveTipodocNota(pool, empnit, { tipodocNota, coddocNota }) {
   return String(result.recordset[0]?.TIPODOC || '').trim().toUpperCase() || null;
 }
 
-async function getTipoDocNotasCredito(pool, empnit, coddocPreferred) {
+async function getTipoDocNotasDebito(pool, empnit, coddocPreferred) {
   const req = pool.request().input('EMPNIT', sql.VarChar, empnit);
   if (coddocPreferred) {
     req.input('CODDOC', sql.VarChar, coddocPreferred);
@@ -231,15 +231,17 @@ async function allocateCorrelativo(transaction, empnit, coddoc) {
   return next;
 }
 
-async function getClienteSnapshot(pool, empnit, codcliente) {
+async function getProveedorSnapshot(pool, empnit, codprov) {
+  const cod = parseInt(codprov, 10);
+  if (Number.isNaN(cod)) return null;
   const r = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODCLIENTE', sql.Int, codcliente)
+    .input('CODPROV', sql.Int, cod)
     .query(`
-      SELECT CODCLIENTE, NIT, NOMBRECLIENTE, DIRCLIENTE, NEGOCIO, TIPONEGOCIO
-      FROM dbo.CLIENTES
-      WHERE EMPNIT = @EMPNIT AND CODCLIENTE = @CODCLIENTE
+      SELECT CODPROV, NIT, EMPRESA, RAZONSOCIAL, DIRECCION
+      FROM dbo.PROVEEDORES
+      WHERE EMPNIT = @EMPNIT AND CODPROV = @CODPROV
     `);
   return r.recordset[0] || null;
 }
@@ -313,12 +315,12 @@ async function applyTotalesContadoFinal(transaction, sql, empnit, coddoc, correl
   return totalAbonado;
 }
 
-async function loadFacturaCreditoParaAbono(transaction, empnit, facCoddoc, facCorrelativo) {
+async function loadCompraCreditoParaPago(transaction, empnit, comCoddoc, comCorrelativo) {
   const facRes = await transaction
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODDOC', sql.VarChar, facCoddoc)
-    .input('CORRELATIVO', sql.Decimal(18, 0), facCorrelativo)
+    .input('CODDOC', sql.VarChar, comCoddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), comCorrelativo)
     .query(`
       SELECT
         ISNULL(d.DOC_SALDO, 0) AS DOC_SALDO,
@@ -327,18 +329,18 @@ async function loadFacturaCreditoParaAbono(transaction, empnit, facCoddoc, facCo
       FROM dbo.DOCUMENTOS d WITH (UPDLOCK, ROWLOCK)
       INNER JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
-        AND t.TIPODOC IN (${SQL_TIPODOC_CUENTAS_COBRAR_IN})
+        AND t.TIPODOC IN (${SQL_TIPODOC_CUENTAS_PAGAR_IN})
         AND d.STATUS = '${STATUS_OPERADO}'
     `);
   return facRes.recordset[0] || null;
 }
 
-async function aplicarNotaCreditoAFacturaCredito(transaction, empnit, facCoddoc, facCorrelativo, monto) {
+async function aplicarNotaDebitoACompraCredito(transaction, empnit, comCoddoc, comCorrelativo, monto) {
   const abono = roundMoney(monto);
   if (abono <= 0) return null;
-  const fac = await loadFacturaCreditoParaAbono(transaction, empnit, facCoddoc, facCorrelativo);
+  const fac = await loadCompraCreditoParaPago(transaction, empnit, comCoddoc, comCorrelativo);
   if (!fac) {
-    const err = new Error('Factura de referencia no encontrada o no operada');
+    const err = new Error('Compra de referencia no encontrada o no operada');
     err.statusCode = 404;
     throw err;
   }
@@ -349,7 +351,7 @@ async function aplicarNotaCreditoAFacturaCredito(transaction, empnit, facCoddoc,
   const docAbono = roundMoney(fac.DOC_ABONO);
   if (abono > docSaldo + 0.001) {
     const err = new Error(
-      `El monto de la nota (${abono}) no puede superar el saldo de la factura (${docSaldo})`
+      `El monto de la nota (${abono}) no puede superar el saldo de la compra (${docSaldo})`
     );
     err.statusCode = 400;
     throw err;
@@ -359,8 +361,8 @@ async function aplicarNotaCreditoAFacturaCredito(transaction, empnit, facCoddoc,
   await transaction
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODDOC', sql.VarChar, facCoddoc)
-    .input('CORRELATIVO', sql.Decimal(18, 0), facCorrelativo)
+    .input('CODDOC', sql.VarChar, comCoddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), comCorrelativo)
     .input('DOC_ABONO', sql.Decimal(18, 3), nuevoAbono)
     .input('DOC_SALDO', sql.Decimal(18, 3), nuevoSaldo)
     .query(`
@@ -371,10 +373,10 @@ async function aplicarNotaCreditoAFacturaCredito(transaction, empnit, facCoddoc,
   return { DOC_ABONO: nuevoAbono, DOC_SALDO: nuevoSaldo };
 }
 
-async function revertirNotaCreditoEnFacturaCredito(transaction, empnit, facCoddoc, facCorrelativo, monto) {
+async function revertirNotaDebitoEnCompraCredito(transaction, empnit, comCoddoc, comCorrelativo, monto) {
   const abono = roundMoney(monto);
   if (abono <= 0) return null;
-  const fac = await loadFacturaCreditoParaAbono(transaction, empnit, facCoddoc, facCorrelativo);
+  const fac = await loadCompraCreditoParaPago(transaction, empnit, comCoddoc, comCorrelativo);
   if (!fac || String(fac.CONCRE || 'CON').trim().toUpperCase() !== 'CRE') {
     return null;
   }
@@ -385,8 +387,8 @@ async function revertirNotaCreditoEnFacturaCredito(transaction, empnit, facCoddo
   await transaction
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODDOC', sql.VarChar, facCoddoc)
-    .input('CORRELATIVO', sql.Decimal(18, 0), facCorrelativo)
+    .input('CODDOC', sql.VarChar, comCoddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), comCorrelativo)
     .input('DOC_ABONO', sql.Decimal(18, 3), nuevoAbono)
     .input('DOC_SALDO', sql.Decimal(18, 3), nuevoSaldo)
     .query(`
@@ -405,11 +407,11 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
       SELECT d.*, t.DESDOC, t.TIPODOC,
-        c.NEGOCIO AS CLI_NEGOCIO, c.TIPONEGOCIO AS CLI_TIPONEGOCIO,
-        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR
+        p.EMPRESA AS PROV_EMPRESA, p.RAZONSOCIAL AS PROV_RAZON, p.DIRECCION AS PROV_DIR,
+        d.CODCLIENTE AS CODPROV
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
-      LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.PROVEEDORES p ON p.EMPNIT = d.EMPNIT AND p.CODPROV = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   if (!headerRes.recordset.length) return null;
@@ -484,7 +486,7 @@ router.get('/config', async (req, res) => {
     const def = tipos.recordset[0] || null;
     res.json({
       empnit,
-      tipodocs: TIPODOC_NOTAS,
+      tipodocs: TIPODOC_NOTAS_DEBITO,
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
@@ -493,7 +495,7 @@ router.get('/config', async (req, res) => {
       bodegaDefault: DEFAULT_BODEGA,
     });
   } catch (err) {
-    console.warn('[API GET /notas-credito/config]', err.message);
+    console.warn('[API GET /notas-debito/config]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -517,7 +519,7 @@ router.get('/vendedores', async (req, res) => {
       `);
     res.json({ rows: result.recordset });
   } catch (err) {
-    console.warn('[API GET /notas-credito/vendedores]', err.message);
+    console.warn('[API GET /notas-debito/vendedores]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -540,7 +542,7 @@ router.get('/cajas-abiertas', async (req, res) => {
       `);
     res.json({ rows: result.recordset });
   } catch (err) {
-    console.warn('[API GET /notas-credito/cajas-abiertas]', err.message);
+    console.warn('[API GET /notas-debito/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -577,14 +579,14 @@ router.get('/pedidos', async (req, res) => {
         d.CODVEN, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.SERIEFAC, d.NOFAC,
         t.TIPODOC, t.DESDOC,
-        c.NEGOCIO, c.TIPONEGOCIO,
+        p.EMPRESA AS NEGOCIO, p.RAZONSOCIAL,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
         ISNULL(cj.DESCAJA, '') AS DESCAJA,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
-      LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.PROVEEDORES p ON p.EMPNIT = d.EMPNIT AND p.CODPROV = d.CODCLIENTE
       LEFT JOIN dbo.Empleados emp ON d.CODVEN = emp.CODEMPLEADO AND d.EMPNIT = emp.EMPNIT
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
@@ -597,12 +599,12 @@ router.get('/pedidos', async (req, res) => {
     const fecha = `${fechaParts.anio}-${String(fechaParts.mes).padStart(2, '0')}-${String(fechaParts.dia).padStart(2, '0')}`;
     res.json({ rows: result.recordset, status, fecha });
   } catch (err) {
-    console.warn('[API GET /notas-credito/pedidos]', err.message);
+    console.warn('[API GET /notas-debito/pedidos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/facturas-referencia', async (req, res) => {
+router.get('/compras-referencia', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -610,23 +612,16 @@ router.get('/facturas-referencia', async (req, res) => {
   const q = String(req.query.q || '').trim();
   try {
     const pool = await req.app.locals.getDbPool();
-    const tipodocNota = await resolveTipodocNota(pool, empnit, {
-      tipodocNota: req.query.tipodoc_nota,
-      coddocNota: req.query.coddoc_nota,
-    });
-    if (!tipodocNota) {
-      return res.status(400).json({ error: 'Indique tipodoc_nota (DEV/FNC) o coddoc_nota de la serie' });
-    }
-    const tiposRef = tiposFacturaReferenciaParaNota(tipodocNota);
-    const rows = await fetchFacturasReferencia(pool, empnit, q, 80, tiposRef);
-    res.json({ rows, q: q || null, tipodocNota, tiposReferencia: tiposRef });
+    const tiposRef = tiposCompraReferenciaParaNota();
+    const rows = await fetchComprasReferencia(pool, empnit, q, 80, tiposRef);
+    res.json({ rows, q: q || null, tipodocNota: 'DVP', tiposReferencia: tiposRef });
   } catch (err) {
-    console.warn('[API GET /notas-credito/facturas-referencia]', err.message);
+    console.warn('[API GET /notas-debito/compras-referencia]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/facturas-referencia/:coddoc/:correlativo/disponibles', async (req, res) => {
+router.get('/compras-referencia/:coddoc/:correlativo/disponibles', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -639,14 +634,14 @@ router.get('/facturas-referencia/:coddoc/:correlativo/disponibles', async (req, 
   const excludeNc = excludeCoddoc && excludeCorrelativo !== null ? { coddoc: excludeCoddoc, correlativo: excludeCorrelativo } : null;
   try {
     const pool = await req.app.locals.getDbPool();
-    const factura = await loadFacturaReferencia(pool, empnit, coddoc, correlativo);
-    if (!factura) {
-      return res.status(404).json({ error: 'Factura de referencia no encontrada o no operada' });
+    const compra = await loadCompraReferencia(pool, empnit, coddoc, correlativo);
+    if (!compra) {
+      return res.status(404).json({ error: 'Compra de referencia no encontrada o no operada' });
     }
     const rows = await fetchProductosDisponibles(pool, empnit, coddoc, correlativo, excludeNc);
-    res.json({ factura, rows });
+    res.json({ compra, rows });
   } catch (err) {
-    console.warn('[API GET /notas-credito/facturas-referencia/disponibles]', err.message);
+    console.warn('[API GET /notas-debito/compras-referencia/disponibles]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -665,7 +660,7 @@ router.get('/pedidos/:coddoc/:correlativo', async (req, res) => {
     if (!pedido) return res.status(404).json({ error: 'Documento no encontrado' });
     res.json(pedido);
   } catch (err) {
-    console.warn('[API GET /notas-credito/pedidos/:coddoc/:correlativo]', err.message);
+    console.warn('[API GET /notas-debito/pedidos/:coddoc/:correlativo]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -677,27 +672,27 @@ router.post('/pedidos', async (req, res) => {
   const coddocBody = String(req.body?.CODDOC || '').trim();
   const serieFac = String(req.body?.SERIEFAC || '').trim();
   const noFac = String(req.body?.NOFAC || '').trim();
-  const facCorrelativo = parseCorrelativo(noFac);
-  const usuario = String(req.body?.USUARIO || req.body?.usuario || 'NC').trim();
+  const comCorrelativo = parseCorrelativo(noFac);
+  const usuario = String(req.body?.USUARIO || req.body?.usuario || 'NDP').trim();
   const obs = String(req.body?.OBS || '').trim();
-  if (!serieFac || facCorrelativo === null) {
+  if (!serieFac || comCorrelativo === null) {
     return res.status(400).json({ error: 'SERIEFAC y NOFAC son obligatorios' });
   }
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const tipo = await getTipoDocNotasCredito(pool, empnit, coddocBody);
+    const tipo = await getTipoDocNotasDebito(pool, empnit, coddocBody);
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento de nota de crédito (${TIPODOC_NOTAS.join(', ')}) activo para la empresa`,
+        error: `No hay tipo de documento de nota de crédito proveedor (${TIPODOC_NOTAS.join(', ')}) activo para la empresa`,
       });
     }
-    const tiposRef = tiposFacturaReferenciaParaNota(tipo.TIPODOC);
-    const facturaRef = await loadFacturaReferencia(pool, empnit, serieFac, facCorrelativo, tiposRef);
-    if (!facturaRef) {
-      return res.status(404).json({ error: 'Factura de referencia no encontrada, no operada o no permitida para esta serie' });
+    const tiposRef = tiposCompraReferenciaParaNota();
+    const compraRef = await loadCompraReferencia(pool, empnit, serieFac, comCorrelativo, tiposRef);
+    if (!compraRef) {
+      return res.status(404).json({ error: 'Compra de referencia no encontrada, no operada o no permitida para esta serie' });
     }
-    assertFacturaReferenciaPermitida(tipo.TIPODOC, facturaRef.TIPODOC);
+    assertCompraReferenciaPermitida(compraRef.TIPODOC);
     const coddoc = tipo.CODDOC;
     const parts = nowParts();
     const transaction = new sql.Transaction(pool);
@@ -715,21 +710,21 @@ router.post('/pedidos', async (req, res) => {
         .input('MINUTO', sql.Int, parts.minuto)
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-        .input('CODCLIENTE', sql.Int, facturaRef.CODCLIENTE)
-        .input('DOC_NIT', sql.VarChar, String(facturaRef.DOC_NIT || 'CF'))
-        .input('DOC_NOMCLIE', sql.VarChar, String(facturaRef.DOC_NOMCLIE || facturaRef.NEGOCIO || 'CLIENTE'))
-        .input('DOC_DIRCLIE', sql.VarChar, String(facturaRef.DOC_DIRCLIE || 'SN'))
-        .input('CODVEN', sql.Int, facturaRef.CODVEN ?? null)
+        .input('CODCLIENTE', sql.Int, compraRef.CODCLIENTE)
+        .input('DOC_NIT', sql.VarChar, String(compraRef.DOC_NIT || 'CF'))
+        .input('DOC_NOMCLIE', sql.VarChar, String(compraRef.DOC_NOMCLIE || compraRef.PROV_EMPRESA || compraRef.PROV_RAZON || 'PROVEEDOR'))
+        .input('DOC_DIRCLIE', sql.VarChar, String(compraRef.DOC_DIRCLIE || 'SN'))
+        .input('CODVEN', sql.Int, compraRef.CODVEN ?? null)
         .input('CONCRE', sql.VarChar, 'CON')
-        .input('USUARIO', sql.VarChar, usuario || 'NC')
+        .input('USUARIO', sql.VarChar, usuario || 'NDP')
         .input('OBS', sql.VarChar, obs)
         .input(
           'CODCAJA',
           sql.Int,
-          facturaRef.CODCAJA != null && Number(facturaRef.CODCAJA) > 0 ? Number(facturaRef.CODCAJA) : null
+          compraRef.CODCAJA != null && Number(compraRef.CODCAJA) > 0 ? Number(compraRef.CODCAJA) : null
         )
         .input('SERIEFAC', sql.VarChar, serieFac)
-        .input('NOFAC', sql.VarChar, String(facCorrelativo))
+        .input('NOFAC', sql.VarChar, String(comCorrelativo))
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
@@ -758,7 +753,7 @@ router.post('/pedidos', async (req, res) => {
       throw inner;
     }
   } catch (err) {
-    console.warn('[API POST /notas-credito/pedidos]', err.message);
+    console.warn('[API POST /notas-debito/pedidos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -778,14 +773,14 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
     if (req.body?.CODCLIENTE !== undefined) {
       const codcliente = parseInt(req.body.CODCLIENTE, 10);
       if (Number.isNaN(codcliente)) return res.status(400).json({ error: 'CODCLIENTE inválido' });
-      const cliente = await getClienteSnapshot(pool, empnit, codcliente);
-      if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado' });
+      const proveedor = await getProveedorSnapshot(pool, empnit, codcliente);
+      if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado' });
       updates.push({
         name: 'CODCLIENTE',
-        codcliente: cliente.CODCLIENTE,
-        nit: String(cliente.NIT || 'CF'),
-        nombre: cliente.NOMBRECLIENTE || cliente.NEGOCIO || '',
-        dir: String(cliente.DIRCLIENTE || 'SN'),
+        codcliente: proveedor.CODPROV,
+        nit: String(proveedor.NIT || 'CF'),
+        nombre: proveedor.EMPRESA || proveedor.RAZONSOCIAL || '',
+        dir: String(proveedor.DIRECCION || 'SN'),
       });
     }
     const updateObs = req.body?.OBS !== undefined ? String(req.body.OBS || '') : null;
@@ -877,7 +872,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       throw inner;
     }
   } catch (err) {
-    console.warn('[API PATCH /notas-credito/pedidos]', err.message);
+    console.warn('[API PATCH /notas-debito/pedidos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -905,23 +900,23 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     if (!isDocumentoEditable(docMeta.STATUS, docMeta.CORTE)) {
       return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS, docMeta.CORTE) });
     }
-    const facCoddoc = String(docMeta.SERIEFAC || '').trim();
-    const facCorrelativo = parseCorrelativo(docMeta.NOFAC);
-    if (!facCoddoc || facCorrelativo === null) {
-      return res.status(400).json({ error: 'La nota no tiene factura de referencia (SERIEFAC/NOFAC)' });
+    const comCoddoc = String(docMeta.SERIEFAC || '').trim();
+    const comCorrelativo = parseCorrelativo(docMeta.NOFAC);
+    if (!comCoddoc || comCorrelativo === null) {
+      return res.status(400).json({ error: 'La nota no tiene compra de referencia (SERIEFAC/NOFAC)' });
     }
 
-    const disponibles = await fetchProductosDisponibles(pool, empnit, facCoddoc, facCorrelativo, {
+    const disponibles = await fetchProductosDisponibles(pool, empnit, comCoddoc, comCorrelativo, {
       coddoc,
       correlativo,
     });
     const selected = pickDisponibleLine(disponibles, codprod, codmedida, equivaleReq, precioReq);
     if (!selected) {
       return res.status(404).json({
-        error: 'Producto/medida no disponible en la factura de referencia (si hay varias coincidencias, envíe EQUIVALE y PRECIO)',
+        error: 'Producto/medida no disponible en la compra de referencia (si hay varias coincidencias, envíe EQUIVALE y PRECIO)',
       });
     }
-    await assertCantidadDisponible(pool, empnit, facCoddoc, facCorrelativo, coddoc, correlativo, selected, cantidad);
+    await assertCantidadDisponible(pool, empnit, comCoddoc, comCorrelativo, coddoc, correlativo, selected, cantidad);
 
     const lineTotals = calcLineTotals(cantidad, selected.COSTO, selected.PRECIO, selected.EQUIVALE);
     const parts = nowParts();
@@ -1002,7 +997,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
     }
     if (err.statusCode === 400) return res.status(400).json({ error: err.message });
-    console.warn('[API POST /notas-credito/pedidos/lineas]', err.message);
+    console.warn('[API POST /notas-debito/pedidos/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1042,16 +1037,16 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
     if (!isDocumentoEditable(lineMeta.STATUS, lineMeta.CORTE)) {
       return res.status(400).json({ error: mensajeDocumentoNoEditable(lineMeta.STATUS, lineMeta.CORTE) });
     }
-    const facCoddoc = String(lineMeta.SERIEFAC || '').trim();
-    const facCorrelativo = parseCorrelativo(lineMeta.NOFAC);
-    if (!facCoddoc || facCorrelativo === null) {
-      return res.status(400).json({ error: 'La nota no tiene factura de referencia (SERIEFAC/NOFAC)' });
+    const comCoddoc = String(lineMeta.SERIEFAC || '').trim();
+    const comCorrelativo = parseCorrelativo(lineMeta.NOFAC);
+    if (!comCoddoc || comCorrelativo === null) {
+      return res.status(400).json({ error: 'La nota no tiene compra de referencia (SERIEFAC/NOFAC)' });
     }
     await assertCantidadDisponible(
       pool,
       empnit,
-      facCoddoc,
-      facCorrelativo,
+      comCoddoc,
+      comCorrelativo,
       coddoc,
       correlativo,
       {
@@ -1119,7 +1114,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
     }
     if (err.statusCode === 400) return res.status(400).json({ error: err.message });
-    console.warn('[API PATCH /notas-credito/pedidos/lineas]', err.message);
+    console.warn('[API PATCH /notas-debito/pedidos/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1198,7 +1193,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
     if (err instanceof InventarioError) {
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
     }
-    console.warn('[API DELETE /notas-credito/pedidos/lineas]', err.message);
+    console.warn('[API DELETE /notas-debito/pedidos/lineas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1297,9 +1292,9 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       const fpago = resolveFormasPago('CON', req.body, totalPrecio);
       await applyFormasPagoDocumento(transaction, empnit, coddoc, correlativo, fpago);
       const totalAbonado = await applyTotalesContadoFinal(transaction, sql, empnit, coddoc, correlativo, fpago);
-      const facCorrelativo = parseCorrelativo(noFac);
-      if (facCorrelativo !== null) {
-        await aplicarNotaCreditoAFacturaCredito(transaction, empnit, serieFac, facCorrelativo, totalAbonado);
+      const comCorrelativo = parseCorrelativo(noFac);
+      if (comCorrelativo !== null) {
+        await aplicarNotaDebitoACompraCredito(transaction, empnit, serieFac, comCorrelativo, totalAbonado);
       }
       await transaction.commit();
       const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
@@ -1321,7 +1316,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
     if (err.statusCode === 400) {
       return res.status(400).json({ error: err.message });
     }
-    console.warn('[API POST /notas-credito/pedidos/finalizar]', err.message);
+    console.warn('[API POST /notas-debito/pedidos/finalizar]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1371,10 +1366,10 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
       }
 
       const serieFac = String(meta.SERIEFAC || '').trim();
-      const facCorrelativo = parseCorrelativo(meta.NOFAC);
+      const comCorrelativo = parseCorrelativo(meta.NOFAC);
       const montoAplicado = roundMoney(meta.DOC_ABONO);
-      if (serieFac && facCorrelativo !== null && montoAplicado > 0) {
-        await revertirNotaCreditoEnFacturaCredito(transaction, empnit, serieFac, facCorrelativo, montoAplicado);
+      if (serieFac && comCorrelativo !== null && montoAplicado > 0) {
+        await revertirNotaDebitoEnCompraCredito(transaction, empnit, serieFac, comCorrelativo, montoAplicado);
       }
 
       await revertirMovimientoInventarioDocumento(transaction, { empnit, coddoc, correlativo });
@@ -1420,7 +1415,7 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
     if (err.statusCode === 401) {
       return res.status(401).json({ error: err.message });
     }
-    console.warn('[API DELETE /notas-credito/pedidos]', err.message);
+    console.warn('[API DELETE /notas-debito/pedidos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -3,6 +3,9 @@ const { createCatalogoRouter } = require('./lib/catalogo-empresa');
 const { isVehiculoTipoValid, normalizeVehiculoTipo } = require('../lib/vehiculos-tipos');
 const { vehiculoTieneMovimientos } = require('../lib/vehiculos-movimientos');
 
+/** ~512 KB binario → ~1 MB hex */
+const FOTO_MAX_HEX_LEN = 2_000_000;
+
 const VEHICULO_FIELDS = [
   { name: 'DESCRIPCION', type: 'varchar' },
   { name: 'MARCA', type: 'varchar' },
@@ -18,6 +21,7 @@ const VEHICULO_FIELDS = [
   { name: 'KILOMETRAJE_ACTUAL', type: 'float' },
   { name: 'F_ACEITE', type: 'varchar' },
   { name: 'F_SERVICIO', type: 'varchar' },
+  { name: 'FOTO', type: 'varcharmax' },
 ];
 
 const VEHICULO_WRITE_FIELDS = VEHICULO_FIELDS.map((f) => f.name);
@@ -50,6 +54,27 @@ function validateTipo(data) {
 
 function normalizePlaca(placa) {
   return String(placa || '').trim().toUpperCase();
+}
+
+function normalizeFotoField(data) {
+  if (data.FOTO === undefined) return null;
+  if (data.FOTO === null || data.FOTO === '') {
+    data.FOTO = null;
+    return null;
+  }
+  const hex = String(data.FOTO).trim().replace(/^0x/i, '').replace(/\s/g, '');
+  if (!hex) {
+    data.FOTO = null;
+    return null;
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    return 'FOTO debe ser una cadena hexadecimal válida';
+  }
+  if (hex.length > FOTO_MAX_HEX_LEN) {
+    return 'La foto es demasiado grande (máx. 512 KB)';
+  }
+  data.FOTO = hex.toUpperCase();
+  return null;
 }
 
 async function findPlacaDuplicada(pool, empnit, placa, excludeCodvehiculo = null) {
@@ -88,12 +113,16 @@ async function validatePlacaUnica(pool, empnit, data, excludeCodvehiculo = null)
 async function validateInsertVehiculo(pool, empnit, data) {
   const errTipo = validateTipo(data);
   if (errTipo) return errTipo;
+  const errFoto = normalizeFotoField(data);
+  if (errFoto) return errFoto;
   return validatePlacaUnica(pool, empnit, data);
 }
 
 async function validateUpdateVehiculo(pool, empnit, data, _req, codvehiculo) {
   const errTipo = validateTipo(data);
   if (errTipo) return errTipo;
+  const errFoto = normalizeFotoField(data);
+  if (errFoto) return errFoto;
   return validatePlacaUnica(pool, empnit, data, codvehiculo);
 }
 
@@ -136,6 +165,36 @@ const router = createCatalogoRouter({
   validateInsert: validateInsertVehiculo,
   validateUpdate: validateUpdateVehiculo,
   validateDelete: validateDeleteVehiculo,
+});
+
+router.get('/:codvehiculo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const { isDbConfigured } = require('../config/database');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codvehiculo = parseCodvehiculo(req.params.codvehiculo);
+  if (codvehiculo === null) return res.status(400).json({ error: 'Código de vehículo inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODVEHICULO', sql.Int, codvehiculo)
+      .query(`
+        SELECT
+          CODVEHICULO, PLACA, DESCRIPCION, MARCA, LINEA, MODELO, TIPO, CHASIS, MOTOR,
+          NIT, TITULAR, KILOMETRAJE_INICIAL, KILOMETRAJE_ACTUAL, F_ACEITE, F_SERVICIO, FOTO
+        FROM dbo.VEHICULOS
+        WHERE EMPNIT = @EMPNIT AND CODVEHICULO = @CODVEHICULO
+      `);
+    const row = result.recordset[0];
+    if (!row) return res.status(404).json({ error: 'Vehículo no encontrado' });
+    res.json(row);
+  } catch (err) {
+    console.warn('[API GET /vehiculos/:codvehiculo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/:codvehiculo/historial', async (req, res) => {

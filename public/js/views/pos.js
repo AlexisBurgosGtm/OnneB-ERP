@@ -657,9 +657,11 @@ const PosView = {
           </tr>`
         )
         .join('');
-      const html = PrintReport.wrapDocument({
-        title: 'Pedido POS',
-        bodyHtml: `
+      await PrintReport.openAndPrint(
+        () =>
+          PrintReport.wrapDocument({
+            title: 'Pedido POS',
+            bodyHtml: `
           ${PrintReport.reportHeaderHtml({
             title: 'Pedido de mostrador',
             subtitleHtml: `
@@ -672,8 +674,9 @@ const PosView = {
           <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
           <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
         `,
-      });
-      PrintReport.openAndPrint(html, 'width=800,height=600');
+          }),
+        'width=800,height=600'
+      );
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }

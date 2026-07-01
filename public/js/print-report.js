@@ -17,8 +17,36 @@ const PrintReport = {
   },
 
   getLogoDataUrl() {
-    if (typeof EmpresaLogo !== 'undefined') return EmpresaLogo.getDataUrl();
+    if (typeof EmpresaLogo !== 'undefined') {
+      const url = EmpresaLogo.getDataUrl();
+      if (url) return url;
+    }
+    if (typeof F !== 'undefined') {
+      const nit = F.getEmpNit();
+      if (nit) {
+        try {
+          const stored = sessionStorage.getItem(`onneb-emp-logo:${nit}`);
+          if (stored) return stored;
+        } catch {
+          /* sessionStorage no disponible */
+        }
+      }
+    }
     return null;
+  },
+
+  async ensureLogo() {
+    if (typeof F === 'undefined' || typeof EmpresaLogo === 'undefined') return this.getLogoDataUrl();
+    const nit = F.getEmpNit();
+    if (!nit) return null;
+    if (!this.getLogoDataUrl()) {
+      try {
+        await EmpresaLogo.loadForSession(nit);
+      } catch {
+        /* sin logo */
+      }
+    }
+    return this.getLogoDataUrl();
   },
 
   logoBlockHtml(className = 'report-logo') {
@@ -80,7 +108,7 @@ const PrintReport = {
       <body>${bodyHtml}</body></html>`;
   },
 
-  openAndPrint(html, windowFeatures = 'width=900,height=700') {
+  _openPrintWindow(html, windowFeatures = 'width=900,height=700') {
     const w = window.open('', '_blank', windowFeatures);
     if (!w) {
       F.toast('Permita ventanas emergentes para imprimir', 'warning');
@@ -91,5 +119,15 @@ const PrintReport = {
     w.focus();
     w.print();
     return true;
+  },
+
+  /**
+   * Abre ventana de impresión. Asegura logo de empresa antes de generar el HTML.
+   * @param {string|function(): string} htmlOrBuilder — HTML listo o función que lo construye tras cargar el logo.
+   */
+  async openAndPrint(htmlOrBuilder, windowFeatures = 'width=900,height=700') {
+    await this.ensureLogo();
+    const html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
+    return this._openPrintWindow(html, windowFeatures);
   },
 };

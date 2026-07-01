@@ -180,13 +180,12 @@ const CorteCajaView = {
     });
   },
 
-  imprimirCorte(payload) {
+  async imprimirCorte(payload) {
     if (typeof PrintReport === 'undefined') {
       F.toast('No se pudo abrir el imprimible', 'warning');
       return;
     }
-    const html = this.buildCortePrintHtml(payload);
-    PrintReport.openAndPrint(html, 'width=800,height=700');
+    await PrintReport.openAndPrint(() => this.buildCortePrintHtml(payload), 'width=800,height=700');
   },
 
   async fetchMuestraDatosConfig() {

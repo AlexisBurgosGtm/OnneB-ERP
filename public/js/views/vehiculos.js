@@ -43,6 +43,7 @@ function vehiculosMapFormToApi(data) {
     KILOMETRAJE_ACTUAL: toNum(data.KILOMETRAJE_ACTUAL),
     F_ACEITE: data.F_ACEITE || null,
     F_SERVICIO: data.F_SERVICIO || null,
+    FOTO: data.FOTO === undefined ? null : data.FOTO,
   };
 }
 
@@ -93,6 +94,7 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
     'F_SERVICIO',
+    'FOTO',
   ],
   updateKeys: [
     'PLACA',
@@ -107,6 +109,7 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
     'F_SERVICIO',
+    'FOTO',
   ],
   allowEmpty: [
     'DESCRIPCION',
@@ -119,6 +122,7 @@ const VehiculosViewBase = createCatalogoEmpresaView({
     'KILOMETRAJE_ACTUAL',
     'F_ACEITE',
     'F_SERVICIO',
+    'FOTO',
   ],
   mapFormToApi: vehiculosMapFormToApi,
   validateForm: vehiculosValidateForm,
@@ -233,7 +237,7 @@ const VehiculosView = {
     );
   },
 
-  imprimirHistorial(data) {
+  async imprimirHistorial(data) {
     if (typeof PrintReport === 'undefined') {
       F.toast('Impresión no disponible', 'warning');
       return;
@@ -308,17 +312,20 @@ const VehiculosView = {
         </table>
       </section>`;
 
-    const html = PrintReport.wrapDocument({
-      title: `Historial — ${vehLabel}`,
-      bodyHtml,
-      extraStyles: `
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: `Historial — ${vehLabel}`,
+          bodyHtml,
+          extraStyles: `
         .vh-report-section{margin-bottom:1.25rem;page-break-inside:avoid}
         .vh-report-title{font-size:13px;margin:0 0 .35rem;padding:.35rem .5rem;background:#f0f0f0;border:1px solid #ccc}
         .vh-report-table{width:100%;border-collapse:collapse;font-size:11px}
         .vh-report-table th,.vh-report-table td{padding:4px 6px;border:1px solid #ddd}
       `,
-    });
-    PrintReport.openAndPrint(html, 'width=900,height=700');
+        }),
+      'width=900,height=700'
+    );
   },
 
   async onHistorial(id) {
@@ -328,7 +335,7 @@ const VehiculosView = {
         F.toast('Sin registros de historial para este vehículo', 'warning');
         return;
       }
-      this.imprimirHistorial(data);
+      await this.imprimirHistorial(data);
     } catch (err) {
       F.alert('Error', err.message || 'No se pudo cargar el historial', 'error');
     }
@@ -341,6 +348,92 @@ const VehiculosView = {
 
   fieldDef(key) {
     return VEHICULOS_FORM_FIELDS.find((f) => f.key === key);
+  },
+
+  fotoFieldHtml(isEdit = false) {
+    const quitarBtn = isEdit
+      ? `<button type="button" class="btn btn-sm btn-outline-danger d-none mt-2" id="vehiculo-foto-quitar">
+          <i class="fa-solid fa-trash-can me-1"></i>Quitar foto
+        </button>`
+      : '';
+    return `
+      <div class="mb-2 vehiculo-foto-field">
+        <label class="form-label small mb-0" for="vehiculo-foto-file">Foto del vehículo</label>
+        <input type="file" class="form-control form-control-sm" id="vehiculo-foto-file"
+          accept="image/png,image/jpeg,image/gif,image/webp">
+        <input type="hidden" name="FOTO" id="vehiculo-foto-hex" value="">
+        <div class="vehiculo-foto-preview mt-2" id="vehiculo-foto-preview" aria-live="polite"></div>
+        ${quitarBtn}
+      </div>`;
+  },
+
+  renderFotoPreview(hex) {
+    const preview = document.getElementById('vehiculo-foto-preview');
+    const hexInput = document.getElementById('vehiculo-foto-hex');
+    const quitarBtn = document.getElementById('vehiculo-foto-quitar');
+    if (!preview) return;
+    if (!hex) {
+      preview.innerHTML = '<span class="small text-muted">Sin foto</span>';
+      if (hexInput) hexInput.value = '';
+      if (quitarBtn) quitarBtn.classList.add('d-none');
+      return;
+    }
+    const mime = typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.detectMime(hex) : 'image/png';
+    const dataUrl = typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.hexToDataUrl(hex, mime) : null;
+    if (!dataUrl) {
+      preview.innerHTML = '<span class="small text-muted">Foto no válida</span>';
+      if (hexInput) hexInput.value = '';
+      if (quitarBtn) quitarBtn.classList.add('d-none');
+      return;
+    }
+    preview.innerHTML = `<img src="${dataUrl}" alt="Vista previa vehículo" class="vehiculo-foto-preview-img">`;
+    if (hexInput) hexInput.value = hex;
+    if (quitarBtn) quitarBtn.classList.remove('d-none');
+  },
+
+  async fileToHex(file) {
+    const maxBytes = 512 * 1024;
+    if (file.size > maxBytes) {
+      throw new Error('La imagen no debe superar 512 KB');
+    }
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let hex = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      hex += bytes[i].toString(16).padStart(2, '0');
+    }
+    return hex.toUpperCase();
+  },
+
+  bindFotoField(existingHex = '', isEdit = false) {
+    const fileInput = document.getElementById('vehiculo-foto-file');
+    const quitarBtn = document.getElementById('vehiculo-foto-quitar');
+    if (existingHex) this.renderFotoPreview(String(existingHex));
+    else this.renderFotoPreview('');
+
+    fileInput?.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const hex = await this.fileToHex(file);
+        this.renderFotoPreview(hex);
+      } catch (err) {
+        fileInput.value = '';
+        Swal.showValidationMessage(err.message || 'No se pudo leer la imagen');
+      }
+    });
+
+    quitarBtn?.addEventListener('click', () => {
+      if (fileInput) fileInput.value = '';
+      this.renderFotoPreview('');
+    });
+  },
+
+  readFotoFromForm(data) {
+    const hexInput = document.getElementById('vehiculo-foto-hex');
+    const hex = hexInput?.value?.trim();
+    data.FOTO = hex || null;
+    return data;
   },
 
   buildFormHtml(row = {}, isEdit = false) {
@@ -365,6 +458,7 @@ const VehiculosView = {
     };
 
     return `
+      ${this.fotoFieldHtml(isEdit)}
       ${pair('PLACA', 'TIPO')}
       ${pair('DESCRIPCION', 'MARCA')}
       ${pair('LINEA', 'MODELO')}
@@ -402,12 +496,15 @@ const VehiculosView = {
 
   async showForm(title, row = {}, isEdit = false, id = null) {
     const view = this;
+    const existingHex = row.FOTO || '';
     return CatalogosUI.fireForm({
       title,
       html: view.buildFormHtml(row, isEdit),
       width: 680,
+      didOpen: () => view.bindFotoField(existingHex, isEdit),
       preConfirm: async () => {
         const data = view.readFormData();
+        view.readFotoFromForm(data);
         const err = vehiculosValidateForm(data);
         if (err) {
           Swal.showValidationMessage(err);
@@ -437,8 +534,15 @@ const VehiculosView = {
   },
 
   async onEditar(id) {
-    const row = this.findRow(id);
-    if (!row) return;
+    let row = this.findRow(id);
+    try {
+      row = await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`) + `&_=${Date.now()}`, {
+        cache: 'no-store',
+      });
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+      return;
+    }
     const data = await this.showForm('Editar vehículo', row, true, id);
     if (!data) return;
     F.toast('Vehículo actualizado', 'success');

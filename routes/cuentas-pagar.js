@@ -13,6 +13,7 @@ const {
   crearPagoRcp,
   listTiposDocRcp,
   previewSiguienteRcp,
+  corregirSaldosCxp,
 } = require('../lib/cuentas-pago');
 const { fetchEstadoCuentaProveedor } = require('../lib/cuentas-estado-proveedor');
 
@@ -286,6 +287,20 @@ router.get('/compras/:coddoc/:correlativo/pagos', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /cuentas-pagar/compras/pagos]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/corregir-saldos', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await corregirSaldosCxp(pool, sql, empnit);
+    res.json({ ...result, empnit });
+  } catch (err) {
+    console.warn('[API POST /cuentas-pagar/corregir-saldos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
