@@ -77,15 +77,56 @@ const PosDocSearchUI = {
       </button>`;
   },
 
+  barcodeFabHtml(prefix) {
+    return `
+      <button type="button" class="pos-fab-barcode" id="${prefix}-fab-barcode"
+        aria-label="Escanear código de barras" title="Escanear código de barras">
+        <i class="fa-solid fa-barcode" aria-hidden="true"></i>
+      </button>`;
+  },
+
   fabBarHtml(prefix, finalizarId) {
     const fid = finalizarId || `btn-${prefix}-finalizar`;
     return `
+      ${this.barcodeFabHtml(prefix)}
       <div class="pos-fab-bar" id="${prefix}-fab-bar">
         ${this.mobileFabHtml(prefix)}
         <button type="button" class="pos-fab-finalizar" id="${fid}">
           <i class="fa-solid fa-check me-2"></i>Finalizar
         </button>
       </div>`;
+  },
+
+  applyBarcodeToSearch(view, prefix, code, buscarProductos) {
+    const term = String(code ?? '').trim();
+    if (!term || !view) return;
+    const container = view._container;
+    this.searchInputs(container, prefix).forEach((inp) => {
+      inp.value = term;
+    });
+    if (this.isMobileView()) {
+      const sheetEl = view._posProductSheetEl || this.ensureSheet(container, prefix);
+      this.showSheet(sheetEl);
+      const modalSearch = document.getElementById(`${prefix}-product-search-modal`);
+      if (modalSearch) modalSearch.value = term;
+    }
+    buscarProductos.call(view, term);
+  },
+
+  openBarcodeScanner(view, prefix, opts = {}) {
+    const getEditable = opts.getEditable || (() => true);
+    const buscarProductos = opts.buscarProductos || (() => {});
+    if (!getEditable()) return;
+    if (typeof BarcodeScannerUI === 'undefined') {
+      F.toast('Lector de códigos no disponible', 'warning');
+      return;
+    }
+    BarcodeScannerUI.open({
+      onScan: (code) => {
+        this.applyBarcodeToSearch(view, prefix, code, buscarProductos);
+        F.toast(`Buscando producto: ${code}`, 'info');
+      },
+    }).catch((err) => F.toast(err.message || 'Error al abrir cámara', 'error'));
   },
 
   setListsHtml(container, prefix, html) {
@@ -215,6 +256,10 @@ const PosDocSearchUI = {
 
     container.querySelector(`#${prefix}-fab-add-product`)?.addEventListener('click', openSheet);
 
+    container.querySelector(`#${prefix}-fab-barcode`)?.addEventListener('click', () => {
+      this.openBarcodeScanner(view, prefix, { getEditable, buscarProductos });
+    });
+
     sheetEl.querySelector(`#${prefix}-product-sheet-close`)?.addEventListener('click', () => {
       this.hideSheet(sheetEl);
     });
@@ -232,6 +277,11 @@ const PosDocSearchUI = {
     if (fab) {
       fab.disabled = !editable;
       fab.classList.toggle('pos-mobile-add-hidden', !editable);
+    }
+    const barcodeFab = container?.querySelector(`#${prefix}-fab-barcode`);
+    if (barcodeFab) {
+      barcodeFab.disabled = !editable;
+      barcodeFab.style.display = editable ? '' : 'none';
     }
   },
 };

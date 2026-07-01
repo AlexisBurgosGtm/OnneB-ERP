@@ -10,6 +10,7 @@ const {
   getSettingConcre,
   setSettingValue,
   verifySettingPass,
+  ensureSettingDefault,
 } = require('../lib/settings');
 
 const router = express.Router();
@@ -51,6 +52,7 @@ router.get('/pass', async (req, res) => {
   if (!opcion) return;
   try {
     const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
     const pass = (await getSettingValue(pool, opcion)) ?? '';
     res.json({ opcion, pass });
   } catch (err) {

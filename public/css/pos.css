@@ -191,6 +191,53 @@
   cursor: not-allowed;
 }
 
+.pos-fab-barcode {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1051;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.35rem;
+  height: 3.35rem;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  color: var(--fab-action-fg, #fff);
+  background: rgba(15, 23, 42, 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.32);
+  transition: background 0.2s, transform 0.15s, opacity 0.2s;
+}
+
+.pos-fab-barcode:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.96);
+  transform: translateX(-50%) translateY(-2px);
+  color: var(--fab-action-fg, #fff);
+}
+
+.pos-fab-barcode:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.barcode-scanner-region {
+  width: 100%;
+  min-height: 220px;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.barcode-scanner-region video {
+  border-radius: 0.5rem;
+}
+
 .pos-fab-agregar {
   display: inline-flex;
   align-items: center;
@@ -369,7 +416,22 @@
   .pos-fab-bar {
 
     display: inline-flex !important;
+    left: 0;
+    right: 0;
+    width: auto;
+    transform: none;
+    justify-content: space-between;
+    padding: 0 1rem;
+    pointer-events: none;
+  }
 
+  .pos-fab-bar .pos-fab-agregar,
+  .pos-fab-bar .pos-fab-finalizar {
+    pointer-events: auto;
+  }
+
+  .pos-fab-barcode {
+    pointer-events: auto;
   }
 
   .pos-main {

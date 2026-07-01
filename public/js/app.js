@@ -431,6 +431,16 @@
     tareas: 'Tareas',
     'cuentas-cobrar': 'Cuentas por Cobrar',
     'cuentas-pagar': 'Cuentas por Pagar',
+    'retenciones-isr': 'Retenciones ISR',
+    'retenciones-iva': 'Retenciones IVA',
+    'libro-compras': 'Libro Compras',
+    'libro-ventas': 'Libro Ventas',
+    'libro-diario': 'Libro Diario',
+    'libro-mayor': 'Libro Mayor',
+    'libro-balance': 'Libro Balance',
+    'nomenclatura-contable': 'Nomenclatura Contable',
+    'formatos-contables': 'Formatos Contables',
+    'configuraciones-contabilidad': 'Configuraciones Contabilidad',
     developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
@@ -638,7 +648,7 @@
       console.warn('[DB] init:', err);
     }
 
-    initSocket();
+    //initSocket();
   }
 
   ensureLoginView();

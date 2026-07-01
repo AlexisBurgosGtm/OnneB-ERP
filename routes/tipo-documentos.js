@@ -6,6 +6,53 @@ function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
 }
 
+async function tipoDocCoddocExists(pool, empnit, coddoc) {
+  const cod = String(coddoc ?? '').trim();
+  if (!cod) return false;
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, cod)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM dbo.TIPODOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND UPPER(LTRIM(RTRIM(CODDOC))) = UPPER(LTRIM(RTRIM(@CODDOC)))
+    `);
+  return Number(result.recordset[0]?.cnt) > 0;
+}
+
+async function tipoDocTieneMovimientos(pool, empnit, coddoc) {
+  const cod = String(coddoc ?? '').trim();
+  if (!cod) return 0;
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, cod)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND UPPER(LTRIM(RTRIM(CODDOC))) = UPPER(LTRIM(RTRIM(@CODDOC)))
+    `);
+  return Number(result.recordset[0]?.cnt) || 0;
+}
+
+async function validateInsertTipoDocumento(pool, empnit, data) {
+  const coddoc = String(data.CODDOC ?? '').trim();
+  if (!coddoc) return 'CODDOC es obligatorio';
+  if (await tipoDocCoddocExists(pool, empnit, coddoc)) {
+    return `Ya existe un tipo de documento con el código "${coddoc}"`;
+  }
+  return null;
+}
+
+async function validateDeleteTipoDocumento(pool, empnit, coddoc) {
+  const movCount = await tipoDocTieneMovimientos(pool, empnit, coddoc);
+  if (movCount > 0) {
+    return `No se puede eliminar: existen ${movCount} movimiento(s) en documentos con este tipo`;
+  }
+  return null;
+}
+
 const DOC_FORM_FIELDS = [
   'DESDOC',
   'TIPODOC',
@@ -57,6 +104,9 @@ const router = createCatalogoRouter({
   ],
   insertFields: ['CODDOC', ...DOC_FORM_FIELDS, 'ACTIVO'],
   updateFields: DOC_FORM_FIELDS,
+  validateInsert: validateInsertTipoDocumento,
+  validateDelete: validateDeleteTipoDocumento,
+  requireAdminPassOnDelete: true,
 });
 
 router.get('/config-tipos', async (req, res) => {

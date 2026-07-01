@@ -4,5 +4,6 @@
   { "value": 3, "code": "VENDEDOR", "label": "VENDEDOR" },
   { "value": 4, "code": "VISITADOR", "label": "VISITADOR" },
   { "value": 5, "code": "BODEGA", "label": "BODEGA" },
-  { "value": 6, "code": "TRANSPORTE", "label": "TRANSPORTE" }
+  { "value": 6, "code": "TRANSPORTE", "label": "TRANSPORTE" },
+  { "value": 7, "code": "CONTABILIDAD", "label": "CONTABILIDAD" }
 ]

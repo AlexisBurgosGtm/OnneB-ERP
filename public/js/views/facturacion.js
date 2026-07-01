@@ -732,6 +732,8 @@ const FacturacionView = {
     tbody?.classList.toggle('pos-cart-busy', busy);
     const fab = this._container?.querySelector('#btn-fac-finalizar');
     if (fab) fab.disabled = busy;
+    const barcodeFab = this._container?.querySelector('#fac-fab-barcode');
+    if (barcodeFab) barcodeFab.disabled = busy;
   },
 
   async actualizarCantidad(lineId, cantidad) {

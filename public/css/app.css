@@ -151,6 +151,7 @@ body.onneb-mutation-busy #btn-menu-fab,
 body.onneb-mutation-busy .btn-catalogo-nuevo,
 body.onneb-mutation-busy .btn-onneb-nuevo-fab,
 body.onneb-mutation-busy .pos-fab-finalizar,
+body.onneb-mutation-busy .pos-fab-barcode,
 body.onneb-mutation-busy .pos-list-fab-nuevo {
   pointer-events: none !important;
   opacity: 0.55 !important;

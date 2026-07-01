@@ -17,9 +17,16 @@ function tipoDocLabel(value, lookups) {
   return found ? found.label : code;
 }
 
-function validateTipoDocumentoForm(data, isEdit) {
+function validateTipoDocumentoForm(data, isEdit, existingRows) {
   if (!isEdit && !data.CODDOC) return 'El código de documento es obligatorio';
   if (!data.DESDOC) return 'La descripción es obligatoria';
+  if (!isEdit && data.CODDOC) {
+    const cod = String(data.CODDOC).trim().toUpperCase();
+    const dup = (existingRows || []).some(
+      (r) => String(r.CODDOC ?? '').trim().toUpperCase() === cod
+    );
+    if (dup) return `Ya existe un tipo de documento con el código "${data.CODDOC.trim()}"`;
+  }
   return null;
 }
 
@@ -39,7 +46,7 @@ function mapFormToApi(data, isEdit) {
     CODFORMATOCRE: data.CODFORMATOCRE || null,
   };
   if (!isEdit) {
-    payload.CODDOC = data.CODDOC;
+    payload.CODDOC = String(data.CODDOC).trim();
     payload.ACTIVO = 'SI';
   }
   return payload;
@@ -334,7 +341,7 @@ const TipoDocumentosView = {
       width: 780,
       preConfirm: () => {
         const data = view.readFormData();
-        const validateErr = validateTipoDocumentoForm(data, isEdit);
+        const validateErr = validateTipoDocumentoForm(data, isEdit, view._rows);
         if (validateErr) {
           Swal.showValidationMessage(validateErr);
           return false;
@@ -352,6 +359,36 @@ const TipoDocumentosView = {
   async onEditar(id) {
     await this.loadLookups();
     return TipoDocumentosViewBase.onEditar.call(this, id);
+  },
+
+  async onEliminar(id) {
+    const row = this.findRow(id);
+    const nombre = this.rowLabel(row, id);
+    const confirm = await CatalogosUI.fireConfirm({
+      title: '¿Eliminar tipo documento?',
+      html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong> (${this.escapeHtml(id)})</p>`,
+      icon: 'warning',
+      confirmText: 'Eliminar',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!confirm) return;
+    const pass = await CatalogosUI.solicitarClaveAdmin({
+      title: 'Autorizar eliminación',
+      text: 'Ingrese la clave de administrador para eliminar el tipo de documento.',
+      confirmText: 'Eliminar',
+    });
+    if (!pass) return;
+    try {
+      await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass: String(pass) }),
+      });
+      F.toast('Tipo documento eliminado', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
   },
 
   async load(container) {

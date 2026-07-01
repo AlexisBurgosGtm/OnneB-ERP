@@ -50,6 +50,8 @@ function parseValue(field, raw) {
  * @param {boolean} [cfg.scopedByEmpresa=true] — filtra por EMPNIT
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request) => Promise<string|null|void>} [cfg.validateInsert]
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request, idValue: string|number) => Promise<string|null|void>} [cfg.validateUpdate]
+ * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, idValue: string|number, req: import('express').Request) => Promise<string|null|void>} [cfg.validateDelete]
+ * @param {boolean} [cfg.requireAdminPassOnDelete] — exige req.body.pass / PASS válida
  */
 function createCatalogoRouter(cfg) {
   const router = express.Router();
@@ -266,6 +268,10 @@ function createCatalogoRouter(cfg) {
         const validationErr = await cfg.validateDelete(pool, empnit, idValue, req);
         if (validationErr) return res.status(400).json({ error: validationErr });
       }
+      if (cfg.requireAdminPassOnDelete) {
+        const { assertAdminPass } = require('../../lib/config-auth');
+        await assertAdminPass(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
+      }
       const request = pool.request().input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue);
       if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
       const where = scoped
@@ -277,6 +283,9 @@ function createCatalogoRouter(cfg) {
       }
       res.json({ ok: true });
     } catch (err) {
+      if (err.statusCode === 401) {
+        return res.status(401).json({ error: err.message });
+      }
       console.warn(`[API DELETE /${cfg.logName}]`, err.message);
       res.status(500).json({ error: err.message });
     }

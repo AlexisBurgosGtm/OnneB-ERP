@@ -335,6 +335,8 @@ const PosView = {
     tbody?.classList.toggle('pos-cart-busy', busy);
     const fab = this._container?.querySelector('#btn-pos-finalizar');
     if (fab) fab.disabled = busy;
+    const barcodeFab = this._container?.querySelector('#pos-fab-barcode');
+    if (barcodeFab) barcodeFab.disabled = busy;
   },
 
   async actualizarCantidad(lineId, cantidad) {

@@ -11,6 +11,7 @@ const ConfigGeneralView = {
     COBRO_PREDETERMINADO: 'COBRO PREDETERMINADO',
     URL_FEL: 'URL FEL',
     MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
+    CONFIGURACION_IVA: 'CONFIGURACION IVA',
   },
 
   TEXT_CARDS: [
@@ -20,6 +21,27 @@ const ConfigGeneralView = {
       title: 'URL FEL',
       fallbackDesc: 'Dirección del servicio web de facturación electrónica (FEL)',
       placeholder: 'https://servicio-fel.ejemplo.com/api',
+      fieldLabel: 'URL del servicio',
+      inputType: 'text',
+      icon: 'fa-link',
+      saveConfirmTitle: '¿Actualizar URL?',
+      saveConfirmText: 'Se guardará la URL del servicio FEL.',
+      saveToast: 'URL FEL actualizada',
+    },
+    {
+      opcion: 'CONFIGURACION IVA',
+      slug: 'config-iva',
+      title: 'Configuración IVA',
+      fallbackDesc: 'Factor multiplicador del IVA (ej. 1.12 para 12%)',
+      placeholder: '1.12',
+      defaultValue: '1.12',
+      fieldLabel: 'Factor IVA',
+      inputType: 'number',
+      inputStep: '0.01',
+      icon: 'fa-percent',
+      saveConfirmTitle: '¿Actualizar configuración IVA?',
+      saveConfirmText: 'Se guardará el factor de IVA.',
+      saveToast: 'Configuración IVA actualizada',
     },
   ],
 
@@ -255,23 +277,29 @@ const ConfigGeneralView = {
 
   renderTextCard(card, meta = {}) {
     const desc = meta.descripcion || card.fallbackDesc;
+    const fieldLabel = card.fieldLabel || 'Valor';
+    const inputType = card.inputType || 'text';
+    const icon = card.icon || 'fa-link';
+    const stepAttr = card.inputStep ? `step="${card.inputStep}"` : '';
+    const inputMode = inputType === 'number' ? 'decimal' : 'url';
     return `
       <div class="card config-card-compact">
         <div class="card-body">
           <h6 class="card-title mb-1">
-            <i class="fa-solid fa-link me-1 text-primary"></i>${this.escapeHtml(card.title)}
+            <i class="fa-solid ${icon} me-1 text-primary"></i>${this.escapeHtml(card.title)}
           </h6>
           <p class="card-text mb-2">${this.escapeHtml(desc)}</p>
-          <label for="input-${card.slug}-text" class="form-label config-field-label">URL del servicio</label>
+          <label for="input-${card.slug}-text" class="form-label config-field-label">${this.escapeHtml(fieldLabel)}</label>
           <div class="input-group input-group-sm">
             <input
-              type="text"
+              type="${inputType}"
               class="form-control font-monospace"
               id="input-${card.slug}-text"
               name="${card.slug}-text"
               autocomplete="off"
               spellcheck="false"
-              inputmode="url"
+              inputmode="${inputMode}"
+              ${stepAttr}
               placeholder="${this.escapeHtml(card.placeholder)}"
             >
             <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-actualizar-${card.slug}-text">
@@ -456,10 +484,14 @@ const ConfigGeneralView = {
   async onActualizarText(card) {
     const input = document.getElementById(`input-${card.slug}-text`);
     const value = (input?.value ?? '').trim();
+    if (!value) {
+      F.toast('Ingrese un valor', 'warning');
+      return;
+    }
 
     const ok = await CatalogosUI.fireConfirm({
-      title: '¿Actualizar URL?',
-      text: `Se guardará la URL del servicio FEL.`,
+      title: card.saveConfirmTitle || '¿Actualizar valor?',
+      text: card.saveConfirmText || 'Se guardará el nuevo valor.',
       icon: 'question',
       confirmText: 'Guardar',
     });
@@ -471,7 +503,7 @@ const ConfigGeneralView = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ opcion: card.opcion, pass: value }),
       });
-      F.toast('URL FEL actualizada', 'success');
+      F.toast(card.saveToast || 'Configuración actualizada', 'success');
     } catch (err) {
       F.alert('Error', err.message, 'error');
     }
@@ -624,7 +656,9 @@ const ConfigGeneralView = {
       });
       this.TEXT_CARDS.forEach((card) => {
         const input = document.getElementById(`input-${card.slug}-text`);
-        if (input) input.value = this._textMeta[card.opcion]?.pass ?? '';
+        if (!input) return;
+        const stored = this._textMeta[card.opcion]?.pass ?? '';
+        input.value = stored || card.defaultValue || '';
       });
       this.bindEvents();
     } catch (err) {

@@ -1,7 +1,7 @@
 {
-  "name": "OnneB POS",
-  "short_name": "OnneB",
-  "description": "Punto de venta OnneB",
+  "name": "OnneB PLUS",
+  "short_name": "OnneB PLUS",
+  "description": "Sistema ERP OnneB",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
