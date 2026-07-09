@@ -7,7 +7,8 @@ const { previewRecalcInventario, ejecutarRecalcInventario } = require('../lib/in
 
 const router = express.Router();
 
-const DEFAULT_LIMIT = 500;
+const INITIAL_LIMIT = 100;
+const SEARCH_LIMIT = 500;
 const MAX_LIMIT = 2000;
 
 function getEmpNitFromReq(req) {
@@ -29,12 +30,41 @@ function parseListQuery(req) {
   const codmarca = Number.isNaN(codmarcaRaw) ? null : codmarcaRaw;
   const habilitadoRaw = String(req.query.habilitado || '').trim().toUpperCase();
   const habilitado = habilitadoRaw === 'SI' || habilitadoRaw === 'NO' ? habilitadoRaw : null;
-  let limit = DEFAULT_LIMIT;
+  let limit = INITIAL_LIMIT;
   const requested = parseInt(req.query.limit, 10);
   if (!Number.isNaN(requested)) {
-    limit = Math.min(Math.max(requested, 1), MAX_LIMIT);
+    if (requested === 0) limit = 0;
+    else limit = Math.min(Math.max(requested, 1), MAX_LIMIT);
+  }
+  if (q) {
+    limit = limit === 0 ? SEARCH_LIMIT : Math.min(Math.max(limit, SEARCH_LIMIT), MAX_LIMIT);
   }
   return { q, codmarca, habilitado, limit };
+}
+
+function hasListFilters(q, codmarca, habilitado) {
+  return Boolean(q) || codmarca != null || habilitado != null;
+}
+
+function isPreviewLoad(q, codmarca, habilitado, limit) {
+  return !hasListFilters(q, codmarca, habilitado) && limit === INITIAL_LIMIT;
+}
+
+function createSaldoRequest(pool) {
+  const request = pool.request();
+  request.timeout = 120000;
+  return request;
+}
+
+function totalsFromRows(rows) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.SALDO += Number(row.SALDO) || 0;
+      acc.TOTALCOSTO += Number(row.TOTALCOSTO) || 0;
+      return acc;
+    },
+    { SALDO: 0, TOTALCOSTO: 0 },
+  );
 }
 
 function todayDateOnly() {
@@ -49,7 +79,7 @@ function bindSaldoFilters(request, empnit, q, qLike, codmarca, habilitado) {
   request.input('habilitado', sql.VarChar, habilitado);
 }
 
-const LIST_SELECT = `
+const LIST_SELECT_INVSALDO = `
   i.CODPROD,
   p.DESPROD,
   i.SALDO,
@@ -61,37 +91,81 @@ const LIST_SELECT = `
   CAST(ISNULL(p.COSTO, 0) * ISNULL(i.SALDO, 0) AS DECIMAL(18, 4)) AS TOTALCOSTO
 `;
 
-const LIST_FROM = `
+const LIST_FROM_PREVIEW = `
   FROM (
-    SELECT i.*
-    FROM (
-      SELECT
-        i2.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY i2.EMPNIT, LTRIM(RTRIM(i2.CODPROD))
-          ORDER BY i2.ID
-        ) AS _rn
-      FROM dbo.INVSALDO i2
-      WHERE i2.EMPNIT = @EMPNIT
-    ) i
-    WHERE i._rn = 1
-  ) i
+    SELECT MIN(i2.ID) AS ID
+    FROM dbo.INVSALDO i2
+    WHERE i2.EMPNIT = @EMPNIT
+    GROUP BY LTRIM(RTRIM(i2.CODPROD))
+  ) pick
+  INNER JOIN dbo.INVSALDO i ON i.ID = pick.ID
   LEFT JOIN dbo.PRODUCTOS p ON i.EMPNIT = p.EMPNIT AND LTRIM(RTRIM(i.CODPROD)) = LTRIM(RTRIM(p.CODPROD))
   LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
 `;
 
-const LIST_WHERE = `
+const LIST_WHERE_PREVIEW = `
   WHERE i.EMPNIT = @EMPNIT
+`;
+
+const LIST_SELECT_PRODUCT = `
+  p.CODPROD,
+  p.DESPROD,
+  ISNULL(inv.SALDO, 0) AS SALDO,
+  p.EXISTENCIA,
+  m.DESMARCA,
+  p.TIPOPROD,
+  p.COSTO,
+  p.HABILITADO,
+  CAST(ISNULL(p.COSTO, 0) * ISNULL(inv.SALDO, 0) AS DECIMAL(18, 4)) AS TOTALCOSTO
+`;
+
+const LIST_FROM_PRODUCT = `
+  FROM dbo.PRODUCTOS p
+  LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
+  OUTER APPLY (
+    SELECT TOP 1 i.SALDO
+    FROM dbo.INVSALDO i
+    WHERE i.EMPNIT = p.EMPNIT
+      AND LTRIM(RTRIM(i.CODPROD)) = LTRIM(RTRIM(p.CODPROD))
+    ORDER BY CASE WHEN ISNULL(i.CODBODEGA, 0) = 0 THEN 0 ELSE 1 END, i.ID
+  ) inv
+`;
+
+const LIST_WHERE_PRODUCT = `
+  WHERE p.EMPNIT = @EMPNIT
     AND (@codmarca IS NULL OR p.CODMARCA = @codmarca)
     AND (@habilitado IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.HABILITADO, '')))) = @habilitado)
     AND (
       @q IS NULL OR @q = ''
-      OR i.CODPROD LIKE @qLike
+      OR p.CODPROD LIKE @qLike
       OR p.DESPROD LIKE @qLike
-      OR m.DESMARCA LIKE @qLike
-      OR CAST(p.TIPOPROD AS VARCHAR(50)) LIKE @qLike
     )
 `;
+
+function getListSqlParts(q, codmarca, habilitado) {
+  if (hasListFilters(q, codmarca, habilitado)) {
+    return {
+      select: LIST_SELECT_PRODUCT,
+      from: LIST_FROM_PRODUCT,
+      where: LIST_WHERE_PRODUCT,
+      orderBy: 'p.CODPROD',
+      totalsSelect: `
+        SUM(ISNULL(inv.SALDO, 0)) AS SUM_SALDO,
+        SUM(CAST(ISNULL(p.COSTO, 0) * ISNULL(inv.SALDO, 0) AS DECIMAL(18, 4))) AS SUM_TOTALCOSTO
+      `,
+    };
+  }
+  return {
+    select: LIST_SELECT_INVSALDO,
+    from: LIST_FROM_PREVIEW,
+    where: LIST_WHERE_PREVIEW,
+    orderBy: 'i.CODPROD',
+    totalsSelect: `
+      SUM(ISNULL(i.SALDO, 0)) AS SUM_SALDO,
+      SUM(CAST(ISNULL(p.COSTO, 0) * ISNULL(i.SALDO, 0) AS DECIMAL(18, 4))) AS SUM_TOTALCOSTO
+    `,
+  };
+}
 
 router.get('/saldo', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -103,53 +177,73 @@ router.get('/saldo', async (req, res) => {
 
   const { q, codmarca, habilitado, limit } = parseListQuery(req);
   const qLike = q ? `%${q}%` : null;
+  const preview = isPreviewLoad(q, codmarca, habilitado, limit);
+  const skipExactMeta = preview || Boolean(q);
+  const sqlParts = getListSqlParts(q, codmarca, habilitado);
 
   try {
     const pool = await req.app.locals.getDbPool();
 
-    const countReq = pool.request();
-    bindSaldoFilters(countReq, empnit, q, qLike, codmarca, habilitado);
-    const countResult = await countReq.query(`
-      SELECT COUNT(*) AS total
-      ${LIST_FROM}
-      ${LIST_WHERE}
-    `);
-    const total = countResult.recordset[0]?.total ?? 0;
+    let total = 0;
+    if (!skipExactMeta) {
+      const countReq = createSaldoRequest(pool);
+      bindSaldoFilters(countReq, empnit, q, qLike, codmarca, habilitado);
+      const countResult = await countReq.query(`
+        SELECT COUNT(*) AS total
+        ${sqlParts.from}
+        ${sqlParts.where}
+      `);
+      total = countResult.recordset[0]?.total ?? 0;
+    }
 
-    const listReq = pool.request();
+    const listReq = createSaldoRequest(pool);
     bindSaldoFilters(listReq, empnit, q, qLike, codmarca, habilitado);
-    listReq.input('limit', sql.Int, limit);
+    if (limit > 0) listReq.input('limit', sql.Int, limit);
+    const topClause = limit > 0 ? 'TOP (@limit)' : '';
     const listResult = await listReq.query(`
-      SELECT TOP (@limit) ${LIST_SELECT}
-      ${LIST_FROM}
-      ${LIST_WHERE}
-      ORDER BY i.CODPROD
+      SELECT ${topClause} ${sqlParts.select}
+      ${sqlParts.from}
+      ${sqlParts.where}
+      ORDER BY ${sqlParts.orderBy}
     `);
-
-    const totalsReq = pool.request();
-    bindSaldoFilters(totalsReq, empnit, q, qLike, codmarca, habilitado);
-    const totalsResult = await totalsReq.query(`
-      SELECT
-        SUM(ISNULL(i.SALDO, 0)) AS SUM_SALDO,
-        SUM(CAST(ISNULL(p.COSTO, 0) * ISNULL(i.SALDO, 0) AS DECIMAL(18, 4))) AS SUM_TOTALCOSTO
-      ${LIST_FROM}
-      ${LIST_WHERE}
-    `);
-    const totalsRow = totalsResult.recordset[0] || {};
 
     const rows = listResult.recordset;
+    if (skipExactMeta) {
+      total = rows.length;
+    }
+
+    let totals = { SALDO: 0, TOTALCOSTO: 0 };
+    if (skipExactMeta) {
+      totals = totalsFromRows(rows);
+    } else {
+      const totalsReq = createSaldoRequest(pool);
+      bindSaldoFilters(totalsReq, empnit, q, qLike, codmarca, habilitado);
+      const totalsResult = await totalsReq.query(`
+        SELECT
+          ${sqlParts.totalsSelect}
+        ${sqlParts.from}
+        ${sqlParts.where}
+      `);
+      const totalsRow = totalsResult.recordset[0] || {};
+      totals = {
+        SALDO: totalsRow.SUM_SALDO ?? 0,
+        TOTALCOSTO: totalsRow.SUM_TOTALCOSTO ?? 0,
+      };
+    }
+
+    const truncated = skipExactMeta
+      ? limit > 0 && rows.length >= limit
+      : total > rows.length;
+
     res.json({
       rows,
       total,
       limit,
-      truncated: total > rows.length,
+      truncated,
       empnit,
       codmarca,
       habilitado,
-      totals: {
-        SALDO: totalsRow.SUM_SALDO ?? 0,
-        TOTALCOSTO: totalsRow.SUM_TOTALCOSTO ?? 0,
-      },
+      totals,
     });
   } catch (err) {
     console.error('[API GET /inventario/saldo]', err.message);
@@ -168,26 +262,26 @@ router.get('/saldo/export', async (req, res) => {
 
   const { q, codmarca, habilitado } = parseListQuery(req);
   const qLike = q ? `%${q}%` : null;
+  const sqlParts = getListSqlParts(q, codmarca, habilitado);
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const listReq = pool.request();
+    const listReq = createSaldoRequest(pool);
     bindSaldoFilters(listReq, empnit, q, qLike, codmarca, habilitado);
     const listResult = await listReq.query(`
-      SELECT ${LIST_SELECT}
-      ${LIST_FROM}
-      ${LIST_WHERE}
-      ORDER BY i.CODPROD
+      SELECT ${sqlParts.select}
+      ${sqlParts.from}
+      ${sqlParts.where}
+      ORDER BY ${sqlParts.orderBy}
     `);
 
-    const totalsReq = pool.request();
+    const totalsReq = createSaldoRequest(pool);
     bindSaldoFilters(totalsReq, empnit, q, qLike, codmarca, habilitado);
     const totalsResult = await totalsReq.query(`
       SELECT
-        SUM(ISNULL(i.SALDO, 0)) AS SUM_SALDO,
-        SUM(CAST(ISNULL(p.COSTO, 0) * ISNULL(i.SALDO, 0) AS DECIMAL(18, 4))) AS SUM_TOTALCOSTO
-      ${LIST_FROM}
-      ${LIST_WHERE}
+        ${sqlParts.totalsSelect}
+      ${sqlParts.from}
+      ${sqlParts.where}
     `);
     const totalsRow = totalsResult.recordset[0] || {};
 

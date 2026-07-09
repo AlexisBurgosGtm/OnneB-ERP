@@ -8,7 +8,7 @@ const {
   aplicarMovimientoInventarioLineaPatch,
   revertirMovimientoInventarioLinea,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
@@ -211,7 +211,7 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       ORDER BY l.Id
     `);
-  return { header: headerRes.recordset[0], lines: linesRes.recordset };
+  return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
 }
 
 async function getVendedorActivo(pool, empnit, codempleado) {
@@ -248,7 +248,7 @@ router.get('/vendedores', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
         ORDER BY NOMEMPLEADO ASC
       `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /cotizaciones/vendedores]', err.message);
     res.status(500).json({ error: err.message });
@@ -355,7 +355,7 @@ router.get('/pedidos', async (req, res) => {
         ${coddocFilter}
       ORDER BY d.ID DESC
     `);
-    res.json({ rows: result.recordset, status });
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status });
   } catch (err) {
     console.warn('[API GET /cotizaciones/pedidos]', err.message);
     res.status(500).json({ error: err.message });

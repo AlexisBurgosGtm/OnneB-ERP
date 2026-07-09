@@ -1,28 +1,51 @@
 /**
- * Utilidades de fecha de documento (POS / inventario).
+ * Utilidades de fecha de documento (POS / inventario / facturación).
+ * Siempre prioriza ANIO/MES/DIA; evita desfases por zona horaria en ISO UTC.
  */
 const DocFecha = {
   editableStatus(status) {
     return String(status || '').trim().toUpperCase() === 'O';
   },
 
-  inputValueFromHeader(header) {
+  dateOnlyString(anio, mes, dia) {
+    return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  },
+
+  fechaIsoFromHeader(header) {
     if (!header) return '';
     const anio = Number(header.ANIO);
     const mes = Number(header.MES);
     const dia = Number(header.DIA);
     if (Number.isFinite(anio) && Number.isFinite(mes) && Number.isFinite(dia) && mes >= 1 && mes <= 12 && dia >= 1) {
-      return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+      return this.dateOnlyString(anio, mes, dia);
     }
-    if (!header.FECHA) return '';
-    const s = String(header.FECHA);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const s = String(header.FECHA ?? '').trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    if (!s) return '';
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    if (/T00:00:00(\.000)?Z$/i.test(s)) {
+      return this.dateOnlyString(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    }
+    return this.dateOnlyString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  },
+
+  inputValueFromHeader(header) {
+    return this.fechaIsoFromHeader(header);
+  },
+
+  formatDisplay(headerOrIso, empty = '—') {
+    const iso = typeof headerOrIso === 'string' ? headerOrIso : this.fechaIsoFromHeader(headerOrIso);
+    if (!iso) return empty;
+    const [y, m, d] = iso.split('-');
+    if (d && m && y) return `${d}/${m}/${y}`;
+    return iso;
+  },
+
+  todayIsoDate() {
+    const d = new Date();
+    return this.dateOnlyString(d.getFullYear(), d.getMonth() + 1, d.getDate());
   },
 
   renderField(id, header) {

@@ -8,10 +8,15 @@ const {
   revertirMovimientoInventarioLinea,
   revertirMovimientoInventarioDocumento,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError } = require('../lib/documento-delete');
 const { calcLinePeso } = require('../lib/producto-precio-linea');
+const {
+  isLineaDescuentoCodprod,
+  parseDescuentoLineaBody,
+  insertDescuentoLinea,
+} = require('../lib/doc-linea-descuento');
 const {
   TIPODOC_NOTAS_CREDITO,
   fetchFacturasReferencia,
@@ -32,6 +37,8 @@ const {
   isCorteCajaCerrado,
   isDocumentoEditable,
   SQL_DOCUMENTO_EDITABLE,
+  sqlPedidosListStatusFilter,
+  resolvePedidosListStatusLabel,
 } = require('../lib/documento-status');
 
 const router = express.Router();
@@ -425,7 +432,7 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
       WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
       ORDER BY Id
     `);
-  return { header: headerRes.recordset[0], lines: linesRes.recordset };
+  return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
 }
 
 async function getVendedorActivo(pool, empnit, codempleado) {
@@ -515,7 +522,7 @@ router.get('/vendedores', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
         ORDER BY NOMEMPLEADO ASC
       `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /notas-credito/vendedores]', err.message);
     res.status(500).json({ error: err.message });
@@ -538,7 +545,7 @@ router.get('/cajas-abiertas', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND STATUS = 1
         ORDER BY DESCAJA ASC
       `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /notas-credito/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });
@@ -551,9 +558,8 @@ router.get('/pedidos', async (req, res) => {
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
   const coddoc = String(req.query.coddoc || '').trim();
-  const statusRaw = String(req.query.status || STATUS_OPERADO).trim().toUpperCase();
-  const allowed = [STATUS_OPERADO, STATUS_BLOQUEADO, STATUS_ANULADO];
-  const status = allowed.includes(statusRaw) ? statusRaw : STATUS_OPERADO;
+  const statusFilter = sqlPedidosListStatusFilter(req.query.status, { defaultAll: true });
+  const statusLabel = resolvePedidosListStatusLabel(req.query.status, { defaultAll: true });
   let fechaParts = parseFechaInput(req.query.fecha);
   if (!fechaParts) {
     const now = nowParts();
@@ -572,8 +578,8 @@ router.get('/pedidos', async (req, res) => {
     }
     const result = await request.query(`
       SELECT
-        d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
-        d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
+        d.CODDOC, d.CORRELATIVO, d.FECHA, d.ANIO, d.MES, d.DIA, d.HORA, d.MINUTO, d.STATUS,
+        d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE, d.USUARIO,
         d.CODVEN, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.SERIEFAC, d.NOFAC,
         t.TIPODOC, t.DESDOC,
@@ -589,13 +595,13 @@ router.get('/pedidos', async (req, res) => {
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
         AND t.TIPODOC IN (${TIPODOC_SQL_IN})
-        AND d.STATUS = '${status}'
+        ${statusFilter}
         AND CAST(d.FECHA AS DATE) = CAST(@FECHA AS DATE)
         ${coddocFilter}
       ORDER BY d.HORA DESC, d.MINUTO DESC, d.ID DESC
     `);
     const fecha = `${fechaParts.anio}-${String(fechaParts.mes).padStart(2, '0')}-${String(fechaParts.dia).padStart(2, '0')}`;
-    res.json({ rows: result.recordset, status, fecha });
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status: statusLabel, fecha });
   } catch (err) {
     console.warn('[API GET /notas-credito/pedidos]', err.message);
     res.status(500).json({ error: err.message });
@@ -888,12 +894,58 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
   if (!empnit) return;
   const coddoc = String(req.params.coddoc || '').trim();
   const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  let descuentoBody = null;
+  try {
+    descuentoBody = parseDescuentoLineaBody(req.body);
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ error: err.message });
+  }
+
+  if (descuentoBody) {
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const docMeta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
+      if (!docMeta) return res.status(404).json({ error: 'Documento no encontrado' });
+      if (!isDocumentoEditable(docMeta.STATUS, docMeta.CORTE)) {
+        return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS, docMeta.CORTE) });
+      }
+
+      const parts = nowParts();
+      const transaction = new sql.Transaction(pool);
+      await transaction.begin();
+      try {
+        const lineId = await insertDescuentoLinea(transaction, sql, {
+          empnit,
+          coddoc,
+          correlativo,
+          desprod: descuentoBody.desprod,
+          monto: descuentoBody.monto,
+          parts,
+        });
+        const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
+        await transaction.commit();
+        const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+        return res.status(201).json({ lineId, totals, pedido });
+      } catch (inner) {
+        await transaction.rollback();
+        throw inner;
+      }
+    } catch (err) {
+      console.warn('[API POST /notas-credito/pedidos/lineas descuento]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   const codprod = String(req.body?.CODPROD || '').trim();
   const codmedida = String(req.body?.CODMEDIDA || '').trim();
   const cantidad = Number(req.body?.CANTIDAD ?? 1);
   const equivaleReq = req.body?.EQUIVALE;
   const precioReq = req.body?.PRECIO;
-  if (!coddoc || correlativo === null || !codprod || !codmedida) {
+  if (!codprod || !codmedida) {
     return res.status(400).json({ error: 'CODPROD y CODMEDIDA son obligatorios' });
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
@@ -1042,6 +1094,9 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
     if (!isDocumentoEditable(lineMeta.STATUS, lineMeta.CORTE)) {
       return res.status(400).json({ error: mensajeDocumentoNoEditable(lineMeta.STATUS, lineMeta.CORTE) });
     }
+    if (isLineaDescuentoCodprod(lineMeta.CODPROD)) {
+      return res.status(400).json({ error: 'Las líneas de descuento no permiten cambiar la cantidad' });
+    }
     const facCoddoc = String(lineMeta.SERIEFAC || '').trim();
     const facCorrelativo = parseCorrelativo(lineMeta.NOFAC);
     if (!facCoddoc || facCorrelativo === null) {
@@ -1164,17 +1219,19 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         await transaction.rollback();
         return res.status(400).json({ error: mensajeDocumentoNoEditable(line.STATUS, line.CORTE) });
       }
-      await revertirMovimientoInventarioLinea(transaction, {
-        empnit,
-        coddoc,
-        correlativo,
-        codprod: line.CODPROD,
-        desprod: line.DESPROD,
-        totalUnidades: line.TOTALUNIDADES,
-        tipoprod: line.TIPOPROD,
-        codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
-        codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
-      });
+      if (!isLineaDescuentoCodprod(line.CODPROD)) {
+        await revertirMovimientoInventarioLinea(transaction, {
+          empnit,
+          coddoc,
+          correlativo,
+          codprod: line.CODPROD,
+          desprod: line.DESPROD,
+          totalUnidades: line.TOTALUNIDADES,
+          tipoprod: line.TIPOPROD,
+          codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
+          codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
+        });
+      }
       const del = await transaction
         .request()
         .input('ID', sql.Int, lineId)

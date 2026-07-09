@@ -50,11 +50,7 @@ const NotasCreditoView = {
   },
 
   formatFechaPedido(row) {
-    if (!row?.FECHA) return '—';
-    const s = String(row.FECHA).slice(0, 10);
-    const [y, m, d] = s.split('-');
-    if (d && m && y) return `${d}/${m}/${y}`;
-    return s;
+    return DocFecha.formatDisplay(row);
   },
 
   formatHoraPedido(row) {
@@ -65,22 +61,7 @@ const NotasCreditoView = {
   },
 
   rowFechaIso(row) {
-    if (!row) return '';
-    const fromFecha = String(row.FECHA ?? '').slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(fromFecha)) return fromFecha;
-    const y = Number(row.ANIO);
-    const m = Number(row.MES);
-    const d = Number(row.DIA);
-    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) && y > 0 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    }
-    return '';
-  },
-
-  pedidosForSelectedDate() {
-    const target = String(this._listFecha || '').slice(0, 10);
-    if (!target) return this._pedidosList;
-    return (this._pedidosList || []).filter((r) => this.rowFechaIso(r) === target);
+    return DocFecha.fechaIsoFromHeader(row);
   },
 
   listFechaLabel() {
@@ -293,10 +274,14 @@ const NotasCreditoView = {
   async fetchPedidosList() {
     const fecha = String(this._listFecha || this.todayIsoDate()).slice(0, 10);
     this._listFecha = fecha;
-    const data = await F.fetchJson(this.apiUrl('/pedidos', { status: 'O', fecha, _: Date.now() }));
+    const data = await F.fetchJson(this.apiUrl('/pedidos', { fecha, _: Date.now() }));
     this._pedidosList = data.rows || [];
     if (data.fecha) this._listFecha = String(data.fecha).slice(0, 10);
-    return this.pedidosForSelectedDate();
+    return this._pedidosList;
+  },
+
+  pedidosForSelectedDate() {
+    return this._pedidosList || [];
   },
 
   filteredPedidosList() {
@@ -615,6 +600,45 @@ const NotasCreditoView = {
       await this.fetchLineasDisponibles().catch(() => {});
       this.renderAll();
       F.toast(err.message || 'Error al agregar líneas', 'error');
+    } finally {
+      this.setCartBusy(false);
+    }
+  },
+
+  async agregarLineaDescuento() {
+    if (this._cartBusy) return;
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('El documento no está en edición', 'warning');
+      return;
+    }
+    const key = this.docKey();
+    if (!key) return;
+    if (typeof DocLineaDescuentoUi === 'undefined') {
+      F.toast('No se pudo abrir el formulario de descuento', 'error');
+      return;
+    }
+
+    const payload = await DocLineaDescuentoUi.prompt(this);
+    if (!payload) return;
+
+    this.setCartBusy(true);
+    try {
+      const res = await F.fetchJson(
+        this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(DocLineaDescuentoUi.postBody(payload)),
+        },
+      );
+      this._pedido = res?.pedido || res;
+      if (!this._pedido?.header) {
+        throw new Error('Respuesta inválida del servidor al agregar el descuento');
+      }
+      this.renderAll();
+      F.toast('Descuento agregado', 'success');
+    } catch (err) {
+      F.toast(err.message || 'No se pudo agregar el descuento', 'error');
     } finally {
       this.setCartBusy(false);
     }
@@ -970,7 +994,10 @@ const NotasCreditoView = {
 
     target.innerHTML = `
       ${editable ? `
-        <div class="d-flex justify-content-end mb-2">
+        <div class="d-flex justify-content-end gap-2 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-nc-add-descuento"${this._cartBusy ? ' disabled' : ''}>
+            <i class="fa-solid fa-tag me-1"></i>Agregar Descuento
+          </button>
           <button type="button" class="btn btn-sm btn-primary" id="btn-nc-add-all"${this._cartBusy ? ' disabled' : ''}>
             <i class="fa-solid fa-list-check me-1"></i>Agregar todos
           </button>
@@ -1005,11 +1032,12 @@ const NotasCreditoView = {
     tbody.innerHTML = lines.map((ln) => {
       const id = this.lineId(ln);
       const qty = Number(ln.CANTIDAD) || 0;
-      const qtyInner = editable
+      const isDescuento = typeof DocLineaDescuentoUi !== 'undefined' && DocLineaDescuentoUi.isLinea(ln);
+      const qtyInner = editable && !isDescuento
         ? `<button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${id}"${this._cartBusy ? ' disabled' : ''}>−</button>
            <span class="px-1">${qty}</span>
            <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${id}"${this._cartBusy ? ' disabled' : ''}>+</button>`
-        : `<span>${qty}</span>`;
+        : `<span>${isDescuento ? '—' : qty}</span>`;
       const delBtn = editable
         ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${id}" title="Quitar"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
         : '';
@@ -1273,6 +1301,8 @@ const NotasCreditoView = {
     if (fab) fab.disabled = busy;
     const addAll = this._container?.querySelector('#btn-nc-add-all');
     if (addAll) addAll.disabled = busy;
+    const addDescuento = this._container?.querySelector('#btn-nc-add-descuento');
+    if (addDescuento) addDescuento.disabled = busy;
     this._container?.querySelectorAll('[data-action="nc-add-line"]').forEach((btn) => {
       btn.disabled = busy;
     });
@@ -1292,6 +1322,13 @@ const NotasCreditoView = {
     });
 
     this._container?.querySelector('#nc-product-list')?.addEventListener('click', async (e) => {
+      const descuentoBtn = e.target.closest('#btn-nc-add-descuento');
+      if (descuentoBtn) {
+        e.preventDefault();
+        if (this._cartBusy || descuentoBtn.disabled) return;
+        await this.agregarLineaDescuento();
+        return;
+      }
       const addAllBtn = e.target.closest('#btn-nc-add-all');
       if (addAllBtn) {
         e.preventDefault();
@@ -1344,6 +1381,9 @@ const NotasCreditoView = {
       const line = this.findLineById(id);
       if (!line) return;
       const action = btn.getAttribute('data-action');
+      if (typeof DocLineaDescuentoUi !== 'undefined' && DocLineaDescuentoUi.isLinea(line) && action !== 'line-del') {
+        return;
+      }
       this.setCartBusy(true);
       this.renderCart();
       try {

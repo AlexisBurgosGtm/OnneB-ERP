@@ -2,7 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
-const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN } = require('../lib/corte-caja-docs');
+const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
 
 const router = express.Router();
 
@@ -83,12 +83,27 @@ async function marcarDocumentosCorte(transaction, empnit, codcaja, nocorte, aper
   return result.rowsAffected[0] || 0;
 }
 
+function docTipodoc(row) {
+  return String(row?.TIPODOC || '').trim().toUpperCase();
+}
+
+function isDevolucionDoc(row) {
+  return TIPODOC_DEVOLUCION.includes(docTipodoc(row));
+}
+
+function isFacturaDoc(row) {
+  return TIPODOC_FACTURA.includes(docTipodoc(row));
+}
+
 function buildResumenFromRows(rows, efectivoInicial) {
   const docs = rows || [];
   const first = docs[0] || null;
   const last = docs[docs.length - 1] || null;
   let totalCosto = 0;
   let totalVenta = 0;
+  let totalVentasBrutas = 0;
+  let totalDevoluciones = 0;
+  let movDevoluciones = 0;
   let totalCredito = 0;
   let fpEfectivo = 0;
   let fpTarjeta = 0;
@@ -96,19 +111,39 @@ function buildResumenFromRows(rows, efectivoInicial) {
   let fpCheque = 0;
 
   for (const d of docs) {
-    totalCosto += Number(d.TOTALCOSTO) || 0;
-    totalVenta += Number(d.TOTALPRECIO) || 0;
-    if (String(d.CONCRE || '').trim().toUpperCase() === 'CRE') {
-      totalCredito += Number(d.TOTALPRECIO) || 0;
+    const dev = isDevolucionDoc(d);
+    const sign = dev ? -1 : 1;
+    const costo = Number(d.TOTALCOSTO) || 0;
+    const precio = Number(d.TOTALPRECIO) || 0;
+    const efectivo = Number(d.FPAGO_EFECTIVO) || 0;
+    const tarjeta = Number(d.FPAGO_TARJETA) || 0;
+    const deposito = Number(d.FPAGO_DEPOSITO) || 0;
+    const cheque = Number(d.FPAGO_CHEQUE) || 0;
+
+    if (dev) {
+      totalDevoluciones += precio;
+      movDevoluciones += 1;
+    } else if (isFacturaDoc(d)) {
+      totalVentasBrutas += precio;
     }
-    fpEfectivo += Number(d.FPAGO_EFECTIVO) || 0;
-    fpTarjeta += Number(d.FPAGO_TARJETA) || 0;
-    fpDeposito += Number(d.FPAGO_DEPOSITO) || 0;
-    fpCheque += Number(d.FPAGO_CHEQUE) || 0;
+
+    totalCosto += sign * costo;
+    totalVenta += sign * precio;
+
+    if (!dev && String(d.CONCRE || '').trim().toUpperCase() === 'CRE') {
+      totalCredito += precio;
+    }
+
+    fpEfectivo += sign * efectivo;
+    fpTarjeta += sign * tarjeta;
+    fpDeposito += sign * deposito;
+    fpCheque += sign * cheque;
   }
 
   totalCosto = roundMoney(totalCosto);
   totalVenta = roundMoney(totalVenta);
+  totalVentasBrutas = roundMoney(totalVentasBrutas);
+  totalDevoluciones = roundMoney(totalDevoluciones);
   totalCredito = roundMoney(totalCredito);
   fpEfectivo = roundMoney(fpEfectivo);
   fpTarjeta = roundMoney(fpTarjeta);
@@ -122,6 +157,9 @@ function buildResumenFromRows(rows, efectivoInicial) {
     totalMovimientos: docs.length,
     totalCosto,
     totalVenta,
+    totalVentasBrutas,
+    totalDevoluciones,
+    movDevoluciones,
     totalUtilidad,
     margen,
     totalCredito,
@@ -405,7 +443,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .input('TOTALCHEQUES', sql.Decimal(18, 3), resumen.fpCheque)
       .input('REPORTADOCHEQUES', sql.Decimal(18, 3), reportadoCheques)
       .input('ENVIADO', sql.Int, 1)
-      .input('TOTALDEVOLUCIONES', sql.Decimal(18, 3), 0)
+      .input('TOTALDEVOLUCIONES', sql.Decimal(18, 3), resumen.totalDevoluciones)
       .input('TOTALVENTASCREDITO', sql.Decimal(18, 3), resumen.totalCredito)
       .input('FPAGO_EFECTIVO', sql.Decimal(18, 3), resumen.fpEfectivo)
       .input('FPAGO_TARJETA', sql.Decimal(18, 3), resumen.fpTarjeta)

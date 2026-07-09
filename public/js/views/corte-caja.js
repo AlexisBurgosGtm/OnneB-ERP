@@ -72,7 +72,9 @@ const CorteCajaView = {
 
     let html = `
       ${this.renderStat('Movimientos', String(r.totalMovimientos))}
-      ${this.renderStat('Total venta', this.formatMoney(r.totalVenta))}
+      ${this.renderStat('Ventas brutas', this.formatMoney(r.totalVentasBrutas ?? r.totalVenta))}
+      ${statOrClick('Notas de crédito', this.formatMoney(r.totalDevoluciones || 0), 'devoluciones', 'text-danger')}
+      ${this.renderStat('Total venta (neto)', this.formatMoney(r.totalVenta))}
       ${statOrClick('Crédito', this.formatMoney(r.totalCredito), 'credito')}
       ${this.renderStat('Efectivo inicial', this.formatMoney(r.efectivoInicial))}
       ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'contado', 'text-primary')}
@@ -149,10 +151,12 @@ const CorteCajaView = {
       <table>
         <tbody>
           ${row('Movimientos', PrintReport.escapeHtml(String(resumen.totalMovimientos)))}
-          ${row('Total venta', money(resumen.totalVenta))}
+          ${row('Ventas brutas', money(resumen.totalVentasBrutas ?? resumen.totalVenta))}
+          ${row('Notas de crédito (DEV/FNC)', money(resumen.totalDevoluciones || 0))}
+          ${row('Total venta (neto)', money(resumen.totalVenta))}
           ${row('Ventas al crédito', money(resumen.totalCredito))}
           ${row('Efectivo inicial', money(resumen.efectivoInicial))}
-          ${row('Efectivo ventas (contado)', money(resumen.fpEfectivo))}
+          ${row('Efectivo ventas (neto)', money(resumen.fpEfectivo))}
           ${row('Efectivo esperado', money(resumen.efectivoEsperado))}
           ${row('Tarjeta (sistema)', money(resumen.fpTarjeta))}
           ${row('Depósito (sistema)', money(resumen.fpDeposito))}
@@ -209,6 +213,7 @@ const CorteCajaView = {
     const map = {
       credito: 'Facturas al crédito',
       contado: 'Ventas al contado',
+      devoluciones: 'Notas de crédito (DEV, FNC)',
       tarjeta: 'Pagos con tarjeta',
       deposito: 'Pagos con depósito',
       cheque: 'Pagos con cheque',
@@ -224,14 +229,21 @@ const CorteCajaView = {
   },
 
   rowImporte(row, filtro) {
-    if (filtro === 'tarjeta') return row.FPAGO_TARJETA;
-    if (filtro === 'deposito') return row.FPAGO_DEPOSITO;
-    if (filtro === 'cheque') return row.FPAGO_CHEQUE;
-    return row.TOTALPRECIO;
+    const raw =
+      filtro === 'tarjeta'
+        ? row.FPAGO_TARJETA
+        : filtro === 'deposito'
+          ? row.FPAGO_DEPOSITO
+          : filtro === 'cheque'
+            ? row.FPAGO_CHEQUE
+            : row.TOTALPRECIO;
+    const n = Number(raw) || 0;
+    return filtro === 'devoluciones' ? Math.abs(n) : n;
   },
 
   renderDocumentosModalHtml(filtro, rows) {
     const importeLabel = this.importeColumnLabel(filtro);
+    const isDevoluciones = filtro === 'devoluciones';
     if (!rows.length) {
       return `<p class="text-muted small mb-0 text-center py-3">Sin documentos en este filtro.</p>`;
     }
@@ -243,7 +255,7 @@ const CorteCajaView = {
         return `
           <tr>
             <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
-            <td class="text-nowrap">${this.escapeHtml(r.CODDOC)}</td>
+            <td class="text-nowrap">${this.escapeHtml(r.CODDOC)}${isDevoluciones && r.TIPODOC ? ` <span class="text-muted small">(${this.escapeHtml(r.TIPODOC)})</span>` : ''}</td>
             <td class="text-end">${this.escapeHtml(r.CORRELATIVO)}</td>
             <td>${this.escapeHtml(r.VENDEDOR || '—')}</td>
             <td>${this.escapeHtml(r.DOC_NOMCLIE || '—')}</td>

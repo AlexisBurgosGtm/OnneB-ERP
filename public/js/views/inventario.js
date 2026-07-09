@@ -68,6 +68,12 @@ const InventarioView = {
     return this.escapeHtml(value);
   },
 
+  productoLabelFromRow(row) {
+    const codprod = String(this.cellValue(row, 'CODPROD') || '').trim();
+    const desc = String(this.cellValue(row, 'DESPROD') || '').trim();
+    return desc ? `${codprod} — ${desc}` : codprod;
+  },
+
   renderTableBodyHtml(rows) {
     const colSpan = this.tableColumns.length;
     if (!rows.length) {
@@ -78,6 +84,7 @@ const InventarioView = {
     }
     return rows
       .map((row) => {
+        const codprod = String(this.cellValue(row, 'CODPROD') || '').trim();
         const cells = this.tableColumns
           .map((c) => {
             const align = c.type === 'money' || c.type === 'qty' ? ' text-end' : '';
@@ -86,7 +93,10 @@ const InventarioView = {
             return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(val, c)}</td>`;
           })
           .join('');
-        return `<tr>${cells}</tr>`;
+        const attrs = codprod
+          ? ` class="inventario-row-clickable" data-codprod="${this.escapeHtml(codprod)}" role="button" tabindex="0" title="Ver movimientos"`
+          : '';
+        return `<tr${attrs}>${cells}</tr>`;
       })
       .join('');
   },
@@ -111,8 +121,8 @@ const InventarioView = {
     const shown = this._rows.length;
     const total = this._totalCount;
     let countLabel;
-    if (this._listTruncated && shown < total) {
-      countLabel = `Mostrando ${shown} de ${total}`;
+    if (this._listTruncated) {
+      countLabel = shown < total ? `Mostrando ${shown} de ${total}` : `${shown}+`;
     } else {
       countLabel = `${total}`;
     }
@@ -158,7 +168,13 @@ const InventarioView = {
   },
 
   apiUrlLista() {
-    const params = this.buildListParams({ limit: '500' });
+    let limit = '100';
+    if (this._filterQuery.trim()) {
+      limit = '500';
+    } else if (this._filterMarca) {
+      limit = '0';
+    }
+    const params = this.buildListParams({ limit });
     return `/api/inventario/saldo?${params.toString()}`;
   },
 
@@ -207,7 +223,7 @@ const InventarioView = {
               <div class="input-group input-group-sm">
                 <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control" id="inventario-search"
-                  placeholder="Código, descripción, marca, tipo… (Enter)"
+                  placeholder="Código o descripción de producto… (Enter)"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off" spellcheck="false">
                 <button type="button" class="btn btn-outline-secondary" id="btn-inventario-search-clear"
                   title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
@@ -265,10 +281,8 @@ const InventarioView = {
   },
 
   syncFiltersFromUi() {
-    const searchEl = document.getElementById('inventario-search');
     const marcaEl = document.getElementById('inventario-filter-marca');
     const habilitadoEl = document.getElementById('inventario-filter-habilitado');
-    if (searchEl) this._filterQuery = searchEl.value;
     if (marcaEl) this._filterMarca = marcaEl.value;
     if (habilitadoEl) this._filterHabilitado = habilitadoEl.value;
   },
@@ -326,7 +340,7 @@ const InventarioView = {
     if (!search) return;
 
     const applySearch = () => {
-      this._filterQuery = search.value;
+      this._filterQuery = search.value.trim();
       this.reload();
     };
 
@@ -352,10 +366,43 @@ const InventarioView = {
     });
   },
 
+  bindTableRows() {
+    const tbody = this._container?.querySelector('#inventario-tbody');
+    if (!tbody || tbody.dataset.rowClickBound === '1') return;
+    tbody.dataset.rowClickBound = '1';
+
+    const openMovimientos = async (tr) => {
+      const codprod = tr.getAttribute('data-codprod');
+      if (!codprod || typeof ProductosView?.showReporteMovimientos !== 'function') return;
+      const row = this._rows.find((r) => String(this.cellValue(r, 'CODPROD')).trim() === codprod);
+      const label = row ? this.productoLabelFromRow(row) : codprod;
+      try {
+        await ProductosView.showReporteMovimientos(codprod, { label });
+      } catch (err) {
+        F.toast(err.message || 'Error al cargar movimientos', 'error');
+      }
+    };
+
+    tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.inventario-row-clickable');
+      if (!tr || !tbody.contains(tr)) return;
+      openMovimientos(tr).catch(() => {});
+    });
+
+    tbody.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const tr = e.target.closest('tr.inventario-row-clickable');
+      if (!tr || !tbody.contains(tr)) return;
+      e.preventDefault();
+      openMovimientos(tr).catch(() => {});
+    });
+  },
+
   bindEvents() {
     this.bindMarcaFilter();
     this.bindHabilitadoFilter();
     this.bindSearch();
+    this.bindTableRows();
     document.getElementById('btn-inventario-export')?.addEventListener('click', () => {
       this.onExportExcel();
     });

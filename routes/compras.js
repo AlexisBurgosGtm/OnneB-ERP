@@ -8,7 +8,7 @@ const {
   aplicarMovimientoInventarioLineaPatch,
   revertirMovimientoInventarioLinea,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
@@ -305,7 +305,7 @@ async function loadCompra(pool, empnit, coddoc, correlativo) {
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       ORDER BY l.Id
     `);
-  return { header: headerRes.recordset[0], lines: linesRes.recordset };
+  return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
 }
 
 router.get('/proveedores', async (req, res) => {
@@ -442,7 +442,7 @@ router.get('/compras', async (req, res) => {
         ${coddocFilter}
       ORDER BY d.ID DESC
     `);
-    res.json({ rows: result.recordset, status });
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status });
   } catch (err) {
     console.warn('[API GET /compras/compras]', err.message);
     res.status(500).json({ error: err.message });

@@ -88,11 +88,7 @@ const FacturacionView = {
   },
 
   formatFechaPedido(row) {
-    if (!row?.FECHA) return '—';
-    const s = String(row.FECHA).slice(0, 10);
-    const [y, m, d] = s.split('-');
-    if (d && m && y) return `${d}/${m}/${y}`;
-    return s;
+    return DocFecha.formatDisplay(row);
   },
 
   formatHoraPedido(row) {
@@ -103,24 +99,11 @@ const FacturacionView = {
   },
 
   todayIsoDate() {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    return DocFecha.todayIsoDate();
   },
 
   rowFechaIso(row) {
-    if (!row) return '';
-    const fromFecha = String(row.FECHA ?? '').slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(fromFecha)) return fromFecha;
-    const y = Number(row.ANIO);
-    const m = Number(row.MES);
-    const d = Number(row.DIA);
-    if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) && y > 0 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    }
-    return '';
+    return DocFecha.fechaIsoFromHeader(row);
   },
 
   pedidosForSelectedDate() {

@@ -50,11 +50,7 @@ function createInventarioMovView(cfg) {
     },
 
     formatFecha(row) {
-      if (!row?.FECHA) return '—';
-      const s = String(row.FECHA).slice(0, 10);
-      const [y, m, d] = s.split('-');
-      if (d && m && y) return `${d}/${m}/${y}`;
-      return s;
+      return DocFecha.formatDisplay(row);
     },
 
     docKey() {

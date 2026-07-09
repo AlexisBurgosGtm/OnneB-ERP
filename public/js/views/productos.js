@@ -1121,8 +1121,8 @@ const ProductosView = {
     );
   },
 
-  async showReporteMovimientos(codprod, { fiscal = false } = {}) {
-    const label = this.productoLabel(codprod);
+  async showReporteMovimientos(codprod, { fiscal = false, label: labelOverride } = {}) {
+    const label = labelOverride || this.productoLabel(codprod);
     const title = fiscal ? 'Movimientos Fiscales' : 'Movimientos';
     const searchId = fiscal ? 'productos-mov-fiscal-search' : 'productos-mov-search';
     const hostId = fiscal ? 'productos-mov-fiscal-table-host' : 'productos-mov-table-host';

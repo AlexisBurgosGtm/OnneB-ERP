@@ -8,7 +8,7 @@ const {
   aplicarMovimientoInventarioLineaPatch,
   revertirMovimientoInventarioLinea,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse } = require('../lib/documento-fecha');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -205,7 +205,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
         ORDER BY l.Id
       `);
-    return { header: headerRes.recordset[0], lines: linesRes.recordset };
+    return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
   }
 
   router.get('/config', async (req, res) => {

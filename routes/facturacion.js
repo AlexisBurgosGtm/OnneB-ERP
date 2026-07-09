@@ -9,7 +9,7 @@ const {
   revertirMovimientoInventarioLinea,
   revertirMovimientoInventarioDocumento,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
@@ -319,7 +319,7 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       ORDER BY l.Id
     `);
-  return { header: headerRes.recordset[0], lines: linesRes.recordset };
+  return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
 }
 
 async function loadPedidoEnvOperado(db, empnit, coddoc, correlativo) {
@@ -435,7 +435,7 @@ router.get('/vendedores', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
         ORDER BY NOMEMPLEADO ASC
       `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /facturacion/vendedores]', err.message);
     res.status(500).json({ error: err.message });
@@ -477,7 +477,7 @@ router.get('/cajas-abiertas', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND STATUS = 1
         ORDER BY DESCAJA ASC
       `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /facturacion/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });
@@ -601,7 +601,7 @@ router.get('/pedidos', async (req, res) => {
     `);
     const fecha =
       `${fechaParts.anio}-${String(fechaParts.mes).padStart(2, '0')}-${String(fechaParts.dia).padStart(2, '0')}`;
-    res.json({ rows: result.recordset, status, fecha });
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status, fecha });
   } catch (err) {
     console.warn('[API GET /facturacion/pedidos]', err.message);
     res.status(500).json({ error: err.message });
@@ -662,7 +662,7 @@ router.get('/pedidos-env', async (req, res) => {
         AND (d.SERIEFAC IS NULL OR LTRIM(RTRIM(d.SERIEFAC)) = '')
       ORDER BY d.FECHA DESC, d.HORA DESC, d.MINUTO DESC, d.ID DESC
     `);
-    res.json({ rows: result.recordset });
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
     console.warn('[API GET /facturacion/pedidos-env]', err.message);
     res.status(500).json({ error: err.message });
