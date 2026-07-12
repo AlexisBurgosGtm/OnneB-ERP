@@ -582,6 +582,7 @@ router.get('/pedidos', async (req, res) => {
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE, d.USUARIO,
         d.CODVEN, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.SERIEFAC, d.NOFAC,
+        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO,
         t.TIPODOC, t.DESDOC,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,

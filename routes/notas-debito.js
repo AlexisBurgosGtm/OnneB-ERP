@@ -584,6 +584,7 @@ router.get('/pedidos', async (req, res) => {
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE, d.USUARIO,
         d.CODVEN, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.SERIEFAC, d.NOFAC,
+        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO,
         t.TIPODOC, t.DESDOC,
         p.EMPRESA AS NEGOCIO, p.RAZONSOCIAL,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
@@ -1263,6 +1264,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   const correlativo = parseCorrelativo(req.params.correlativo);
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
+  const felUudi = req.body?.FEL_UUDI !== undefined ? String(req.body.FEL_UUDI || '').trim() : null;
   let codcaja = null;
   if (req.body?.CODCAJA !== undefined && req.body?.CODCAJA !== null && req.body?.CODCAJA !== '') {
     const parsed = parseInt(req.body.CODCAJA, 10);
@@ -1303,6 +1305,20 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
           .query(`
             UPDATE dbo.DOCUMENTOS
             SET OBS = @OBS
+            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+              AND ${SQL_DOCUMENTO_EDITABLE}
+          `);
+      }
+      if (felUudi !== null) {
+        await transaction
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddoc)
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+          .input('FEL_UUDI', sql.VarChar, felUudi)
+          .query(`
+            UPDATE dbo.DOCUMENTOS
+            SET FEL_UUDI = @FEL_UUDI
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
               AND ${SQL_DOCUMENTO_EDITABLE}
           `);

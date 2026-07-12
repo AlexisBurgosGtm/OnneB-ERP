@@ -430,6 +430,7 @@ router.get('/compras', async (req, res) => {
       SELECT TOP 100
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALCOSTO, d.CODCLIENTE AS CODPROV, d.OBS, d.DOC_DIRCLIE,
+        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO,
         p.EMPRESA, p.RAZONSOCIAL,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
@@ -1023,6 +1024,7 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   const correlativo = parseCorrelativo(req.params.correlativo);
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
+  const felUudi = req.body?.FEL_UUDI !== undefined ? String(req.body.FEL_UUDI || '').trim() : null;
   let seriefac = String(req.body?.SERIEFAC || '').trim();
   let nofac = String(req.body?.NOFAC || '').trim();
   if (!seriefac) seriefac = coddoc;
@@ -1058,11 +1060,15 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
       if (obs !== null) {
         txnUpd.input('OBS', sql.VarChar, obs);
       }
+      if (felUudi !== null) {
+        txnUpd.input('FEL_UUDI', sql.VarChar, felUudi);
+      }
       const obsSql = obs !== null ? ', OBS = @OBS' : '';
+      const felSql = felUudi !== null ? ', FEL_UUDI = @FEL_UUDI' : '';
       await txnUpd.query(`
         UPDATE dbo.DOCUMENTOS
         SET SERIEFAC = @SERIEFAC, NOFAC = @NOFAC, CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO
-          ${vencSql}${obsSql}
+          ${vencSql}${obsSql}${felSql}
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
           AND ${SQL_STATUS_EDITABLE}
       `);

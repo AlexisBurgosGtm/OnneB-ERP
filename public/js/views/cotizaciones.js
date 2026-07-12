@@ -384,7 +384,7 @@ const CotizacionesView = {
           </div>
           <div class="col-6">
             <label class="form-label small mb-0" for="pos-swal-precio">Precio</label>
-            <input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly tabindex="-1">
+            <input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>
           </div>
         </div>
         <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
@@ -393,7 +393,7 @@ const CotizacionesView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => {
+      didOpen: (popup) => {
         const medSel = document.getElementById('pos-swal-medida');
         const cantInp = document.getElementById('pos-swal-cant');
         const precioInp = document.getElementById('pos-swal-precio');
@@ -407,8 +407,8 @@ const CotizacionesView = {
         };
         medSel?.addEventListener('change', updateTotal);
         cantInp?.addEventListener('input', updateTotal);
-        cantInp?.focus();
-        cantInp?.select();
+        PosProductKeyboardUI.focusInput(cantInp);
+        PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('pos-swal-cant')?.value);
@@ -631,39 +631,12 @@ const CotizacionesView = {
     try {
       const url = `/api/cotizaciones/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
       const pedido = await F.fetchJson(url);
-      const h = pedido.header;
-      const lines = pedido.lines || [];
-      const rows = lines
-        .map(
-          (ln) => `<tr>
-            <td>${this.escapeHtml(ln.CODPROD)}</td>
-            <td>${this.escapeHtml(ln.DESPROD)}</td>
-            <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
-            <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
-          </tr>`
-        )
-        .join('');
-      await PrintReport.openAndPrint(
-        () =>
-          PrintReport.wrapDocument({
-            title: 'Cotización',
-            bodyHtml: `
-          ${PrintReport.reportHeaderHtml({
-            title: 'Cotización',
-            subtitleHtml: `
-              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaPedido(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-              <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
-              ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
-            `,
-          })}
-          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
-        `,
-          }),
-        'width=800,height=600'
-      );
+      await DocPrint.printDocument({
+        title: 'Cotización',
+        header: pedido.header,
+        lines: pedido.lines || [],
+        footerNote: 'Cotización — documento sin validez fiscal',
+      });
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }
@@ -1121,7 +1094,7 @@ const CotizacionesView = {
     this.refreshListDom();
   },
 
-  async showEditor(coddoc, correlativo) {
+  async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
     PosDocSearchUI.teardown('pos');
     if (coddoc && correlativo) {
@@ -1132,6 +1105,9 @@ const CotizacionesView = {
     this.bindEditorEvents();
     PosDocSearchUI.resetProductSearch(this, 'pos');
     this.renderAll();
+    if (opts.focusProductSearch) {
+      PosDocSearchUI.focusProductSearch(this._container, 'pos');
+    }
   },
 
   async onNuevoPedido() {
@@ -1141,7 +1117,7 @@ const CotizacionesView = {
       }
       await this.crearPedido();
       const key = this.docKey();
-      if (key) await this.showEditor(key.coddoc, key.correlativo);
+      if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
     } catch (err) {
       F.toast(err.message || 'Error al crear cotización', 'error');
     }

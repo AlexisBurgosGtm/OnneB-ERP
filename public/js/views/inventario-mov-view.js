@@ -430,6 +430,11 @@ function createInventarioMovView(cfg) {
         confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
         cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
         focusConfirm: false,
+        didOpen: (popup) => {
+          const cantInp = document.getElementById(`${NS}-swal-cant`);
+          PosProductKeyboardUI.focusInput(cantInp);
+          PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, popup });
+        },
         preConfirm: () => {
           const cant = Number(document.getElementById(`${NS}-swal-cant`)?.value);
           if (!cant || cant <= 0) {
@@ -867,7 +872,7 @@ function createInventarioMovView(cfg) {
       this.bindListEvents();
     },
 
-    async showEditor(coddoc, correlativo) {
+    async showEditor(coddoc, correlativo, opts = {}) {
       this._screen = 'editor';
       PosDocSearchUI.teardown(NS);
       if (coddoc && correlativo) {
@@ -877,6 +882,9 @@ function createInventarioMovView(cfg) {
       this.bindEditorEvents();
       PosDocSearchUI.resetProductSearch(this, NS);
       this.renderAll();
+      if (opts.focusProductSearch) {
+        PosDocSearchUI.focusProductSearch(this._container, NS);
+      }
     },
 
     async onNuevo() {
@@ -886,7 +894,7 @@ function createInventarioMovView(cfg) {
         }
         await this.crearDocumento();
         const key = this.docKey();
-        if (key) await this.showEditor(key.coddoc, key.correlativo);
+        if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
       } catch (err) {
         F.toast(err.message || 'Error al crear documento', 'error');
       }

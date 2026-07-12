@@ -2,6 +2,7 @@ const express = require('express');
 const { isDbConfigured } = require('../config/database');
 const { certificarDocumentoFel } = require('../lib/fel/certificar');
 const { anularDocumentoFel } = require('../lib/fel/anular');
+const { lookupContribuyente, normalizeIdentificador } = require('../lib/fel/contribuyente-lookup');
 
 const {
   TIPODOC_CERTIFICABLES,
@@ -35,6 +36,29 @@ router.get('/tipos-certificables', (_req, res) => {
     descripcion: TIPODOC_FEL_DESCRIPCION,
     regimen: 'IVA general — pequeño contribuyente (FES) excluido',
   });
+});
+
+router.get('/contribuyente', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const identificador = normalizeIdentificador(req.query.identificador || req.query.nit || req.query.cui);
+  if (!identificador) {
+    return res.status(400).json({ error: 'Identificador inválido (NIT o CUI)' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await lookupContribuyente(pool, empnit, identificador);
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /fel/contribuyente]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
 });
 
 router.post('/certificar/:coddoc/:correlativo', async (req, res) => {

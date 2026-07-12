@@ -101,6 +101,10 @@ const InicioEmpleadoView = {
       return TransporteInicioView.load(container);
     }
 
+    if (codtipo === 8 && typeof CajeroInicioView !== 'undefined') {
+      return CajeroInicioView.load(container);
+    }
+
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');

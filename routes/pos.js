@@ -21,6 +21,7 @@ const { searchMovimientoProductos } = require('../lib/movimiento-productos-searc
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -301,6 +302,10 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND HABILITADO = 'SI'
         ORDER BY CODCLIENTE
       `);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
     res.json({
       empnit,
       tipodoc: TIPODOC_MOSTRADOR,
@@ -311,6 +316,7 @@ router.get('/config', async (req, res) => {
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
+      permiteCambiarPrecio,
     });
   } catch (err) {
     console.warn('[API GET /pos/config]', err.message);
@@ -667,7 +673,18 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
     const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    let precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
+    if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+      const customPrecio = Number(req.body.PRECIO);
+      if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      precio = roundMoney(customPrecio);
+    }
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
@@ -1025,6 +1042,21 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       }
       await transaction.commit();
       const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const header = pedido?.header || {};
+      const io = req.app.locals.io;
+      if (io) {
+        const { emitNuevoPedidoMostrador, buildPedidoMostradorMensaje } = require('../lib/socket-hub');
+        const nombreCliente =
+          header.DOC_NOMCLIE || header.CLI_NOMBRE || header.CLI_NEGOCIO || 'Cliente';
+        const monto = Number(header.TOTALPRECIO) || 0;
+        emitNuevoPedidoMostrador(io, empnit, {
+          mensaje: buildPedidoMostradorMensaje(nombreCliente, monto),
+          nombreCliente: String(nombreCliente).trim(),
+          monto,
+          coddoc,
+          correlativo,
+        });
+      }
       res.json({ ok: true, pedido, inventario: inv });
     } catch (inner) {
       await transaction.rollback();

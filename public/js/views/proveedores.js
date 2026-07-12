@@ -19,6 +19,12 @@ const ProveedoresView = createCatalogoEmpresaView({
     { key: 'CONTACTO', label: 'Contacto' },
     { key: 'TELCONTACTO', label: 'Tel. contacto' },
   ],
+  docFormFields: [
+    { key: 'NIT', label: 'NIT' },
+    { key: 'EMPRESA', label: 'Empresa', required: true },
+  ],
+  docNameField: 'EMPRESA',
+  docCreateKeys: ['NIT', 'EMPRESA'],
   createKeys: ['NIT', 'EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO'],
   updateKeys: ['NIT', 'EMPRESA', 'RAZONSOCIAL', 'DIRECCION', 'TELEMPRESA', 'CONTACTO', 'TELCONTACTO'],
   mapFormToApi(data) {

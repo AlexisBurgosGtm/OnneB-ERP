@@ -269,24 +269,36 @@ const EmpleadosView = {
             <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
           </button>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-2 px-1 mb-2">
-          <label for="empleados-filter-activo" class="small text-muted mb-0">Activo:</label>
-          <select class="form-select form-select-sm" id="empleados-filter-activo" style="max-width: 11rem">
-            ${activoSelect}
-          </select>
-        </div>
-        <div class="catalogo-empresa-search-wrap px-1 mb-2">
-          <div class="input-group input-group-sm catalogo-empresa-search">
-            <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input type="search" class="form-control" id="empleados-search"
-              placeholder="Buscar por nombre, DPI, teléfono, tipo…"
-              value="${this.escapeHtml(this._filterQuery)}" autocomplete="off" spellcheck="false">
-            <button type="button" class="btn btn-outline-secondary" id="btn-empleados-search-clear"
-              title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
-              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-            </button>
+        
+        <div class="row">
+          <div class="col-6">
+            <div class="d-flex flex-wrap align-items-center gap-2 px-1 mb-2">
+              <label for="empleados-filter-activo" class="small text-muted mb-0">Activo:</label>
+              <select class="form-select form-select-sm" id="empleados-filter-activo" style="max-width: 11rem">
+                ${activoSelect}
+              </select>
+            </div>
+          </div>
+          <div class="col-6">
+          
+            <div class="catalogo-empresa-search-wrap px-1 mb-2">
+              <div class="input-group input-group-sm catalogo-empresa-search">
+                  <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
+                  <input type="search" class="form-control" id="empleados-search"
+                    placeholder="Buscar por nombre, DPI, teléfono, tipo…"
+                    value="${this.escapeHtml(this._filterQuery)}" autocomplete="off" spellcheck="false">
+                  <button type="button" class="btn btn-outline-secondary" id="btn-empleados-search-clear"
+                    title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                  </button>
+              </div>
+            </div>
+          
           </div>
         </div>
+        
+        
+       
         <div class="table-responsive">
           <table class="table table-sm table-hover table-striped">
             <thead><tr>${headers}</tr></thead>

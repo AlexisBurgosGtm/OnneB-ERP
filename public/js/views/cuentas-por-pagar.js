@@ -9,6 +9,9 @@ const CuentasPorPagarView = {
   _sumTotal: 0,
   _truncated: false,
   _filterQuery: '',
+  _vistaTipo: 'lista',
+  _calYear: null,
+  _calMonth: null,
   _loading: false,
   _guardandoRecibo: false,
   _corregiendoSaldos: false,
@@ -148,6 +151,237 @@ const CuentasPorPagarView = {
     return v < t;
   },
 
+  initCalMonth() {
+    const d = new Date();
+    if (this._calYear == null) {
+      this._calYear = d.getFullYear();
+      this._calMonth = d.getMonth();
+    }
+  },
+
+  vencimientoIso(row) {
+    const v = row?.VENCIMIENTO;
+    if (!v) return null;
+    const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  },
+
+  aggregateVencimientosPorDia() {
+    const map = new Map();
+    for (const r of this.filteredRows()) {
+      const key = this.vencimientoIso(r);
+      if (!key) continue;
+      const entry = map.get(key) || { count: 0, total: 0 };
+      entry.count += 1;
+      entry.total += Number(r.DOC_SALDO) || 0;
+      map.set(key, entry);
+    }
+    return map;
+  },
+
+  rowsForVencimiento(isoDate) {
+    return this.filteredRows().filter((r) => this.vencimientoIso(r) === isoDate);
+  },
+
+  renderCalDayTableHtml(rows) {
+    if (!rows.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin compras con vencimiento en esta fecha</p>';
+    }
+    const body = rows
+      .map((r) => {
+        const vencido = this.isVencido(r);
+        return `<tr class="cxp-cal-day-row${vencido ? ' cxp-row-vencido' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}" role="button" tabindex="0">
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || '—')}</td>
+          <td class="small">${this.escapeHtml(r.EMPLEADO || r.VENDEDOR || '—')}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.DOC_SALDO))}</td>
+        </tr>`;
+      })
+      .join('');
+    const totalSaldo = rows.reduce((s, r) => s + (Number(r.DOC_SALDO) || 0), 0);
+    return `
+      <div class="table-responsive cxp-cal-day-table" style="max-height: 360px">
+        <table class="table table-sm table-hover table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Proveedor</th>
+              <th>Empleado</th>
+              <th>Fecha</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Doc.Saldo</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="5" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="small text-muted mt-2 mb-0 text-start">Clic en una fila para ver opciones del documento.</p>`;
+  },
+
+  async mostrarComprasDelDia(isoDate) {
+    const rows = this.rowsForVencimiento(isoDate);
+    if (!rows.length) return;
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: `Vencimientos — ${this.formatFecha(isoDate)}`,
+      html: this.renderCalDayTableHtml(rows),
+      width: 720,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const onRowPick = (row) => {
+          const coddoc = row.getAttribute('data-coddoc');
+          const correlativo = row.getAttribute('data-correlativo');
+          if (!coddoc || !correlativo) return;
+          Swal.close();
+          this.onRowAction(coddoc, correlativo).catch((err) => F.toast(err.message || 'Error', 'error'));
+        };
+        Swal.getPopup()?.querySelectorAll('.cxp-cal-day-row').forEach((row) => {
+          row.addEventListener('click', () => onRowPick(row));
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onRowPick(row);
+            }
+          });
+        });
+      },
+    });
+  },
+
+  renderVistaToggleHtml() {
+    const listaActive = this._vistaTipo === 'lista';
+    const calActive = this._vistaTipo === 'calendario';
+    return `
+      <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
+        <button type="button" class="btn ${listaActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-lista"
+          title="Lista de facturas">
+          <i class="fa-solid fa-list me-1"></i>Lista
+        </button>
+        <button type="button" class="btn ${calActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-calendario"
+          title="Calendario de pagos">
+          <i class="fa-solid fa-calendar-days me-1"></i>Calendario
+        </button>
+      </div>`;
+  },
+
+  monthLabel(year, month) {
+    const names = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+    return `${names[month]} ${year}`;
+  },
+
+  renderCalendarHtml() {
+    this.initCalMonth();
+    const year = this._calYear;
+    const month = this._calMonth;
+    const byDay = this.aggregateVencimientosPorDia();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let startWeekday = firstDay.getDay();
+    startWeekday = startWeekday === 0 ? 6 : startWeekday - 1;
+    const weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const today = this.todayIsoDate();
+    let cells = '';
+
+    for (let i = 0; i < startWeekday; i += 1) {
+      cells += '<div class="cxp-cal-cell cxp-cal-cell--muted"></div>';
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const data = byDay.get(iso);
+      const hasDue = Boolean(data?.count);
+      const isToday = iso === today;
+      const vencido = hasDue && iso < today;
+      const cls = [
+        'cxp-cal-cell',
+        isToday ? 'cxp-cal-cell--today' : '',
+        hasDue ? 'cxp-cal-cell--due cxp-cal-cell--clickable' : '',
+        vencido ? 'cxp-cal-cell--overdue' : '',
+      ].filter(Boolean).join(' ');
+      cells += `
+        <div class="${cls}" data-cal-date="${iso}"${hasDue ? ' role="button" tabindex="0"' : ''}>
+          <div class="cxp-cal-day">${day}</div>
+          ${hasDue ? `
+            <div class="cxp-cal-meta">
+              <span class="cxp-cal-count">${data.count} doc.</span>
+              <span class="cxp-cal-amount">${this.escapeHtml(this.formatMoney(data.total))}</span>
+            </div>` : ''}
+        </div>`;
+    }
+
+    const totalCells = startWeekday + daysInMonth;
+    const trailing = (7 - (totalCells % 7)) % 7;
+    for (let i = 0; i < trailing; i += 1) {
+      cells += '<div class="cxp-cal-cell cxp-cal-cell--muted"></div>';
+    }
+
+    return `
+      <div class="cxp-cal-wrap card shadow-sm">
+        <div class="card-body">
+          <div class="cxp-cal-toolbar d-flex align-items-center justify-content-between gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-cal-prev" title="Mes anterior">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <h3 class="h6 mb-0 fw-semibold text-center flex-grow-1">${this.escapeHtml(this.monthLabel(year, month))}</h3>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-cal-next" title="Mes siguiente">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+          <div class="cxp-cal-grid">
+            ${weekDays.map((d) => `<div class="cxp-cal-weekday">${d}</div>`).join('')}
+            ${cells}
+          </div>
+          <p class="small text-muted mt-3 mb-0">
+            Días marcados tienen documentos de compra con vencimiento y saldo pendiente. Clic en un día para ver el detalle.
+          </p>
+        </div>
+      </div>`;
+  },
+
+  renderListaHtml() {
+    return `
+        <div class="card shadow-sm">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover table-striped mb-0 cxp-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Empleado</th>
+                  <th>Fecha</th>
+                  <th>Vence</th>
+                  <th>Documento</th>
+                  <th>Proveedor</th>
+                  <th>Empresa</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">Pagos</th>
+                  <th class="text-end">Doc.Saldo</th>
+                </tr>
+              </thead>
+              <tbody id="cxp-tbody">${this.renderTableBodyHtml()}</tbody>
+              <tfoot class="table-light">
+                <tr>
+                  <td colspan="8" class="text-end fw-semibold">Doc. saldo (listado)</td>
+                  <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Clic en una fila para ver opciones del documento.</p>`;
+  },
+
   filteredRows() {
     return this._rows;
   },
@@ -252,6 +486,7 @@ const CuentasPorPagarView = {
           </div>
           <div class="cxp-summary card border-0 shadow-sm">
             <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
+              ${this.renderVistaToggleHtml()}
               <div class="small">
                 <span class="text-muted">Documentos:</span>
                 <strong class="ms-1">${count}</strong>
@@ -271,42 +506,18 @@ const CuentasPorPagarView = {
                 <input type="search" class="form-control" id="cxp-search"
                   placeholder="Buscar documento, proveedor, empleado, NIT…"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+                <div></div>
+                <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
+                  title="Recalcular saldos y abonos de compras al crédito">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
+                </button>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
-                title="Recalcular saldos y abonos de compras al crédito">
-                <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
-              </button>
+              
             </div>
             ${truncHint}
           </div>
         </div>
-        <div class="card shadow-sm">
-          <div class="table-responsive">
-            <table class="table table-sm table-hover table-striped mb-0 cxp-table">
-              <thead class="table-light sticky-top">
-                <tr>
-                  <th>Empleado</th>
-                  <th>Fecha</th>
-                  <th>Vence</th>
-                  <th>Documento</th>
-                  <th>Proveedor</th>
-                  <th>Empresa</th>
-                  <th class="text-end">Total</th>
-                  <th class="text-end">Pagos</th>
-                  <th class="text-end">Doc.Saldo</th>
-                </tr>
-              </thead>
-              <tbody id="cxp-tbody">${this.renderTableBodyHtml()}</tbody>
-              <tfoot class="table-light">
-                <tr>
-                  <td colspan="8" class="text-end fw-semibold">Doc. saldo (listado)</td>
-                  <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-        <p class="small text-muted mt-2 mb-0">Clic en una fila para ver opciones del documento.</p>
+        ${this._vistaTipo === 'calendario' ? this.renderCalendarHtml() : this.renderListaHtml()}
       </div>`;
   },
 
@@ -942,6 +1153,60 @@ const CuentasPorPagarView = {
       }, 350);
     });
 
+    const switchVista = (value) => {
+      if (value === this._vistaTipo) return;
+      this._vistaTipo = value;
+      if (value === 'calendario') this.initCalMonth();
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    };
+
+    this._container?.querySelector('#cxp-vista-lista')?.addEventListener('click', () => {
+      switchVista('lista');
+    });
+
+    this._container?.querySelector('#cxp-vista-calendario')?.addEventListener('click', () => {
+      switchVista('calendario');
+    });
+
+    this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {
+      this.initCalMonth();
+      this._calMonth -= 1;
+      if (this._calMonth < 0) {
+        this._calMonth = 11;
+        this._calYear -= 1;
+      }
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    });
+
+    this._container?.querySelector('#cxp-cal-next')?.addEventListener('click', () => {
+      this.initCalMonth();
+      this._calMonth += 1;
+      if (this._calMonth > 11) {
+        this._calMonth = 0;
+        this._calYear += 1;
+      }
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    });
+
+    const onCalDayPick = (cell) => {
+      const iso = cell.getAttribute('data-cal-date');
+      if (!iso || !cell.classList.contains('cxp-cal-cell--clickable')) return;
+      this.mostrarComprasDelDia(iso).catch((err) => F.toast(err.message || 'Error', 'error'));
+    };
+
+    this._container?.querySelectorAll('.cxp-cal-cell--clickable').forEach((cell) => {
+      cell.addEventListener('click', () => onCalDayPick(cell));
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onCalDayPick(cell);
+        }
+      });
+    });
+
     this._container?.querySelector('#cxp-btn-corregir-saldos')?.addEventListener('click', () => {
       this.corregirSaldos().catch((err) => F.toast(err.message || 'Error al corregir saldos', 'error'));
     });
@@ -980,6 +1245,7 @@ const CuentasPorPagarView = {
 
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cuentas por pagar…</div>`;
     try {
+      this.initCalMonth();
       await this.fetchDocumentos();
       container.innerHTML = this.renderShell();
       this.bindEvents();

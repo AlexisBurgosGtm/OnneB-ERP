@@ -149,7 +149,10 @@ const CuentasPorCobrarView = {
   },
 
   filteredRows() {
-    return this._rows;
+    return (this._rows || []).filter((r) => {
+      const saldo = Number(r.SALDO_PENDIENTE ?? (Number(r.DOC_SALDO) || 0) - (Number(r.DOC_ABONO) || 0));
+      return saldo > 0.005;
+    });
   },
 
   async fetchDocumentos() {
@@ -393,7 +396,53 @@ const CuentasPorCobrarView = {
     };
   },
 
-  renderAbonosTableHtml(abonos) {
+  async imprimirReciboAbono({ facturaRow, abono, factura, fpago = {}, monto }) {
+    if (typeof DocPrint === 'undefined') {
+      F.toast('Impresión no disponible', 'warning');
+      return;
+    }
+    await DocPrint.printReciboPagoCliente({
+      abono,
+      factura: {
+        CODDOC: facturaRow?.CODDOC || abono?.SERIEFAC,
+        CORRELATIVO: facturaRow?.CORRELATIVO || abono?.NOFAC,
+        DOC_SALDO: factura?.DOC_SALDO ?? facturaRow?.DOC_SALDO,
+      },
+      fpago,
+      cliente: facturaRow?.DOC_NOMCLIE || facturaRow?.NEGOCIO || '—',
+      usuario: abono?.USUARIO || this.usuario(),
+      fecha: abono?.FECHA || this.todayIsoDate(),
+      monto: monto ?? abono?.TOTALPRECIO,
+    });
+  },
+
+  async imprimirReciboDesdeHistorial(abono, facturaRow) {
+    let fpago = {};
+    try {
+      if (typeof DocOpciones !== 'undefined' && abono?.CODDOC && abono?.CORRELATIVO != null) {
+        const doc = await DocOpciones.fetchDetalle(abono.CODDOC, abono.CORRELATIVO);
+        const h = doc.header || {};
+        fpago = {
+          FPAGO_EFECTIVO: h.FPAGO_EFECTIVO,
+          FPAGO_TARJETA: h.FPAGO_TARJETA,
+          FPAGO_DEPOSITO: h.FPAGO_DEPOSITO,
+          FPAGO_CHEQUE: h.FPAGO_CHEQUE,
+          FPAGO_DESCRIPCION: h.FPAGO_DESCRIPCION,
+        };
+      }
+    } catch {
+      /* sin detalle de formas de pago */
+    }
+    const facturaSaldo = facturaRow?.DOC_SALDO;
+    await this.imprimirReciboAbono({
+      facturaRow: { ...facturaRow, DOC_SALDO: facturaSaldo },
+      abono,
+      fpago,
+      monto: abono.TOTALPRECIO,
+    });
+  },
+
+  renderAbonosTableHtml(abonos, facturaRow = null) {
     if (!abonos?.length) {
       return '<p class="text-muted small text-center mb-0 py-3">Sin abonos ni notas de crédito registrados</p>';
     }
@@ -405,17 +454,27 @@ const CuentasPorCobrarView = {
         const docLabel = a.DESDOC
           ? `${a.CODDOC} — ${a.DESDOC} #${a.CORRELATIVO}`
           : `${a.CODDOC} #${a.CORRELATIVO}`;
+        const printBtn =
+          tipo === 'RCC'
+            ? `<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 cxp-print-recibo-btn"
+                data-coddoc="${this.escapeHtml(a.CODDOC)}" data-correlativo="${this.escapeHtml(a.CORRELATIVO)}"
+                title="Imprimir recibo"><i class="fa-solid fa-print"></i></button>`
+            : '';
         return `<tr>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(a.FECHA))}</td>
           <td><span class="badge ${tipoCls}">${this.escapeHtml(tipo || '—')}</span></td>
           <td class="fw-semibold">${this.escapeHtml(docLabel)}</td>
           <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(a.TOTALPRECIO))}</td>
           <td class="small">${this.escapeHtml(a.USUARIO || '—')}</td>
+          <td class="text-end">${printBtn}</td>
         </tr>`;
       })
       .join('');
+    const facturaAttr = facturaRow
+      ? ` data-fac-coddoc="${this.escapeHtml(facturaRow.CODDOC)}" data-fac-correlativo="${this.escapeHtml(facturaRow.CORRELATIVO)}"`
+      : '';
     return `
-      <div class="table-responsive cxp-historial-table" style="max-height: 360px">
+      <div class="table-responsive cxp-historial-table" style="max-height: 360px"${facturaAttr} id="cxp-historial-wrap">
         <table class="table table-sm table-striped mb-0">
           <thead class="table-light sticky-top">
             <tr>
@@ -424,6 +483,7 @@ const CuentasPorCobrarView = {
               <th>Documento</th>
               <th class="text-end">Monto</th>
               <th>Usuario</th>
+              <th class="text-end">Recibo</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -867,7 +927,7 @@ const CuentasPorCobrarView = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          return res;
+          return { ...res, fpago: payload };
         } catch (e) {
           Swal.hideLoading();
           Swal.getCancelButton()?.removeAttribute('disabled');
@@ -883,6 +943,17 @@ const CuentasPorCobrarView = {
     if (!isConfirmed || !value) return;
 
     F.toast(`Abono ${value.abono?.CODDOC}-${value.abono?.CORRELATIVO} registrado`, 'success');
+    try {
+      await this.imprimirReciboAbono({
+        facturaRow: row,
+        abono: value.abono,
+        factura: value.factura,
+        fpago: value.fpago,
+        monto: value.abono?.TOTALPRECIO,
+      });
+    } catch {
+      /* impresión opcional */
+    }
     await this.fetchDocumentos();
     this._container.innerHTML = this.renderShell();
     this.bindEvents();
@@ -901,13 +972,31 @@ const CuentasPorCobrarView = {
           · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
         </p>
         <p class="small text-muted text-start mb-2">RCC, DEV y FNC vinculados por SERIEFAC / NOFAC</p>
-        ${this.renderAbonosTableHtml(abonos)}
+        ${this.renderAbonosTableHtml(abonos, row)}
         <p class="text-end mt-2 mb-0 small"><strong>Total: ${this.escapeHtml(this.formatMoney(totalMov))}</strong></p>
       `,
-      width: 620,
+      width: 680,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        document.querySelectorAll('.cxp-print-recibo-btn').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const cod = btn.getAttribute('data-coddoc');
+            const corr = btn.getAttribute('data-correlativo');
+            const abono = abonos.find(
+              (a) => String(a.CODDOC) === String(cod) && String(a.CORRELATIVO) === String(corr)
+            );
+            if (!abono) return;
+            try {
+              await this.imprimirReciboDesdeHistorial(abono, row);
+            } catch (err) {
+              F.toast(err.message || 'No se pudo imprimir', 'error');
+            }
+          });
+        });
+      },
     });
   },
 

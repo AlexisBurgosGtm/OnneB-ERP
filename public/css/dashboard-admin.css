@@ -151,6 +151,24 @@
   z-index: 1;
 }
 
+/* Inicio cajero */
+.cajero-inicio-facturas-wrap,
+.cajero-inicio-compras-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.cajero-inicio-facturas-wrap table th,
+.cajero-inicio-compras-wrap table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.cajero-inicio-chart-body {
+  min-height: 320px;
+}
+
 .transporte-inicio-table-wrap {
   max-height: 360px;
   overflow-y: auto;

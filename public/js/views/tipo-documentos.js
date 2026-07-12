@@ -4,6 +4,11 @@ const tipomOptions = [
   { value: '0', label: 'NEUTRO' },
 ];
 
+const contableOptions = [
+  { value: 'NO', label: 'NO' },
+  { value: 'SI', label: 'SI' },
+];
+
 function tipomLabel(value) {
   const v = String(value ?? '');
   const found = tipomOptions.find((o) => o.value === v);
@@ -44,6 +49,7 @@ function mapFormToApi(data, isEdit) {
     TIPOM: n('TIPOM'),
     CODFORMATOCON: data.CODFORMATOCON || null,
     CODFORMATOCRE: data.CODFORMATOCRE || null,
+    CONTABLE: String(data.CONTABLE || 'NO').trim().toUpperCase(),
   };
   if (!isEdit) {
     payload.CODDOC = String(data.CODDOC).trim();
@@ -62,7 +68,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
   dataAttr: 'coddoc',
   formWidth: 780,
   searchPlaceholder: 'Buscar por código, descripción, tipo…',
-  searchKeys: ['CODDOC', 'DESDOC', 'TIPODOC', 'FORMATO', 'TIPOM', 'ACTIVO'],
+  searchKeys: ['CODDOC', 'DESDOC', 'TIPODOC', 'FORMATO', 'TIPOM', 'CONTABLE', 'ACTIVO'],
   formFields: [],
   createKeys: [
     'CODDOC',
@@ -73,6 +79,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'TIPOM',
     'CODFORMATOCON',
     'CODFORMATOCRE',
+    'CONTABLE',
     'ACTIVO',
   ],
   updateKeys: [
@@ -83,6 +90,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'TIPOM',
     'CODFORMATOCON',
     'CODFORMATOCRE',
+    'CONTABLE',
   ],
   mapFormToApi,
   validateForm: validateTipoDocumentoForm,
@@ -92,6 +100,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     { key: 'TIPODOC', label: 'Tipo doc.' },
     { key: 'TIPOM', label: 'Tipo Inventario' },
     { key: 'FORMATO', label: 'Formato' },
+    { key: 'CONTABLE', label: 'Contable' },
     { key: 'ACTIVO', label: 'Activo' },
   ],
   getRowLabel(row) {
@@ -122,6 +131,7 @@ const TipoDocumentosView = {
       TIPOM: tipom,
       CODFORMATOCON: row.CODFORMATOCON ?? '',
       CODFORMATOCRE: row.CODFORMATOCRE ?? '',
+      CONTABLE: String(row.CONTABLE ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
     };
   },
 
@@ -146,6 +156,9 @@ const TipoDocumentosView = {
 
   formatCell(value, col) {
     if (col?.key === 'TIPOM') return this.escapeHtml(tipomLabel(value));
+    if (col?.key === 'CONTABLE') {
+      return this.escapeHtml(String(value ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO');
+    }
     if (col?.key === 'TIPODOC') {
       return this.escapeHtml(tipoDocLabel(value, this._lookups));
     }
@@ -177,6 +190,7 @@ const TipoDocumentosView = {
       { key: 'TIPODOC', label: 'Tipo doc.' },
       { key: 'TIPOM', label: 'Tipo Inventario' },
       { key: 'FORMATO', label: 'Formato' },
+      { key: 'CONTABLE', label: 'Contable' },
       { key: 'ACTIVO', label: 'Activo' },
     ];
     const colSpan = columns.length + 1;
@@ -308,6 +322,7 @@ const TipoDocumentosView = {
       this.rowCols([
         this.inputField('CODFORMATOCON', 'Cód. formato cont.', r.CODFORMATOCON),
         this.inputField('CODFORMATOCRE', 'Cód. formato cred.', r.CODFORMATOCRE),
+        this.selectField('CONTABLE', 'Contable', contableOptions, r.CONTABLE),
       ]),
     ].join('');
   },
@@ -322,6 +337,7 @@ const TipoDocumentosView = {
       'TIPOM',
       'CODFORMATOCON',
       'CODFORMATOCRE',
+      'CONTABLE',
     ];
     const data = {};
     names.forEach((name) => {

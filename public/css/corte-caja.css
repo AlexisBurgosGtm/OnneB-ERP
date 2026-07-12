@@ -1,8 +1,8 @@
 .corte-caja-wrap {
-  max-width: 72rem;
   flex: 1;
   min-height: 0;
   width: 100%;
+  max-width: none;
   align-self: stretch;
   overflow-y: auto;
   overflow-x: hidden;
@@ -96,4 +96,54 @@
 .corte-caja-stat-value {
   font-size: 1rem;
   font-weight: 600;
+}
+
+.corte-caja-panel-row {
+  align-items: stretch;
+}
+
+.corte-caja-denom-card .card-body {
+  min-height: 100%;
+}
+
+.corte-denom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.corte-denom-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--bs-secondary);
+  margin-bottom: 0.15rem;
+}
+
+.corte-denom-row {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr 5.5rem;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.corte-denom-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.corte-denom-qty {
+  text-align: center;
+}
+
+.corte-denom-subtotal {
+  font-size: 0.8rem;
+  text-align: right;
+  color: var(--bs-secondary);
+}
+
+.corte-denom-footer {
+  border-top: 1px solid var(--bs-border-color);
 }

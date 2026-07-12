@@ -8,6 +8,25 @@ const CorteCajaView = {
   _resumen: null,
   _loading: false,
   _muestraDatos: false,
+  _denomCounts: {},
+
+  BILLETES_DENOMS: [
+    { value: 200, label: 'Q200' },
+    { value: 100, label: 'Q100' },
+    { value: 50, label: 'Q50' },
+    { value: 20, label: 'Q20' },
+    { value: 10, label: 'Q10' },
+    { value: 5, label: 'Q5' },
+    { value: 1, label: 'Q1', key: 'bill-1' },
+  ],
+
+  MONEDAS_DENOMS: [
+    { value: 1, label: 'Q1', key: 'coin-1' },
+    { value: 0.5, label: 'Q0.50' },
+    { value: 0.25, label: 'Q0.25' },
+    { value: 0.1, label: 'Q0.10' },
+    { value: 0.05, label: 'Q0.05' },
+  ],
 
   escapeHtml(value) {
     if (value == null) return '';
@@ -85,9 +104,96 @@ const CorteCajaView = {
     return html;
   },
 
+  denomKey(d) {
+    return d.key || String(d.value);
+  },
+
+  denomTotal() {
+    let total = 0;
+    const all = [...this.BILLETES_DENOMS, ...this.MONEDAS_DENOMS];
+    for (const d of all) {
+      const count = Number(this._denomCounts[this.denomKey(d)]) || 0;
+      total += count * d.value;
+    }
+    return Math.round(total * 100) / 100;
+  },
+
+  hasDenomCounts() {
+    return Object.values(this._denomCounts).some((n) => Number(n) > 0);
+  },
+
+  resetDenomCounts() {
+    this._denomCounts = {};
+  },
+
+  updateEfectivoFromDenoms() {
+    const total = this.denomTotal();
+    const totalEl = document.getElementById('corte-denom-total');
+    if (totalEl) totalEl.textContent = this.formatMoney(total);
+    this._container?.querySelectorAll('.corte-denom-subtotal').forEach((el) => {
+      const row = el.closest('.corte-denom-row');
+      const inp = row?.querySelector('.corte-denom-qty');
+      const denom = Number(inp?.dataset.denomValue);
+      const count = Number(inp?.value) || 0;
+      if (Number.isFinite(denom)) {
+        el.textContent = this.formatMoney(count * denom);
+      }
+    });
+    const cashInp = document.getElementById('corte-total-reportado');
+    if (cashInp) cashInp.value = String(total);
+  },
+
+  renderDenomRow(d) {
+    const key = this.denomKey(d);
+    const count = Number(this._denomCounts[key]) || 0;
+    const subtotal = count * d.value;
+    return `
+      <div class="corte-denom-row">
+        <span class="corte-denom-label">${this.escapeHtml(d.label)}</span>
+        <input type="number" class="form-control form-control-sm corte-denom-qty"
+          data-denom-key="${this.escapeHtml(key)}" data-denom-value="${d.value}"
+          min="0" step="1" inputmode="numeric"
+          value="${count}" aria-label="Cantidad ${this.escapeHtml(d.label)}">
+        <span class="corte-denom-subtotal">${this.escapeHtml(this.formatMoney(subtotal))}</span>
+      </div>`;
+  },
+
+  renderDenominacionesCard() {
+    return `
+      <div class="card shadow-sm corte-caja-panel-card corte-caja-denom-card h-100">
+        <div class="card-body d-flex flex-column">
+          <h6 class="card-title mb-2">
+            <i class="fa-solid fa-coins me-1 text-warning"></i>Conteo de efectivo
+          </h6>
+          <div class="corte-denom-section">
+            <div class="corte-denom-section-title">Billetes</div>
+            ${this.BILLETES_DENOMS.map((d) => this.renderDenomRow(d)).join('')}
+          </div>
+          <div class="corte-denom-section mt-2">
+            <div class="corte-denom-section-title">Monedas</div>
+            ${this.MONEDAS_DENOMS.map((d) => this.renderDenomRow(d)).join('')}
+          </div>
+          <div class="corte-denom-footer mt-auto pt-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="fw-semibold">Total contado</span>
+              <span class="fw-bold text-primary" id="corte-denom-total">${this.escapeHtml(this.formatMoney(this.denomTotal()))}</span>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm mt-2 w-100" id="btn-corte-denom-clear">
+              <i class="fa-solid fa-eraser me-1"></i>Limpiar conteo
+            </button>
+          </div>
+        </div>
+      </div>`;
+  },
+
   renderArqueoInputs(r) {
     const blind = !this._muestraDatos;
-    const cashVal = blind ? '' : String(r.efectivoEsperado);
+    const denomTotal = this.denomTotal();
+    const cashVal = this.hasDenomCounts()
+      ? String(denomTotal)
+      : blind
+        ? ''
+        : String(r.efectivoEsperado);
     const tarjetaVal = blind ? '' : String(r.fpTarjeta);
     const chequeVal = blind ? '' : String(r.fpCheque);
     const depositoVal = blind ? '' : String(r.fpDeposito);
@@ -377,27 +483,34 @@ const CorteCajaView = {
       : '';
 
     return `
-      <div class="card shadow-sm corte-caja-panel-card h-100">
-        <div class="card-body">
-          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <h6 class="card-title mb-0">
-              <i class="fa-solid fa-cash-register me-1 text-primary"></i>${this.escapeHtml(caja.DESCAJA)} — turno abierto
-            </h6>
-            <span class="badge text-bg-success">Abierta</span>
+      <div class="row g-3 corte-caja-panel-row">
+        <div class="col-12 col-xl-8">
+          <div class="card shadow-sm corte-caja-panel-card h-100">
+            <div class="card-body">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <h6 class="card-title mb-0">
+                  <i class="fa-solid fa-cash-register me-1 text-primary"></i>${this.escapeHtml(caja.DESCAJA)} — turno abierto
+                </h6>
+                <span class="badge text-bg-success">Abierta</span>
+              </div>
+              ${blindNotice}
+              ${statsHtml ? `<div class="corte-caja-stats mb-3">${statsHtml}</div>` : ''}
+              <hr class="my-3">
+              <h6 class="small fw-semibold mb-2">Cerrar caja — arqueo</h6>
+              ${this.renderArqueoInputs(r)}
+              <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="button" class="btn btn-danger btn-sm" id="btn-corte-cerrar">
+                  <i class="fa-solid fa-lock me-1"></i>Cerrar caja
+                </button>
+                ${this._muestraDatos ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="btn-corte-refrescar">
+                  <i class="fa-solid fa-rotate-right me-1"></i>Refrescar
+                </button>` : ''}
+              </div>
+            </div>
           </div>
-          ${blindNotice}
-          ${statsHtml ? `<div class="corte-caja-stats mb-3">${statsHtml}</div>` : ''}
-          <hr class="my-3">
-          <h6 class="small fw-semibold mb-2">Cerrar caja — arqueo</h6>
-          ${this.renderArqueoInputs(r)}
-          <div class="d-flex flex-wrap gap-2 mt-3">
-            <button type="button" class="btn btn-danger btn-sm" id="btn-corte-cerrar">
-              <i class="fa-solid fa-lock me-1"></i>Cerrar caja
-            </button>
-            ${this._muestraDatos ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="btn-corte-refrescar">
-              <i class="fa-solid fa-rotate-right me-1"></i>Refrescar
-            </button>` : ''}
-          </div>
+        </div>
+        <div class="col-12 col-xl-4">
+          ${this.renderDenominacionesCard()}
         </div>
       </div>`;
   },
@@ -415,11 +528,11 @@ const CorteCajaView = {
               <strong>CORTES</strong> con el resumen de movimientos del período.
             </p>
             <div class="row g-3 corte-caja-main-row">
-              <div class="col-12 col-lg-4">
+              <div class="col-12 col-lg-3 col-xl-2">
                 <h6 class="small fw-semibold mb-2">Cajas</h6>
                 <div id="corte-caja-list">${this.renderCajasHtml()}</div>
               </div>
-              <div class="col-12 col-lg-8" id="corte-caja-panel">${this.renderResumenHtml()}</div>
+              <div class="col-12 col-lg-9 col-xl-10" id="corte-caja-panel">${this.renderResumenHtml()}</div>
             </div>
           </div>
         </div>
@@ -439,6 +552,7 @@ const CorteCajaView = {
       btn.addEventListener('click', async () => {
         this._selectedCodcaja = btn.dataset.codcaja;
         this._resumen = null;
+        this.resetDenomCounts();
         this.refreshPanels();
         await this.loadResumen();
         this.refreshPanels();
@@ -446,8 +560,28 @@ const CorteCajaView = {
     });
   },
 
+  bindDenominacionesEvents() {
+    this._container?.querySelectorAll('.corte-denom-qty').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const key = inp.dataset.denomKey;
+        const count = Math.max(0, Math.floor(Number(inp.value) || 0));
+        if (count !== Number(inp.value)) inp.value = String(count);
+        if (key) this._denomCounts[key] = count;
+        this.updateEfectivoFromDenoms();
+      });
+    });
+    document.getElementById('btn-corte-denom-clear')?.addEventListener('click', () => {
+      this.resetDenomCounts();
+      this._container?.querySelectorAll('.corte-denom-qty').forEach((inp) => {
+        inp.value = '0';
+      });
+      this.updateEfectivoFromDenoms();
+    });
+  },
+
   bindPanelEvents() {
     this.bindCajaSelect();
+    this.bindDenominacionesEvents();
     document.getElementById('btn-corte-abrir')?.addEventListener('click', () => this.onAbrir());
     document.getElementById('btn-corte-cerrar')?.addEventListener('click', () => this.onCerrar());
     document.getElementById('btn-corte-refrescar')?.addEventListener('click', () => this.refreshResumen());
@@ -457,6 +591,7 @@ const CorteCajaView = {
         if (filtro) this.showDocumentosModal(filtro);
       });
     });
+    if (this.hasDenomCounts()) this.updateEfectivoFromDenoms();
   },
 
   async onAbrir() {
@@ -631,6 +766,7 @@ const CorteCajaView = {
     this._cajas = [];
     this._resumen = null;
     this._selectedCodcaja = null;
+    this.resetDenomCounts();
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start');
     container.innerHTML = `

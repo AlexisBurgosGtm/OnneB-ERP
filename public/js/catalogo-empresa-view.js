@@ -76,8 +76,10 @@ function createCatalogoEmpresaView(cfg) {
       `;
     },
 
-    buildFormHtml(row = {}, isEdit = false) {
-      return cfg.formFields
+    buildFormHtml(row = {}, isEdit = false, profile = 'full') {
+      const fields =
+        profile === 'documento' && cfg.docFormFields?.length ? cfg.docFormFields : cfg.formFields;
+      return fields
         .map((f) => {
           const html = this.fieldHtml(f, row, isEdit);
           if (!html) return '';
@@ -86,9 +88,11 @@ function createCatalogoEmpresaView(cfg) {
         .join('');
     },
 
-    readFormData() {
+    readFormData(profile = 'full') {
       const data = {};
-      cfg.formFields.forEach((field) => {
+      const fields =
+        profile === 'documento' && cfg.docFormFields?.length ? cfg.docFormFields : cfg.formFields;
+      fields.forEach((field) => {
         const input = document.querySelector(`.swal2-html-container [name="${field.key}"]`);
         if (!input) return;
         data[field.key] = input.type === 'number' ? input.value.trim() : input.value.trim();
@@ -96,12 +100,17 @@ function createCatalogoEmpresaView(cfg) {
       return data;
     },
 
-    buildPayload(data, isEdit) {
+    buildPayload(data, isEdit, profile = 'full') {
       if (typeof cfg.mapFormToApi === 'function') {
-        return cfg.mapFormToApi(data, isEdit);
+        return cfg.mapFormToApi(data, isEdit, profile);
       }
+      const keys =
+        profile === 'documento' && cfg.docCreateKeys?.length && !isEdit
+          ? cfg.docCreateKeys
+          : isEdit
+            ? cfg.updateKeys || cfg.formFields.map((f) => f.key)
+            : cfg.createKeys || cfg.formFields.map((f) => f.key);
       const payload = {};
-      const keys = isEdit ? cfg.updateKeys || cfg.formFields.map((f) => f.key) : cfg.createKeys || cfg.formFields.map((f) => f.key);
       keys.forEach((key) => {
         if (data[key] !== undefined && data[key] !== '') payload[key] = data[key];
         else if (data[key] === '' && cfg.allowEmpty?.includes(key)) payload[key] = null;
@@ -109,19 +118,30 @@ function createCatalogoEmpresaView(cfg) {
       return payload;
     },
 
-    async showForm(title, row = {}, isEdit = false) {
+    async showForm(title, row = {}, isEdit = false, options = {}) {
+      const profile = options.profile || 'full';
       return CatalogosUI.fireForm({
         title,
-        html: this.buildFormHtml(row, isEdit),
+        html: this.buildFormHtml(row, isEdit, profile),
         width: cfg.formWidth || 520,
+        didOpen: (popup) => {
+          if (profile === 'documento' && !isEdit && typeof DocNitSatLookup !== 'undefined') {
+            DocNitSatLookup.bindEnterLookup({
+              popup,
+              nitFieldName: 'NIT',
+              nameFieldName: cfg.docNameField || 'EMPRESA',
+            });
+            popup?.querySelector('[name="NIT"]')?.focus();
+          }
+        },
         preConfirm: () => {
-          const data = this.readFormData();
-          const err = cfg.validateForm?.(data, isEdit);
+          const data = this.readFormData(profile);
+          const err = cfg.validateForm?.(data, isEdit, profile);
           if (err) {
             Swal.showValidationMessage(err);
             return false;
           }
-          return this.buildPayload(data, isEdit);
+          return this.buildPayload(data, isEdit, profile);
         },
       });
     },

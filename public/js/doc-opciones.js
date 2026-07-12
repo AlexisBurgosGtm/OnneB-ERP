@@ -256,45 +256,15 @@ const DocOpciones = {
     const lines = doc.lines || [];
     const tipodoc = String(h.TIPODOC || row?.TIPODOC || '').trim().toUpperCase();
     const titulo = String(row?.DESDOC || h.DESDOC || tipodoc || 'Documento').trim();
+    const footerNote =
+      tipodoc === 'COT' ? 'Cotización — documento sin validez fiscal' : 'Documento generado por POS OnneB';
 
-    const rows = lines
-      .map(
-        (ln) => `<tr>
-          <td>${this.escapeHtml(ln.CODPROD)}</td>
-          <td>${this.escapeHtml(ln.DESPROD)}</td>
-          <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
-          <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
-        </tr>`
-      )
-      .join('');
-
-    await PrintReport.openAndPrint(
-      () =>
-        PrintReport.wrapDocument({
-          title: titulo,
-          bodyHtml: `
-        ${PrintReport.reportHeaderHtml({
-          title: titulo,
-          subtitleHtml: `
-            <p><strong>${this.escapeHtml(h.CODDOC)} #${this.escapeHtml(h.CORRELATIVO)}</strong>
-              · ${this.escapeHtml(this.formatFecha(h.FECHA))}
-              · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-            <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
-            ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
-          `,
-        })}
-        <table>
-          <thead>
-            <tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr>
-          </thead>
-          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody>
-        </table>
-        <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
-      `,
-        }),
-      'width=800,height=600'
-    );
+    await DocPrint.printDocument({
+      title: titulo,
+      header: h,
+      lines,
+      footerNote,
+    });
   },
 
   async eliminar(coddoc, correlativo, label) {

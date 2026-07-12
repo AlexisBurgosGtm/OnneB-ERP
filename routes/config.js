@@ -8,9 +8,11 @@ const {
   getSettingValue,
   getSettingSino,
   getSettingConcre,
+  getSettingFormatoImpresion,
   setSettingValue,
   verifySettingPass,
   ensureSettingDefault,
+  normalizeFormatoImpresion,
 } = require('../lib/settings');
 
 const router = express.Router();
@@ -151,6 +153,43 @@ router.put('/concre', async (req, res) => {
     res.json({ ok: true, opcion, concre });
   } catch (err) {
     console.warn('[API PUT /config/concre]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/formato-impresion', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const formato = await getSettingFormatoImpresion(pool, opcion);
+    res.json({ opcion, formato });
+  } catch (err) {
+    console.warn('[API GET /config/formato-impresion]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/formato-impresion', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const formato = normalizeFormatoImpresion(req.body?.formato);
+  if (formato !== 'CARTA' && formato !== 'TICKET') {
+    return res.status(400).json({ error: 'El valor debe ser CARTA o TICKET' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await setSettingValue(pool, opcion, formato);
+    res.json({ ok: true, opcion, formato });
+  } catch (err) {
+    console.warn('[API PUT /config/formato-impresion]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

@@ -240,20 +240,52 @@
     window._buildPollId = setInterval(loadBuildCounter, 1500);
   }
 
+  function registerSocketSession() {
+    if (!socket?.connected) return;
+    const user = F.session('user');
+    if (!user?.empNit) return;
+    const codtipo =
+      typeof TipoEmpleadoAccess !== 'undefined'
+        ? TipoEmpleadoAccess.getCodTipo(user)
+        : Number(user.codtipoempleado);
+    if (!codtipo) return;
+    socket.emit('session:register', {
+      empnit: user.empNit,
+      codtipoempleado: codtipo,
+      codempleado: user.codempleado ?? null,
+    });
+  }
+
   function initSocket() {
     if (typeof io === 'undefined') return;
     socket = io();
-    socket.on('welcome', (data) => {
-      console.log('[Socket.IO]', data.message);
-    });
     socket.on('connect', () => {
       console.log('[Socket.IO] Conectado');
+      registerSocketSession();
+    });
+    socket.on('welcome', (data) => {
+      console.log('[Socket.IO]', data?.message || 'Conectado');
     });
     socket.on('disconnect', () => {
       console.log('[Socket.IO] Desconectado');
     });
     socket.on('build:updated', () => {
       loadBuildCounter();
+    });
+    socket.on('pedido:nuevo', (data) => {
+      const user = F.session('user');
+      const codtipo =
+        typeof TipoEmpleadoAccess !== 'undefined'
+          ? TipoEmpleadoAccess.getCodTipo(user)
+          : Number(user?.codtipoempleado);
+      const tipos = [
+        TipoEmpleadoAccess?.TIPO_CAJERO ?? 8,
+        TipoEmpleadoAccess?.TIPO_BODEGA ?? 5,
+      ];
+      if (!tipos.includes(Number(codtipo))) return;
+      if (data?.empnit && user?.empNit && String(data.empnit) !== String(user.empNit)) return;
+      const msg = String(data?.mensaje || '').trim() || 'Nuevo pedido de mostrador';
+      F.toast(msg, 'info');
     });
   }
 
@@ -346,6 +378,7 @@
         };
         F.session('user', sessionData);
         F.setEmpresaGlobal(empNit, empNombre);
+        registerSocketSession();
         document.getElementById('password').value = '';
         stopLoadingOverlays();
         setViewImmediate(false);
@@ -531,6 +564,10 @@
         InventarioActualizacionView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
+      } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
+        LibroVentasView.load(mainContent);
+      } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
+        LibroComprasView.load(mainContent);
       } else if (
         (key === 'productos-precios' || key === 'productos') &&
         typeof ProductosView !== 'undefined'
@@ -648,7 +685,10 @@
       console.warn('[DB] init:', err);
     }
 
-    //initSocket();
+    initSocket();
+    if (F.isLoggedIn()) {
+      registerSocketSession();
+    }
   }
 
   ensureLoginView();

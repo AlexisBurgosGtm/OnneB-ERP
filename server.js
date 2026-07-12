@@ -6,6 +6,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const sql = require('mssql');
 const { getDbConfig, isDbConfigured } = require('./config/database');
+const { registerSocketHandlers } = require('./lib/socket-hub');
 
 const PORT = process.env.PORT || 6500;
 
@@ -58,6 +59,8 @@ const dashboardRouter = require('./routes/dashboard');
 const tareasRouter = require('./routes/tareas');
 const cuentasCobrarRouter = require('./routes/cuentas-cobrar');
 const cuentasPagarRouter = require('./routes/cuentas-pagar');
+const libroVentasRouter = require('./routes/libro-ventas');
+const libroComprasRouter = require('./routes/libro-compras');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -74,6 +77,7 @@ async function getDbPool() {
 /** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
 app.use(express.json({ limit: '3mb' }));
 app.locals.getDbPool = getDbPool;
+app.locals.io = io;
 
 const publicDir = path.join(__dirname, 'public');
 const buildMetaPath = path.join(publicDir, 'build-meta.json');
@@ -163,6 +167,8 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/tareas', tareasRouter);
 app.use('/api/cuentas-cobrar', cuentasCobrarRouter);
 app.use('/api/cuentas-pagar', cuentasPagarRouter);
+app.use('/api/libro-ventas', libroVentasRouter);
+app.use('/api/libro-compras', libroComprasRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {
@@ -180,18 +186,7 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: true, db: dbStatus });
 });
 
-io.on('connection', (socket) => {
-  console.log('[Socket.IO] Cliente conectado:', socket.id);
-  socket.emit('welcome', { message: 'Conectado a OnneB POS', id: socket.id });
-
-  socket.on('ping', () => {
-    socket.emit('pong', { ts: Date.now() });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('[Socket.IO] Cliente desconectado:', socket.id);
-  });
-});
+registerSocketHandlers(io);
 
 server.listen(PORT, () => {
   console.log(`OnneB_pos en http://localhost:${PORT}`);

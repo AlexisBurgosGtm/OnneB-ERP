@@ -107,9 +107,7 @@ const FacturacionView = {
   },
 
   pedidosForSelectedDate() {
-    const target = String(this._listFecha || '').slice(0, 10);
-    if (!target) return this._pedidosList;
-    return (this._pedidosList || []).filter((r) => this.rowFechaIso(r) === target);
+    return this._pedidosList || [];
   },
 
   listFechaLabel() {
@@ -311,7 +309,6 @@ const FacturacionView = {
     this._listFecha = fecha;
     const params = new URLSearchParams({
       empnit: F.getEmpNit(),
-      status: 'O',
       fecha,
     });
     params.set('_', String(Date.now()));
@@ -777,7 +774,7 @@ const FacturacionView = {
           </div>
           <div class="col-6">
             <label class="form-label small mb-0" for="fac-swal-precio">Precio</label>
-            <input type="text" id="fac-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly tabindex="-1">
+            <input type="text" id="fac-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>
           </div>
         </div>
         <p class="small text-muted mb-0 mt-2 text-end" id="fac-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
@@ -786,7 +783,7 @@ const FacturacionView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => {
+      didOpen: (popup) => {
         const medSel = document.getElementById('fac-swal-medida');
         const cantInp = document.getElementById('fac-swal-cant');
         const precioInp = document.getElementById('fac-swal-precio');
@@ -800,8 +797,8 @@ const FacturacionView = {
         };
         medSel?.addEventListener('change', updateTotal);
         cantInp?.addEventListener('input', updateTotal);
-        cantInp?.focus();
-        cantInp?.select();
+        PosProductKeyboardUI.focusInput(cantInp);
+        PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('fac-swal-cant')?.value);
@@ -1078,39 +1075,13 @@ const FacturacionView = {
     try {
       const url = `/api/facturacion/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
       const pedido = await F.fetchJson(url);
-      const h = pedido.header;
-      const lines = pedido.lines || [];
-      const rows = lines
-        .map(
-          (ln) => `<tr>
-            <td>${this.escapeHtml(ln.CODPROD)}</td>
-            <td>${this.escapeHtml(ln.DESPROD)}</td>
-            <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
-            <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
-          </tr>`
-        )
-        .join('');
-      await PrintReport.openAndPrint(
-        () =>
-          PrintReport.wrapDocument({
-            title: 'Pedido POS',
-            bodyHtml: `
-          ${PrintReport.reportHeaderHtml({
-            title: 'Pedido de mostrador',
-            subtitleHtml: `
-              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaPedido(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-              <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
-              ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
-            `,
-          })}
-          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
-        `,
-          }),
-        'width=800,height=600'
-      );
+      const h = pedido.header || {};
+      const titulo = h.DESDOC || 'Factura';
+      await DocPrint.printDocument({
+        title: titulo,
+        header: h,
+        lines: pedido.lines || [],
+      });
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }
@@ -1128,7 +1099,7 @@ const FacturacionView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay facturas operadas en esta fecha</td></tr>`;
+      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay facturas en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1843,7 +1814,7 @@ const FacturacionView = {
     this.bindListEvents();
   },
 
-  async showEditor(coddoc, correlativo) {
+  async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
     PosDocSearchUI.teardown('fac');
     if (coddoc && correlativo) {
@@ -1856,6 +1827,9 @@ const FacturacionView = {
     this.bindEditorEvents();
     PosDocSearchUI.resetProductSearch(this, 'fac');
     this.renderAll();
+    if (opts.focusProductSearch) {
+      PosDocSearchUI.focusProductSearch(this._container, 'fac');
+    }
   },
 
   async onNuevoPedido() {
@@ -1865,7 +1839,7 @@ const FacturacionView = {
       }
       await this.crearPedido();
       const key = this.docKey();
-      if (key) await this.showEditor(key.coddoc, key.correlativo);
+      if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
     } catch (err) {
       F.toast(err.message || 'Error al crear pedido', 'error');
     }

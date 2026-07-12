@@ -9,7 +9,7 @@ const {
   revertirMovimientoInventarioLinea,
   revertirMovimientoInventarioDocumento,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows, bindDocumentoFechaDiaParams, sqlDocumentoFechaDiaWhere } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
@@ -31,6 +31,8 @@ const {
   isDocumentoEditable,
   SQL_STATUS_EDITABLE,
   SQL_DOCUMENTO_EDITABLE,
+  sqlPedidosListStatusFilter,
+  resolvePedidosListStatusLabel,
 } = require('../lib/documento-status');
 
 const router = express.Router();
@@ -557,9 +559,8 @@ router.get('/pedidos', async (req, res) => {
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
   const coddoc = String(req.query.coddoc || '').trim();
-  const statusRaw = String(req.query.status || STATUS_OPERADO).trim().toUpperCase();
-  const allowed = [STATUS_OPERADO, STATUS_BLOQUEADO, STATUS_ANULADO];
-  const status = allowed.includes(statusRaw) ? statusRaw : STATUS_OPERADO;
+  const statusFilter = sqlPedidosListStatusFilter(req.query.status, { defaultAll: true });
+  const statusLabel = resolvePedidosListStatusLabel(req.query.status, { defaultAll: true });
   let fechaParts = parseFechaInput(req.query.fecha);
   if (!fechaParts) {
     const now = nowParts();
@@ -567,10 +568,11 @@ router.get('/pedidos', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
-    const request = pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('FECHA', sql.Date, fechaParts.fecha);
+    const request = bindDocumentoFechaDiaParams(
+      pool.request().input('EMPNIT', sql.VarChar, empnit),
+      sql,
+      fechaParts
+    );
     let coddocFilter = '';
     if (coddoc) {
       request.input('CODDOC', sql.VarChar, coddoc);
@@ -578,7 +580,7 @@ router.get('/pedidos', async (req, res) => {
     }
     const result = await request.query(`
       SELECT
-        d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
+        d.CODDOC, d.CORRELATIVO, d.FECHA, d.ANIO, d.MES, d.DIA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
         d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         t.TIPODOC,
@@ -594,14 +596,14 @@ router.get('/pedidos', async (req, res) => {
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
         AND t.TIPODOC IN (${TIPODOC_SQL_IN})
-        AND d.STATUS = '${status}'
-        AND CAST(d.FECHA AS DATE) = CAST(@FECHA AS DATE)
+        ${statusFilter}
+        AND ${sqlDocumentoFechaDiaWhere('d')}
         ${coddocFilter}
       ORDER BY d.HORA DESC, d.MINUTO DESC, d.ID DESC
     `);
     const fecha =
       `${fechaParts.anio}-${String(fechaParts.mes).padStart(2, '0')}-${String(fechaParts.dia).padStart(2, '0')}`;
-    res.json({ rows: normalizeDocumentoRows(result.recordset), status, fecha });
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status: statusLabel, fecha });
   } catch (err) {
     console.warn('[API GET /facturacion/pedidos]', err.message);
     res.status(500).json({ error: err.message });

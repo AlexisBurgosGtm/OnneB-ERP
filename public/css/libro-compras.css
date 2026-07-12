@@ -1,0 +1,77 @@
+.libro-compras-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.libro-compras-filters-card .card-body {
+  padding: 0.85rem 1rem;
+}
+
+.libro-compras-filters-row {
+  width: 100%;
+}
+
+.libro-compras-filter-mes {
+  min-width: 9.5rem;
+}
+
+.libro-compras-filter-anio {
+  min-width: 5.5rem;
+}
+
+.libro-compras-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.libro-compras-table-card .table {
+  font-size: 0.78rem;
+}
+
+.libro-compras-table-card .table-responsive {
+  max-height: calc(100vh - 260px);
+}
+
+.libro-compras-table-card .table thead th {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.libro-compras-table-card .table tbody tr.libro-compras-row-anulado > td {
+  color: #842029;
+  border-top: 2px solid #dc3545 !important;
+  border-bottom: 2px solid #dc3545 !important;
+}
+
+.libro-compras-table-card .table tbody tr.libro-compras-row-anulado > td:first-child {
+  border-left: 2px solid #dc3545 !important;
+}
+
+.libro-compras-table-card .table tbody tr.libro-compras-row-anulado > td:last-child {
+  border-right: 2px solid #dc3545 !important;
+}
+
+.libro-compras-table-card .table tbody tr.libro-compras-row-nc > td {
+  color: #664d03;
+}
+
+.libro-compras-table-card .table tfoot td {
+  background: #f8f9fa;
+  border-top: 2px solid #adb5bd;
+  font-weight: 600;
+}
+
+.libro-compras-col-nombre {
+  min-width: 10rem;
+  max-width: 16rem;
+  white-space: normal;
+}
+
+.libro-compras-badge {
+  font-size: 0.8rem;
+  color: var(--onneb-text-muted, #6c757d);
+}
+
+.libro-compras-actions {
+  margin-left: auto;
+}

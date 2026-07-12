@@ -13,6 +13,7 @@ const {
   parseMesAnio: parseMesAnioTransporte,
   loadTransporteDashboard,
 } = require('../lib/dashboard-transporte');
+const { parseFechaIso: parseFechaIsoCajero, loadCajeroDashboard } = require('../lib/dashboard-cajero');
 
 const router = express.Router();
 
@@ -135,6 +136,31 @@ router.get('/transporte', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.warn('[API GET /dashboard/transporte]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/cajero', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const fecha = parseFechaIsoCajero(req.query.fecha) || parseFechaIsoCajero(new Date().toISOString());
+  if (!fecha) {
+    return res.status(400).json({ error: 'FECHA inválida (YYYY-MM-DD)' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const sql = require('mssql');
+    const data = await loadCajeroDashboard(pool, sql, empnit, fecha);
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /dashboard/cajero]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

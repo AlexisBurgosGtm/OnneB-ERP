@@ -13,6 +13,9 @@ const ComprasView = {
   _loadingProducts: false,
   _searchTimer: null,
   _cartBusy: false,
+  _urlFel: '',
+
+  FEL_URL_OPCION: 'URL FEL',
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -59,6 +62,61 @@ const ComprasView = {
 
   formatFechaCompra(row) {
     return DocFecha.formatDisplay(row);
+  },
+
+  felUudiValue(row) {
+    return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
+  },
+
+  formatFelCell(row) {
+    const v = this.felUudiValue(row);
+    if (!v) return '';
+    const label =
+      v.length <= 16 ? this.escapeHtml(v) : this.escapeHtml(`${v.slice(0, 8)}…${v.slice(-4)}`);
+    return `<button type="button" class="btn btn-link btn-sm p-0 compras-fel-link text-start"
+      data-action="fel-open" data-fel-uudi="${this.escapeHtml(v)}"
+      title="Abrir documento FEL (${this.escapeHtml(v)})">${label}</button>`;
+  },
+
+  joinFelUrl(baseUrl, felValue) {
+    const base = String(baseUrl ?? '').trim();
+    const fel = String(felValue ?? '').trim();
+    if (!base || !fel) return null;
+    if (/^https?:\/\//i.test(fel)) return fel;
+    return `${base}${fel}`;
+  },
+
+  async fetchUrlFel() {
+    const params = new URLSearchParams({
+      opcion: this.FEL_URL_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/pass?${params}`, { cache: 'no-store' });
+    this._urlFel = String(data.pass ?? '').trim();
+    return this._urlFel;
+  },
+
+  async abrirFelDocumento(felValue) {
+    const fel = String(felValue ?? '').trim();
+    if (!fel) return;
+    if (!this._urlFel) {
+      try {
+        await this.fetchUrlFel();
+      } catch (err) {
+        F.toast(err.message || 'No se pudo leer la URL FEL', 'error');
+        return;
+      }
+    }
+    if (!this._urlFel) {
+      F.toast('Configure la URL FEL en Config general', 'warning');
+      return;
+    }
+    const url = this.joinFelUrl(this._urlFel, fel);
+    if (!url) {
+      F.toast('No se pudo construir la URL del documento FEL', 'warning');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   },
 
   docKey() {
@@ -137,6 +195,7 @@ const ComprasView = {
         r.DOC_NOMCLIE,
         r.EMPRESA,
         r.RAZONSOCIAL,
+        r.FEL_UUDI,
         r.OBS,
       ]
         .map((v) => String(v ?? '').toLowerCase())
@@ -192,6 +251,7 @@ const ComprasView = {
     let nofac = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
     if (!seriefac) seriefac = String(key?.coddoc ?? '').trim();
     if (!nofac) nofac = key?.correlativo != null ? String(key.correlativo) : '';
+    const felUudi = document.getElementById('compras-finalizar-fel-uudi')?.value?.trim() || '';
     const concre = document.getElementById('compras-finalizar-concre')?.value || 'CON';
     const venc = document.getElementById('compras-finalizar-venc')?.value?.trim() || '';
     const obs = document.getElementById('compras-finalizar-obs')?.value?.trim() || '';
@@ -203,6 +263,7 @@ const ComprasView = {
     return {
       seriefac,
       nofac,
+      felUudi,
       concre,
       vencimiento: concre === 'CRE' ? venc : null,
       obs,
@@ -388,6 +449,7 @@ const ComprasView = {
     const facDefaults = this.resolveFinalizarFacDefaults(h, key);
     const seriefacVal = this.escapeHtml(facDefaults.seriefac);
     const nofacVal = this.escapeHtml(facDefaults.nofac);
+    const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
     const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
 
@@ -420,15 +482,20 @@ const ComprasView = {
             <div class="form-control form-control-sm bg-light">${dir}</div>
           </div>
           <div class="row g-2 mb-2">
-            <div class="col-6">
+            <div class="col-md-4">
               <label class="form-label small mb-0" for="compras-finalizar-serie">Serie factura</label>
               <input type="text" id="compras-finalizar-serie" class="form-control form-control-sm"
                 value="${seriefacVal}" autocomplete="off" placeholder="${this.escapeHtml(key.coddoc)}">
             </div>
-            <div class="col-6">
+            <div class="col-md-4">
               <label class="form-label small mb-0" for="compras-finalizar-num">Número factura</label>
               <input type="text" id="compras-finalizar-num" class="form-control form-control-sm"
                 value="${nofacVal}" autocomplete="off" placeholder="${this.escapeHtml(String(key.correlativo))}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small mb-0" for="compras-finalizar-fel-uudi">ID Electronico</label>
+              <input type="text" id="compras-finalizar-fel-uudi" class="form-control form-control-sm"
+                value="${felUudiVal}" autocomplete="off" placeholder="UUID FEL">
             </div>
           </div>
           <div class="row g-2 mb-2 align-items-end" id="compras-finalizar-pago-row">
@@ -502,6 +569,7 @@ const ComprasView = {
       body: JSON.stringify({
         SERIEFAC: value.seriefac,
         NOFAC: value.nofac,
+        FEL_UUDI: value.felUudi,
         CONCRE: value.concre,
         VENCIMIENTO: value.vencimiento,
         OBS: value.obs,
@@ -611,7 +679,7 @@ const ComprasView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => {
+      didOpen: (popup) => {
         const medSel = document.getElementById('compras-swal-medida');
         const costInp = document.getElementById('compras-swal-costo');
         const cantInp = document.getElementById('compras-swal-cant');
@@ -629,8 +697,8 @@ const ComprasView = {
         medSel?.addEventListener('change', syncCostoFromMedida);
         cantInp?.addEventListener('input', updateTotal);
         costInp?.addEventListener('input', updateTotal);
-        cantInp?.focus();
-        cantInp?.select();
+        PosProductKeyboardUI.focusInput(cantInp);
+        PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: costInp, popup });
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('compras-swal-cant')?.value);
@@ -875,6 +943,7 @@ const ComprasView = {
         const label = `${r.CODDOC} #${r.CORRELATIVO}`;
         const proveedor = r.DOC_NOMCLIE || r.EMPRESA || r.RAZONSOCIAL || 'Sin proveedor';
         const meta = [r.EMPRESA, r.RAZONSOCIAL].filter(Boolean).join(' · ');
+        const felHtml = this.formatFelCell(r);
         return `
           <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
             data-correlativo="${r.CORRELATIVO}">
@@ -887,6 +956,7 @@ const ComprasView = {
             <div class="pos-pedido-card-footer">
               <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
               <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaCompra(r))}</span>
+              ${felHtml ? `<span class="ms-auto">${felHtml}</span>` : ''}
             </div>
             <div class="inv-card-actions">
               <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
@@ -990,8 +1060,12 @@ const ComprasView = {
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Proveedor</label>
-                <input type="search" class="form-control form-control-sm pos-search-glow" id="compras-proveedor-search"
-                  placeholder="Buscar proveedor…" autocomplete="off"${editable ? '' : ' disabled'}>
+                <div class="input-group input-group-sm">
+                  <input type="search" class="form-control pos-search-glow" id="compras-proveedor-search"
+                    placeholder="Buscar proveedor…" autocomplete="off"${editable ? '' : ' disabled'}>
+                  <button type="button" class="btn btn-outline-primary text-nowrap" id="compras-proveedor-nuevo"
+                    title="Nuevo proveedor"${editable ? '' : ' disabled'}>Nuevo</button>
+                </div>
                 <div id="compras-proveedor-nombre" class="small text-muted mt-1"></div>
                 <div id="compras-proveedor-results" class="list-group position-absolute w-100 shadow-sm d-none"
                   style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>
@@ -1043,6 +1117,15 @@ const ComprasView = {
     DocTipoSelect.bind(this._container, 'compras-list-coddoc', this);
 
     this._container?.querySelector('#compras-list-cards')?.addEventListener('click', async (e) => {
+      const felLink = e.target.closest('[data-action="fel-open"]');
+      if (felLink) {
+        e.preventDefault();
+        e.stopPropagation();
+        const fel = felLink.getAttribute('data-fel-uudi');
+        await this.abrirFelDocumento(fel);
+        return;
+      }
+
       const btn = e.target.closest('.inv-card-btn');
       if (!btn) return;
       e.preventDefault();
@@ -1070,6 +1153,10 @@ const ComprasView = {
       getEditable: () => this.docEditable(this._compra?.header),
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
+    });
+
+    this._container?.querySelector('#compras-proveedor-nuevo')?.addEventListener('click', () => {
+      this.onNuevoProveedor().catch((err) => F.toast(err.message, 'error'));
     });
 
     this._container?.querySelector('#compras-cart-tbody')?.addEventListener('click', async (e) => {
@@ -1255,6 +1342,29 @@ const ComprasView = {
     F.toast('Proveedor actualizado', 'success');
   },
 
+  async onNuevoProveedor() {
+    if (!this.docEditable(this._compra?.header)) {
+      F.toast('La compra no está en edición', 'warning');
+      return;
+    }
+    const data = await ProveedoresView.showForm('Nuevo proveedor', {}, false, { profile: 'documento' });
+    if (!data) return;
+    try {
+      const res = await F.fetchJson(ProveedoresView.apiBase(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const cod = res.CODPROV;
+      if (!cod) throw new Error('No se recibió el código del proveedor');
+      await this.aplicarProveedor(cod);
+      const inp = this._container?.querySelector('#compras-proveedor-search');
+      if (inp) inp.value = data.EMPRESA || String(cod);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
   async showList() {
     this._screen = 'list';
     this._compra = null;
@@ -1264,7 +1374,7 @@ const ComprasView = {
     this.bindListEvents();
   },
 
-  async showEditor(coddoc, correlativo) {
+  async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
     PosDocSearchUI.teardown('compras');
     if (coddoc && correlativo) {
@@ -1274,6 +1384,9 @@ const ComprasView = {
     this.bindEditorEvents();
     PosDocSearchUI.resetProductSearch(this, 'compras');
     this.renderAll();
+    if (opts.focusProductSearch) {
+      PosDocSearchUI.focusProductSearch(this._container, 'compras');
+    }
   },
 
   async onNuevaCompra() {
@@ -1283,7 +1396,7 @@ const ComprasView = {
       }
       await this.crearCompra();
       const key = this.docKey();
-      if (key) await this.showEditor(key.coddoc, key.correlativo);
+      if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
     } catch (err) {
       F.toast(err.message || 'Error al crear compra', 'error');
     }

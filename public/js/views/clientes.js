@@ -467,6 +467,16 @@ const ClientesView = {
       title,
       html: view.buildFormHtml(row, isEdit, profile),
       width: 620,
+      didOpen: (popup) => {
+        if (profile === 'facturacion' && !isEdit && typeof DocNitSatLookup !== 'undefined') {
+          DocNitSatLookup.bindEnterLookup({
+            popup,
+            nitFieldName: 'NIT',
+            nameFieldName: 'NOMBRECLIENTE',
+          });
+          popup?.querySelector('[name="NIT"]')?.focus();
+        }
+      },
       preConfirm() {
         const data = view.readFormData();
         const err = view.validateForm(data);

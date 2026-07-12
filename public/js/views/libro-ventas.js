@@ -1,0 +1,362 @@
+/**
+ * Vista Libro Ventas — registro contable SAT Guatemala (FEF, FEC, FES, FNC).
+ */
+const LIBRO_VENTAS_MESES = [
+  { value: 1, label: 'ENERO' },
+  { value: 2, label: 'FEBRERO' },
+  { value: 3, label: 'MARZO' },
+  { value: 4, label: 'ABRIL' },
+  { value: 5, label: 'MAYO' },
+  { value: 6, label: 'JUNIO' },
+  { value: 7, label: 'JULIO' },
+  { value: 8, label: 'AGOSTO' },
+  { value: 9, label: 'SEPTIEMBRE' },
+  { value: 10, label: 'OCTUBRE' },
+  { value: 11, label: 'NOVIEMBRE' },
+  { value: 12, label: 'DICIEMBRE' },
+];
+
+const LIBRO_VENTAS_ANIOS = [];
+for (let y = 2020; y <= new Date().getFullYear() + 1; y += 1) {
+  LIBRO_VENTAS_ANIOS.push({ value: y, label: String(y) });
+}
+
+function libroVentasFormatDate(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const [y, m, d] = s.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  const dt = new Date(s);
+  if (Number.isNaN(dt.getTime())) return '—';
+  const day = String(dt.getDate()).padStart(2, '0');
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const year = dt.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+const LibroVentasView = {
+  _container: null,
+  _rows: [],
+  _totals: null,
+  _mes: null,
+  _anio: null,
+  _loading: false,
+
+  tableColumns: [
+    { key: 'LINEA', label: 'No.', align: 'center' },
+    { key: 'FEL_FECHA', label: 'Fecha', type: 'date' },
+    { key: 'TIPODOC', label: 'Tipo' },
+    { key: 'FEL_SERIE', label: 'Serie' },
+    { key: 'FEL_NUMERO', label: 'Número' },
+    { key: 'DOC_NIT', label: 'NIT' },
+    { key: 'DOC_NOMCLIE', label: 'Nombre cliente', cellClass: 'libro-ventas-col-nombre' },
+    { key: 'TOTALEXENTO', label: 'Exentas', type: 'money' },
+    { key: 'TOTALSINIVA', label: 'Gravadas', type: 'money' },
+    { key: 'TOTALIVA', label: 'IVA', type: 'money' },
+    { key: 'TOTALPRECIO', label: 'Total', type: 'money' },
+    { key: 'ANULADO', label: 'Anulado', type: 'anulado' },
+  ],
+
+  defaultPeriod() {
+    const now = new Date();
+    return { mes: now.getMonth() + 1, anio: now.getFullYear() };
+  },
+
+  escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
+  mesLabel(mes) {
+    return LIBRO_VENTAS_MESES.find((m) => m.value === Number(mes))?.label || String(mes);
+  },
+
+  formatMoney(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  fechaDisplay(row) {
+    const fel = String(row?.FEL_FECHA ?? '').trim();
+    if (fel) return libroVentasFormatDate(fel);
+    return libroVentasFormatDate(row?.FECHA);
+  },
+
+  formatCell(row, col) {
+    const key = col.key;
+    if (key === 'FEL_FECHA') {
+      return this.escapeHtml(this.fechaDisplay(row));
+    }
+    if (col.type === 'anulado') {
+      return row.ANULADO
+        ? '<span class="badge text-bg-danger">Sí</span>'
+        : '<span class="text-muted">No</span>';
+    }
+    const value = row[key];
+    if (value === null || value === undefined || value === '') return '—';
+    if (col.type === 'money') {
+      return `<span class="libro-ventas-money">${this.escapeHtml(this.formatMoney(value))}</span>`;
+    }
+    return this.escapeHtml(value);
+  },
+
+  rowClass(row) {
+    const classes = [];
+    if (row.ANULADO) classes.push('libro-ventas-row-anulado');
+    else if (row.ES_NOTA_CREDITO) classes.push('libro-ventas-row-nc');
+    return classes.join(' ');
+  },
+
+  apiUrl() {
+    const empNit = F.getEmpNit();
+    if (!empNit) throw new Error('No hay empresa activa. Cierre sesión e ingrese de nuevo.');
+    const params = new URLSearchParams({
+      empnit: empNit,
+      mes: String(this._mes),
+      anio: String(this._anio),
+      _: String(Date.now()),
+    });
+    return `/api/libro-ventas?${params.toString()}`;
+  },
+
+  badgeText() {
+    const total = this._rows.length;
+    const t = this._totals || {};
+    const parts = [
+      `${total} registro(s)`,
+      `${this.mesLabel(this._mes)} ${this._anio}`,
+      `Ventas: ${t.ventas ?? 0}`,
+      `Notas crédito: ${t.notasCredito ?? 0}`,
+    ];
+    if ((t.anulados ?? 0) > 0) parts.push(`Anulados: ${t.anulados}`);
+    return parts.join(' · ');
+  },
+
+  renderFiltersCard() {
+    const mesOpts = LIBRO_VENTAS_MESES.map(
+      (m) =>
+        `<option value="${m.value}"${Number(this._mes) === m.value ? ' selected' : ''}>${m.label}</option>`
+    ).join('');
+    const anioOpts = LIBRO_VENTAS_ANIOS.map(
+      (a) =>
+        `<option value="${a.value}"${Number(this._anio) === a.value ? ' selected' : ''}>${a.label}</option>`
+    ).join('');
+
+    return `
+      <div class="card libro-ventas-filters-card shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-end gap-2 libro-ventas-filters-row">
+            <div class="libro-ventas-filter-mes">
+              <label for="libro-ventas-mes" class="form-label small mb-1">Mes</label>
+              <select class="form-select form-select-sm" id="libro-ventas-mes">
+                ${mesOpts}
+              </select>
+            </div>
+            <div class="libro-ventas-filter-anio">
+              <label for="libro-ventas-anio" class="form-label small mb-1">Año</label>
+              <select class="form-select form-select-sm" id="libro-ventas-anio">
+                ${anioOpts}
+              </select>
+            </div>
+            <div class="libro-ventas-actions d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-ventas-recargar">
+                <i class="fa-solid fa-rotate me-1"></i>Actualizar
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-libro-ventas-imprimir">
+                <i class="fa-solid fa-print me-1"></i>Imprimir
+              </button>
+            </div>
+          </div>
+          <div class="libro-ventas-badge small text-muted mt-2" id="libro-ventas-count">${this.escapeHtml(this.badgeText())}</div>
+          <div class="small text-muted mt-1">
+            Documentos contables (<strong>CONTABLE = SI</strong>): ventas FEF, FEC, FES y notas de crédito FNC.
+            Serie, número y fecha provienen de FEL. Los documentos con estado <strong>A</strong> se marcan como anulados.
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  renderTableBodyHtml(rows) {
+    if (!rows.length) {
+      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay registros para este período</td></tr>`;
+    }
+    return rows
+      .map((row) => {
+        const cls = this.rowClass(row);
+        const cells = this.tableColumns
+          .map((col) => {
+            const align = col.align === 'center' ? ' text-center' : col.type === 'money' ? ' text-end' : '';
+            const extra = col.cellClass ? ` ${col.cellClass}` : '';
+            return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(row, col)}</td>`;
+          })
+          .join('');
+        return `<tr class="${cls}">${cells}</tr>`;
+      })
+      .join('');
+  },
+
+  renderTableFooterHtml() {
+    const t = this._totals;
+    if (!t || !this._rows.length) return '';
+    return `
+      <tfoot>
+        <tr>
+          <td colspan="7" class="text-end">Totales (sin anulados):</td>
+          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.exento))}</td>
+          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.gravado))}</td>
+          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.iva))}</td>
+          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.total))}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    `;
+  },
+
+  renderTableCard() {
+    const headers = this.tableColumns
+      .map((c) => {
+        const align = c.align === 'center' ? ' text-center' : c.type === 'money' ? ' text-end' : '';
+        const extra = c.cellClass ? ` ${c.cellClass}` : '';
+        return `<th scope="col" class="${`${align}${extra}`.trim()}">${this.escapeHtml(c.label)}</th>`;
+      })
+      .join('');
+    return `
+      <div class="card libro-ventas-table-card shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover table-striped mb-0">
+            <thead class="table-light sticky-top">
+              <tr>${headers}</tr>
+            </thead>
+            <tbody id="libro-ventas-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            ${this.renderTableFooterHtml()}
+          </table>
+        </div>
+      </div>
+    `;
+  },
+
+  render() {
+    return `
+      <div class="libro-ventas-wrap">
+        ${this.renderFiltersCard()}
+        ${this.renderTableCard()}
+      </div>
+    `;
+  },
+
+  refreshDom() {
+    const countEl = this._container?.querySelector('#libro-ventas-count');
+    if (countEl) countEl.textContent = this.badgeText();
+    const tbody = this._container?.querySelector('#libro-ventas-tbody');
+    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
+    const table = this._container?.querySelector('.libro-ventas-table-card table');
+    if (table) {
+      table.querySelector('tfoot')?.remove();
+      const footer = this.renderTableFooterHtml();
+      if (footer) table.insertAdjacentHTML('beforeend', footer);
+    }
+  },
+
+  bindEvents() {
+    this._container?.querySelector('#libro-ventas-mes')?.addEventListener('change', (e) => {
+      this._mes = Number(e.target.value);
+      this.reload().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#libro-ventas-anio')?.addEventListener('change', (e) => {
+      this._anio = Number(e.target.value);
+      this.reload().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#btn-libro-ventas-recargar')?.addEventListener('click', () => {
+      this.reload().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#btn-libro-ventas-imprimir')?.addEventListener('click', () => {
+      this.imprimir().catch((err) => F.toast(err.message, 'error'));
+    });
+  },
+
+  async reload() {
+    if (this._loading) return;
+    this._loading = true;
+    try {
+      const data = await F.fetchJson(this.apiUrl(), { cache: 'no-store' });
+      this._rows = data.rows || [];
+      this._totals = data.totals || null;
+      this.refreshDom();
+    } finally {
+      this._loading = false;
+    }
+  },
+
+  async imprimir() {
+    await PrintReport.ensureLogo();
+    const title = 'Libro de Ventas y Servicios Prestados';
+    const subtitleHtml = `
+      <p><strong>Período:</strong> ${PrintReport.escapeHtml(this.mesLabel(this._mes))} ${PrintReport.escapeHtml(String(this._anio))}</p>
+      <p class="meta">Documentos contables FEF, FEC, FES y FNC · Serie/Número/Fecha FEL</p>
+    `;
+    const headCells = this.tableColumns.map((c) => `<th>${PrintReport.escapeHtml(c.label)}</th>`).join('');
+    const bodyRows = this._rows
+      .map((row) => {
+        const cells = this.tableColumns
+          .map((col) => {
+            const align = col.type === 'money' ? ' class="text-end"' : '';
+            let val;
+            if (col.key === 'FEL_FECHA') val = this.fechaDisplay(row);
+            else if (col.type === 'anulado') val = row.ANULADO ? 'Sí' : 'No';
+            else if (col.type === 'money') val = this.formatMoney(row[col.key]);
+            else val = row[col.key] ?? '—';
+            return `<td${align}>${PrintReport.escapeHtml(val)}</td>`;
+          })
+          .join('');
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+    const t = this._totals || {};
+    const footerRow = this._rows.length
+      ? `<tr class="totals">
+          <td colspan="7" class="text-end">Totales (sin anulados)</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.exento))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.gravado))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.iva))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.total))}</td>
+          <td></td>
+        </tr>`
+      : '';
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({ title, subtitleHtml })}
+      <table>
+        <thead><tr>${headCells}</tr></thead>
+        <tbody>${bodyRows || `<tr><td colspan="${this.tableColumns.length}">Sin registros</td></tr>`}</tbody>
+        ${footerRow ? `<tfoot>${footerRow}</tfoot>` : ''}
+      </table>
+    `;
+    PrintReport.openAndPrint(
+      PrintReport.wrapDocument({
+        title,
+        bodyHtml,
+      })
+    );
+  },
+
+  async load(container) {
+    this._container = container;
+    const period = this.defaultPeriod();
+    this._mes = period.mes;
+    this._anio = period.anio;
+    this._rows = [];
+    this._totals = null;
+    container.classList.remove('align-items-center', 'justify-content-center');
+    container.classList.add('align-items-stretch', 'justify-content-start');
+    container.innerHTML = this.render();
+    this.bindEvents();
+    await this.reload();
+  },
+};

@@ -210,6 +210,7 @@ const PosDocSearchUI = {
       if (!row) return;
       this.hideSheet(sheetEl);
       await onProductPick(row);
+      this.afterProductAdded(view, prefix);
     };
 
     this.listTargets(container, prefix).forEach((list) => {
@@ -217,6 +218,18 @@ const PosDocSearchUI = {
         handleProductClick(e).catch((err) => F.toast(err.message || 'Error', 'error'));
       });
     });
+
+    if (typeof PosProductKeyboardUI !== 'undefined') {
+      PosProductKeyboardUI.bindProductListKeyboard(container, prefix, {
+        view,
+        onPick: async (row) => {
+          this.hideSheet(sheetEl);
+          await onProductPick(row);
+          this.afterProductAdded(view, prefix);
+        },
+        findProductRow,
+      });
+    }
 
     const runSearch = (q) => {
       this.syncSearchValues(container, prefix);
@@ -267,6 +280,32 @@ const PosDocSearchUI = {
     sheetEl.addEventListener('click', (e) => {
       if (e.target === sheetEl) this.hideSheet(sheetEl);
     });
+  },
+
+  focusProductSearch(container, prefix, view) {
+    window.setTimeout(() => {
+      const inputs = this.searchInputs(container, prefix);
+      let inp = inputs.find((el) => el && !el.disabled && el.offsetParent !== null);
+      if (!inp && this.isMobileView()) {
+        const sheetEl = view?._posProductSheetEl || this.ensureSheet(container, prefix);
+        this.showSheet(sheetEl);
+        inp = document.getElementById(`${prefix}-product-search-modal`);
+      }
+      if (!inp) inp = inputs.find((el) => el && !el.disabled) || inputs[0];
+      if (!inp) return;
+      inp.focus();
+      if (typeof inp.select === 'function') inp.select();
+    }, 80);
+  },
+
+  afterProductAdded(view, prefix) {
+    const container = view?._container;
+    if (!container) return;
+    this.searchInputs(container, prefix).forEach((inp) => {
+      if (inp) inp.value = '';
+    });
+    this.resetProductSearch(view, prefix);
+    this.focusProductSearch(container, prefix, view);
   },
 
   syncControls(container, prefix, editable) {

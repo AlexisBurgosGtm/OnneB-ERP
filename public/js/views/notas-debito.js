@@ -16,6 +16,9 @@ const NotasDebitoView = {
   _cartBusy: false,
   _cajas: [],
   _selectedCodcaja: null,
+  _urlFel: '',
+
+  FEL_URL_OPCION: 'URL FEL',
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -151,7 +154,64 @@ const NotasDebitoView = {
       DocFecha.editableStatus(header?.STATUS) &&
       String(header?.CORTE || 'NO').trim().toUpperCase() !== 'SI'
     );
-  },  async fetchConfig() {
+  },
+
+  felUudiValue(row) {
+    return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
+  },
+
+  formatFelCell(row) {
+    const v = this.felUudiValue(row);
+    if (!v) return '—';
+    const label =
+      v.length <= 16 ? this.escapeHtml(v) : this.escapeHtml(`${v.slice(0, 8)}…${v.slice(-4)}`);
+    return `<button type="button" class="btn btn-link btn-sm p-0 nd-fel-link text-start"
+      data-action="fel-open" data-fel-uudi="${this.escapeHtml(v)}"
+      title="Abrir documento FEL (${this.escapeHtml(v)})">${label}</button>`;
+  },
+
+  joinFelUrl(baseUrl, felValue) {
+    const base = String(baseUrl ?? '').trim();
+    const fel = String(felValue ?? '').trim();
+    if (!base || !fel) return null;
+    if (/^https?:\/\//i.test(fel)) return fel;
+    return `${base}${fel}`;
+  },
+
+  async fetchUrlFel() {
+    const params = new URLSearchParams({
+      opcion: this.FEL_URL_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/pass?${params}`, { cache: 'no-store' });
+    this._urlFel = String(data.pass ?? '').trim();
+    return this._urlFel;
+  },
+
+  async abrirFelDocumento(felValue) {
+    const fel = String(felValue ?? '').trim();
+    if (!fel) return;
+    if (!this._urlFel) {
+      try {
+        await this.fetchUrlFel();
+      } catch (err) {
+        F.toast(err.message || 'No se pudo leer la URL FEL', 'error');
+        return;
+      }
+    }
+    if (!this._urlFel) {
+      F.toast('Configure la URL FEL en Config general', 'warning');
+      return;
+    }
+    const url = this.joinFelUrl(this._urlFel, fel);
+    if (!url) {
+      F.toast('No se pudo construir la URL del documento FEL', 'warning');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  },
+
+  async fetchConfig() {
     return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
   },
 
@@ -712,6 +772,7 @@ const NotasDebitoView = {
       return;
     }
     const obsVal = this.escapeHtml(h.OBS || '');
+    const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
     const totalPrecio = this.docTotalPrecio(h);
     const ok = await Swal.fire({
       ...CatalogosUI.modalBase({
@@ -722,6 +783,11 @@ const NotasDebitoView = {
       html: `
         <p class="small text-muted mb-2">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
         <div class="text-start nd-finalizar-modal-body">
+          <div class="mb-3">
+            <label class="form-label small mb-0" for="nd-finalizar-fel-uudi">ID Electronico</label>
+            <input type="text" id="nd-finalizar-fel-uudi" class="form-control form-control-sm"
+              value="${felUudiVal}" placeholder="UUID FEL" autocomplete="off">
+          </div>
           <div class="row g-3 align-items-stretch">
             <div class="col-md-6">
               <label class="form-label small mb-0" for="nd-finalizar-obs">Motivo de la devolución</label>
@@ -749,6 +815,7 @@ const NotasDebitoView = {
         }
         return {
           OBS: document.getElementById('nd-finalizar-obs')?.value?.trim() || '',
+          FEL_UUDI: document.getElementById('nd-finalizar-fel-uudi')?.value?.trim() || '',
           CONCRE: 'CON',
           CODCAJA: this.readCodcajaForFinalizar(),
           ...this.readFinalizarFpagoFromDom(),
@@ -783,7 +850,7 @@ const NotasDebitoView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay notas de crédito proveedor en esta fecha</td></tr>`;
+      return `<tr><td colspan="10" class="text-center text-muted py-4">No hay notas de crédito proveedor en esta fecha</td></tr>`;
     }
     return rows.map((r) => `
       <tr class="nd-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
@@ -792,6 +859,7 @@ const NotasDebitoView = {
         <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || 'Sin proveedor')}</td>
         <td class="text-center">${Number(r.LINEAS) || 0}</td>
         <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+        <td class="nd-fel-col">${this.formatFelCell(r)}</td>
         <td>${this.escapeHtml(this.formatFechaPedido(r))}</td>
         <td>${this.escapeHtml(this.formatHoraPedido(r))}</td>
         <td class="small">${this.escapeHtml(r.USUARIO || '—')}</td>
@@ -812,6 +880,7 @@ const NotasDebitoView = {
                 <th>Proveedor</th>
                 <th class="text-center">Líneas</th>
                 <th class="text-end">Total</th>
+                <th>FEL</th>
                 <th>Fecha</th>
                 <th>Hora</th>
                 <th>Usuario</th>
@@ -1153,6 +1222,15 @@ const NotasDebitoView = {
     DocTipoSelect.bind(this._container, 'nd-list-coddoc', this);
 
     this._container?.querySelector('#nd-list-tbody')?.addEventListener('click', async (e) => {
+      const felLink = e.target.closest('[data-action="fel-open"]');
+      if (felLink) {
+        e.preventDefault();
+        e.stopPropagation();
+        const fel = felLink.getAttribute('data-fel-uudi');
+        await this.abrirFelDocumento(fel);
+        return;
+      }
+
       const btn = e.target.closest('.inv-card-btn');
       if (!btn) return;
       e.preventDefault();

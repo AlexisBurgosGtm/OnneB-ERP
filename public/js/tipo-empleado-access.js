@@ -8,6 +8,7 @@ const TipoEmpleadoAccess = {
   TIPO_VISITADOR: 4,
   TIPO_BODEGA: 5,
   TIPO_TRANSPORTE: 6,
+  TIPO_CAJERO: 8,
 
   ALL_MENUS: [
     'inicio',
@@ -103,13 +104,9 @@ const TipoEmpleadoAccess = {
     3: [
       'inicio',
       'pedidos-mostrador',
-      'facturacion',
-      'notas-credito',
-      'corte-caja',
       'cotizaciones',
       'tareas',
-      'cuentas-cobrar',
-      'documentos',
+      'inventario',
     ],
     4: ['inicio', 'clientes', 'rutas', 'documentos'],
     5: [
@@ -127,6 +124,20 @@ const TipoEmpleadoAccess = {
       'registro-kilometrajes',
       'vehiculos',
       'plataformas',
+    ],
+    7: [
+      'inicio',
+      'libro-compras',
+      'libro-ventas',
+      'libro-diario',
+      'libro-mayor',
+      'libro-balance',
+    ],
+    8: [
+      'inicio',
+      'facturacion',
+      'corte-caja',
+      'cuentas-cobrar',
     ],
   },
 
@@ -167,6 +178,7 @@ const TipoEmpleadoAccess = {
       4: 'VISITADOR',
       5: 'BODEGA',
       6: 'TRANSPORTE',
+      8: 'CAJERO',
     };
     return fallback[codtipo] || 'Empleado';
   },

@@ -12,6 +12,8 @@ const ConfigGeneralView = {
     URL_FEL: 'URL FEL',
     MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
     CONFIGURACION_IVA: 'CONFIGURACION IVA',
+    PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
+    FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
   },
 
   TEXT_CARDS: [
@@ -70,6 +72,12 @@ const ConfigGeneralView = {
       icon: 'fa-chart-pie',
       fallbackDesc: 'Muestra totales del sistema y detalle al cerrar; en NO el arqueo es ciego (sin montos visibles)',
     },
+    {
+      opcion: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
+      title: 'Permite cambiar precio en pedidos',
+      icon: 'fa-tag',
+      fallbackDesc: 'Permite modificar el precio al agregar productos en pedidos de mostrador',
+    },
   ],
 
   CONCRE_OPTIONS: [
@@ -79,6 +87,17 @@ const ConfigGeneralView = {
       icon: 'fa-money-bill-wave',
       fallbackDesc: 'Determina si las nuevas facturas están por contado o crédito',
       labels: { CON: 'CONTADO', CRE: 'CRÉDITO' },
+    },
+  ],
+
+  FORMATO_OPTIONS: [
+    {
+      opcion: 'FORMATO IMPRESION C O T',
+      title: 'Formato de impresión facturas y recibos pago clientes',
+      icon: 'fa-print',
+      fallbackDesc: 'Carta: impresora normal. Ticket: impresora térmica 80 mm.',
+      labels: { CARTA: 'Carta', TICKET: 'Ticket' },
+      defaultValue: 'CARTA',
     },
   ],
 
@@ -104,6 +123,7 @@ const ConfigGeneralView = {
   _textMeta: {},
   _sinoMeta: {},
   _concreMeta: {},
+  _formatoMeta: {},
   _invSaldoPendientes: null,
 
   escapeHtml(value) {
@@ -128,6 +148,48 @@ const ConfigGeneralView = {
       .toUpperCase();
     if (s === 'CRE' || s === 'SI') return 'CRE';
     return 'CON';
+  },
+
+  normalizeFormato(value) {
+    return String(value ?? 'CARTA').trim().toUpperCase() === 'TICKET' ? 'TICKET' : 'CARTA';
+  },
+
+  getFormatoOption(opcion) {
+    return this.FORMATO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
+  },
+
+  getFormatoLabel(option, formato) {
+    const val = this.normalizeFormato(formato);
+    return option?.labels?.[val] || val;
+  },
+
+  renderFormatoCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const formato = this.normalizeFormato(meta.formato || option.defaultValue || 'CARTA');
+    const options = ['CARTA', 'TICKET']
+      .map((val) => {
+        const label = this.getFormatoLabel(option, val);
+        const sel = val === formato ? ' selected' : '';
+        return `<option value="${val}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <div class="card config-card-compact" data-formato-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            <select class="form-select form-select-sm config-formato-select" style="max-width:8rem"
+              data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      </div>`;
   },
 
   concreButtonClass(concre) {
@@ -341,6 +403,9 @@ const ConfigGeneralView = {
     const concreCards = this.CONCRE_OPTIONS.map((opt) =>
       this.renderConcreCard(opt, this._concreMeta[opt.opcion] || {})
     ).join('');
+    const formatoCards = this.FORMATO_OPTIONS.map((opt) =>
+      this.renderFormatoCard(opt, this._formatoMeta[opt.opcion] || {})
+    ).join('');
     return `
       <div class="config-general-wrap w-100">
         <div class="config-general-panel">
@@ -349,6 +414,7 @@ const ConfigGeneralView = {
             ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
             ${sinoCards}
             ${concreCards}
+            ${formatoCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
           </div>
         </div>
@@ -410,6 +476,10 @@ const ConfigGeneralView = {
       }
     });
 
+    this._container?.querySelectorAll('.config-formato-select').forEach((sel) => {
+      sel.addEventListener('change', () => this.onChangeFormato(sel));
+    });
+
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
       this.onSincronizarInvSaldo();
     });
@@ -435,6 +505,35 @@ const ConfigGeneralView = {
     return F.fetchJson(`/api/config/concre?${this.configQuery(opcion)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
+  },
+
+  async fetchFormato(opcion) {
+    return F.fetchJson(`/api/config/formato-impresion?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  async onChangeFormato(sel) {
+    const opcion = sel.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const formato = this.normalizeFormato(sel.value);
+    const prev = this.normalizeFormato(this._formatoMeta[opcion]?.formato || 'CARTA');
+    sel.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/formato-impresion?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, formato }),
+      });
+      this._formatoMeta[opcion] = { ...(this._formatoMeta[opcion] || {}), formato };
+      if (typeof DocPrint !== 'undefined') DocPrint._formatoCache = formato;
+      F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      sel.value = prev;
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      sel.disabled = false;
+    }
   },
 
   async onToggleConcre(btn) {
@@ -613,7 +712,8 @@ const ConfigGeneralView = {
       const textFetches = this.TEXT_CARDS.map((card) => this.fetchPass(card.opcion));
       const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.opcion));
       const concreFetches = this.CONCRE_OPTIONS.map((opt) => this.fetchConcre(opt.opcion));
-      const fetches = [...passFetches, ...textFetches, ...sinoFetches, ...concreFetches];
+      const formatoFetches = this.FORMATO_OPTIONS.map((opt) => this.fetchFormato(opt.opcion));
+      const fetches = [...passFetches, ...textFetches, ...sinoFetches, ...concreFetches, ...formatoFetches];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
       const results = await Promise.all(fetches);
       const passResults = results.slice(0, this.PASS_CARDS.length);
@@ -628,6 +728,10 @@ const ConfigGeneralView = {
       const concreResults = results.slice(
         this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length,
         this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length
+      );
+      const formatoResults = results.slice(
+        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length,
+        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length + this.FORMATO_OPTIONS.length
       );
       const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
 
@@ -646,6 +750,10 @@ const ConfigGeneralView = {
       this._concreMeta = {};
       this.CONCRE_OPTIONS.forEach((opt, i) => {
         this._concreMeta[opt.opcion] = concreResults[i];
+      });
+      this._formatoMeta = {};
+      this.FORMATO_OPTIONS.forEach((opt, i) => {
+        this._formatoMeta[opt.opcion] = formatoResults[i];
       });
       this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
 

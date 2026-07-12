@@ -6,6 +6,39 @@
   min-width: 12rem;
 }
 
+.cxp-vista-btns .btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cxp-cal-cell--clickable {
+  cursor: pointer;
+}
+
+.cxp-cal-cell--clickable:hover {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 1px rgba(13, 110, 253, 0.25);
+}
+
+.cxp-cal-day-table tbody tr.cxp-cal-day-row {
+  cursor: pointer;
+}
+
+.cxp-cal-day-table tbody tr.cxp-cal-day-row:hover td {
+  background-color: rgba(13, 110, 253, 0.06);
+}
+
+.cxp-cal-day-table {
+  font-size: 0.78rem;
+}
+
+.cxp-cal-day-table th,
+.cxp-cal-day-table td {
+  padding: 0.3rem 0.45rem;
+  vertical-align: middle;
+}
+
 .cxp-table tbody tr.cxp-row {
   cursor: pointer;
 }
@@ -102,4 +135,98 @@
 .cxp-historial-table .badge {
   font-size: 0.65rem;
   font-weight: 600;
+}
+
+.cxp-cal-wrap .card-body {
+  padding: 1rem;
+}
+
+.cxp-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.cxp-cal-weekday {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--bs-secondary-color, #6c757d);
+  padding: 0.25rem 0;
+}
+
+.cxp-cal-cell {
+  min-height: 4.5rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.4rem;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cxp-cal-cell--muted {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: transparent;
+}
+
+.cxp-cal-cell--today {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: inset 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+
+.cxp-cal-cell--due {
+  background: rgba(13, 110, 253, 0.06);
+}
+
+.cxp-cal-cell--overdue {
+  background: rgba(220, 53, 69, 0.08);
+  border-color: rgba(220, 53, 69, 0.35);
+}
+
+.cxp-cal-day {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.cxp-cal-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-top: auto;
+}
+
+.cxp-cal-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--bs-primary, #0d6efd);
+}
+
+.cxp-cal-cell--overdue .cxp-cal-count {
+  color: var(--bs-danger, #dc3545);
+}
+
+.cxp-cal-amount {
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+@media (max-width: 767.98px) {
+  .cxp-cal-cell {
+    min-height: 3.5rem;
+    padding: 0.25rem;
+  }
+
+  .cxp-cal-day {
+    font-size: 0.72rem;
+  }
+
+  .cxp-cal-count,
+  .cxp-cal-amount {
+    font-size: 0.58rem;
+  }
 }

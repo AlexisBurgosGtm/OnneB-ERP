@@ -5,6 +5,7 @@ const { STATUS_OPERADO } = require('../lib/documento-status');
 const {
   SQL_TIPODOC_CUENTAS_COBRAR_IN,
   SQL_DOC_SALDO_PENDIENTE,
+  SQL_DOC_SALDO_PENDIENTE_POSITIVO,
 } = require('../lib/cuentas-docs');
 const {
   parseCorrelativo,
@@ -101,7 +102,7 @@ router.get('/documentos', async (req, res) => {
         AND t.TIPODOC IN (${SQL_TIPODOC_CUENTAS_COBRAR_IN})
         AND d.STATUS = '${STATUS_OPERADO}'
         AND ISNULL(d.CONCRE, 'CON') = 'CRE'
-        AND (ISNULL(d.DOC_SALDO, 0) > 0 OR ${SQL_DOC_SALDO_PENDIENTE} > 0)
+        AND ${SQL_DOC_SALDO_PENDIENTE_POSITIVO}
         AND (
           @q IS NULL OR @q = ''
           OR CAST(d.CORRELATIVO AS VARCHAR(30)) LIKE @qLike

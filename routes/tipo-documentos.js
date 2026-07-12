@@ -39,6 +39,11 @@ async function tipoDocTieneMovimientos(pool, empnit, coddoc) {
 async function validateInsertTipoDocumento(pool, empnit, data) {
   const coddoc = String(data.CODDOC ?? '').trim();
   if (!coddoc) return 'CODDOC es obligatorio';
+  const contable = String(data.CONTABLE ?? 'NO').trim().toUpperCase();
+  if (contable !== 'NO' && contable !== 'SI') {
+    return 'CONTABLE debe ser NO o SI';
+  }
+  data.CONTABLE = contable;
   if (await tipoDocCoddocExists(pool, empnit, coddoc)) {
     return `Ya existe un tipo de documento con el código "${coddoc}"`;
   }
@@ -49,6 +54,17 @@ async function validateDeleteTipoDocumento(pool, empnit, coddoc) {
   const movCount = await tipoDocTieneMovimientos(pool, empnit, coddoc);
   if (movCount > 0) {
     return `No se puede eliminar: existen ${movCount} movimiento(s) en documentos con este tipo`;
+  }
+  return null;
+}
+
+async function validateUpdateTipoDocumento(pool, empnit, data) {
+  if (data.CONTABLE !== undefined && data.CONTABLE !== null) {
+    const contable = String(data.CONTABLE).trim().toUpperCase();
+    if (contable !== 'NO' && contable !== 'SI') {
+      return 'CONTABLE debe ser NO o SI';
+    }
+    data.CONTABLE = contable;
   }
   return null;
 }
@@ -64,6 +80,7 @@ const DOC_FORM_FIELDS = [
 ];
 
 const DOC_LIST_EXTRA = [
+  'CONTABLE',
   'RESOLUCION',
   'AUTORIZACION',
   'FRASE1',
@@ -93,6 +110,7 @@ const router = createCatalogoRouter({
     { name: 'TIPOM', type: 'int' },
     { name: 'CODFORMATOCON', type: 'varchar' },
     { name: 'CODFORMATOCRE', type: 'varchar' },
+    { name: 'CONTABLE', type: 'varchar' },
     { name: 'ACTIVO', type: 'varchar' },
     { name: 'RESOLUCION', type: 'varchar' },
     { name: 'AUTORIZACION', type: 'varchar' },
@@ -102,9 +120,10 @@ const router = createCatalogoRouter({
     { name: 'TIPOMOV', type: 'varchar' },
     { name: 'CODFORMATO', type: 'varchar' },
   ],
-  insertFields: ['CODDOC', ...DOC_FORM_FIELDS, 'ACTIVO'],
-  updateFields: DOC_FORM_FIELDS,
+  insertFields: ['CODDOC', ...DOC_FORM_FIELDS, 'CONTABLE', 'ACTIVO'],
+  updateFields: [...DOC_FORM_FIELDS, 'CONTABLE'],
   validateInsert: validateInsertTipoDocumento,
+  validateUpdate: validateUpdateTipoDocumento,
   validateDelete: validateDeleteTipoDocumento,
   requireAdminPassOnDelete: true,
 });

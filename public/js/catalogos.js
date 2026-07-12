@@ -151,7 +151,7 @@ const CatalogosUI = {
         const popup = Swal.getPopup();
         const form = popup?.querySelector('form');
         if (form) form.setAttribute('novalidate', 'novalidate');
-        if (typeof didOpen === 'function') didOpen();
+        if (typeof didOpen === 'function') didOpen(popup);
       },
     });
     return result.isConfirmed ? result.value : null;
