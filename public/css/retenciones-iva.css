@@ -1,0 +1,53 @@
+.rtv-main-host {
+  padding: 0.75rem 1rem 1rem !important;
+}
+
+.retenciones-iva-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.rtv-split-panels {
+  display: grid;
+  grid-template-columns: minmax(320px, 42%) minmax(0, 1fr);
+  gap: 1rem;
+  min-height: calc(100vh - 220px);
+}
+
+.rtv-list-panel,
+.rtv-detail-panel {
+  min-height: calc(100vh - 240px);
+  display: flex;
+  flex-direction: column;
+}
+
+.rtv-list-panel .card-body,
+.rtv-detail-panel .card-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rtv-list-row {
+  cursor: pointer;
+}
+
+.rtv-list-row-selected,
+.rtv-list-row-selected:hover {
+  background-color: rgba(124, 58, 237, 0.14) !important;
+}
+
+.rtv-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  text-align: center;
+}
+
+@media (max-width: 991.98px) {
+  .rtv-split-panels {
+    grid-template-columns: 1fr;
+  }
+}

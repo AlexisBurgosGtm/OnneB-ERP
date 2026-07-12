@@ -1,3 +1,5 @@
+const TD_FIELD_ID_PREFIX = 'tipo-doc-';
+
 const tipomOptions = [
   { value: '1', label: 'ENTRADA' },
   { value: '-1', label: 'SALIDA' },
@@ -7,6 +9,18 @@ const tipomOptions = [
 const contableOptions = [
   { value: 'NO', label: 'NO' },
   { value: 'SI', label: 'SI' },
+];
+
+const TD_FORM_FIELDS = [
+  { key: 'CODDOC', label: 'Código documento', type: 'text', required: true, readonlyOnEdit: true },
+  { key: 'CORRELATIVO', label: 'Correlativo', type: 'number', step: '1' },
+  { key: 'DESDOC', label: 'Descripción', type: 'text', required: true },
+  { key: 'TIPODOC', label: 'Tipo documento', type: 'select', options: [] },
+  { key: 'TIPOM', label: 'Tipo Inventario', type: 'select', options: tipomOptions },
+  { key: 'FORMATO', label: 'Formato', type: 'text' },
+  { key: 'CODFORMATOCON', label: 'Formato contado', type: 'select', options: [] },
+  { key: 'CODFORMATOCRE', label: 'Formato crédito', type: 'select', options: [] },
+  { key: 'CONTABLE', label: 'Contable', type: 'select', options: contableOptions },
 ];
 
 function tipomLabel(value) {
@@ -22,37 +36,45 @@ function tipoDocLabel(value, lookups) {
   return found ? found.label : code;
 }
 
-function validateTipoDocumentoForm(data, isEdit, existingRows) {
-  if (!isEdit && !data.CODDOC) return 'El código de documento es obligatorio';
-  if (!data.DESDOC) return 'La descripción es obligatoria';
-  if (!isEdit && data.CODDOC) {
-    const cod = String(data.CODDOC).trim().toUpperCase();
-    const dup = (existingRows || []).some(
-      (r) => String(r.CODDOC ?? '').trim().toUpperCase() === cod
-    );
-    if (dup) return `Ya existe un tipo de documento con el código "${data.CODDOC.trim()}"`;
+function formatoLabel(value, lookups) {
+  const code = String(value ?? '').trim();
+  if (!code) return '—';
+  const found = (lookups?.formatos || []).find((f) => String(f.value).trim() === code);
+  return found ? found.label : code;
+}
+
+function validateTipoDocumentoForm(data, isEdit) {
+  if (!isEdit && !String(data.CODDOC ?? '').trim()) return 'El código de documento es obligatorio';
+  if (!String(data.DESDOC ?? '').trim()) return 'La descripción es obligatoria';
+  const contable = String(data.CONTABLE || 'NO').trim().toUpperCase() === 'SI';
+  if (contable) {
+    const con = String(data.CODFORMATOCON ?? '').trim();
+    const cre = String(data.CODFORMATOCRE ?? '').trim();
+    if (!con && !cre) {
+      return 'Si es contable, indique al menos un formato contable (contado o crédito)';
+    }
   }
   return null;
 }
 
-function mapFormToApi(data, isEdit) {
-  const num = (v) => (v === '' || v === undefined ? null : Number(v));
+function tipoDocumentosMapFormToApi(data, isEdit) {
+  const num = (v) => (v === '' || v === undefined || v === null ? null : Number(v));
   const n = (key) => {
     const x = num(data[key]);
     return Number.isNaN(x) ? null : x;
   };
   const payload = {
-    DESDOC: data.DESDOC,
-    TIPODOC: data.TIPODOC || null,
+    DESDOC: String(data.DESDOC ?? '').trim(),
+    TIPODOC: String(data.TIPODOC || '').trim() || null,
     CORRELATIVO: n('CORRELATIVO'),
-    FORMATO: data.FORMATO || null,
+    FORMATO: String(data.FORMATO || '').trim() || null,
     TIPOM: n('TIPOM'),
-    CODFORMATOCON: data.CODFORMATOCON || null,
-    CODFORMATOCRE: data.CODFORMATOCRE || null,
-    CONTABLE: String(data.CONTABLE || 'NO').trim().toUpperCase(),
+    CODFORMATOCON: String(data.CODFORMATOCON || '').trim() || null,
+    CODFORMATOCRE: String(data.CODFORMATOCRE || '').trim() || null,
+    CONTABLE: String(data.CONTABLE || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
   };
   if (!isEdit) {
-    payload.CODDOC = String(data.CODDOC).trim();
+    payload.CODDOC = String(data.CODDOC ?? '').trim().toUpperCase();
     payload.ACTIVO = 'SI';
   }
   return payload;
@@ -69,7 +91,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
   formWidth: 780,
   searchPlaceholder: 'Buscar por código, descripción, tipo…',
   searchKeys: ['CODDOC', 'DESDOC', 'TIPODOC', 'FORMATO', 'TIPOM', 'CONTABLE', 'ACTIVO'],
-  formFields: [],
+  formFields: TD_FORM_FIELDS,
   createKeys: [
     'CODDOC',
     'DESDOC',
@@ -92,7 +114,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'CODFORMATOCRE',
     'CONTABLE',
   ],
-  mapFormToApi,
+  mapFormToApi: tipoDocumentosMapFormToApi,
   validateForm: validateTipoDocumentoForm,
   tableColumns: [
     { key: 'CODDOC', label: 'Código' },
@@ -116,6 +138,56 @@ const TipoDocumentosView = {
     return TipoDocumentosViewBase.escapeHtml.call(this, value);
   },
 
+  fieldId(key) {
+    return `${TD_FIELD_ID_PREFIX}${key}`;
+  },
+
+  fieldHtml(f, row, isEdit) {
+    if (!f) return '';
+    if (!isEdit && f.hideOnNew) return '';
+    const req = f.required ? 'required' : '';
+    const ro = f.readonlyOnEdit && isEdit ? 'readonly' : '';
+    const val = row[f.key] ?? '';
+    const inputId = this.fieldId(f.key);
+
+    if (f.type === 'select') {
+      const options = f.options || [];
+      const strVal = val !== null && val !== undefined ? String(val) : '';
+      const hasVal = strVal && options.some((o) => String(o.value) === strVal);
+      const legacyOpt =
+        strVal && !hasVal
+          ? `<option value="${this.escapeHtml(strVal)}" selected>${this.escapeHtml(strVal)} (actual)</option>`
+          : '';
+      const optsHtml = options
+        .map(
+          (o) =>
+            `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+        )
+        .join('');
+      return `
+        <label class="form-label small mb-0" for="${inputId}">${this.escapeHtml(f.label)}</label>
+        <select class="form-select form-select-sm" id="${inputId}" name="${f.key}" ${req} ${ro}>
+          <option value="">— Seleccione —</option>
+          ${legacyOpt}
+          ${optsHtml}
+        </select>
+      `;
+    }
+
+    const inputType = f.type || 'text';
+    let displayVal = val;
+    if (inputType === 'date' && val) {
+      displayVal = String(val).slice(0, 10);
+    }
+    const step = f.step ? `step="${f.step}"` : '';
+
+    return `
+      <label class="form-label small mb-0" for="${inputId}">${this.escapeHtml(f.label)}</label>
+      <input type="${inputType}" class="form-control form-control-sm" id="${inputId}" name="${f.key}"
+        value="${this.escapeHtml(displayVal)}" ${req} ${ro} ${step} autocomplete="off">
+    `;
+  },
+
   normalizeRowForForm(row = {}) {
     const tipom =
       row.TIPOM !== null && row.TIPOM !== undefined && row.TIPOM !== ''
@@ -135,10 +207,11 @@ const TipoDocumentosView = {
     };
   },
 
-  async loadLookups() {
-    if (this._lookups) return this._lookups;
+  async loadLookups(force = false) {
+    if (this._lookups && !force) return this._lookups;
     const ts = Date.now();
     let tiposDoc = [];
+    let formatos = [];
     try {
       const res = await F.fetchJson(`/api/tipo-documentos/config-tipos?_=${ts}`, {
         cache: 'no-store',
@@ -150,8 +223,38 @@ const TipoDocumentosView = {
     } catch (err) {
       console.warn('[TipoDocumentos] CONFIG_TIPODOCUMENTOS:', err);
     }
-    this._lookups = { tiposDoc };
+    try {
+      const emp = F.getEmpNit();
+      if (emp) {
+        const res = await F.fetchJson(
+          `/api/formatos-contables?empnit=${encodeURIComponent(emp)}&_=${ts}`,
+          { cache: 'no-store' }
+        );
+        formatos = (res.rows || []).map((r) => {
+          const cod = String(r.CODFORMATO ?? '').trim();
+          const des = String(r.DESFORMATO ?? '').trim();
+          return {
+            value: cod,
+            label: des ? `${cod} — ${des}` : cod,
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('[TipoDocumentos] formatos-contables:', err);
+    }
+    this._lookups = { tiposDoc, formatos };
     return this._lookups;
+  },
+
+  formFieldsWithLookups() {
+    const L = this._lookups || { tiposDoc: [], formatos: [] };
+    return TD_FORM_FIELDS.map((f) => {
+      if (f.key === 'TIPODOC') return { ...f, options: L.tiposDoc };
+      if (f.key === 'CODFORMATOCON' || f.key === 'CODFORMATOCRE') {
+        return { ...f, options: L.formatos };
+      }
+      return f;
+    });
   },
 
   formatCell(value, col) {
@@ -161,6 +264,9 @@ const TipoDocumentosView = {
     }
     if (col?.key === 'TIPODOC') {
       return this.escapeHtml(tipoDocLabel(value, this._lookups));
+    }
+    if (col?.key === 'CODFORMATOCON' || col?.key === 'CODFORMATOCRE') {
+      return this.escapeHtml(formatoLabel(value, this._lookups));
     }
     return TipoDocumentosViewBase.formatCell.call(this, value, col);
   },
@@ -258,37 +364,6 @@ const TipoDocumentosView = {
     }
   },
 
-  selectField(name, label, options, value, attrs = {}) {
-    const req = attrs.required ? 'required' : '';
-    const ro = attrs.readonly ? 'disabled' : '';
-    const strVal = value !== null && value !== undefined ? String(value) : '';
-    const optsHtml = (options || [])
-      .map(
-        (o) =>
-          `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
-      )
-      .join('');
-    return `
-      <label class="form-label small mb-0">${this.escapeHtml(label)}</label>
-      <select class="form-select form-select-sm" name="${name}" ${req} ${ro}>
-        <option value="">— Seleccione —</option>
-        ${optsHtml}
-      </select>
-    `;
-  },
-
-  inputField(name, label, value, attrs = {}) {
-    const req = attrs.required ? 'required' : '';
-    const ro = attrs.readonly ? 'readonly' : '';
-    const type = attrs.type || 'text';
-    const step = attrs.step ? `step="${attrs.step}"` : '';
-    return `
-      <label class="form-label small mb-0">${this.escapeHtml(label)}</label>
-      <input type="${type}" class="form-control form-control-sm" name="${name}"
-        value="${this.escapeHtml(value ?? '')}" ${req} ${ro} ${step}>
-    `;
-  },
-
   rowCols(cols) {
     const n = cols.length;
     const colClass = n === 3 ? 'col-md-4' : n === 2 ? 'col-md-6' : 'col-12';
@@ -301,80 +376,95 @@ const TipoDocumentosView = {
 
   buildFormHtml(row = {}, isEdit = false) {
     const r = this.normalizeRowForForm(row);
-    const L = this._lookups || { tiposDoc: [] };
+    const fields = this.formFieldsWithLookups();
+    const byKey = Object.fromEntries(fields.map((f) => [f.key, f]));
+    const field = (key) => this.fieldHtml(byKey[key], r, isEdit);
 
     return [
-      this.rowCols([
-        this.inputField('CODDOC', 'Código documento', r.CODDOC, {
-          required: true,
-          readonly: isEdit,
-        }),
-        this.inputField('CORRELATIVO', 'Correlativo', r.CORRELATIVO, { type: 'number', step: '1' }),
-      ]),
-      this.rowCols([
-        this.inputField('DESDOC', 'Descripción', r.DESDOC, { required: true }),
-      ]),
-      this.rowCols([
-        this.selectField('TIPODOC', 'Tipo documento', L.tiposDoc, r.TIPODOC),
-        this.selectField('TIPOM', 'Tipo Inventario', tipomOptions, r.TIPOM),
-        this.inputField('FORMATO', 'Formato', r.FORMATO),
-      ]),
-      this.rowCols([
-        this.inputField('CODFORMATOCON', 'Cód. formato cont.', r.CODFORMATOCON),
-        this.inputField('CODFORMATOCRE', 'Cód. formato cred.', r.CODFORMATOCRE),
-        this.selectField('CONTABLE', 'Contable', contableOptions, r.CONTABLE),
-      ]),
+      this.rowCols([field('CODDOC'), field('CORRELATIVO')]),
+      this.rowCols([field('DESDOC')]),
+      this.rowCols([field('TIPODOC'), field('TIPOM'), field('FORMATO')]),
+      this.rowCols([field('CODFORMATOCON'), field('CODFORMATOCRE'), field('CONTABLE')]),
     ].join('');
   },
 
   readFormData() {
-    const names = [
-      'CODDOC',
-      'DESDOC',
-      'TIPODOC',
-      'CORRELATIVO',
-      'FORMATO',
-      'TIPOM',
-      'CODFORMATOCON',
-      'CODFORMATOCRE',
-      'CONTABLE',
-    ];
     const data = {};
-    names.forEach((name) => {
-      const input = document.querySelector(`.swal2-html-container [name="${name}"]`);
-      if (!input) return;
-      data[name] = input.value.trim();
+    this.formFieldsWithLookups().forEach((field) => {
+      const el = document.getElementById(this.fieldId(field.key));
+      if (!el || el.disabled) return;
+      data[field.key] = String(el.value ?? '').trim();
     });
     return data;
   },
 
   async showForm(title, row = {}, isEdit = false) {
-    await this.loadLookups();
+    await this.loadLookups(true);
     const view = this;
+    const existingRows = this._rows || [];
     return CatalogosUI.fireForm({
       title,
       html: view.buildFormHtml(row, isEdit),
       width: 780,
+      didOpen: (popup) => {
+        if (!isEdit) {
+          popup?.querySelector(`#${TD_FIELD_ID_PREFIX}CODDOC`)?.focus();
+        }
+      },
       preConfirm: () => {
         const data = view.readFormData();
-        const validateErr = validateTipoDocumentoForm(data, isEdit, view._rows);
+        const validateErr = validateTipoDocumentoForm(data, isEdit);
         if (validateErr) {
           Swal.showValidationMessage(validateErr);
           return false;
         }
-        return mapFormToApi(data, isEdit);
+        if (!isEdit) {
+          const cod = String(data.CODDOC ?? '').trim().toUpperCase();
+          const dup = existingRows.some(
+            (r) => String(r.CODDOC ?? '').trim().toUpperCase() === cod
+          );
+          if (dup) {
+            Swal.showValidationMessage(`Ya existe un tipo de documento con el código "${cod}"`);
+            return false;
+          }
+        }
+        return tipoDocumentosMapFormToApi(data, isEdit);
       },
     });
   },
 
   async onNuevo() {
-    await this.loadLookups();
-    return TipoDocumentosViewBase.onNuevo.call(this);
+    const data = await this.showForm('Nuevo tipo documento', {}, false);
+    if (!data) return;
+    try {
+      await F.fetchJson(this.apiBase(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      F.toast('Tipo documento creado', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
   },
 
   async onEditar(id) {
-    await this.loadLookups();
-    return TipoDocumentosViewBase.onEditar.call(this, id);
+    const row = this.findRow(id);
+    if (!row) return;
+    const data = await this.showForm('Editar tipo documento', row, true);
+    if (!data) return;
+    try {
+      await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      F.toast('Tipo documento actualizado', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
   },
 
   async onEliminar(id) {
@@ -407,8 +497,13 @@ const TipoDocumentosView = {
     }
   },
 
+  bindEvents() {
+    TipoDocumentosViewBase.bindEvents.call(this);
+  },
+
   async load(container) {
-    await this.loadLookups();
+    this._lookups = null;
+    await this.loadLookups(true);
     return TipoDocumentosViewBase.load.call(this, container);
   },
 };

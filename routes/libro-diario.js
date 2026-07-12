@@ -1,6 +1,6 @@
 const express = require('express');
 const { isDbConfigured } = require('../config/database');
-const { listLibroCompras, TIPODOC_LIBRO_COMPRAS } = require('../lib/libro-compras');
+const { listLibroDiario } = require('../lib/libro-diario');
 const {
   requireEmpNit,
   parsePeriod,
@@ -14,17 +14,16 @@ const router = express.Router();
 
 const EXPORT_COLUMNS = [
   { header: 'No.', key: 'LINEA', width: 6 },
-  { header: 'Fecha', key: 'FEL_FECHA', width: 12 },
+  { header: 'Fecha', key: 'FECHA', width: 12 },
+  { header: 'Documento', key: 'DOC_REF', width: 16 },
   { header: 'Tipo', key: 'TIPODOC', width: 8 },
-  { header: 'Serie', key: 'FEL_SERIE', width: 10 },
-  { header: 'Número', key: 'FEL_NUMERO', width: 12 },
-  { header: 'NIT', key: 'DOC_NIT', width: 14 },
-  { header: 'Nombre', key: 'DOC_NOMCLIE', width: 28 },
-  { header: 'Exentas', key: 'TOTALEXENTO', width: 12, type: 'money' },
-  { header: 'Gravadas', key: 'TOTALSINIVA', width: 12, type: 'money' },
-  { header: 'IVA', key: 'TOTALIVA', width: 12, type: 'money' },
-  { header: 'Total', key: 'TOTAL', width: 12, type: 'money' },
-  { header: 'Anulado', key: 'ANULADO', width: 10 },
+  { header: 'Pago', key: 'TIPOPAGO', width: 10 },
+  { header: 'Formato', key: 'CODFORMATO', width: 14 },
+  { header: 'Cuenta', key: 'CODCUENTA', width: 14 },
+  { header: 'Descripción', key: 'DESCRIPCION_CUENTA', width: 28 },
+  { header: 'Debe', key: 'DEBE', width: 14, type: 'money' },
+  { header: 'Haber', key: 'HABER', width: 14, type: 'money' },
+  { header: 'C. costo', key: 'CENTRO_COSTO', width: 10 },
 ];
 
 router.get('/', async (req, res) => {
@@ -37,16 +36,16 @@ router.get('/', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const data = await listLibroCompras(pool, require('mssql'), empnit, period.mes, period.anio);
+    const data = await listLibroDiario(pool, require('mssql'), empnit, period.mes, period.anio);
     res.json({
       rows: data.rows,
+      warnings: data.warnings,
       totals: data.totals,
       mes: data.mes,
       anio: data.anio,
-      tipodocs: TIPODOC_LIBRO_COMPRAS,
     });
   } catch (err) {
-    console.warn('[API GET /libro-compras]', err.message);
+    console.warn('[API GET /libro-diario]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -61,38 +60,36 @@ router.get('/export', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const data = await listLibroCompras(pool, require('mssql'), empnit, period.mes, period.anio);
+    const data = await listLibroDiario(pool, require('mssql'), empnit, period.mes, period.anio);
     const exportRows = (data.rows || []).map((r) => ({
       ...r,
-      FEL_FECHA: r.FEL_FECHA ? String(r.FEL_FECHA).slice(0, 10) : '',
-      ANULADO: r.ANULADO ? 'Sí' : 'No',
+      FECHA: r.FECHA ? String(r.FECHA).slice(0, 10) : '',
     }));
     const t = data.totals || {};
     const buffer = await buildLibroWorkbook({
-      sheetName: 'Libro Compras',
-      title: 'Libro de Compras y Servicios Recibidos',
+      sheetName: 'Libro Diario',
+      title: 'Libro Diario',
       periodLabel: `Período: ${mesLabel(period.mes)} ${period.anio}`,
       columns: EXPORT_COLUMNS,
       rows: exportRows,
       totalsRow: {
         LINEA: '',
-        FEL_FECHA: '',
+        FECHA: '',
+        DOC_REF: '',
         TIPODOC: '',
-        FEL_SERIE: '',
-        FEL_NUMERO: '',
-        DOC_NIT: '',
-        DOC_NOMCLIE: 'Totales (sin anulados)',
-        TOTALEXENTO: t.exento ?? 0,
-        TOTALSINIVA: t.gravado ?? 0,
-        TOTALIVA: t.iva ?? 0,
-        TOTAL: t.total ?? 0,
-        ANULADO: '',
+        TIPOPAGO: '',
+        CODFORMATO: '',
+        CODCUENTA: '',
+        DESCRIPCION_CUENTA: 'Totales (sin anulados)',
+        DEBE: t.debe ?? 0,
+        HABER: t.haber ?? 0,
+        CENTRO_COSTO: '',
       },
     });
-    const filename = `libro_compras_${safeFilenamePart(empnit)}_${period.mes}_${period.anio}_${Date.now()}.xlsx`;
+    const filename = `libro_diario_${safeFilenamePart(empnit)}_${period.mes}_${period.anio}_${Date.now()}.xlsx`;
     sendLibroXlsx(res, buffer, filename);
   } catch (err) {
-    console.warn('[API GET /libro-compras/export]', err.message);
+    console.warn('[API GET /libro-diario/export]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

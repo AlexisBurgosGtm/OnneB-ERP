@@ -135,10 +135,42 @@ const CatalogosUI = {
     return input;
   },
 
+  /** Contenedor de campos del modal SweetAlert2 activo */
+  getModalFieldRoot(popup) {
+    const candidates = [
+      popup?.querySelector?.('.catalogo-form'),
+      typeof Swal !== 'undefined' ? Swal.getHtmlContainer?.()?.querySelector('.catalogo-form') : null,
+      typeof Swal !== 'undefined' ? Swal.getHtmlContainer?.() : null,
+      typeof document !== 'undefined'
+        ? document.querySelector('.swal2-container.swal2-backdrop-show .catalogo-form')
+        : null,
+      typeof document !== 'undefined'
+        ? document.querySelector('.swal2-container.swal2-backdrop-show .swal2-html-container')
+        : null,
+    ];
+    return candidates.find(Boolean) || null;
+  },
+
+  /** Lee campos por name (o id) desde el modal visible */
+  readNamedFields(popup, fieldNames, { idPrefix = '' } = {}) {
+    const root = this.getModalFieldRoot(popup);
+    if (!root) return {};
+    const data = {};
+    const names = Array.isArray(fieldNames) ? fieldNames : [];
+    names.forEach((name) => {
+      const byId = idPrefix ? root.querySelector(`#${idPrefix}${name}`) : null;
+      const el = byId || root.querySelector(`[name="${name}"]`);
+      if (!el || el.disabled) return;
+      data[name] = String(el.value ?? '').trim();
+    });
+    return data;
+  },
+
   /** Modal formulario — Guardar a la derecha */
-  async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen } = {}) {
+  async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen, customClass } = {}) {
+    let activePopup = null;
     const result = await Swal.fire({
-      ...this.modalBase(),
+      ...this.modalBase({ customClass }),
       title,
       html: `<div class="catalogo-form text-start">${html}</div>`,
       width,
@@ -146,12 +178,13 @@ const CatalogosUI = {
       confirmButtonText: this.guardarButtonHtml(confirmText),
       cancelButtonText: this.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      preConfirm,
+      preConfirm: () => {
+        const popup = activePopup || Swal.getPopup();
+        return typeof preConfirm === 'function' ? preConfirm(popup) : undefined;
+      },
       didOpen: () => {
-        const popup = Swal.getPopup();
-        const form = popup?.querySelector('form');
-        if (form) form.setAttribute('novalidate', 'novalidate');
-        if (typeof didOpen === 'function') didOpen(popup);
+        activePopup = Swal.getPopup();
+        if (typeof didOpen === 'function') didOpen(activePopup);
       },
     });
     return result.isConfirmed ? result.value : null;

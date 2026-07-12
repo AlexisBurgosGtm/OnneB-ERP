@@ -1,0 +1,27 @@
+.libro-mayor-wrap,
+.libro-mayor-filters-row {
+  width: 100%;
+  max-width: 100%;
+}
+
+.libro-mayor-row-cuenta > td {
+  background: rgba(124, 58, 237, 0.08);
+  border-top: 2px solid rgba(124, 58, 237, 0.2);
+}
+
+.libro-mayor-row-subtotal > td {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.libro-mayor-cuenta-header {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.libro-mayor-col-glosa {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

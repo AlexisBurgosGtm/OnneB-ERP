@@ -1,0 +1,33 @@
+.libro-contable-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.libro-contable-warnings ul {
+  font-size: 0.8rem;
+}
+
+[class*='-filter-mes'] {
+  min-width: 9.5rem;
+}
+
+[class*='-filter-anio'] {
+  min-width: 5.5rem;
+}
+
+[class*='-filters-card'] .card-body {
+  padding: 0.85rem 1rem;
+}
+
+[class*='-table-card'] .table {
+  font-size: 0.78rem;
+}
+
+[class*='-table-card'] .table-responsive {
+  max-height: calc(100vh - 300px);
+}
+
+[class*='-table-card'] .table thead th {
+  white-space: nowrap;
+  vertical-align: middle;
+}

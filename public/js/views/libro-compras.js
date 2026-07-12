@@ -43,6 +43,7 @@ const LibroComprasView = {
   _mes: null,
   _anio: null,
   _loading: false,
+  _exporting: false,
 
   tableColumns: [
     { key: 'LINEA', label: 'No.', align: 'center' },
@@ -172,6 +173,9 @@ const LibroComprasView = {
               <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-libro-compras-imprimir">
                 <i class="fa-solid fa-print me-1"></i>Imprimir
               </button>
+              <button type="button" class="btn btn-sm btn-outline-success" id="btn-libro-compras-export">
+                <i class="fa-solid fa-file-excel me-1"></i>Exportar (xlsx)
+              </button>
             </div>
           </div>
           <div class="libro-compras-badge small text-muted mt-2" id="libro-compras-count">${this.escapeHtml(this.badgeText())}</div>
@@ -280,6 +284,21 @@ const LibroComprasView = {
     this._container?.querySelector('#btn-libro-compras-imprimir')?.addEventListener('click', () => {
       this.imprimir().catch((err) => F.toast(err.message, 'error'));
     });
+    this._container?.querySelector('#btn-libro-compras-export')?.addEventListener('click', () => {
+      this.exportExcel().catch((err) => F.toast(err.message, 'error'));
+    });
+  },
+
+  async exportExcel() {
+    if (this._exporting) return;
+    this._exporting = true;
+    const btn = this._container?.querySelector('#btn-libro-compras-export');
+    try {
+      const url = LibroContableCommon.buildExportUrl('/api/libro-compras', this._mes, this._anio);
+      await LibroContableCommon.downloadExport(url, btn, `libro_compras_${this._mes}_${this._anio}.xlsx`);
+    } finally {
+      this._exporting = false;
+    }
   },
 
   async reload() {

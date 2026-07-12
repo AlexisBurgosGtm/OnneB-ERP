@@ -1,0 +1,24 @@
+.libro-balance-wrap,
+.libro-balance-filters-row {
+  width: 100%;
+  max-width: 100%;
+}
+
+.libro-balance-row-titulo > td {
+  background: rgba(124, 58, 237, 0.12);
+  font-size: 0.9rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.libro-balance-row-grupo > td {
+  background: rgba(124, 58, 237, 0.05);
+}
+
+.libro-balance-titulo {
+  letter-spacing: 0.02em;
+}
+
+.libro-balance-summary .card-body {
+  padding: 0.65rem 0.85rem;
+}

@@ -568,6 +568,20 @@
         LibroVentasView.load(mainContent);
       } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
         LibroComprasView.load(mainContent);
+      } else if (key === 'libro-diario' && typeof LibroDiarioView !== 'undefined') {
+        LibroDiarioView.load(mainContent);
+      } else if (key === 'libro-mayor' && typeof LibroMayorView !== 'undefined') {
+        LibroMayorView.load(mainContent);
+      } else if (key === 'libro-balance' && typeof LibroBalanceView !== 'undefined') {
+        LibroBalanceView.load(mainContent);
+      } else if (key === 'retenciones-iva' && typeof RetencionesIvaView !== 'undefined') {
+        RetencionesIvaView.load(mainContent);
+      } else if (key === 'retenciones-isr' && typeof RetencionesIsrView !== 'undefined') {
+        RetencionesIsrView.load(mainContent);
+      } else if (key === 'nomenclatura-contable' && typeof NomenclaturaContableView !== 'undefined') {
+        NomenclaturaContableView.load(mainContent);
+      } else if (key === 'formatos-contables' && typeof FormatosContablesView !== 'undefined') {
+        FormatosContablesView.load(mainContent);
       } else if (
         (key === 'productos-precios' || key === 'productos') &&
         typeof ProductosView !== 'undefined'

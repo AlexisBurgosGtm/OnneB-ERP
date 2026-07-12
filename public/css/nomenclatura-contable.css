@@ -1,0 +1,28 @@
+.nomenclatura-contable-wrap .nc-filter-tipoef {
+  min-width: 11rem;
+}
+
+.nomenclatura-contable-wrap .nc-table-wrap {
+  max-height: calc(100vh - 280px);
+}
+
+.nomenclatura-contable-wrap .nc-codcuenta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.nomenclatura-contable-wrap tr.nc-row-inactiva td {
+  opacity: 0.55;
+}
+
+.nomenclatura-contable-wrap .table thead th {
+  white-space: nowrap;
+}
+
+.nc-form-grid .nc-form-field .form-label {
+  margin-bottom: 0.2rem;
+}
+
+.nc-form-grid .nc-form-row:last-child {
+  margin-bottom: 0 !important;
+}

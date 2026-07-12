@@ -61,6 +61,13 @@ const cuentasCobrarRouter = require('./routes/cuentas-cobrar');
 const cuentasPagarRouter = require('./routes/cuentas-pagar');
 const libroVentasRouter = require('./routes/libro-ventas');
 const libroComprasRouter = require('./routes/libro-compras');
+const libroDiarioRouter = require('./routes/libro-diario');
+const libroMayorRouter = require('./routes/libro-mayor');
+const libroBalanceRouter = require('./routes/libro-balance');
+const nomenclaturaContableRouter = require('./routes/nomenclatura-contable');
+const formatosContablesRouter = require('./routes/formatos-contables');
+const retencionesIvaRouter = require('./routes/retenciones-iva');
+const retencionesIsrRouter = require('./routes/retenciones-isr');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -169,6 +176,13 @@ app.use('/api/cuentas-cobrar', cuentasCobrarRouter);
 app.use('/api/cuentas-pagar', cuentasPagarRouter);
 app.use('/api/libro-ventas', libroVentasRouter);
 app.use('/api/libro-compras', libroComprasRouter);
+app.use('/api/libro-diario', libroDiarioRouter);
+app.use('/api/libro-mayor', libroMayorRouter);
+app.use('/api/libro-balance', libroBalanceRouter);
+app.use('/api/nomenclatura-contable', nomenclaturaContableRouter);
+app.use('/api/formatos-contables', formatosContablesRouter);
+app.use('/api/retenciones-iva', retencionesIvaRouter);
+app.use('/api/retenciones-isr', retencionesIsrRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

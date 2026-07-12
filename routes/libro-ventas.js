@@ -1,48 +1,43 @@
 const express = require('express');
 const { isDbConfigured } = require('../config/database');
 const { listLibroVentas, TIPODOC_LIBRO_VENTAS } = require('../lib/libro-ventas');
+const {
+  requireEmpNit,
+  parsePeriod,
+  buildLibroWorkbook,
+  sendLibroXlsx,
+  safeFilenamePart,
+  mesLabel,
+} = require('../lib/libro-contable-utils');
 
 const router = express.Router();
 
-function getEmpNitFromReq(req) {
-  return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
-}
-
-function requireEmpNit(req, res) {
-  const empnit = getEmpNitFromReq(req);
-  if (!empnit) {
-    res.status(400).json({ error: 'EMPNIT requerido (empresa de la sesión)' });
-    return null;
-  }
-  return empnit;
-}
-
-function parseMes(raw) {
-  const n = parseInt(raw, 10);
-  if (Number.isNaN(n) || n < 1 || n > 12) return null;
-  return n;
-}
-
-function parseAnio(raw) {
-  const n = parseInt(raw, 10);
-  if (Number.isNaN(n) || n < 2020 || n > 2035) return null;
-  return n;
-}
+const EXPORT_COLUMNS = [
+  { header: 'No.', key: 'LINEA', width: 6 },
+  { header: 'Fecha', key: 'FEL_FECHA', width: 12 },
+  { header: 'Tipo', key: 'TIPODOC', width: 8 },
+  { header: 'Serie', key: 'FEL_SERIE', width: 10 },
+  { header: 'Número', key: 'FEL_NUMERO', width: 12 },
+  { header: 'NIT', key: 'DOC_NIT', width: 14 },
+  { header: 'Nombre', key: 'DOC_NOMCLIE', width: 28 },
+  { header: 'Exentas', key: 'TOTALEXENTO', width: 12, type: 'money' },
+  { header: 'Gravadas', key: 'TOTALSINIVA', width: 12, type: 'money' },
+  { header: 'IVA', key: 'TOTALIVA', width: 12, type: 'money' },
+  { header: 'Total', key: 'TOTALPRECIO', width: 12, type: 'money' },
+  { header: 'Anulado', key: 'ANULADO', width: 10 },
+];
 
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
-
-  const mes = parseMes(req.query.mes);
-  const anio = parseAnio(req.query.anio);
-  if (mes === null) return res.status(400).json({ error: 'MES inválido (1-12)' });
-  if (anio === null) return res.status(400).json({ error: 'ANIO inválido (2020-2035)' });
+  const period = parsePeriod(req, res);
+  if (!period) return;
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const data = await listLibroVentas(pool, require('mssql'), empnit, mes, anio);
+    const data = await listLibroVentas(pool, require('mssql'), empnit, period.mes, period.anio);
     res.json({
       rows: data.rows,
       totals: data.totals,
@@ -52,6 +47,52 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.warn('[API GET /libro-ventas]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/export', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const period = parsePeriod(req, res);
+  if (!period) return;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listLibroVentas(pool, require('mssql'), empnit, period.mes, period.anio);
+    const exportRows = (data.rows || []).map((r) => ({
+      ...r,
+      FEL_FECHA: r.FEL_FECHA ? String(r.FEL_FECHA).slice(0, 10) : '',
+      ANULADO: r.ANULADO ? 'Sí' : 'No',
+    }));
+    const t = data.totals || {};
+    const buffer = await buildLibroWorkbook({
+      sheetName: 'Libro Ventas',
+      title: 'Libro de Ventas y Servicios Prestados',
+      periodLabel: `Período: ${mesLabel(period.mes)} ${period.anio}`,
+      columns: EXPORT_COLUMNS,
+      rows: exportRows,
+      totalsRow: {
+        LINEA: '',
+        FEL_FECHA: '',
+        TIPODOC: '',
+        FEL_SERIE: '',
+        FEL_NUMERO: '',
+        DOC_NIT: '',
+        DOC_NOMCLIE: 'Totales (sin anulados)',
+        TOTALEXENTO: t.exento ?? 0,
+        TOTALSINIVA: t.gravado ?? 0,
+        TOTALIVA: t.iva ?? 0,
+        TOTALPRECIO: t.total ?? 0,
+        ANULADO: '',
+      },
+    });
+    const filename = `libro_ventas_${safeFilenamePart(empnit)}_${period.mes}_${period.anio}_${Date.now()}.xlsx`;
+    sendLibroXlsx(res, buffer, filename);
+  } catch (err) {
+    console.warn('[API GET /libro-ventas/export]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

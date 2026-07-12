@@ -1,0 +1,68 @@
+.libro-diario-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.libro-diario-filters-card .card-body {
+  padding: 0.85rem 1rem;
+}
+
+.libro-diario-filters-row {
+  width: 100%;
+}
+
+.libro-diario-filter-mes {
+  min-width: 9.5rem;
+}
+
+.libro-diario-filter-anio {
+  min-width: 5.5rem;
+}
+
+.libro-diario-money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.libro-diario-money-neg {
+  color: var(--bs-danger, #dc3545);
+}
+
+.libro-diario-table-card .table {
+  font-size: 0.78rem;
+}
+
+.libro-diario-table-card .table-responsive {
+  max-height: calc(100vh - 300px);
+}
+
+.libro-diario-table-card .table thead th {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.libro-diario-col-desc {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.libro-diario-table-card .table tbody tr.libro-diario-row-anulado > td {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.libro-diario-table-card .table tbody tr.libro-diario-row-nc > td {
+  background-color: rgba(255, 193, 7, 0.08);
+}
+
+.libro-diario-warnings ul {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 991.98px) {
+  .libro-diario-table-card .table-responsive {
+    max-height: calc(100vh - 340px);
+  }
+}

@@ -88,16 +88,10 @@ function createCatalogoEmpresaView(cfg) {
         .join('');
     },
 
-    readFormData(profile = 'full') {
-      const data = {};
+    readFormData(profile = 'full', popup) {
       const fields =
         profile === 'documento' && cfg.docFormFields?.length ? cfg.docFormFields : cfg.formFields;
-      fields.forEach((field) => {
-        const input = document.querySelector(`.swal2-html-container [name="${field.key}"]`);
-        if (!input) return;
-        data[field.key] = input.type === 'number' ? input.value.trim() : input.value.trim();
-      });
-      return data;
+      return CatalogosUI.readNamedFields(popup, fields.map((f) => f.key));
     },
 
     buildPayload(data, isEdit, profile = 'full') {
@@ -134,8 +128,8 @@ function createCatalogoEmpresaView(cfg) {
             popup?.querySelector('[name="NIT"]')?.focus();
           }
         },
-        preConfirm: () => {
-          const data = this.readFormData(profile);
+        preConfirm: (popup) => {
+          const data = this.readFormData(profile, popup);
           const err = cfg.validateForm?.(data, isEdit, profile);
           if (err) {
             Swal.showValidationMessage(err);

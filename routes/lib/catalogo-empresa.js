@@ -139,6 +139,16 @@ function createCatalogoRouter(cfg) {
 
     const postFields = cfg.insertFields;
     const data = readBody(req, postFields);
+    // Si el PK varchar viene en el body con otro casing o solo en idColumn
+    if (!cfg.autoId && !cfg.identityColumn && cfg.idType === 'varchar') {
+      const rawId =
+        req.body?.[cfg.idColumn] ??
+        req.body?.[String(cfg.idColumn).toLowerCase()] ??
+        req.body?.[String(cfg.idColumn).toUpperCase()];
+      if ((data[cfg.idColumn] === null || data[cfg.idColumn] === '') && rawId != null && String(rawId).trim() !== '') {
+        data[cfg.idColumn] = String(rawId).trim();
+      }
+    }
     const errReq = validateRequired(data, postFields.filter((n) => fieldMap[n]?.required));
     if (errReq) return res.status(400).json({ error: errReq });
 

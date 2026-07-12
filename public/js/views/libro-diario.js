@@ -1,7 +1,7 @@
 /**
- * Vista Libro Ventas — registro contable SAT Guatemala (FEF, FEC, FES, FNC).
+ * Vista Libro Diario — partidas contables generadas desde formatos por documento.
  */
-const LIBRO_VENTAS_MESES = [
+const LIBRO_DIARIO_MESES = [
   { value: 1, label: 'ENERO' },
   { value: 2, label: 'FEBRERO' },
   { value: 3, label: 'MARZO' },
@@ -16,12 +16,12 @@ const LIBRO_VENTAS_MESES = [
   { value: 12, label: 'DICIEMBRE' },
 ];
 
-const LIBRO_VENTAS_ANIOS = [];
+const LIBRO_DIARIO_ANIOS = [];
 for (let y = 2020; y <= new Date().getFullYear() + 1; y += 1) {
-  LIBRO_VENTAS_ANIOS.push({ value: y, label: String(y) });
+  LIBRO_DIARIO_ANIOS.push({ value: y, label: String(y) });
 }
 
-function libroVentasFormatDate(value) {
+function libroDiarioFormatDate(value) {
   if (value === null || value === undefined || value === '') return '—';
   const s = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
@@ -36,9 +36,10 @@ function libroVentasFormatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-const LibroVentasView = {
+const LibroDiarioView = {
   _container: null,
   _rows: [],
+  _warnings: [],
   _totals: null,
   _mes: null,
   _anio: null,
@@ -47,17 +48,16 @@ const LibroVentasView = {
 
   tableColumns: [
     { key: 'LINEA', label: 'No.', align: 'center' },
-    { key: 'FEL_FECHA', label: 'Fecha', type: 'date' },
+    { key: 'FECHA', label: 'Fecha', type: 'date' },
+    { key: 'DOC_REF', label: 'Documento' },
     { key: 'TIPODOC', label: 'Tipo' },
-    { key: 'FEL_SERIE', label: 'Serie' },
-    { key: 'FEL_NUMERO', label: 'Número' },
-    { key: 'DOC_NIT', label: 'NIT' },
-    { key: 'DOC_NOMCLIE', label: 'Nombre cliente', cellClass: 'libro-ventas-col-nombre' },
-    { key: 'TOTALEXENTO', label: 'Exentas', type: 'money' },
-    { key: 'TOTALSINIVA', label: 'Gravadas', type: 'money' },
-    { key: 'TOTALIVA', label: 'IVA', type: 'money' },
-    { key: 'TOTALPRECIO', label: 'Total', type: 'money' },
-    { key: 'ANULADO', label: 'Anulado', type: 'anulado' },
+    { key: 'TIPOPAGO', label: 'Pago' },
+    { key: 'CODFORMATO', label: 'Formato' },
+    { key: 'CODCUENTA', label: 'Cuenta' },
+    { key: 'DESCRIPCION_CUENTA', label: 'Descripción cuenta', cellClass: 'libro-diario-col-desc' },
+    { key: 'DEBE', label: 'Debe', type: 'money' },
+    { key: 'HABER', label: 'Haber', type: 'money' },
+    { key: 'CENTRO_COSTO', label: 'C. costo', align: 'center' },
   ],
 
   defaultPeriod() {
@@ -75,7 +75,7 @@ const LibroVentasView = {
   },
 
   mesLabel(mes) {
-    return LIBRO_VENTAS_MESES.find((m) => m.value === Number(mes))?.label || String(mes);
+    return LIBRO_DIARIO_MESES.find((m) => m.value === Number(mes))?.label || String(mes);
   },
 
   formatMoney(value) {
@@ -85,33 +85,27 @@ const LibroVentasView = {
   },
 
   fechaDisplay(row) {
-    const fel = String(row?.FEL_FECHA ?? '').trim();
-    if (fel) return libroVentasFormatDate(fel);
-    return libroVentasFormatDate(row?.FECHA);
+    const fel = String(row?.FECHA ?? '').trim();
+    if (fel) return libroDiarioFormatDate(fel);
+    return '—';
   },
 
   formatCell(row, col) {
     const key = col.key;
-    if (key === 'FEL_FECHA') {
-      return this.escapeHtml(this.fechaDisplay(row));
-    }
-    if (col.type === 'anulado') {
-      return row.ANULADO
-        ? '<span class="badge text-bg-danger">Sí</span>'
-        : '<span class="text-muted">No</span>';
-    }
+    if (key === 'FECHA') return this.escapeHtml(this.fechaDisplay(row));
     const value = row[key];
     if (value === null || value === undefined || value === '') return '—';
     if (col.type === 'money') {
-      return `<span class="libro-ventas-money">${this.escapeHtml(this.formatMoney(value))}</span>`;
+      const cls = Number(value) < 0 ? ' libro-diario-money-neg' : '';
+      return `<span class="libro-diario-money${cls}">${this.escapeHtml(this.formatMoney(value))}</span>`;
     }
     return this.escapeHtml(value);
   },
 
   rowClass(row) {
     const classes = [];
-    if (row.ANULADO) classes.push('libro-ventas-row-anulado');
-    else if (row.ES_NOTA_CREDITO) classes.push('libro-ventas-row-nc');
+    if (row.ANULADO) classes.push('libro-diario-row-anulado');
+    else if (row.ES_NOTA_CREDITO) classes.push('libro-diario-row-nc');
     return classes.join(' ');
   },
 
@@ -124,64 +118,85 @@ const LibroVentasView = {
       anio: String(this._anio),
       _: String(Date.now()),
     });
-    return `/api/libro-ventas?${params.toString()}`;
+    return `/api/libro-diario?${params.toString()}`;
   },
 
   badgeText() {
-    const total = this._rows.length;
     const t = this._totals || {};
     const parts = [
-      `${total} registro(s)`,
+      `${t.lineas ?? 0} partida(s)`,
+      `${t.documentos ?? 0} documento(s)`,
       `${this.mesLabel(this._mes)} ${this._anio}`,
-      `Ventas: ${t.ventas ?? 0}`,
-      `Notas crédito: ${t.notasCredito ?? 0}`,
+      `Debe: ${this.formatMoney(t.debe ?? 0)}`,
+      `Haber: ${this.formatMoney(t.haber ?? 0)}`,
     ];
     if ((t.anulados ?? 0) > 0) parts.push(`Anulados: ${t.anulados}`);
+    if ((t.sinFormato ?? 0) > 0) parts.push(`Sin formato: ${t.sinFormato}`);
+    if ((t.sinPartidas ?? 0) > 0) parts.push(`Sin partidas: ${t.sinPartidas}`);
     return parts.join(' · ');
   },
 
+  renderWarningsHtml() {
+    if (!this._warnings.length) return '';
+    const items = this._warnings
+      .slice(0, 8)
+      .map((w) => `<li>${this.escapeHtml(w.message)}</li>`)
+      .join('');
+    const more =
+      this._warnings.length > 8
+        ? `<li class="text-muted">… y ${this._warnings.length - 8} más</li>`
+        : '';
+    return `
+      <div class="alert alert-warning py-2 px-3 mb-3 small libro-diario-warnings" role="alert">
+        <strong><i class="fa-solid fa-triangle-exclamation me-1"></i>Advertencias</strong>
+        <ul class="mb-0 mt-1 ps-3">${items}${more}</ul>
+      </div>
+    `;
+  },
+
   renderFiltersCard() {
-    const mesOpts = LIBRO_VENTAS_MESES.map(
+    const mesOpts = LIBRO_DIARIO_MESES.map(
       (m) =>
         `<option value="${m.value}"${Number(this._mes) === m.value ? ' selected' : ''}>${m.label}</option>`
     ).join('');
-    const anioOpts = LIBRO_VENTAS_ANIOS.map(
+    const anioOpts = LIBRO_DIARIO_ANIOS.map(
       (a) =>
         `<option value="${a.value}"${Number(this._anio) === a.value ? ' selected' : ''}>${a.label}</option>`
     ).join('');
 
     return `
-      <div class="card libro-ventas-filters-card shadow-sm mb-3">
+      <div class="card libro-diario-filters-card shadow-sm mb-3">
         <div class="card-body">
-          <div class="d-flex flex-wrap align-items-end gap-2 libro-ventas-filters-row">
-            <div class="libro-ventas-filter-mes">
-              <label for="libro-ventas-mes" class="form-label small mb-1">Mes</label>
-              <select class="form-select form-select-sm" id="libro-ventas-mes">
+          <div class="d-flex flex-wrap align-items-end gap-2 libro-diario-filters-row">
+            <div class="libro-diario-filter-mes">
+              <label for="libro-diario-mes" class="form-label small mb-1">Mes</label>
+              <select class="form-select form-select-sm" id="libro-diario-mes">
                 ${mesOpts}
               </select>
             </div>
-            <div class="libro-ventas-filter-anio">
-              <label for="libro-ventas-anio" class="form-label small mb-1">Año</label>
-              <select class="form-select form-select-sm" id="libro-ventas-anio">
+            <div class="libro-diario-filter-anio">
+              <label for="libro-diario-anio" class="form-label small mb-1">Año</label>
+              <select class="form-select form-select-sm" id="libro-diario-anio">
                 ${anioOpts}
               </select>
             </div>
-            <div class="libro-ventas-actions d-flex gap-2">
-              <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-ventas-recargar">
+            <div class="libro-diario-actions d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-diario-recargar">
                 <i class="fa-solid fa-rotate me-1"></i>Actualizar
               </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-libro-ventas-imprimir">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-libro-diario-imprimir">
                 <i class="fa-solid fa-print me-1"></i>Imprimir
               </button>
-              <button type="button" class="btn btn-sm btn-outline-success" id="btn-libro-ventas-export">
+              <button type="button" class="btn btn-sm btn-outline-success" id="btn-libro-diario-export">
                 <i class="fa-solid fa-file-excel me-1"></i>Exportar (xlsx)
               </button>
             </div>
           </div>
-          <div class="libro-ventas-badge small text-muted mt-2" id="libro-ventas-count">${this.escapeHtml(this.badgeText())}</div>
+          <div class="libro-diario-badge small text-muted mt-2" id="libro-diario-count">${this.escapeHtml(this.badgeText())}</div>
           <div class="small text-muted mt-1">
-            Documentos contables (<strong>CONTABLE = SI</strong>): ventas FEF, FEC, FES y notas de crédito FNC.
-            Serie, número y fecha provienen de FEL. Los documentos con estado <strong>A</strong> se marcan como anulados.
+            Documentos con <strong>CONTABLE = SI</strong>. El formato aplicado depende de
+            <strong>contado</strong> (<code>CODFORMATOCON</code>) o <strong>crédito</strong> (<code>CODFORMATOCRE</code>)
+            según <code>CONCRE</code> del documento. Montos: TOTAL, SUBTOTAL, IVA, COSTO.
           </div>
         </div>
       </div>
@@ -190,14 +205,15 @@ const LibroVentasView = {
 
   renderTableBodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay registros para este período</td></tr>`;
+      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay partidas para este período</td></tr>`;
     }
     return rows
       .map((row) => {
         const cls = this.rowClass(row);
         const cells = this.tableColumns
           .map((col) => {
-            const align = col.align === 'center' ? ' text-center' : col.type === 'money' ? ' text-end' : '';
+            const align =
+              col.align === 'center' ? ' text-center' : col.type === 'money' ? ' text-end' : '';
             const extra = col.cellClass ? ` ${col.cellClass}` : '';
             return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(row, col)}</td>`;
           })
@@ -213,11 +229,9 @@ const LibroVentasView = {
     return `
       <tfoot>
         <tr>
-          <td colspan="7" class="text-end">Totales (sin anulados):</td>
-          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.exento))}</td>
-          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.gravado))}</td>
-          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.iva))}</td>
-          <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.total))}</td>
+          <td colspan="8" class="text-end">Totales (sin anulados):</td>
+          <td class="text-end libro-diario-money">${this.escapeHtml(this.formatMoney(t.debe))}</td>
+          <td class="text-end libro-diario-money">${this.escapeHtml(this.formatMoney(t.haber))}</td>
           <td></td>
         </tr>
       </tfoot>
@@ -227,19 +241,20 @@ const LibroVentasView = {
   renderTableCard() {
     const headers = this.tableColumns
       .map((c) => {
-        const align = c.align === 'center' ? ' text-center' : c.type === 'money' ? ' text-end' : '';
+        const align =
+          c.align === 'center' ? ' text-center' : c.type === 'money' ? ' text-end' : '';
         const extra = c.cellClass ? ` ${c.cellClass}` : '';
         return `<th scope="col" class="${`${align}${extra}`.trim()}">${this.escapeHtml(c.label)}</th>`;
       })
       .join('');
     return `
-      <div class="card libro-ventas-table-card shadow-sm">
+      <div class="card libro-diario-table-card shadow-sm">
         <div class="table-responsive">
           <table class="table table-sm table-hover table-striped mb-0">
             <thead class="table-light sticky-top">
               <tr>${headers}</tr>
             </thead>
-            <tbody id="libro-ventas-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            <tbody id="libro-diario-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
             ${this.renderTableFooterHtml()}
           </table>
         </div>
@@ -249,19 +264,22 @@ const LibroVentasView = {
 
   render() {
     return `
-      <div class="libro-ventas-wrap">
+      <div class="libro-diario-wrap">
         ${this.renderFiltersCard()}
+        <div id="libro-diario-warnings-wrap">${this.renderWarningsHtml()}</div>
         ${this.renderTableCard()}
       </div>
     `;
   },
 
   refreshDom() {
-    const countEl = this._container?.querySelector('#libro-ventas-count');
+    const countEl = this._container?.querySelector('#libro-diario-count');
     if (countEl) countEl.textContent = this.badgeText();
-    const tbody = this._container?.querySelector('#libro-ventas-tbody');
+    const warnWrap = this._container?.querySelector('#libro-diario-warnings-wrap');
+    if (warnWrap) warnWrap.innerHTML = this.renderWarningsHtml();
+    const tbody = this._container?.querySelector('#libro-diario-tbody');
     if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
-    const table = this._container?.querySelector('.libro-ventas-table-card table');
+    const table = this._container?.querySelector('.libro-diario-table-card table');
     if (table) {
       table.querySelector('tfoot')?.remove();
       const footer = this.renderTableFooterHtml();
@@ -270,21 +288,21 @@ const LibroVentasView = {
   },
 
   bindEvents() {
-    this._container?.querySelector('#libro-ventas-mes')?.addEventListener('change', (e) => {
+    this._container?.querySelector('#libro-diario-mes')?.addEventListener('change', (e) => {
       this._mes = Number(e.target.value);
       this.reload().catch((err) => F.toast(err.message, 'error'));
     });
-    this._container?.querySelector('#libro-ventas-anio')?.addEventListener('change', (e) => {
+    this._container?.querySelector('#libro-diario-anio')?.addEventListener('change', (e) => {
       this._anio = Number(e.target.value);
       this.reload().catch((err) => F.toast(err.message, 'error'));
     });
-    this._container?.querySelector('#btn-libro-ventas-recargar')?.addEventListener('click', () => {
+    this._container?.querySelector('#btn-libro-diario-recargar')?.addEventListener('click', () => {
       this.reload().catch((err) => F.toast(err.message, 'error'));
     });
-    this._container?.querySelector('#btn-libro-ventas-imprimir')?.addEventListener('click', () => {
+    this._container?.querySelector('#btn-libro-diario-imprimir')?.addEventListener('click', () => {
       this.imprimir().catch((err) => F.toast(err.message, 'error'));
     });
-    this._container?.querySelector('#btn-libro-ventas-export')?.addEventListener('click', () => {
+    this._container?.querySelector('#btn-libro-diario-export')?.addEventListener('click', () => {
       this.exportExcel().catch((err) => F.toast(err.message, 'error'));
     });
   },
@@ -292,10 +310,10 @@ const LibroVentasView = {
   async exportExcel() {
     if (this._exporting) return;
     this._exporting = true;
-    const btn = this._container?.querySelector('#btn-libro-ventas-export');
+    const btn = this._container?.querySelector('#btn-libro-diario-export');
     try {
-      const url = LibroContableCommon.buildExportUrl('/api/libro-ventas', this._mes, this._anio);
-      await LibroContableCommon.downloadExport(url, btn, `libro_ventas_${this._mes}_${this._anio}.xlsx`);
+      const url = LibroContableCommon.buildExportUrl('/api/libro-diario', this._mes, this._anio);
+      await LibroContableCommon.downloadExport(url, btn, `libro_diario_${this._mes}_${this._anio}.xlsx`);
     } finally {
       this._exporting = false;
     }
@@ -307,6 +325,7 @@ const LibroVentasView = {
     try {
       const data = await F.fetchJson(this.apiUrl(), { cache: 'no-store' });
       this._rows = data.rows || [];
+      this._warnings = data.warnings || [];
       this._totals = data.totals || null;
       this.refreshDom();
     } finally {
@@ -316,10 +335,10 @@ const LibroVentasView = {
 
   async imprimir() {
     await PrintReport.ensureLogo();
-    const title = 'Libro de Ventas y Servicios Prestados';
+    const title = 'Libro Diario';
     const subtitleHtml = `
       <p><strong>Período:</strong> ${PrintReport.escapeHtml(this.mesLabel(this._mes))} ${PrintReport.escapeHtml(String(this._anio))}</p>
-      <p class="meta">Documentos contables FEF, FEC, FES y FNC · Serie/Número/Fecha FEL</p>
+      <p class="meta">Partidas generadas desde formatos contables por tipo de documento</p>
     `;
     const headCells = this.tableColumns.map((c) => `<th>${PrintReport.escapeHtml(c.label)}</th>`).join('');
     const bodyRows = this._rows
@@ -328,8 +347,7 @@ const LibroVentasView = {
           .map((col) => {
             const align = col.type === 'money' ? ' class="text-end"' : '';
             let val;
-            if (col.key === 'FEL_FECHA') val = this.fechaDisplay(row);
-            else if (col.type === 'anulado') val = row.ANULADO ? 'Sí' : 'No';
+            if (col.key === 'FECHA') val = this.fechaDisplay(row);
             else if (col.type === 'money') val = this.formatMoney(row[col.key]);
             else val = row[col.key] ?? '—';
             return `<td${align}>${PrintReport.escapeHtml(val)}</td>`;
@@ -341,11 +359,9 @@ const LibroVentasView = {
     const t = this._totals || {};
     const footerRow = this._rows.length
       ? `<tr class="totals">
-          <td colspan="7" class="text-end">Totales (sin anulados)</td>
-          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.exento))}</td>
-          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.gravado))}</td>
-          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.iva))}</td>
-          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.total))}</td>
+          <td colspan="8" class="text-end">Totales (sin anulados)</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.debe))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.haber))}</td>
           <td></td>
         </tr>`
       : '';
@@ -371,6 +387,7 @@ const LibroVentasView = {
     this._mes = period.mes;
     this._anio = period.anio;
     this._rows = [];
+    this._warnings = [];
     this._totals = null;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start');
