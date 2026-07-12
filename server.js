@@ -44,6 +44,7 @@ const posRouter = require('./routes/pos');
 const cotizacionesRouter = require('./routes/cotizaciones');
 const facturacionRouter = require('./routes/facturacion');
 const notasCreditoRouter = require('./routes/notas-credito');
+const notasAbonoRouter = require('./routes/notas-abono');
 const notasDebitoRouter = require('./routes/notas-debito');
 const corteCajaRouter = require('./routes/corte-caja');
 const comprasRouter = require('./routes/compras');
@@ -68,6 +69,7 @@ const nomenclaturaContableRouter = require('./routes/nomenclatura-contable');
 const formatosContablesRouter = require('./routes/formatos-contables');
 const retencionesIvaRouter = require('./routes/retenciones-iva');
 const retencionesIsrRouter = require('./routes/retenciones-isr');
+const configContabilidadRouter = require('./routes/config-contabilidad');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -87,7 +89,21 @@ app.locals.getDbPool = getDbPool;
 app.locals.io = io;
 
 const publicDir = path.join(__dirname, 'public');
+const dataDir = path.join(__dirname, 'data');
 const buildMetaPath = path.join(publicDir, 'build-meta.json');
+
+app.use(
+  '/data',
+  express.static(dataDir, {
+    etag: false,
+    lastModified: true,
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    },
+  })
+);
 
 app.use(
   express.static(publicDir, {
@@ -159,6 +175,7 @@ app.use('/api/pos', posRouter);
 app.use('/api/cotizaciones', cotizacionesRouter);
 app.use('/api/facturacion', facturacionRouter);
 app.use('/api/notas-credito', notasCreditoRouter);
+app.use('/api/notas-abono', notasAbonoRouter);
 app.use('/api/notas-debito', notasDebitoRouter);
 app.use('/api/corte-caja', corteCajaRouter);
 app.use('/api/compras', comprasRouter);
@@ -183,6 +200,7 @@ app.use('/api/nomenclatura-contable', nomenclaturaContableRouter);
 app.use('/api/formatos-contables', formatosContablesRouter);
 app.use('/api/retenciones-iva', retencionesIvaRouter);
 app.use('/api/retenciones-isr', retencionesIsrRouter);
+app.use('/api/config-contabilidad', configContabilidadRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {

@@ -14,6 +14,7 @@ const DocOpciones = {
     FES: { menu: 'facturacion', view: () => FacturacionView },
     DEV: { menu: 'notas-credito', view: () => NotasCreditoView },
     FNC: { menu: 'notas-credito', view: () => NotasCreditoView },
+    FNA: { menu: 'notas-abono', view: () => NotasAbonoView },
     DVP: { menu: 'notas-debito', view: () => NotasDebitoView },
     COM: { menu: 'compras', view: () => ComprasView },
     ENT: { menu: 'entradas-inventario', view: () => EntradasInventarioView },

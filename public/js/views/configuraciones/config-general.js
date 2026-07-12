@@ -30,21 +30,6 @@ const ConfigGeneralView = {
       saveConfirmText: 'Se guardará la URL del servicio FEL.',
       saveToast: 'URL FEL actualizada',
     },
-    {
-      opcion: 'CONFIGURACION IVA',
-      slug: 'config-iva',
-      title: 'Configuración IVA',
-      fallbackDesc: 'Factor multiplicador del IVA (ej. 1.12 para 12%)',
-      placeholder: '1.12',
-      defaultValue: '1.12',
-      fieldLabel: 'Factor IVA',
-      inputType: 'number',
-      inputStep: '0.01',
-      icon: 'fa-percent',
-      saveConfirmTitle: '¿Actualizar configuración IVA?',
-      saveConfirmText: 'Se guardará el factor de IVA.',
-      saveToast: 'Configuración IVA actualizada',
-    },
   ],
 
   SINO_OPTIONS: [

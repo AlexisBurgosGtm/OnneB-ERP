@@ -1,0 +1,23 @@
+.ret-doc-main-host {
+  padding: 0.75rem 1rem 1rem !important;
+}
+
+.ret-doc-list-wrap {
+  padding-bottom: 5rem;
+}
+
+.ret-doc-total-field input {
+  font-weight: 700 !important;
+  color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+
+.ret-doc-money .input-group-text {
+  font-size: 0.8125rem;
+  min-width: 2rem;
+  justify-content: center;
+}
+
+.ret-doc-editor-wrap .pos-fab-bar {
+  z-index: 20;
+}

@@ -52,9 +52,10 @@ router.get('/proveedores', async (req, res) => {
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
   const q = String(req.query.q || '').trim();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 2000);
   try {
     const pool = await req.app.locals.getDbPool();
-    const rows = await searchProveedores(pool, empnit, q);
+    const rows = await searchProveedores(pool, empnit, q, limit);
     res.json({ rows });
   } catch (err) {
     console.warn('[API GET /retenciones-isr/proveedores]', err.message);

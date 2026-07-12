@@ -130,21 +130,10 @@ const router = createCatalogoRouter({
 
 router.get('/config-tipos', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (!isDbConfigured()) {
-    return res.status(503).json({ error: 'Base de datos no configurada' });
-  }
   try {
-    const pool = await req.app.locals.getDbPool();
-    const result = await pool.request().query(`
-      SELECT TIPODOC, DESCRIPCION
-      FROM dbo.CONFIG_TIPODOCUMENTOS
-      ORDER BY DESCRIPCION, TIPODOC
-    `);
-    const rows = result.recordset.map((r) => ({
-      TIPODOC: String(r.TIPODOC ?? '').trim().toUpperCase(),
-      DESCRIPCION: String(r.DESCRIPCION ?? r.TIPODOC ?? '').trim(),
-    }));
-    res.json({ rows });
+    const { loadConfigTiposDocumento } = require('../lib/config-tipos-documento');
+    const rows = loadConfigTiposDocumento();
+    res.json({ rows, source: 'data/config-tipos-documento.json' });
   } catch (err) {
     console.warn('[API GET /tipo-documentos/config-tipos]', err.message);
     res.status(500).json({ error: err.message });

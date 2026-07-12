@@ -1,0 +1,96 @@
+.config-contab-wrap {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem 0.75rem 1.25rem;
+  max-width: none;
+}
+
+.config-contab-header {
+  margin-bottom: 0.65rem !important;
+}
+
+.config-contab-header h2 {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.config-contab-header p {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.config-contab-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.config-contab-card {
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: 0.45rem;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--onneb-base-black) 4%, transparent);
+}
+
+.config-contab-card .card-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.config-contab-desc {
+  color: var(--app-text-muted, #666);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.config-contab-label {
+  font-size: 0.68rem;
+  color: var(--app-text-muted, #666);
+}
+
+.config-contab-hint {
+  font-size: 0.62rem;
+  color: var(--app-text-muted, #888);
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.config-contab-card .config-contab-pct-group {
+  max-width: 7.5rem;
+}
+
+.config-contab-card .form-control,
+.config-contab-card .input-group-text {
+  font-size: 0.78rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+.config-contab-recalc-card {
+  border-radius: 0.45rem;
+}
+
+.config-contab-recalc-card .card-body h6 {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.config-contab-recalc-card .card-body p {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.config-contab-recalc-card .btn-sm {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+}
+
+#cfg-contab-last-result {
+  font-size: 0.68rem !important;
+}

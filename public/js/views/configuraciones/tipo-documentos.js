@@ -213,15 +213,26 @@ const TipoDocumentosView = {
     let tiposDoc = [];
     let formatos = [];
     try {
-      const res = await F.fetchJson(`/api/tipo-documentos/config-tipos?_=${ts}`, {
+      const res = await F.fetchJson(`/data/config-tipos-documento.json?_=${ts}`, {
         cache: 'no-store',
       });
-      tiposDoc = (res.rows || []).map((r) => ({
+      tiposDoc = (res.tipos || []).map((r) => ({
         value: String(r.TIPODOC ?? '').trim().toUpperCase(),
         label: `${String(r.TIPODOC ?? '').trim().toUpperCase()} — ${String(r.DESCRIPCION ?? r.TIPODOC ?? '').trim()}`,
       }));
     } catch (err) {
-      console.warn('[TipoDocumentos] CONFIG_TIPODOCUMENTOS:', err);
+      console.warn('[TipoDocumentos] config-tipos-documento.json:', err);
+      try {
+        const res = await F.fetchJson(`/api/tipo-documentos/config-tipos?_=${ts}`, {
+          cache: 'no-store',
+        });
+        tiposDoc = (res.rows || []).map((r) => ({
+          value: String(r.TIPODOC ?? '').trim().toUpperCase(),
+          label: `${String(r.TIPODOC ?? '').trim().toUpperCase()} — ${String(r.DESCRIPCION ?? r.TIPODOC ?? '').trim()}`,
+        }));
+      } catch (err2) {
+        console.warn('[TipoDocumentos] API config-tipos:', err2);
+      }
     }
     try {
       const emp = F.getEmpNit();

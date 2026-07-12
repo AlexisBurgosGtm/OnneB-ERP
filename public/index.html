@@ -37,10 +37,10 @@
   <link rel="stylesheet" href="/css/libro-diario.css">
   <link rel="stylesheet" href="/css/libro-contable.css">
   <link rel="stylesheet" href="/css/libro-mayor.css">
-  <link rel="stylesheet" href="/css/retenciones-iva.css">
-  <link rel="stylesheet" href="/css/retenciones-isr.css">
+  <link rel="stylesheet" href="/css/retenciones-doc.css">
   <link rel="stylesheet" href="/css/nomenclatura-contable.css">
   <link rel="stylesheet" href="/css/formatos-contables.css">
+  <link rel="stylesheet" href="/css/config-contabilidad.css">
   <link rel="stylesheet" href="/css/cuentas-cxp.css">
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
@@ -140,6 +140,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-credito"><i class="fa-solid fa-file-circle-minus" aria-hidden="true"></i> Notas de Credito (clientes)</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="notas-abono"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Notas de Abono</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-debito"><i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i> Notas de credito (Proveedores)</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="gastos"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Gastos</a></li>
@@ -341,29 +342,29 @@
   <script src="/js/catalogos.js"></script>
   <script src="/js/doc-nit-sat-lookup.js"></script>
   <script src="/js/catalogo-empresa-view.js"></script>
-  <script src="/js/views/empresas.js"></script>
-  <script src="/js/views/marcas.js"></script>
-  <script src="/js/views/medidas.js"></script>
-  <script src="/js/views/rutas.js"></script>
-  <script src="/js/views/fabricantes.js"></script>
-  <script src="/js/views/ubicaciones.js"></script>
-  <script src="/js/views/clientes.js"></script>
-  <script src="/js/views/tipo-negocios.js"></script>
-  <script src="/js/views/proveedores.js"></script>
-  <script src="/js/views/municipios.js"></script>
-  <script src="/js/views/departamentos.js"></script>
-  <script src="/js/views/empleados.js"></script>
-  <script src="/js/views/tipo-documentos.js"></script>
-  <script src="/js/views/cajas.js"></script>
-  <script src="/js/views/vehiculos.js"></script>
-  <script src="/js/views/plataformas.js"></script>
-  <script src="/js/views/mantenimiento-llantas.js"></script>
-  <script src="/js/views/kilometrajes.js"></script>
-  <script src="/js/views/servicio-mecanica.js"></script>
-  <script src="/js/views/credenciales-fel.js"></script>
-  <script src="/js/views/config-general.js"></script>
-  <script src="/js/views/developer.js"></script>
-  <script src="/js/views/updater.js"></script>
+  <script src="/js/views/configuraciones/empresas.js"></script>
+  <script src="/js/views/catalogos/marcas.js"></script>
+  <script src="/js/views/catalogos/medidas.js"></script>
+  <script src="/js/views/catalogos/rutas.js"></script>
+  <script src="/js/views/catalogos/fabricantes.js"></script>
+  <script src="/js/views/catalogos/ubicaciones.js"></script>
+  <script src="/js/views/catalogos/clientes.js"></script>
+  <script src="/js/views/catalogos/tipo-negocios.js"></script>
+  <script src="/js/views/catalogos/proveedores.js"></script>
+  <script src="/js/views/catalogos/municipios.js"></script>
+  <script src="/js/views/catalogos/departamentos.js"></script>
+  <script src="/js/views/rh/empleados.js"></script>
+  <script src="/js/views/configuraciones/tipo-documentos.js"></script>
+  <script src="/js/views/catalogos/cajas.js"></script>
+  <script src="/js/views/transportes/vehiculos.js"></script>
+  <script src="/js/views/transportes/plataformas.js"></script>
+  <script src="/js/views/transportes/mantenimiento-llantas.js"></script>
+  <script src="/js/views/transportes/kilometrajes.js"></script>
+  <script src="/js/views/transportes/servicio-mecanica.js"></script>
+  <script src="/js/views/configuraciones/credenciales-fel.js"></script>
+  <script src="/js/views/configuraciones/config-general.js"></script>
+  <script src="/js/views/configuraciones/developer.js"></script>
+  <script src="/js/views/configuraciones/updater.js"></script>
   <script src="/js/doc-fecha.js"></script>
   <script src="/js/doc-vendedor-clave.js"></script>
   <script src="/js/empresa-logo.js"></script>
@@ -373,39 +374,42 @@
   <script src="/js/pos-product-keyboard-ui.js"></script>
   <script src="/js/pos-doc-search-ui.js"></script>
   <script src="/js/doc-tipo-select.js"></script>
-  <script src="/js/views/pos.js"></script>
-  <script src="/js/views/cotizaciones.js"></script>
-  <script src="/js/views/facturacion.js"></script>
+  <script src="/js/views/operaciones/pos.js"></script>
+  <script src="/js/views/operaciones/cotizaciones.js"></script>
+  <script src="/js/views/operaciones/facturacion.js"></script>
   <script src="/js/doc-linea-descuento-ui.js"></script>
-  <script src="/js/views/notas-credito.js"></script>
-  <script src="/js/views/notas-debito.js"></script>
-  <script src="/js/views/corte-caja.js"></script>
-  <script src="/js/views/compras.js"></script>
-  <script src="/js/views/inventario-mov-view.js"></script>
-  <script src="/js/views/inventario.js"></script>
-  <script src="/js/views/inventario-actualizacion.js"></script>
-  <script src="/js/views/cuentas-por-cobrar.js"></script>
-  <script src="/js/views/cuentas-por-pagar.js"></script>
+  <script src="/js/views/operaciones/notas-credito.js"></script>
+  <script src="/js/views/operaciones/notas-abono.js"></script>
+  <script src="/js/views/operaciones/notas-debito.js"></script>
+  <script src="/js/views/operaciones/corte-caja.js"></script>
+  <script src="/js/views/operaciones/compras.js"></script>
+  <script src="/js/views/inventarios/inventario-mov-view.js"></script>
+  <script src="/js/views/inventarios/inventario.js"></script>
+  <script src="/js/views/inventarios/inventario-actualizacion.js"></script>
+  <script src="/js/views/cuentas/cuentas-por-cobrar.js"></script>
+  <script src="/js/views/cuentas/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
-  <script src="/js/views/documentos.js"></script>
+  <script src="/js/views/archivo/documentos.js"></script>
   <script src="/js/libro-contable-common.js"></script>
-  <script src="/js/views/libro-ventas.js"></script>
-  <script src="/js/views/libro-compras.js"></script>
-  <script src="/js/views/libro-diario.js"></script>
-  <script src="/js/views/libro-mayor.js"></script>
-  <script src="/js/views/libro-balance.js"></script>
-  <script src="/js/views/retenciones-iva.js"></script>
-  <script src="/js/views/retenciones-isr.js"></script>
-  <script src="/js/views/nomenclatura-contable.js"></script>
-  <script src="/js/views/formatos-contables.js"></script>
-  <script src="/js/views/productos.js"></script>
+  <script src="/js/views/contabilidad/libro-ventas.js"></script>
+  <script src="/js/views/contabilidad/libro-compras.js"></script>
+  <script src="/js/views/contabilidad/libro-diario.js"></script>
+  <script src="/js/views/contabilidad/libro-mayor.js"></script>
+  <script src="/js/views/contabilidad/libro-balance.js"></script>
+  <script src="/js/views/contabilidad/retenciones-doc-view.js"></script>
+  <script src="/js/views/contabilidad/retenciones-iva.js"></script>
+  <script src="/js/views/contabilidad/retenciones-isr.js"></script>
+  <script src="/js/views/contabilidad/nomenclatura-contable.js"></script>
+  <script src="/js/views/contabilidad/formatos-contables.js"></script>
+  <script src="/js/views/contabilidad/configuraciones-contabilidad.js"></script>
+  <script src="/js/views/inventarios/productos.js"></script>
   <script src="/js/tipo-empleado-access.js"></script>
-  <script src="/js/views/dashboard-admin.js"></script>
-  <script src="/js/views/vendedor-inicio.js"></script>
-  <script src="/js/views/cajero-inicio.js"></script>
-  <script src="/js/views/transporte-inicio.js"></script>
-  <script src="/js/views/inicio-empleado.js"></script>
-  <script src="/js/views/tareas.js"></script>
+  <script src="/js/views/inicio/dashboard-admin.js"></script>
+  <script src="/js/views/inicio/vendedor-inicio.js"></script>
+  <script src="/js/views/inicio/cajero-inicio.js"></script>
+  <script src="/js/views/inicio/transporte-inicio.js"></script>
+  <script src="/js/views/inicio/inicio-empleado.js"></script>
+  <script src="/js/views/operaciones/tareas.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>
   <script src="/js/app.js"></script>
