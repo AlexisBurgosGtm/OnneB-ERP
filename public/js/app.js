@@ -475,6 +475,9 @@
     'nomenclatura-contable': 'Nomenclatura Contable',
     'formatos-contables': 'Formatos Contables',
     'configuraciones-contabilidad': 'Configuraciones Contabilidad',
+    'movimientos-banco': 'Movimientos',
+    bancos: 'Bancos',
+    'cuentas-bancarias': 'Cuentas Bancarias',
     developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
@@ -595,6 +598,12 @@
         typeof ConfiguracionesContabilidadView !== 'undefined'
       ) {
         ConfiguracionesContabilidadView.load(mainContent);
+      } else if (key === 'movimientos-banco' && typeof MovimientosBancoView !== 'undefined') {
+        MovimientosBancoView.load(mainContent);
+      } else if (key === 'bancos' && typeof BancosView !== 'undefined') {
+        BancosView.load(mainContent);
+      } else if (key === 'cuentas-bancarias' && typeof CuentasBancariasView !== 'undefined') {
+        CuentasBancariasView.load(mainContent);
       } else if (
         (key === 'productos-precios' || key === 'productos') &&
         typeof ProductosView !== 'undefined'
