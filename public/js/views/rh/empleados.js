@@ -42,6 +42,12 @@ function empleadosMapFormToApi(data, isEdit = false) {
         ? String(data.CODCATALOGO)
         : null,
     CODDOC_REC: data.CODDOC_REC || null,
+    PRIMER_NOMBRE: data.PRIMER_NOMBRE || null,
+    SEGUNDO_NOMBRE: data.SEGUNDO_NOMBRE || null,
+    PRIMER_APELLIDO: data.PRIMER_APELLIDO || null,
+    SEGUNDO_APELLIDO: data.SEGUNDO_APELLIDO || null,
+    APELLIDO_CASADA: data.APELLIDO_CASADA || null,
+    NIT: data.NIT || null,
   };
   if (!isEdit) {
     payload.ACTIVO = 'SI';
@@ -57,7 +63,7 @@ const EmpleadosViewBase = createCatalogoEmpresaView({
   labelPlural: 'empleado(s)',
   idKey: 'CODEMPLEADO',
   dataAttr: 'codempleado',
-  formWidth: 580,
+  formWidth: 960,
   searchPlaceholder: 'Buscar por nombre, DPI, teléfono, tipo…',
   searchKeys: [
     'CODEMPLEADO',
@@ -117,6 +123,12 @@ const EmpleadosView = {
       CLAVE: row.CLAVE ?? '',
       CODCATALOGO: catStr,
       CODDOC_REC: row.CODDOC_REC ?? '',
+      PRIMER_NOMBRE: row.PRIMER_NOMBRE ?? '',
+      SEGUNDO_NOMBRE: row.SEGUNDO_NOMBRE ?? '',
+      PRIMER_APELLIDO: row.PRIMER_APELLIDO ?? '',
+      SEGUNDO_APELLIDO: row.SEGUNDO_APELLIDO ?? '',
+      APELLIDO_CASADA: row.APELLIDO_CASADA ?? '',
+      NIT: row.NIT ?? '',
     };
   },
 
@@ -437,17 +449,37 @@ const EmpleadosView = {
 
   accesoCardHtml(r) {
     return `
-      <div class="card empleados-acceso-card mb-3">
-        <div class="card-body">
+      <div class="card empleados-acceso-card mb-2">
+        <div class="card-body py-2 px-2">
           <p class="empleados-acceso-card-title mb-0">
             <i class="fa-solid fa-right-to-bracket me-1" aria-hidden="true"></i>
             Acceso al inicio de sesión
           </p>
-          <p class="empleados-acceso-card-desc mb-0">Usuario y clave con los que el empleado ingresa al sistema.</p>
           ${this.row2(
             this.inputField('USUARIO', 'Usuario', r.USUARIO),
             this.inputField('CLAVE', 'Clave', r.CLAVE)
           )}
+        </div>
+      </div>
+    `;
+  },
+
+  nominaCardHtml(r) {
+    return `
+      <div class="card empleados-nomina-card mb-0">
+        <div class="card-body py-2 px-2">
+          <p class="empleados-nomina-card-title mb-1">
+            <i class="fa-solid fa-file-invoice-dollar me-1" aria-hidden="true"></i>
+            Datos de nómina
+          </p>
+          <div class="row g-2">
+            <div class="col-md-4">${this.inputField('PRIMER_NOMBRE', 'Primer nombre', r.PRIMER_NOMBRE)}</div>
+            <div class="col-md-4">${this.inputField('SEGUNDO_NOMBRE', 'Segundo nombre', r.SEGUNDO_NOMBRE)}</div>
+            <div class="col-md-4">${this.inputField('PRIMER_APELLIDO', 'Primer apellido', r.PRIMER_APELLIDO)}</div>
+            <div class="col-md-4">${this.inputField('SEGUNDO_APELLIDO', 'Segundo apellido', r.SEGUNDO_APELLIDO)}</div>
+            <div class="col-md-4">${this.inputField('APELLIDO_CASADA', 'Apellido de casada', r.APELLIDO_CASADA)}</div>
+            <div class="col-md-4">${this.inputField('NIT', 'NIT', r.NIT)}</div>
+          </div>
         </div>
       </div>
     `;
@@ -467,29 +499,43 @@ const EmpleadosView = {
 
     const codigoHtml = isEdit
       ? this.inputField('CODEMPLEADO', 'Código', r.CODEMPLEADO, { type: 'number', readonly: true })
-      : '<p class="small text-muted mb-0">El código se asignará al guardar.</p>';
+      : '<p class="small text-muted mb-0 py-1">El código se asignará al guardar.</p>';
 
-    const parts = [
+    const colLeft = [
       this.row2(codigoHtml, this.selectField('CODTIPOEMPLEADO', 'Tipo empleado', L.tipos, r.CODTIPOEMPLEADO)),
-      this.fieldBlock(this.inputField('NOMEMPLEADO', 'Nombre', r.NOMEMPLEADO)),
+      this.fieldBlock(this.inputField('NOMEMPLEADO', 'Nombre completo', r.NOMEMPLEADO)),
       this.accesoCardHtml(r),
       this.row2(this.inputField('DPI', 'DPI', r.DPI), this.inputField('IGSS', 'IGSS', r.IGSS)),
       this.fieldBlock(this.inputField('DIRECCION', 'Dirección', r.DIRECCION)),
-      this.fieldBlock(this.selectField('CODDEPTO', 'Departamento', L.departamentos, r.CODDEPTO)),
-      this.fieldBlock(this.selectField('CODMUNICIPIO', 'Municipio', L.municipios, r.CODMUNICIPIO)),
+    ].join('');
+
+    const colRight = [
+      this.row2(
+        this.selectField('CODDEPTO', 'Departamento', L.departamentos, r.CODDEPTO),
+        this.selectField('CODMUNICIPIO', 'Municipio', L.municipios, r.CODMUNICIPIO)
+      ),
       this.row2(
         this.selectField('CODRUTA', 'Ruta', L.rutas, r.CODRUTA),
         this.selectField('CODCATALOGO', 'Catálogo', L.catalogos, r.CODCATALOGO)
       ),
-      this.fieldBlock(this.inputField('TELEFONOS', 'Teléfonos', r.TELEFONOS)),
-      this.fieldBlock(this.inputField('EMAIL', 'Email', r.EMAIL, { type: 'email' })),
+      this.row2(
+        this.inputField('TELEFONOS', 'Teléfonos', r.TELEFONOS),
+        this.inputField('EMAIL', 'Email', r.EMAIL, { type: 'email' })
+      ),
       this.row2(
         this.selectField('WHATSAPP', 'Doc. Venta', L.docsWhatsapp, r.WHATSAPP),
         this.selectField('CODDOC_REC', 'Doc. recibo', L.docsRecibo, r.CODDOC_REC)
       ),
-    ];
+    ].join('');
 
-    return parts.join('');
+    return `
+      <div class="empleados-form-grid">
+        <div class="row g-2">
+          <div class="col-md-6">${colLeft}</div>
+          <div class="col-md-6">${colRight}</div>
+        </div>
+        ${this.nominaCardHtml(r)}
+      </div>`;
   },
 
   readFormData() {
@@ -510,6 +556,12 @@ const EmpleadosView = {
       'CLAVE',
       'CODCATALOGO',
       'CODDOC_REC',
+      'PRIMER_NOMBRE',
+      'SEGUNDO_NOMBRE',
+      'PRIMER_APELLIDO',
+      'SEGUNDO_APELLIDO',
+      'APELLIDO_CASADA',
+      'NIT',
     ];
     const data = {};
     names.forEach((name) => {
@@ -532,7 +584,8 @@ const EmpleadosView = {
     return CatalogosUI.fireForm({
       title,
       html: view.buildFormHtml(row, isEdit),
-      width: 580,
+      width: 960,
+      customClass: { popup: 'modal-catalogo empleados-form-modal' },
       preConfirm() {
         try {
           const data = view.readFormData();

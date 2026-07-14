@@ -485,6 +485,11 @@
     'actualizacion-inventario': 'Actualización de inventario',
     documentos: 'Documentos',
     empleados: 'Empleados',
+    'nomina-config': 'Configuración nómina',
+    'nomina-conceptos': 'Conceptos nómina',
+    'nomina-empleados': 'Datos nómina empleados',
+    'nomina-interna': 'Nómina interna',
+    'nomina-igss': 'Planilla IGSS',
     municipios: 'Municipios',
     departamentos: 'Departamentos',
     marcas: 'Marcas',
@@ -623,6 +628,16 @@
         DepartamentosView.load(mainContent);
       } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
         EmpleadosView.load(mainContent);
+      } else if (key === 'nomina-config' && typeof NominaConfigView !== 'undefined') {
+        NominaConfigView.load(mainContent);
+      } else if (key === 'nomina-conceptos' && typeof NominaConceptosView !== 'undefined') {
+        NominaConceptosView.load(mainContent);
+      } else if (key === 'nomina-empleados' && typeof NominaEmpleadosView !== 'undefined') {
+        NominaEmpleadosView.load(mainContent);
+      } else if (key === 'nomina-interna' && typeof NominaInternaView !== 'undefined') {
+        NominaInternaView.load(mainContent);
+      } else if (key === 'nomina-igss' && typeof NominaIgssView !== 'undefined') {
+        NominaIgssView.load(mainContent);
       } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
         TipoDocumentosView.load(mainContent);
       } else if (key === 'cajas' && typeof CajasView !== 'undefined') {

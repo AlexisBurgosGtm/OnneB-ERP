@@ -1,6 +1,8 @@
 const express = require('express');
+const multer = require('multer');
 const { isDbConfigured } = require('../config/database');
 const { listLibroVentas, TIPODOC_LIBRO_VENTAS } = require('../lib/libro-ventas');
+const { compararSatConSistema } = require('../lib/sat-ventas-compare');
 const {
   requireEmpNit,
   parsePeriod,
@@ -11,6 +13,18 @@ const {
 } = require('../lib/libro-contable-utils');
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const name = String(file.originalname || '').toLowerCase();
+    if (name.endsWith('.xls') || name.endsWith('.xlsx')) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Solo se permiten archivos .xls o .xlsx'));
+  },
+});
 
 const EXPORT_COLUMNS = [
   { header: 'No.', key: 'LINEA', width: 6 },
@@ -95,6 +109,42 @@ router.get('/export', async (req, res) => {
     console.warn('[API GET /libro-ventas/export]', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+router.post('/comparar-sat', (req, res) => {
+  upload.single('archivo')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message || 'Error al subir el archivo' });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = requireEmpNit(req, res);
+    if (!empnit) return;
+    const period = parsePeriod(req, res);
+    if (!period) return;
+    if (!req.file?.buffer?.length) {
+      return res.status(400).json({ error: 'Debe seleccionar un archivo Excel (.xls o .xlsx)' });
+    }
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const result = await compararSatConSistema(
+        pool,
+        require('mssql'),
+        empnit,
+        period.mes,
+        period.anio,
+        req.file.buffer
+      );
+      res.json({
+        ...result,
+        archivo: req.file.originalname,
+      });
+    } catch (err) {
+      const code = err.statusCode || 500;
+      if (code >= 500) console.warn('[API POST /libro-ventas/comparar-sat]', err.message);
+      res.status(code).json({ error: err.message });
+    }
+  });
 });
 
 module.exports = router;

@@ -39,3 +39,39 @@
   color: var(--onneb-text-muted, #6c757d);
   margin-bottom: 0.65rem;
 }
+
+.empleados-nomina-card {
+  border-color: rgba(25, 135, 84, 0.28);
+  background: rgba(25, 135, 84, 0.05);
+}
+
+.empleados-nomina-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #198754;
+  margin-bottom: 0.35rem;
+}
+
+.swal2-popup.empleados-form-modal {
+  width: min(960px, 96vw) !important;
+  max-width: 960px;
+}
+
+.swal2-popup.empleados-form-modal .swal2-html-container {
+  overflow: visible !important;
+  max-height: none !important;
+  margin-top: 0.35rem;
+  padding-top: 0;
+}
+
+.empleados-form-grid .form-label {
+  margin-bottom: 0.15rem;
+}
+
+.empleados-form-grid .mb-2 {
+  margin-bottom: 0.45rem !important;
+}
+
+.empleados-form-grid .row.g-2.mb-2 {
+  margin-bottom: 0.45rem !important;
+}

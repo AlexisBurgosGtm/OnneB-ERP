@@ -70,6 +70,7 @@ const formatosContablesRouter = require('./routes/formatos-contables');
 const retencionesIvaRouter = require('./routes/retenciones-iva');
 const retencionesIsrRouter = require('./routes/retenciones-isr');
 const configContabilidadRouter = require('./routes/config-contabilidad');
+const nominaRouter = require('./routes/nomina');
 
 async function getDbPool() {
   const dbConfig = getDbConfig();
@@ -201,6 +202,7 @@ app.use('/api/formatos-contables', formatosContablesRouter);
 app.use('/api/retenciones-iva', retencionesIvaRouter);
 app.use('/api/retenciones-isr', retencionesIsrRouter);
 app.use('/api/config-contabilidad', configContabilidadRouter);
+app.use('/api/nomina', nominaRouter);
 app.use('/api/updater', updaterRouter);
 
 app.get('/api/health', async (_req, res) => {
