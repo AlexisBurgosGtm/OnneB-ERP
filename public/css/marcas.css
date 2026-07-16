@@ -12,9 +12,9 @@
 .marcas-panel .table-responsive {
   max-height: calc(100vh - 8rem);
   overflow: auto;
-  border-radius: 0.5rem;
+  border-radius: var(--app-radius-sm, 0.55rem);
   border: 1px solid var(--app-border, #e0e0e0);
-  background: #ffffff;
+  background: var(--app-surface, #ffffff);
 }
 
 .marcas-panel .table {

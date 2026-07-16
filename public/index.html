@@ -43,6 +43,7 @@
   <link rel="stylesheet" href="/css/formatos-contables.css">
   <link rel="stylesheet" href="/css/config-contabilidad.css">
   <link rel="stylesheet" href="/css/cuentas-cxp.css">
+  <link rel="stylesheet" href="/css/bancos.css">
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
   <link rel="stylesheet" href="/css/buttons-theme.css">
@@ -135,7 +136,7 @@
                   <span>OPERACIONES</span>
                 </button>
               </h2>
-              <div id="collapseOperaciones" class="accordion-collapse collapse">
+              <div id="collapseOperaciones" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
@@ -157,7 +158,7 @@
                   <span>CUENTAS POR COBRAR / PAGAR</span>
                 </button>
               </h2>
-              <div id="collapseCuentasCxp" class="accordion-collapse collapse">
+              <div id="collapseCuentasCxp" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="cuentas-cobrar"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Cuentas por Cobrar</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cuentas-pagar"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Cuentas por Pagar</a></li>
@@ -171,7 +172,7 @@
                   <span>INVENTARIOS</span>
                 </button>
               </h2>
-              <div id="collapseInventarios" class="accordion-collapse collapse">
+              <div id="collapseInventarios" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Inventario</a></li>
@@ -189,7 +190,7 @@
                   <span>ARCHIVO</span>
                 </button>
               </h2>
-              <div id="collapseArchivo" class="accordion-collapse collapse">
+              <div id="collapseArchivo" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
                 </ul>
@@ -202,7 +203,7 @@
                   <span>CONTABILIDAD</span>
                 </button>
               </h2>
-              <div id="collapseContabilidad" class="accordion-collapse collapse">
+              <div id="collapseContabilidad" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="retenciones-isr"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Retenciones ISR</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="retenciones-iva"><i class="fa-solid fa-percent" aria-hidden="true"></i> Retenciones IVA</a></li>
@@ -224,7 +225,7 @@
                   <span>BANCOS</span>
                 </button>
               </h2>
-              <div id="collapseBancos" class="accordion-collapse collapse">
+              <div id="collapseBancos" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="movimientos-banco"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i> Movimientos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="bancos"><i class="fa-solid fa-building-columns" aria-hidden="true"></i> Bancos</a></li>
@@ -239,7 +240,7 @@
                   <span>RECURSOS HUMANOS</span>
                 </button>
               </h2>
-              <div id="collapseRh" class="accordion-collapse collapse">
+              <div id="collapseRh" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="empleados"><i class="fa-solid fa-user-tie" aria-hidden="true"></i> Empleados</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="nomina-config"><i class="fa-solid fa-gear" aria-hidden="true"></i> Configuración nómina</a></li>
@@ -257,7 +258,7 @@
                   <span>CATALOGOS</span>
                 </button>
               </h2>
-              <div id="collapseCatalogos" class="accordion-collapse collapse">
+              <div id="collapseCatalogos" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="marcas"><i class="fa-solid fa-bookmark" aria-hidden="true"></i> Marcas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="medidas"><i class="fa-solid fa-ruler-combined" aria-hidden="true"></i> Medidas</a></li>
@@ -281,7 +282,7 @@
                   <span>TRANSPORTES</span>
                 </button>
               </h2>
-              <div id="collapseTransportes" class="accordion-collapse collapse">
+              <div id="collapseTransportes" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="servicio-mecanica"><i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i> Servicio Mecánica</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="mantenimiento-llantas"><i class="fa-solid fa-compact-disc" aria-hidden="true"></i> Mantenimiento de llantas</a></li>
@@ -298,7 +299,7 @@
                   <span>CONFIGURACIONES</span>
                 </button>
               </h2>
-              <div id="collapseConfig" class="accordion-collapse collapse">
+              <div id="collapseConfig" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="empresas"><i class="fa-solid fa-building" aria-hidden="true"></i> Empresas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="config-general"><i class="fa-solid fa-gear" aria-hidden="true"></i> Config general</a></li>

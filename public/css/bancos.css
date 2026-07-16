@@ -1,0 +1,79 @@
+/**
+ * Vista Movimientos bancarios
+ */
+
+.main-content > .mb-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1.25rem;
+}
+
+.mb-wrap .mb-form-card .card-body {
+  padding-bottom: 1rem;
+}
+
+.mb-docs-panel {
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: var(--app-radius, 0.9rem);
+  background: color-mix(in srgb, var(--app-bg, #f8f9fa) 88%, var(--app-surface, #fff));
+  padding: 0.65rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-shadow: var(--app-shadow);
+}
+
+.mb-docs-panel__title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.mb-docs-scroll {
+  max-height: 280px;
+  overflow: auto;
+  background: var(--app-surface, #fff);
+  border-radius: var(--app-radius-sm, 0.55rem);
+  border: 1px solid var(--app-border, #e0e0e0);
+  flex: 1;
+}
+
+.mb-tipo-badge {
+  height: calc(1.5em + 0.5rem + 2px);
+  min-height: calc(1.5em + 0.5rem + 2px);
+}
+
+.mb-importe-group .input-group-text {
+  color: #dc3545;
+  font-weight: 700;
+  background: #fff5f5;
+  border-color: #f5c2c7;
+}
+
+.mb-importe-input {
+  color: #dc3545 !important;
+  font-weight: 700 !important;
+  font-size: 1.05rem;
+  background: #fff5f5 !important;
+  border-color: #f5c2c7;
+}
+
+.mb-importe-input:focus {
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.2);
+  border-color: #dc3545;
+}
+
+.mb-form-actions {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to top, #fff 70%, rgba(255, 255, 255, 0.92));
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--app-border, #e8e8e8);
+  z-index: 2;
+}

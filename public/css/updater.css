@@ -31,6 +31,6 @@
   font-family: ui-monospace, Consolas, 'Courier New', monospace;
   background: color-mix(in srgb, var(--app-surface, #f8f9fa) 90%, transparent);
   border: 1px solid var(--app-border, #dee2e6);
-  border-radius: 0.5rem;
+  border-radius: var(--app-radius-sm, 0.55rem);
   text-align: left;
 }

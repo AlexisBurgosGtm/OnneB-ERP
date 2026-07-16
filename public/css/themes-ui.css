@@ -1,9 +1,54 @@
-/* Header — empresa, usuario y selector de tema */
+/* Header — barra metálica con degradado del tema */
 .main-header {
+  --header-fg: #ffffff;
   position: relative;
   z-index: 100;
+  isolation: isolate;
   min-height: 3.25rem;
   gap: 0.75rem;
+  color: var(--header-fg);
+  border-bottom: 1px solid color-mix(in srgb, var(--onneb-brand-dark) 65%, #000);
+  background:
+    linear-gradient(
+      118deg,
+      color-mix(in srgb, var(--onneb-brand-dark) 94%, #050505) 0%,
+      color-mix(in srgb, var(--onneb-brand) 82%, #3f3f46) 24%,
+      color-mix(in srgb, var(--onneb-brand-light) 72%, #f4f4f5) 48%,
+      color-mix(in srgb, var(--onneb-brand) 86%, #52525b) 72%,
+      color-mix(in srgb, var(--onneb-brand-dark) 96%, #0a0a0a) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+    0 6px 18px color-mix(in srgb, var(--onneb-base-black) 22%, transparent);
+}
+
+.main-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(255, 255, 255, 0.08) 36%,
+      rgba(0, 0, 0, 0.12) 68%,
+      rgba(0, 0, 0, 0.28) 100%
+    ),
+    repeating-linear-gradient(
+      92deg,
+      transparent 0,
+      transparent 3px,
+      rgba(255, 255, 255, 0.035) 3px,
+      rgba(255, 255, 255, 0.035) 4px
+    );
+}
+
+.main-header .main-title {
+  color: var(--header-fg);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 
 .main-header-start,
@@ -43,10 +88,15 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.2;
-  border: 1px solid var(--header-chip-border, color-mix(in srgb, var(--onneb-brand) 22%, transparent));
-  background: var(--header-chip-bg, color-mix(in srgb, var(--onneb-brand) 8%, var(--app-bg)));
-  color: var(--header-chip-text, var(--app-text));
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--onneb-base-black) 6%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.1) 100%);
+  color: var(--header-fg, #fff);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .header-empresa-logo {
@@ -66,9 +116,46 @@
 
 .header-empresa-badge i,
 .header-user-badge i {
-  color: var(--onneb-brand);
+  color: var(--header-fg, #fff);
   font-size: 0.85rem;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+
+#view-main .main-header .btn-icon {
+  border-color: rgba(255, 255, 255, 0.32);
+  color: var(--header-fg, #fff);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+#view-main .main-header .btn-icon:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12));
+  color: var(--header-fg, #fff);
+  border-color: rgba(255, 255, 255, 0.48);
+}
+
+#view-main .main-header #btn-logout {
+  color: var(--header-fg, #fff) !important;
+  border-color: rgba(255, 255, 255, 0.34) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.16) !important;
+}
+
+#view-main .main-header #btn-logout:hover,
+#view-main .main-header #btn-logout:focus {
+  color: var(--header-fg, #fff) !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14)) !important;
+}
+
+.main-header .btn-theme-fab {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 4px 14px color-mix(in srgb, var(--onneb-brand-dark) 45%, transparent);
 }
 
 .header-empresa-icon-fallback[hidden],
@@ -220,6 +307,10 @@
 
 .theme-swatch-blue {
   background: linear-gradient(135deg, #60a5fa, #2563eb);
+}
+
+.theme-swatch-bw {
+  background: linear-gradient(135deg, #d4d4d4, #2a2a2a);
 }
 
 .theme-swatch-mustard {

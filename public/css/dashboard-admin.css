@@ -16,6 +16,8 @@
 
 .dashboard-kpi-card {
   border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: var(--app-radius, 0.9rem);
+  box-shadow: var(--app-shadow);
 }
 
 .dashboard-kpi-card--click {

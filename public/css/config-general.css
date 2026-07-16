@@ -28,8 +28,8 @@
 
 .config-general-panel .config-card-compact {
   border: 1px solid var(--app-border, #e0e0e0);
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 6px color-mix(in srgb, var(--onneb-base-black) 4%, transparent);
+  border-radius: var(--app-radius, 0.9rem);
+  box-shadow: var(--app-shadow);
   height: 100%;
 }
 

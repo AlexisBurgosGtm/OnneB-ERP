@@ -87,6 +87,15 @@ body {
 #view-main {
   background: var(--app-bg, #ffffff);
   color: var(--app-text);
+  --bs-border-radius: var(--app-radius);
+  --bs-border-radius-sm: var(--app-radius-sm);
+  --bs-border-radius-lg: var(--app-radius);
+  --bs-border-radius-xl: var(--app-radius-modal);
+  --bs-border-radius-xxl: calc(var(--app-radius-modal) + 0.15rem);
+  --bs-card-border-radius: var(--app-radius);
+  --bs-card-border-color: var(--app-border);
+  --bs-card-bg: var(--app-surface, #fff);
+  --bs-box-shadow-sm: var(--app-shadow);
 }
 
 #view-main .text-muted {
@@ -98,13 +107,13 @@ body {
 }
 
 .main-header {
-  background: var(--app-bg, #ffffff);
-  border-bottom: 1px solid var(--app-border);
-  color: var(--app-text);
+  /* Fondo metálico definido en themes-ui.css (degradado por tema) */
+  color: var(--header-fg, #ffffff);
 }
 
-.main-header .fw-semibold {
-  color: var(--app-text);
+.main-header .fw-semibold,
+.main-header .main-title {
+  color: var(--header-fg, #ffffff);
 }
 
 .main-content {
@@ -124,6 +133,7 @@ body {
 .main-content > .config-contab-wrap,
 .main-content > .dashboard-admin-wrap,
 .main-content > .inicio-empleado-wrap,
+.main-content > .mb-wrap,
 .main-content.productos-view-root {
   flex: 1;
   min-height: 0;
@@ -163,4 +173,98 @@ body.onneb-mutation-busy .swal2-container button {
   pointer-events: auto;
   opacity: 1;
   cursor: pointer;
+}
+
+/* —— UI global: cards, tablas, forms (misma línea visual del piloto) —— */
+#view-main .card {
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-radius: var(--app-radius) !important;
+  box-shadow: var(--app-shadow);
+  background: var(--app-surface, #fff);
+}
+
+#view-main .card > .card-header {
+  border-bottom: 1px solid var(--app-border, #e5e7eb);
+  background: color-mix(in srgb, var(--app-surface, #fff) 92%, var(--app-bg, #f5f5f5));
+}
+
+#view-main .card.shadow-sm,
+#view-main .card.shadow,
+#view-main .card.shadow-lg {
+  box-shadow: var(--app-shadow) !important;
+}
+
+#view-main .form-control,
+#view-main .form-select,
+#view-main .input-group-text {
+  border-radius: var(--app-radius-input);
+  border-color: color-mix(in srgb, var(--app-border, #dde1e6) 92%, transparent);
+}
+
+#view-main .input-group > :not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+#view-main .input-group > :not(:last-child):not(.dropdown-toggle):not(.dropdown-menu):not(.form-floating) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#view-main .btn:not(.rounded-pill):not(.btn-menu-fab):not(.btn-onneb-nuevo-fab):not(.pos-list-fab-nuevo):not(.pos-fab-finalizar):not(.pos-fab-agregar):not(.pos-fab-barcode):not(.btn-theme-fab) {
+  border-radius: var(--app-radius-sm);
+}
+
+#view-main .btn-sm:not(.rounded-pill) {
+  border-radius: var(--app-radius-sm);
+}
+
+#view-main .table-responsive {
+  border: 1px solid color-mix(in srgb, var(--app-border, #e0e0e0) 90%, transparent);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface, #fff);
+}
+
+#view-main .card > .table-responsive,
+#view-main .card-body > .table-responsive {
+  /* evita doble borde cuando la card ya enmarca la tabla */
+  border-color: color-mix(in srgb, var(--app-border, #e0e0e0) 75%, transparent);
+}
+
+#view-main .table {
+  --bs-table-striped-bg: transparent;
+  border-color: transparent;
+}
+
+#view-main .table > :not(caption) > * > * {
+  border-bottom-color: color-mix(in srgb, var(--app-border, #e8e8e8) 85%, transparent);
+}
+
+#view-main .table thead th,
+#view-main .table > thead > tr > th {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--app-text-muted, #6c757d);
+  background: color-mix(in srgb, var(--app-bg, #f5f5f5) 70%, var(--app-surface, #fff)) !important;
+  border-bottom: 1px solid var(--app-border, #e5e7eb) !important;
+}
+
+#view-main .table.table-hover > tbody > tr:hover > * {
+  --bs-table-bg-state: color-mix(in srgb, var(--onneb-brand, #7c3aed) 6%, transparent);
+}
+
+#view-main .list-group {
+  border-radius: var(--app-radius-sm);
+}
+
+#view-main .list-group-item:first-child {
+  border-top-left-radius: var(--app-radius-sm);
+  border-top-right-radius: var(--app-radius-sm);
+}
+
+#view-main .list-group-item:last-child {
+  border-bottom-left-radius: var(--app-radius-sm);
+  border-bottom-right-radius: var(--app-radius-sm);
 }

@@ -185,7 +185,7 @@
   text-align: center;
   white-space: normal;
   line-height: 1.2;
-  border-radius: 0.35rem;
+  border-radius: var(--app-radius-sm, 0.55rem);
 }
 
 .productos-opcion-pick i {

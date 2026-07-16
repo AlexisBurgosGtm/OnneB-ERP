@@ -229,13 +229,13 @@
 .barcode-scanner-region {
   width: 100%;
   min-height: 220px;
-  border-radius: 0.5rem;
+  border-radius: var(--app-radius-sm, 0.55rem);
   overflow: hidden;
   background: #0f172a;
 }
 
 .barcode-scanner-region video {
-  border-radius: 0.5rem;
+  border-radius: var(--app-radius-sm, 0.55rem);
 }
 
 .pos-fab-agregar {
@@ -979,7 +979,7 @@ body.pos-product-sheet-open {
 
   border: 1px solid var(--app-border, rgba(0, 0, 0, 0.1));
 
-  border-radius: 0.85rem;
+  border-radius: var(--app-radius, 0.9rem);
 
   background: color-mix(in srgb, var(--app-surface, #fafafa) 88%, transparent);
 
@@ -1348,18 +1348,23 @@ body.pos-product-sheet-open {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--onneb-base-black, #0f172a) 48%, transparent);
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
 }
 
 .fac-env-modal {
   width: min(920px, 100%);
   max-height: min(85vh, 720px);
-  border-radius: 1rem;
+  border-radius: var(--app-radius-modal, 1.15rem);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   animation: fac-env-modal-in 0.22s ease-out;
+  border: 1px solid color-mix(in srgb, var(--app-border, #e5e7eb) 85%, transparent);
+  box-shadow:
+    0 18px 48px color-mix(in srgb, var(--onneb-base-black, #000) 22%, transparent),
+    0 4px 14px color-mix(in srgb, var(--onneb-base-black, #000) 10%, transparent);
 }
 
 @keyframes fac-env-modal-in {
@@ -1446,3 +1451,81 @@ body.pos-product-sheet-open {
   }
 }
 
+/* —— POS / Facturación: tokens alineados al shell global —— */
+
+.pos-vista-wrap,
+.pos-list-wrap {
+  --pos-radius: var(--app-radius);
+  --pos-radius-sm: var(--app-radius-sm);
+  --pos-radius-input: var(--app-radius-input);
+  --pos-border: color-mix(in srgb, var(--app-border, #dde1e6) 92%, transparent);
+  --pos-shadow: var(--app-shadow);
+  --pos-shadow-hover: var(--app-shadow-hover);
+}
+
+.pos-vista-wrap .pos-panel.card .card-header {
+  border-bottom: 1px solid var(--pos-border);
+  background: color-mix(in srgb, var(--app-surface, #fff) 92%, var(--app-bg, #f5f5f5));
+}
+
+.pos-search-group .input-group-text {
+  border-top-left-radius: var(--pos-radius-input) !important;
+  border-bottom-left-radius: var(--pos-radius-input) !important;
+}
+
+.pos-search-group .pos-search-glow {
+  border-top-right-radius: var(--pos-radius-input) !important;
+  border-bottom-right-radius: var(--pos-radius-input) !important;
+}
+
+.pos-qty-btn {
+  border-radius: 0.45rem !important;
+}
+
+.pos-vista-wrap .pos-product-list {
+  border: 1px solid var(--pos-border);
+  border-radius: var(--pos-radius-sm);
+  background: var(--app-surface, #fff);
+}
+
+.pos-vista-wrap .pos-product-item {
+  border-bottom-color: color-mix(in srgb, var(--app-border, #e0e0e0) 70%, transparent);
+}
+
+.pos-vista-wrap .pos-product-item:last-child {
+  border-bottom: none;
+}
+
+.pos-list-wrap .pos-pedido-card {
+  border: 1px solid var(--pos-border);
+  border-radius: var(--pos-radius) !important;
+  box-shadow: var(--pos-shadow) !important;
+  background: var(--app-surface, #fff);
+}
+
+.pos-list-wrap .pos-pedido-card:hover {
+  box-shadow: var(--pos-shadow-hover) !important;
+}
+
+.fac-finalizar-fpago-card {
+  border-radius: var(--app-radius) !important;
+  box-shadow: var(--app-shadow) !important;
+  border-color: var(--pos-border, var(--bs-border-color, #dee2e6));
+}
+
+.fac-env-modal {
+  border-radius: var(--app-radius-modal) !important;
+  box-shadow: var(--app-shadow-hover, 0 10px 28px rgba(0, 0, 0, 0.12)) !important;
+}
+
+.fac-env-modal-table-wrap {
+  border-radius: var(--app-radius-sm);
+  border-color: var(--pos-border, var(--bs-border-color, #dee2e6));
+}
+
+@media (max-width: 991.98px) {
+  .pos-vista-wrap .pos-panel.card,
+  .pos-vista-wrap > .card {
+    border-radius: calc(var(--app-radius) - 0.15rem) !important;
+  }
+}

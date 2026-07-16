@@ -9,6 +9,13 @@ const CuentasPorCobrarView = {
   _sumTotal: 0,
   _truncated: false,
   _filterQuery: '',
+  _vistaTipo: 'lista',
+  _calYear: null,
+  _calMonth: null,
+  _saldoMes: null,
+  _saldoAnio: null,
+  _saldoMesesRows: [],
+  _saldoMesesTotales: null,
   _loading: false,
   _guardandoRecibo: false,
   _corregiendoSaldos: false,
@@ -148,6 +155,94 @@ const CuentasPorCobrarView = {
     return v < t;
   },
 
+  initCalMonth() {
+    const d = new Date();
+    if (this._calYear == null) {
+      this._calYear = d.getFullYear();
+      this._calMonth = d.getMonth();
+    }
+  },
+
+  initSaldoMes() {
+    const d = new Date();
+    if (this._saldoAnio == null) this._saldoAnio = d.getFullYear();
+    if (this._saldoMes == null) this._saldoMes = d.getMonth() + 1;
+  },
+
+  monthNames() {
+    return [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+  },
+
+  monthLabel(year, monthIndex) {
+    return `${this.monthNames()[monthIndex]} ${year}`;
+  },
+
+  vencimientoIso(row) {
+    const v = row?.VENCIMIENTO;
+    if (!v) return null;
+    const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  },
+
+  aggregateVencimientosPorDia() {
+    const map = new Map();
+    for (const r of this.filteredRows()) {
+      const key = this.vencimientoIso(r);
+      if (!key) continue;
+      const entry = map.get(key) || { count: 0, total: 0 };
+      entry.count += 1;
+      entry.total += Number(r.DOC_SALDO) || 0;
+      map.set(key, entry);
+    }
+    return map;
+  },
+
+  rowsForVencimiento(isoDate) {
+    return this.filteredRows().filter((r) => this.vencimientoIso(r) === isoDate);
+  },
+
+  saldoMesesUrl(mes, anio) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      mes: String(mes),
+      anio: String(anio),
+      _: String(Date.now()),
+    });
+    return `/api/cuentas-cobrar/saldo-meses?${params}`;
+  },
+
+  async fetchSaldoMeses() {
+    this.initSaldoMes();
+    const data = await F.fetchJson(this.saldoMesesUrl(this._saldoMes, this._saldoAnio), {
+      cache: 'no-store',
+    });
+    this._saldoMesesRows = data.rows || [];
+    this._saldoMesesTotales = data.totales || null;
+    this._saldoMes = Number(data.mes) || this._saldoMes;
+    this._saldoAnio = Number(data.anio) || this._saldoAnio;
+    return this._saldoMesesRows;
+  },
+
+  shiftSaldoMes(delta) {
+    this.initSaldoMes();
+    let mes = this._saldoMes + delta;
+    let anio = this._saldoAnio;
+    while (mes < 1) {
+      mes += 12;
+      anio -= 1;
+    }
+    while (mes > 12) {
+      mes -= 12;
+      anio += 1;
+    }
+    this._saldoMes = mes;
+    this._saldoAnio = anio;
+  },
+
   filteredRows() {
     return (this._rows || []).filter((r) => {
       const saldo = Number(r.SALDO_PENDIENTE ?? (Number(r.DOC_SALDO) || 0) - (Number(r.DOC_ABONO) || 0));
@@ -241,48 +336,179 @@ const CuentasPorCobrarView = {
       .join('');
   },
 
-  renderShell() {
-    const count = this.filteredRows().length;
-    const truncHint = this._truncated
-      ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
-      : '';
+  renderVistaToggleHtml() {
+    const listaActive = this._vistaTipo === 'lista';
+    const calActive = this._vistaTipo === 'calendario';
+    const saldoActive = this._vistaTipo === 'saldo-meses';
     return `
-      <div class="cxp-wrap w-100">
-        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-1"><i class="fa-solid fa-hand-holding-dollar me-2 text-primary"></i>Cuentas por cobrar</h2>
-            <p class="text-muted small mb-0">Facturas al crédito (CONCRE = CRE) con saldo pendiente</p>
+      <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
+        <button type="button" class="btn ${listaActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-lista"
+          title="Lista de facturas">
+          <i class="fa-solid fa-list me-1"></i>Lista
+        </button>
+        <button type="button" class="btn ${calActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-calendario"
+          title="Calendario de vencimientos">
+          <i class="fa-solid fa-calendar-days me-1"></i>Calendario
+        </button>
+        <button type="button" class="btn ${saldoActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-saldo-meses"
+          title="Saldos por mes">
+          <i class="fa-solid fa-calendar-check me-1"></i>Saldo meses
+        </button>
+      </div>`;
+  },
+
+  renderCalDayTableHtml(rows) {
+    if (!rows.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin facturas con vencimiento en esta fecha</p>';
+    }
+    const body = rows
+      .map((r) => {
+        const vencido = this.isVencido(r);
+        return `<tr class="cxp-cal-day-row${vencido ? ' cxp-row-vencido' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}" role="button" tabindex="0">
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || '—')}</td>
+          <td class="small">${this.escapeHtml(r.EMPLEADO || r.VENDEDOR || '—')}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.DOC_SALDO))}</td>
+        </tr>`;
+      })
+      .join('');
+    const totalSaldo = rows.reduce((s, r) => s + (Number(r.DOC_SALDO) || 0), 0);
+    return `
+      <div class="table-responsive cxp-cal-day-table" style="max-height: 360px">
+        <table class="table table-sm table-hover table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Cliente</th>
+              <th>Empleado</th>
+              <th>Fecha</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Doc.Saldo</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="5" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="small text-muted mt-2 mb-0 text-start">Clic en una fila para ver opciones del documento.</p>`;
+  },
+
+  async mostrarFacturasDelDia(isoDate) {
+    const rows = this.rowsForVencimiento(isoDate);
+    if (!rows.length) return;
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: `Vencimientos — ${this.formatFecha(isoDate)}`,
+      html: this.renderCalDayTableHtml(rows),
+      width: 720,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const onRowPick = (row) => {
+          const coddoc = row.getAttribute('data-coddoc');
+          const correlativo = row.getAttribute('data-correlativo');
+          if (!coddoc || !correlativo) return;
+          Swal.close();
+          this.onRowAction(coddoc, correlativo).catch((err) => F.toast(err.message || 'Error', 'error'));
+        };
+        Swal.getPopup()?.querySelectorAll('.cxp-cal-day-row').forEach((row) => {
+          row.addEventListener('click', () => onRowPick(row));
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onRowPick(row);
+            }
+          });
+        });
+      },
+    });
+  },
+
+  renderCalendarHtml() {
+    this.initCalMonth();
+    const year = this._calYear;
+    const month = this._calMonth;
+    const byDay = this.aggregateVencimientosPorDia();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let startWeekday = firstDay.getDay();
+    startWeekday = startWeekday === 0 ? 6 : startWeekday - 1;
+    const weekDays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const today = this.todayIsoDate();
+    let cells = '';
+
+    for (let i = 0; i < startWeekday; i += 1) {
+      cells += '<div class="cxp-cal-cell cxp-cal-cell--muted"></div>';
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const data = byDay.get(iso);
+      const hasDue = Boolean(data?.count);
+      const isToday = iso === today;
+      const vencido = hasDue && iso < today;
+      const cls = [
+        'cxp-cal-cell',
+        isToday ? 'cxp-cal-cell--today' : '',
+        hasDue ? 'cxp-cal-cell--due cxp-cal-cell--clickable' : '',
+        vencido ? 'cxp-cal-cell--overdue' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      cells += `
+        <div class="${cls}" data-cal-date="${iso}"${hasDue ? ' role="button" tabindex="0"' : ''}>
+          <div class="cxp-cal-day">${day}</div>
+          ${
+            hasDue
+              ? `
+            <div class="cxp-cal-meta">
+              <span class="cxp-cal-count">${data.count} doc.</span>
+              <span class="cxp-cal-amount">${this.escapeHtml(this.formatMoney(data.total))}</span>
+            </div>`
+              : ''
+          }
+        </div>`;
+    }
+
+    const totalCells = startWeekday + daysInMonth;
+    const trailing = (7 - (totalCells % 7)) % 7;
+    for (let i = 0; i < trailing; i += 1) {
+      cells += '<div class="cxp-cal-cell cxp-cal-cell--muted"></div>';
+    }
+
+    return `
+      <div class="cxp-cal-wrap card shadow-sm">
+        <div class="card-body">
+          <div class="cxp-cal-toolbar d-flex align-items-center justify-content-between gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-cal-prev" title="Mes anterior">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <h3 class="h6 mb-0 fw-semibold text-center flex-grow-1">${this.escapeHtml(this.monthLabel(year, month))}</h3>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-cal-next" title="Mes siguiente">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
           </div>
-          <div class="cxp-summary card border-0 shadow-sm">
-            <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
-              <div class="small">
-                <span class="text-muted">Documentos:</span>
-                <strong class="ms-1">${count}</strong>
-              </div>
-              <div class="small">
-                <span class="text-muted">Doc. saldo total:</span>
-                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</strong>
-              </div>
-            </div>
+          <div class="cxp-cal-grid">
+            ${weekDays.map((d) => `<div class="cxp-cal-weekday">${d}</div>`).join('')}
+            ${cells}
           </div>
+          <p class="small text-muted mt-3 mb-0">
+            Días marcados tienen facturas al crédito con vencimiento y saldo pendiente. Clic en un día para ver el detalle.
+          </p>
         </div>
-        <div class="card shadow-sm mb-3">
-          <div class="card-body py-2">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
-                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input type="search" class="form-control" id="cxp-search"
-                  placeholder="Buscar documento, cliente, empleado, NIT…"
-                  value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
-                title="Recalcular saldos y abonos de facturas al crédito">
-                <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
-              </button>
-            </div>
-            ${truncHint}
-          </div>
-        </div>
+      </div>`;
+  },
+
+  renderListaHtml() {
+    return `
         <div class="card shadow-sm">
           <div class="table-responsive">
             <table class="table table-sm table-hover table-striped mb-0 cxp-table">
@@ -309,7 +535,193 @@ const CuentasPorCobrarView = {
             </table>
           </div>
         </div>
-        <p class="small text-muted mt-2 mb-0">Clic en una fila para ver opciones del documento.</p>
+        <p class="small text-muted mt-2 mb-0">Clic en una fila para ver opciones del documento.</p>`;
+  },
+
+  renderSaldoMesesOptionsHtml(selected, values, labels) {
+    return values
+      .map((v, i) => {
+        const label = labels ? labels[i] : String(v);
+        const sel = Number(v) === Number(selected) ? ' selected' : '';
+        return `<option value="${v}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+  },
+
+  renderSaldoMesesHtml() {
+    this.initSaldoMes();
+    const mes = this._saldoMes;
+    const anio = this._saldoAnio;
+    const totals = this._saldoMesesTotales || {
+      saldoAnterior: 0,
+      creditos: 0,
+      abonos: 0,
+      saldoActual: 0,
+      count: 0,
+    };
+    const years = [];
+    const yNow = new Date().getFullYear();
+    for (let y = yNow - 8; y <= yNow + 1; y += 1) years.push(y);
+    if (!years.includes(anio)) years.push(anio);
+    years.sort((a, b) => a - b);
+
+    const body =
+      this._saldoMesesRows.length === 0
+        ? `<tr><td colspan="6" class="text-center text-muted py-4">Sin movimientos ni saldos hasta ${this.escapeHtml(this.monthLabel(anio, mes - 1))}</td></tr>`
+        : this._saldoMesesRows
+            .map(
+              (r) => `<tr>
+          <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
+          <td class="small text-muted">${this.escapeHtml(r.NEGOCIO || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.SALDO_ANTERIOR))}</td>
+          <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(r.CREDITOS))}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(r.ABONOS))}</td>
+          <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.SALDO_ACTUAL))}</td>
+        </tr>`
+            )
+            .join('');
+
+    return `
+      <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-saldo-prev" title="Mes anterior">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <label class="small mb-0 text-muted" for="cxp-saldo-mes">Mes</label>
+            <select id="cxp-saldo-mes" class="form-select form-select-sm" style="width: auto; min-width: 8rem;">
+              ${this.renderSaldoMesesOptionsHtml(mes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], this.monthNames())}
+            </select>
+            <label class="small mb-0 text-muted" for="cxp-saldo-anio">Año</label>
+            <select id="cxp-saldo-anio" class="form-select form-select-sm" style="width: auto; min-width: 5.5rem;">
+              ${this.renderSaldoMesesOptionsHtml(anio, years)}
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-saldo-next" title="Mes siguiente">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+            <span class="small text-muted ms-1">Estado general hasta ${this.escapeHtml(this.monthLabel(anio, mes - 1))}</span>
+          </div>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Saldo anterior</div>
+              <div class="fw-semibold">${this.escapeHtml(this.formatMoney(totals.saldoAnterior))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Créditos del mes</div>
+              <div class="fw-semibold text-primary">${this.escapeHtml(this.formatMoney(totals.creditos))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Abonos del mes</div>
+              <div class="fw-semibold text-success">${this.escapeHtml(this.formatMoney(totals.abonos))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Saldo actual</div>
+              <div class="fw-bold text-primary">${this.escapeHtml(this.formatMoney(totals.saldoActual))}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover table-striped mb-0 cxp-table">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Cliente</th>
+                <th>Negocio</th>
+                <th class="text-end">Saldo anterior</th>
+                <th class="text-end">Créditos</th>
+                <th class="text-end">Abonos</th>
+                <th class="text-end">Saldo actual</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+            <tfoot class="table-light">
+              <tr>
+                <td colspan="2" class="text-end fw-semibold">${totals.count || 0} cliente(s)</td>
+                <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(totals.saldoAnterior))}</td>
+                <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(totals.creditos))}</td>
+                <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(totals.abonos))}</td>
+                <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totals.saldoActual))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <p class="small text-muted mt-2 mb-0">
+        Incluye facturas al crédito y abonos (RCC / notas de crédito) con fecha hasta el mes seleccionado.
+      </p>`;
+  },
+
+  renderShell() {
+    const count = this.filteredRows().length;
+    const truncHint = this._truncated
+      ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
+      : '';
+    const showListaTools = this._vistaTipo === 'lista' || this._vistaTipo === 'calendario';
+    let contentHtml = this.renderListaHtml();
+    if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
+    if (this._vistaTipo === 'saldo-meses') contentHtml = this.renderSaldoMesesHtml();
+
+    return `
+      <div class="cxp-wrap w-100">
+        <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
+          <div>
+            <h2 class="h5 mb-1"><i class="fa-solid fa-hand-holding-dollar me-2 text-primary"></i>Cuentas por cobrar</h2>
+            <p class="text-muted small mb-0">Facturas al crédito (CONCRE = CRE) con saldo pendiente</p>
+          </div>
+          <div class="cxp-summary card border-0 shadow-sm">
+            <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
+              ${this.renderVistaToggleHtml()}
+              <div class="small">
+                <span class="text-muted">Documentos:</span>
+                <strong class="ms-1">${count}</strong>
+              </div>
+              <div class="small">
+                <span class="text-muted">Doc. saldo total:</span>
+                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${
+          showListaTools
+            ? `
+        <div class="card shadow-sm mb-3">
+          <div class="card-body py-2">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
+                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="search" class="form-control" id="cxp-search"
+                  placeholder="Buscar documento, cliente, empleado, NIT…"
+                  value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
+                title="Recalcular saldos y abonos de facturas al crédito">
+                <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
+              </button>
+            </div>
+            ${truncHint}
+          </div>
+        </div>`
+            : ''
+        }
+        ${contentHtml}
       </div>`;
   },
 
@@ -1065,6 +1477,100 @@ const CuentasPorCobrarView = {
       }, 350);
     });
 
+    const reloadShell = () => {
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    };
+
+    const switchVista = async (value) => {
+      if (value === this._vistaTipo) return;
+      this._vistaTipo = value;
+      if (value === 'calendario') this.initCalMonth();
+      if (value === 'saldo-meses') {
+        this.initSaldoMes();
+        this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando saldos del mes…</div>`;
+        try {
+          await this.fetchSaldoMeses();
+        } catch (err) {
+          F.toast(err.message || 'No se pudo cargar saldo meses', 'error');
+        }
+      }
+      reloadShell();
+    };
+
+    this._container?.querySelector('#cxp-vista-lista')?.addEventListener('click', () => {
+      switchVista('lista');
+    });
+    this._container?.querySelector('#cxp-vista-calendario')?.addEventListener('click', () => {
+      switchVista('calendario');
+    });
+    this._container?.querySelector('#cxp-vista-saldo-meses')?.addEventListener('click', () => {
+      switchVista('saldo-meses');
+    });
+
+    this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {
+      this.initCalMonth();
+      this._calMonth -= 1;
+      if (this._calMonth < 0) {
+        this._calMonth = 11;
+        this._calYear -= 1;
+      }
+      reloadShell();
+    });
+
+    this._container?.querySelector('#cxp-cal-next')?.addEventListener('click', () => {
+      this.initCalMonth();
+      this._calMonth += 1;
+      if (this._calMonth > 11) {
+        this._calMonth = 0;
+        this._calYear += 1;
+      }
+      reloadShell();
+    });
+
+    const onCalDayPick = (cell) => {
+      const iso = cell.getAttribute('data-cal-date');
+      if (!iso || !cell.classList.contains('cxp-cal-cell--clickable')) return;
+      this.mostrarFacturasDelDia(iso).catch((err) => F.toast(err.message || 'Error', 'error'));
+    };
+
+    this._container?.querySelectorAll('.cxp-cal-cell--clickable').forEach((cell) => {
+      cell.addEventListener('click', () => onCalDayPick(cell));
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onCalDayPick(cell);
+        }
+      });
+    });
+
+    const reloadSaldoMeses = async () => {
+      this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando saldos del mes…</div>`;
+      try {
+        await this.fetchSaldoMeses();
+      } catch (err) {
+        F.toast(err.message || 'No se pudo cargar saldo meses', 'error');
+      }
+      reloadShell();
+    };
+
+    this._container?.querySelector('#cxp-saldo-prev')?.addEventListener('click', () => {
+      this.shiftSaldoMes(-1);
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-next')?.addEventListener('click', () => {
+      this.shiftSaldoMes(1);
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-mes')?.addEventListener('change', (e) => {
+      this._saldoMes = Number(e.target.value) || this._saldoMes;
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-anio')?.addEventListener('change', (e) => {
+      this._saldoAnio = Number(e.target.value) || this._saldoAnio;
+      reloadSaldoMeses();
+    });
+
     this._container?.querySelector('#cxp-btn-corregir-saldos')?.addEventListener('click', () => {
       this.corregirSaldos().catch((err) => F.toast(err.message || 'Error al corregir saldos', 'error'));
     });
@@ -1103,6 +1609,8 @@ const CuentasPorCobrarView = {
 
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cuentas por cobrar…</div>`;
     try {
+      this.initCalMonth();
+      this.initSaldoMes();
       await this.fetchDocumentos();
       container.innerHTML = this.renderShell();
       this.bindEvents();

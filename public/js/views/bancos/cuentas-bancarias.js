@@ -1,6 +1,17 @@
 /**
- * Vista Cuentas bancarias — CRUD por EMPNIT. CODBANCO selector de BANCOS.
+ * Vista Cuentas bancarias — CRUD por EMPNIT. CODBANCO selector de BANCOS (tabla general).
  */
+const CUENTAS_BANCARIAS_FORM_FIELDS = [
+  {
+    key: 'CODBANCO',
+    label: 'Banco',
+    type: 'select',
+    required: true,
+    options: [],
+  },
+  { key: 'NOCUENTA', label: 'Número de cuenta', required: true },
+];
+
 const CuentasBancariasViewBase = createCatalogoEmpresaView({
   slug: 'cuentas-bancarias',
   apiPath: '/api/cuentas-bancarias',
@@ -12,16 +23,7 @@ const CuentasBancariasViewBase = createCatalogoEmpresaView({
   dataAttr: 'codcuenta',
   searchPlaceholder: 'Buscar por número de cuenta o banco…',
   searchKeys: ['NOCUENTA', 'DESBANCO', 'CODBANCO'],
-  formFields: [
-    {
-      key: 'CODBANCO',
-      label: 'Banco',
-      type: 'select',
-      required: true,
-      options: [],
-    },
-    { key: 'NOCUENTA', label: 'Número de cuenta', required: true },
-  ],
+  formFields: CUENTAS_BANCARIAS_FORM_FIELDS,
   createKeys: ['CODBANCO', 'NOCUENTA'],
   updateKeys: ['CODBANCO', 'NOCUENTA'],
   tableColumns: [
@@ -44,14 +46,19 @@ const CuentasBancariasView = {
   _bancos: [],
 
   async loadBancos() {
+    // BANCOS es catálogo general (sin EMPNIT)
     const data = await F.fetchJson(`/api/bancos?_=${Date.now()}`, { cache: 'no-store' });
     this._bancos = data.rows || [];
-    const field = this.formFields?.find((f) => f.key === 'CODBANCO');
+    const field = CUENTAS_BANCARIAS_FORM_FIELDS.find((f) => f.key === 'CODBANCO');
     if (field) {
-      field.options = this._bancos.map((b) => ({
-        value: String(b.CODBANCO),
-        label: String(b.DESBANCO || b.CODBANCO),
-      }));
+      field.options = this._bancos.map((b) => {
+        const cod = b.CODBANCO ?? b.codbanco;
+        const des = b.DESBANCO ?? b.desbanco ?? cod;
+        return {
+          value: String(cod),
+          label: String(des),
+        };
+      });
     }
     return this._bancos;
   },

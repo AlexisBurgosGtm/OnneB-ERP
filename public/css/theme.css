@@ -12,6 +12,16 @@
   --btn-fg-purple: #ffffff;
   --btn-fg-guardar: #ffffff;
   --fab-action-fg: #ffffff;
+
+  /* UI shell — redondeo / sombra (todos los temas) */
+  --app-radius: 0.9rem;
+  --app-radius-sm: 0.55rem;
+  --app-radius-input: 0.5rem;
+  --app-radius-modal: 1.15rem;
+  --app-shadow: 0 1px 2px color-mix(in srgb, var(--onneb-base-black, #000) 4%, transparent),
+    0 6px 18px color-mix(in srgb, var(--onneb-base-black, #000) 5%, transparent);
+  --app-shadow-hover: 0 2px 4px color-mix(in srgb, var(--onneb-base-black, #000) 5%, transparent),
+    0 10px 24px color-mix(in srgb, var(--onneb-brand, #7c3aed) 10%, transparent);
 }
 
 :root,
@@ -186,6 +196,64 @@
   --fab-menu-color: #ffffff;
   --bs-primary: #2563eb;
   --bs-primary-rgb: 37, 99, 235;
+}
+
+[data-theme='bw'] {
+  --onneb-brand: #404040;
+  --onneb-brand-dark: #2a2a2a;
+  --onneb-brand-light: #737373;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #1f1f1f;
+  --onneb-base-white: #f5f5f5;
+
+  --onneb-color-primary: #2a2a2a;
+  --onneb-color-secondary: #404040;
+  --onneb-color-accent: #f5f5f5;
+  --onneb-text-muted: #a3a3a3;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 30%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #3a3a3a 0%, #1f1f1f 100%);
+
+  --login-bg: #1a1a1a;
+  --login-bg-base: #121212;
+  --login-surface: #222222;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.7);
+  --login-border: rgba(255, 255, 255, 0.26);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, var(--onneb-brand-dark) 0%, var(--onneb-brand) 55%, var(--onneb-brand-light) 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.66);
+  --login-glass-card: rgba(255, 255, 255, 0.1);
+  --login-field-line: rgba(255, 255, 255, 0.42);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 16% 14%, color-mix(in srgb, var(--onneb-brand-light) 38%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 84% 20%, color-mix(in srgb, var(--onneb-brand) 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, var(--onneb-brand-dark) 55%, #000), transparent 55%),
+    linear-gradient(155deg, #2e2e2e 0%, var(--login-bg-base) 45%, #0a0a0a 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.2);
+  --login-glass-shadow: color-mix(in srgb, #000 35%, transparent);
+  --login-orb-a: color-mix(in srgb, var(--onneb-brand-light) 40%, transparent);
+  --login-orb-b: color-mix(in srgb, var(--onneb-brand) 36%, transparent);
+  --login-orb-c: color-mix(in srgb, var(--onneb-brand-dark) 40%, transparent);
+  --login-glow: var(--onneb-brand-light);
+
+  --app-bg: #ffffff;
+  --app-surface: #f7f7f7;
+  --app-text: #2a2a2a;
+  --app-text-muted: #6b6b6b;
+  --app-border: color-mix(in srgb, var(--onneb-brand) 12%, #e5e5e5);
+  --header-chip-bg: color-mix(in srgb, var(--onneb-brand) 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, var(--onneb-brand) 22%, transparent);
+  --header-chip-text: #2a2a2a;
+
+  --fab-menu-bg: linear-gradient(145deg, #595959, #2a2a2a);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #404040;
+  --bs-primary-rgb: 64, 64, 64;
 }
 
 [data-theme='mustard'] {
