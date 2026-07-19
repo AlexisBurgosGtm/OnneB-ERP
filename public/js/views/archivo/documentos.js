@@ -62,6 +62,7 @@ const DocumentosView = {
     { key: 'TOTALPRECIO', label: 'Total', type: 'money' },
     { key: 'STATUS', label: 'Estado', type: 'status' },
     { key: 'CONCRE', label: 'Pago' },
+    { key: 'ID_COLA_TRABAJO', label: 'ColaTrabajo' },
   ],
 
   defaultPeriod() {
@@ -173,6 +174,12 @@ const DocumentosView = {
       id: 'imprimir',
       label: 'Imprimir',
       icon: 'fa-print',
+      className: 'documentos-menu-item-secondary',
+    });
+    items.push({
+      id: 'trazabilidad',
+      label: 'Trazabilidad',
+      icon: 'fa-diagram-project',
       className: 'documentos-menu-item-secondary',
     });
     if (DocOpciones.puedeCambiarFecha(row)) {
@@ -335,10 +342,74 @@ const DocumentosView = {
       }
       if (action === 'whatsapp') {
         await DocOpciones.enviarWhatsapp(coddoc, correlativo, row);
+        return;
+      }
+      if (action === 'trazabilidad') {
+        await this.showTrazabilidadDocumento(row);
       }
     } catch (err) {
       F.alert('Error', err.message || 'No se pudo completar la acción', 'error');
     }
+  },
+
+  async showTrazabilidadDocumento(row) {
+    const coddoc = String(row?.CODDOC ?? '').trim();
+    const correlativo = row?.CORRELATIVO;
+    if (!coddoc || correlativo == null) {
+      F.toast('Documento inválido', 'warning');
+      return;
+    }
+    const label = this.docLabel(row);
+    const url =
+      `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/trazabilidad` +
+      `?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+    const data = await F.fetchJson(url);
+    const rows = data?.rows || [];
+    const bodyHtml = rows.length
+      ? `<div class="table-responsive text-start">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha</th>
+                <th>Doc.</th>
+                <th>Tipo</th>
+                <th>Correlativo</th>
+                <th>Cliente</th>
+                <th class="text-end">Total</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => `<tr>
+                    <td>${this.escapeHtml(documentosFormatDateDdMmYyyy(r.FECHA))}</td>
+                    <td>${this.escapeHtml(r.CODDOC || '—')}</td>
+                    <td>${this.escapeHtml(r.TIPODOC || r.DESDOC || '—')}</td>
+                    <td>${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
+                    <td>${this.escapeHtml(r.DOC_NOMCLIE || '—')}</td>
+                    <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+                    <td>${this.escapeHtml(r.STATUS || '—')}</td>
+                  </tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '<p class="text-muted small mb-0 text-start">No hay documentos asociados (SERIEFAC / NOFAC).</p>';
+
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Trazabilidad',
+      html: `
+        <p class="small text-muted text-start mb-2">${this.escapeHtml(label)}</p>
+        ${bodyHtml}
+      `,
+      width: Math.min(760, window.innerWidth - 32),
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+    });
   },
 
   docLabel(row) {

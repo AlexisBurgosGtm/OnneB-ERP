@@ -1,5 +1,6 @@
 /**
  * Impresión profesional de documentos y recibos de pago (CARTA / TICKET).
+ * Usa plantillas por EMPNIT + TIPODOC cuando existen; si no, formato built-in.
  */
 const DocPrint = {
   FORMATO_OPCION: 'FORMATO IMPRESION C O T',
@@ -149,9 +150,11 @@ const DocPrint = {
       .join('');
 
     const obs = h.OBS ? `<p class="doc-obs"><em>${this.escapeHtml(h.OBS)}</em></p>` : '';
+    const anulado = this.isAnulado(h) ? this.anuladoStampHtml() : '';
 
     return `
       <div class="doc-print-sheet">
+        ${anulado}
         ${PrintReport.reportHeaderHtml({
           title,
           subtitleHtml: ticket ? '' : `<p class="mb-0">${this.escapeHtml(title)}</p>`,
@@ -202,6 +205,7 @@ const DocPrint = {
 
     return `
       <div class="doc-print-sheet">
+        ${this.isAnulado(abono) || this.isAnulado(factura) ? this.anuladoStampHtml() : ''}
         ${PrintReport.reportHeaderHtml({
           title: 'Recibo de pago',
           subtitleHtml: ticket ? '' : '<p class="mb-0">Recibo de pago a cliente</p>',
@@ -223,8 +227,8 @@ const DocPrint = {
       </div>`;
   },
 
-  wrapHtml({ title, bodyHtml, formato }) {
-    const extra = this.layoutStyles(formato);
+  wrapHtml({ title, bodyHtml, formato, extraCss = '' }) {
+    const extra = `${this.layoutStyles(formato)}\n${extraCss || ''}`;
     return PrintReport.wrapDocument({
       title,
       bodyHtml,
@@ -232,12 +236,70 @@ const DocPrint = {
     });
   },
 
-  windowFeaturesFor(formato) {
-    return this.isTicket(formato) ? 'width=360,height=720' : 'width=900,height=700';
+  windowFeaturesFor(_formato) {
+    if (typeof PrintReport !== 'undefined' && PrintReport.maximizedFeatures) {
+      return PrintReport.maximizedFeatures();
+    }
+    const w = Math.max(800, Number(window.screen?.availWidth) || 1200);
+    const h = Math.max(600, Number(window.screen?.availHeight) || 800);
+    return `left=0,top=0,width=${w},height=${h}`;
+  },
+
+  isAnulado(header) {
+    return String(header?.STATUS || '').trim().toUpperCase() === 'A';
+  },
+
+  anuladoStampHtml() {
+    return `<div class="doc-anulado-stamp" aria-label="Anulado">ANULADO</div>`;
+  },
+
+  /**
+   * Intenta imprimir con plantilla de BD (EMPNIT + CODDOC + CORRELATIVO → TIPODOC).
+   * @returns {Promise<boolean>} true si se imprimió con plantilla
+   */
+  async tryPrintWithTemplate({ coddoc, correlativo, title, formato, logoUrl }) {
+    const emp = F.getEmpNit();
+    if (!emp || !coddoc || correlativo == null || correlativo === '') return false;
+    const papel = this.normalizeFormato(formato);
+    const params = new URLSearchParams({ empnit: emp });
+    const data = await F.fetchJson(`/api/formatos-impresion/render?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        coddoc: String(coddoc),
+        correlativo: Number(correlativo),
+        papel,
+        title: title || undefined,
+        logoUrl: logoUrl || undefined,
+      }),
+    });
+    if (!data?.html) return false;
+    await PrintReport.openAndPrint(data.html, this.windowFeaturesFor(papel));
+    return true;
   },
 
   async printDocument({ title, header, lines, extraMeta, footerNote, formato }) {
     const fmt = formato || (await this.fetchFormatoImpresion());
+    const h = header || {};
+    const coddoc = h.CODDOC;
+    const correlativo = h.CORRELATIVO;
+
+    if (coddoc != null && correlativo != null && correlativo !== '') {
+      try {
+        await PrintReport.ensureLogo();
+        const used = await this.tryPrintWithTemplate({
+          coddoc,
+          correlativo,
+          title,
+          formato: fmt,
+          logoUrl: PrintReport.getLogoDataUrl(),
+        });
+        if (used) return;
+      } catch (err) {
+        console.warn('[DocPrint] plantilla:', err.message || err);
+      }
+    }
+
     await PrintReport.openAndPrint(
       () =>
         this.wrapHtml({
@@ -247,6 +309,23 @@ const DocPrint = {
         }),
       this.windowFeaturesFor(fmt)
     );
+  },
+
+  /**
+   * Imprime por llave de documento (carga datos y plantilla en el servidor).
+   */
+  async printByKey({ coddoc, correlativo, title, formato }) {
+    const fmt = formato || (await this.fetchFormatoImpresion());
+    await PrintReport.ensureLogo();
+    const used = await this.tryPrintWithTemplate({
+      coddoc,
+      correlativo,
+      title,
+      formato: fmt,
+      logoUrl: PrintReport.getLogoDataUrl(),
+    });
+    if (used) return;
+    throw new Error('No se pudo renderizar el documento');
   },
 
   async printReciboPagoCliente(data, formato) {

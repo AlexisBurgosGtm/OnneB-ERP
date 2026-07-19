@@ -21,6 +21,7 @@ const TD_FORM_FIELDS = [
   { key: 'CODFORMATOCON', label: 'Formato contado', type: 'select', options: [] },
   { key: 'CODFORMATOCRE', label: 'Formato crédito', type: 'select', options: [] },
   { key: 'CONTABLE', label: 'Contable', type: 'select', options: contableOptions },
+  { key: 'REPORTES', label: 'Reportes', type: 'select', options: contableOptions },
 ];
 
 function tipomLabel(value) {
@@ -72,6 +73,7 @@ function tipoDocumentosMapFormToApi(data, isEdit) {
     CODFORMATOCON: String(data.CODFORMATOCON || '').trim() || null,
     CODFORMATOCRE: String(data.CODFORMATOCRE || '').trim() || null,
     CONTABLE: String(data.CONTABLE || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
+    REPORTES: String(data.REPORTES || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
   };
   if (!isEdit) {
     payload.CODDOC = String(data.CODDOC ?? '').trim().toUpperCase();
@@ -90,7 +92,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
   dataAttr: 'coddoc',
   formWidth: 780,
   searchPlaceholder: 'Buscar por código, descripción, tipo…',
-  searchKeys: ['CODDOC', 'DESDOC', 'TIPODOC', 'FORMATO', 'TIPOM', 'CONTABLE', 'ACTIVO'],
+  searchKeys: ['CODDOC', 'DESDOC', 'TIPODOC', 'FORMATO', 'TIPOM', 'CONTABLE', 'REPORTES', 'ACTIVO'],
   formFields: TD_FORM_FIELDS,
   createKeys: [
     'CODDOC',
@@ -102,6 +104,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'CODFORMATOCON',
     'CODFORMATOCRE',
     'CONTABLE',
+    'REPORTES',
     'ACTIVO',
   ],
   updateKeys: [
@@ -113,6 +116,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'CODFORMATOCON',
     'CODFORMATOCRE',
     'CONTABLE',
+    'REPORTES',
   ],
   mapFormToApi: tipoDocumentosMapFormToApi,
   validateForm: validateTipoDocumentoForm,
@@ -123,6 +127,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     { key: 'TIPOM', label: 'Tipo Inventario' },
     { key: 'FORMATO', label: 'Formato' },
     { key: 'CONTABLE', label: 'Contable' },
+    { key: 'REPORTES', label: 'Reportes' },
     { key: 'ACTIVO', label: 'Activo' },
   ],
   getRowLabel(row) {
@@ -133,6 +138,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
 const TipoDocumentosView = {
   ...TipoDocumentosViewBase,
   _lookups: null,
+  _filterTipodoc: '',
 
   escapeHtml(value) {
     return TipoDocumentosViewBase.escapeHtml.call(this, value);
@@ -204,6 +210,7 @@ const TipoDocumentosView = {
       CODFORMATOCON: row.CODFORMATOCON ?? '',
       CODFORMATOCRE: row.CODFORMATOCRE ?? '',
       CONTABLE: String(row.CONTABLE ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
+      REPORTES: String(row.REPORTES ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
     };
   },
 
@@ -270,7 +277,7 @@ const TipoDocumentosView = {
 
   formatCell(value, col) {
     if (col?.key === 'TIPOM') return this.escapeHtml(tipomLabel(value));
-    if (col?.key === 'CONTABLE') {
+    if (col?.key === 'CONTABLE' || col?.key === 'REPORTES') {
       return this.escapeHtml(String(value ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO');
     }
     if (col?.key === 'TIPODOC') {
@@ -300,6 +307,108 @@ const TipoDocumentosView = {
     `;
   },
 
+  getFilteredRows() {
+    let rows = TipoDocumentosViewBase.getFilteredRows.call(this);
+    const tipodoc = String(this._filterTipodoc ?? '').trim().toUpperCase();
+    if (tipodoc) {
+      rows = rows.filter((r) => String(r.TIPODOC ?? '').trim().toUpperCase() === tipodoc);
+    }
+    return rows;
+  },
+
+  badgeText(filteredCount, totalCount) {
+    const empNombre = F.getEmpNitNombre() || '';
+    const badgeExtra = empNombre ? ` · ${empNombre}` : '';
+    const filtering =
+      this._filterQuery.trim() || String(this._filterTipodoc ?? '').trim();
+    const countLabel =
+      filtering && filteredCount !== totalCount
+        ? `${filteredCount} de ${totalCount} tipo(s) documento`
+        : `${totalCount} tipo(s) documento`;
+    return `<i class="fa-solid fa-file-lines me-1"></i>${countLabel}${this.escapeHtml(badgeExtra)}`;
+  },
+
+  tipodocFilterOptionsHtml() {
+    const selected = String(this._filterTipodoc ?? '').trim().toUpperCase();
+    const fromLookups = (this._lookups?.tiposDoc || []).map((t) => ({
+      value: String(t.value ?? '').trim().toUpperCase(),
+      label: String(t.label ?? t.value ?? '').trim(),
+    }));
+    const fromRows = [...new Set(
+      (this._rows || [])
+        .map((r) => String(r.TIPODOC ?? '').trim().toUpperCase())
+        .filter(Boolean)
+    )].map((code) => ({
+      value: code,
+      label: tipoDocLabel(code, this._lookups),
+    }));
+    const byValue = new Map();
+    [...fromLookups, ...fromRows].forEach((opt) => {
+      if (!opt.value || byValue.has(opt.value)) return;
+      byValue.set(opt.value, opt);
+    });
+    const options = [...byValue.values()].sort((a, b) => a.value.localeCompare(b.value));
+    return [
+      `<option value=""${selected ? '' : ' selected'}>Todos</option>`,
+      ...options.map(
+        (o) =>
+          `<option value="${this.escapeHtml(o.value)}"${o.value === selected ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+      ),
+    ].join('');
+  },
+
+  renderTable() {
+    const columns = [
+      { key: 'CODDOC', label: 'Código' },
+      { key: 'DESDOC', label: 'Descripción' },
+      { key: 'TIPODOC', label: 'Tipo doc.' },
+      { key: 'TIPOM', label: 'Tipo Inventario' },
+      { key: 'FORMATO', label: 'Formato' },
+      { key: 'CONTABLE', label: 'Contable' },
+      { key: 'REPORTES', label: 'Reportes' },
+      { key: 'ACTIVO', label: 'Activo' },
+    ];
+    const headers = [
+      ...columns.map((c) => `<th scope="col">${this.escapeHtml(c.label)}</th>`),
+      '<th scope="col" class="text-end">Acciones</th>',
+    ].join('');
+    const filtered = this.getFilteredRows();
+
+    return `
+      <div class="catalogo-empresa-panel catalogo-vista-wrap tipo-documentos-wrap">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
+          <span class="catalogo-empresa-badge" id="tipo-documentos-count">${this.badgeText(filtered.length, this._rows.length)}</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-tipo-documentos-refresh">
+            <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
+          </button>
+        </div>
+        <div class="tipo-documentos-filters px-1 mb-2">
+          <select class="form-select form-select-sm tipo-documentos-filter-tipodoc" id="tipo-documentos-filter-tipodoc"
+            title="Tipo documento" aria-label="Tipo documento">
+            ${this.tipodocFilterOptionsHtml()}
+          </select>
+          <div class="input-group input-group-sm catalogo-empresa-search tipo-documentos-search">
+            <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="search" class="form-control" id="tipo-documentos-search"
+              placeholder="${this.escapeHtml('Buscar por código, descripción, tipo…')}"
+              value="${this.escapeHtml(this._filterQuery)}" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn btn-outline-secondary" id="btn-tipo-documentos-search-clear"
+              title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover table-striped">
+            <thead><tr>${headers}</tr></thead>
+            <tbody id="tipo-documentos-tbody">${this.renderTableBodyHtml(filtered)}</tbody>
+          </table>
+        </div>
+        ${CatalogosUI.btnNuevoFab('btn-tipo-documentos-nuevo')}
+      </div>
+    `;
+  },
+
   renderTableBodyHtml(rows) {
     const columns = [
       { key: 'CODDOC', label: 'Código' },
@@ -308,13 +417,15 @@ const TipoDocumentosView = {
       { key: 'TIPOM', label: 'Tipo Inventario' },
       { key: 'FORMATO', label: 'Formato' },
       { key: 'CONTABLE', label: 'Contable' },
+      { key: 'REPORTES', label: 'Reportes' },
       { key: 'ACTIVO', label: 'Activo' },
     ];
     const colSpan = columns.length + 1;
     if (!rows.length) {
-      const msg = this._filterQuery.trim()
-        ? 'Ningún registro coincide con la búsqueda'
-        : 'Sin registros';
+      const msg =
+        this._filterQuery.trim() || String(this._filterTipodoc ?? '').trim()
+          ? 'Ningún registro coincide con el filtro'
+          : 'Sin registros';
       return `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
@@ -395,7 +506,8 @@ const TipoDocumentosView = {
       this.rowCols([field('CODDOC'), field('CORRELATIVO')]),
       this.rowCols([field('DESDOC')]),
       this.rowCols([field('TIPODOC'), field('TIPOM'), field('FORMATO')]),
-      this.rowCols([field('CODFORMATOCON'), field('CODFORMATOCRE'), field('CONTABLE')]),
+      this.rowCols([field('CODFORMATOCON'), field('CODFORMATOCRE')]),
+      this.rowCols([field('CONTABLE'), field('REPORTES')]),
     ].join('');
   },
 
@@ -510,6 +622,20 @@ const TipoDocumentosView = {
 
   bindEvents() {
     TipoDocumentosViewBase.bindEvents.call(this);
+    this._container?.querySelector('#tipo-documentos-filter-tipodoc')?.addEventListener('change', (e) => {
+      this._filterTipodoc = e.target.value;
+      this.updateTableView();
+    });
+    const refreshBtn = document.getElementById('btn-tipo-documentos-refresh');
+    if (refreshBtn) {
+      const clone = refreshBtn.cloneNode(true);
+      refreshBtn.replaceWith(clone);
+      clone.addEventListener('click', () => {
+        this._filterQuery = '';
+        this._filterTipodoc = '';
+        this.load(this._container);
+      });
+    }
   },
 
   async load(container) {

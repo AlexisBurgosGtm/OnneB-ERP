@@ -134,10 +134,27 @@ body {
 .main-content > .dashboard-admin-wrap,
 .main-content > .inicio-empleado-wrap,
 .main-content > .mb-wrap,
+.main-content > .cxp-wrap,
+.main-content > .formatos-impresion-wrap,
 .main-content.productos-view-root {
   flex: 1;
   min-height: 0;
   width: 100%;
+  align-self: stretch;
+}
+
+.main-content.flex-column {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.main-content.flex-column > .formatos-impresion-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .inicio-blank {

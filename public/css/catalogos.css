@@ -62,6 +62,26 @@
   max-width: 22rem;
 }
 
+.tipo-documentos-wrap .tipo-documentos-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tipo-documentos-wrap .tipo-documentos-filter-tipodoc {
+  flex: 0 0 12rem;
+  width: 12rem;
+  max-width: 12rem;
+}
+
+.tipo-documentos-wrap .tipo-documentos-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
 .catalogo-empresa-search .input-group-text {
   background: var(--app-surface, #f5f5f5);
   border-color: var(--app-border, #e0e0e0);

@@ -5,6 +5,7 @@
     { "TIPODOC": "FAC", "DESCRIPCION": "Factura interna" },
     { "TIPODOC": "ENV", "DESCRIPCION": "Pedidos / mostrador" },
     { "TIPODOC": "COT", "DESCRIPCION": "Cotizaciones" },
+    { "TIPODOC": "CRS", "DESCRIPCION": "Comanda Restaurante" },    
     { "TIPODOC": "DEV", "DESCRIPCION": "Nota de crédito clientes (no fiscal)" },  
     { "TIPODOC": "FEF", "DESCRIPCION": "Factura electrónica IVA (FACT)" },
     { "TIPODOC": "FEC", "DESCRIPCION": "Factura cambiaria IVA (FCAM)" },

@@ -27,6 +27,7 @@
   <link rel="stylesheet" href="/css/dashboard-admin.css">
   <link rel="stylesheet" href="/css/tareas.css">
   <link rel="stylesheet" href="/css/config-general.css">
+  <link rel="stylesheet" href="/css/formatos-impresion.css">
   <link rel="stylesheet" href="/css/nomina.css">
   <link rel="stylesheet" href="/css/developer.css">
   <link rel="stylesheet" href="/css/updater.css">
@@ -139,8 +140,11 @@
               <div id="collapseOperaciones" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="pedidos-mostrador"><i class="fa-solid fa-store" aria-hidden="true"></i> Pedidos de Mostrador</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="comandas-restaurante"><i class="fa-solid fa-utensils" aria-hidden="true"></i> Comandas Restaurante</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cotizaciones"><i class="fa-solid fa-file-signature" aria-hidden="true"></i> Cotizaciones</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturación</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="fraccionamiento-fac"><i class="fa-solid fa-scissors" aria-hidden="true"></i> Fraccionamiento Facturas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="facturacion"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturas normales</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="facturas-electronicas"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Facturas Electrónicas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-credito"><i class="fa-solid fa-file-circle-minus" aria-hidden="true"></i> Notas de Credito (clientes)</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-abono"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Notas de Abono</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
@@ -271,6 +275,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="rutas"><i class="fa-solid fa-route" aria-hidden="true"></i> Rutas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="fabricantes"><i class="fa-solid fa-industry" aria-hidden="true"></i> Fabricantes</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="ubicaciones"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> Ubicaciones</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="mesas-restaurante"><i class="fa-solid fa-chair" aria-hidden="true"></i> Mesas Restaurante</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cajas"><i class="fa-solid fa-cash-register" aria-hidden="true"></i> Cajas</a></li>
                 </ul>
               </div>
@@ -304,6 +309,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="empresas"><i class="fa-solid fa-building" aria-hidden="true"></i> Empresas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="config-general"><i class="fa-solid fa-gear" aria-hidden="true"></i> Config general</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tipo-documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Tipo documentos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="formatos-impresion"><i class="fa-solid fa-print" aria-hidden="true"></i> Formatos de impresión</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="credenciales-fel"><i class="fa-solid fa-key" aria-hidden="true"></i> Credenciales FEL</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="updater"><i class="fa-solid fa-database" aria-hidden="true"></i> Actualizador BD</a></li>
                 </ul>
@@ -371,6 +377,7 @@
   <script src="/js/views/catalogos/rutas.js"></script>
   <script src="/js/views/catalogos/fabricantes.js"></script>
   <script src="/js/views/catalogos/ubicaciones.js"></script>
+  <script src="/js/views/catalogos/mesas-restaurante.js"></script>
   <script src="/js/views/catalogos/clientes.js"></script>
   <script src="/js/views/catalogos/tipo-negocios.js"></script>
   <script src="/js/views/catalogos/proveedores.js"></script>
@@ -390,6 +397,8 @@
   <script src="/js/views/transportes/mantenimiento-llantas.js"></script>
   <script src="/js/views/transportes/kilometrajes.js"></script>
   <script src="/js/views/transportes/servicio-mecanica.js"></script>
+  <script src="/js/formato-impresion-designer.js"></script>
+  <script src="/js/views/configuraciones/formatos-impresion.js"></script>
   <script src="/js/views/configuraciones/credenciales-fel.js"></script>
   <script src="/js/views/configuraciones/config-general.js"></script>
   <script src="/js/views/configuraciones/developer.js"></script>
@@ -404,7 +413,9 @@
   <script src="/js/pos-doc-search-ui.js"></script>
   <script src="/js/doc-tipo-select.js"></script>
   <script src="/js/views/operaciones/pos.js"></script>
+  <script src="/js/views/operaciones/comandas-restaurante.js"></script>
   <script src="/js/views/operaciones/cotizaciones.js"></script>
+  <script src="/js/views/operaciones/FraccionamientoFac.js"></script>
   <script src="/js/views/operaciones/facturacion.js"></script>
   <script src="/js/doc-linea-descuento-ui.js"></script>
   <script src="/js/views/operaciones/notas-credito.js"></script>

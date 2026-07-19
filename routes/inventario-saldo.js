@@ -3,7 +3,11 @@ const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
 const { countMissingInvSaldo, syncMissingInvSaldo, deduplicateInvSaldo, countDuplicateInvSaldo } = require('../lib/invsaldo');
-const { previewRecalcInventario, ejecutarRecalcInventario } = require('../lib/inventario-recalc');
+const {
+  previewRecalcInventario,
+  ejecutarRecalcInventario,
+  corregirTipomNulos,
+} = require('../lib/inventario-recalc');
 
 const router = express.Router();
 
@@ -427,6 +431,24 @@ router.post('/recalcular', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[API POST /inventario/recalcular]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.post('/recalcular/corregir-tipom', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await corregirTipomNulos(pool, empnit);
+    res.json(result);
+  } catch (err) {
+    console.error('[API POST /inventario/recalcular/corregir-tipom]', err.message);
     res.status(500).json({ error: err.message });
   }
   return undefined;

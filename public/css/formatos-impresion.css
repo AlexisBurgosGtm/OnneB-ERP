@@ -1,0 +1,250 @@
+.formatos-impresion-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.formatos-impresion-wrap .fi-panels {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.formatos-impresion-wrap .fi-panel {
+  display: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.formatos-impresion-wrap .fi-panel.is-active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.formatos-impresion-wrap.fi-screen-list .fi-panel-list.is-active {
+  overflow: auto;
+}
+
+.formatos-impresion-wrap.fi-screen-designer .fi-panel-designer.is-active {
+  overflow: hidden;
+}
+
+.formatos-impresion-wrap #fi-editor-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.formatos-impresion-wrap .fi-list-panel {
+  width: 100%;
+  padding: 0 0.25rem 1rem;
+  box-sizing: border-box;
+}
+
+.formatos-impresion-wrap .fi-list-card {
+  width: 100%;
+  overflow: auto;
+}
+
+.formatos-impresion-wrap .fi-list-row {
+  cursor: default;
+}
+
+.formatos-impresion-wrap .fi-code {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  tab-size: 2;
+}
+
+.formatos-impresion-wrap .fi-var-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.formatos-impresion-wrap .fi-var-chip {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.formatos-impresion-wrap .fi-help {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.formatos-impresion-wrap .fi-editor--full {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  background: var(--app-surface, #fff);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.formatos-impresion-wrap .fi-designer-toolbar {
+  flex: 0 0 auto;
+  z-index: 3;
+  padding: 0.65rem 0.85rem;
+  background: var(--app-surface, #fff);
+  border-bottom: 1px solid var(--app-border, #e2e8f0);
+}
+
+/* Zona scrollable del diseñador: barra fija arriba, contenido abajo */
+.formatos-impresion-wrap .fi-designer-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0; /* fuerza overflow en flexbox */
+  overflow-y: scroll;
+  overflow-x: auto;
+  padding: 0.85rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.formatos-impresion-wrap .fi-visual-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.35rem;
+  background: var(--app-surface, #f8fafc);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 0.35rem;
+}
+
+.formatos-impresion-wrap .fi-canvas-stage {
+  background: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow: auto;
+  max-height: none;
+}
+
+.formatos-impresion-wrap .fi-paper {
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  border: 1px solid #cbd5e1;
+  zoom: 1;
+  transform: none;
+}
+
+.formatos-impresion-wrap .fi-paper--carta {
+  width: 794px;
+  min-height: 400px;
+}
+
+.formatos-impresion-wrap .fi-paper--ticket {
+  width: 302px;
+  min-height: 400px;
+}
+
+.formatos-impresion-wrap .fi-design-frame {
+  display: block;
+  border: 0;
+  width: 100%;
+  min-height: 520px;
+  height: 560px;
+  background: #fff;
+  zoom: 1;
+  transform: none;
+}
+
+.formatos-impresion-wrap .fi-designer-actions {
+  border-top: 1px solid var(--app-border, #e2e8f0);
+  padding-top: 0.75rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--app-surface, #fff);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
+/* Modal vista previa 100% */
+.fi-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.fi-preview-dialog {
+  background: #f1f5f9;
+  border-radius: 0.5rem;
+  width: min(960px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.fi-preview-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.fi-preview-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 1.25rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: #64748b;
+}
+
+.fi-preview-sheet {
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  zoom: 1 !important;
+  transform: none !important;
+}
+
+.fi-preview-frame {
+  display: block;
+  border: 0;
+  min-height: 900px;
+  height: 1100px;
+  background: #fff;
+  zoom: 1 !important;
+  transform: none !important;
+}
+
+.fi-preview-sheet--ticket .fi-preview-frame {
+  min-height: 700px;
+  height: 800px;
+}

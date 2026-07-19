@@ -37,14 +37,34 @@ const {
 
 const router = express.Router();
 
+router.use((req, _res, next) => {
+  req.facturacionGrupo = resolveFacturacionGrupo(req);
+  next();
+});
+
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
-const TIPODOC_FACTURACION = ['FAC', 'FEF', 'FES', 'FEC'];
-const TIPODOC_SQL_IN = TIPODOC_FACTURACION.map((t) => `'${t}'`).join(', ');
+const TIPODOC_GRUPO_FAC = ['FAC'];
+const TIPODOC_GRUPO_FEL = ['FEF', 'FES', 'FEC'];
+const TIPODOC_FACTURACION_ALL = [...TIPODOC_GRUPO_FAC, ...TIPODOC_GRUPO_FEL];
 const TIPODOC_MOSTRADOR = 'ENV';
 const TIPODOC_COTIZACION = 'COT';
-const TIPODOC_TOMAR_DATOS = [TIPODOC_MOSTRADOR, TIPODOC_COTIZACION];
+const TIPODOC_COMANDA = 'CRS';
+const TIPODOC_TOMAR_DATOS = [TIPODOC_MOSTRADOR, TIPODOC_COTIZACION, TIPODOC_COMANDA];
 const TIPODOC_TOMAR_DATOS_SQL_IN = TIPODOC_TOMAR_DATOS.map((t) => `'${t}'`).join(', ');
+
+function tipodocSqlIn(tipodocs) {
+  return tipodocs.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(', ');
+}
+
+/** grupo=fac → FAC; grupo=fel → FEF/FES/FEC */
+function resolveFacturacionGrupo(req) {
+  const raw = String(req.query?.grupo || req.body?.grupo || 'fac').trim().toLowerCase();
+  if (raw === 'fel' || raw === 'electronicas' || raw === 'electronica') {
+    return { id: 'fel', tipodocs: TIPODOC_GRUPO_FEL };
+  }
+  return { id: 'fac', tipodocs: TIPODOC_GRUPO_FAC };
+}
 
 /** Factura que referencia pedido/cotización (SERIEFAC + NOFAC), excluyendo anuladas */
 const SQL_FACTURA_VINCULADA_PEDIDO = `
@@ -179,14 +199,15 @@ function calcLineTotals(cantidad, costo, precio, equivale) {
   return { totalUnidades, totalCosto, totalPrecio };
 }
 
-async function getTipoDocFacturacion(pool, empnit, coddocPreferred) {
+async function getTipoDocFacturacion(pool, empnit, coddocPreferred, tipodocs = TIPODOC_FACTURACION_ALL) {
+  const tipodocIn = tipodocSqlIn(tipodocs);
   const req = pool.request().input('EMPNIT', sql.VarChar, empnit);
   if (coddocPreferred) {
     req.input('CODDOC', sql.VarChar, coddocPreferred);
     const one = await req.query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC IN (${TIPODOC_SQL_IN}) AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
     `);
     if (one.recordset.length) return one.recordset[0];
   }
@@ -196,7 +217,7 @@ async function getTipoDocFacturacion(pool, empnit, coddocPreferred) {
     .query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${TIPODOC_SQL_IN}) AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
       ORDER BY CODDOC
     `);
   return all.recordset[0] || null;
@@ -291,7 +312,7 @@ async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
   return { totalCosto, totalPrecio, totalIva, totalSinIva };
 }
 
-async function loadPedido(pool, empnit, coddoc, correlativo) {
+async function loadPedido(pool, empnit, coddoc, correlativo, tipodocs = null) {
   const headerRes = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -307,6 +328,11 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   if (!headerRes.recordset.length) return null;
+  const header = headerRes.recordset[0];
+  if (Array.isArray(tipodocs) && tipodocs.length) {
+    const td = String(header.TIPODOC || '').trim().toUpperCase();
+    if (!tipodocs.map((t) => String(t).toUpperCase()).includes(td)) return null;
+  }
   const linesRes = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -321,7 +347,7 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       ORDER BY l.Id
     `);
-  return normalizePedidoResponse({ header: headerRes.recordset[0], lines: linesRes.recordset });
+  return normalizePedidoResponse({ header, lines: linesRes.recordset });
 }
 
 async function loadPedidoEnvOperado(db, empnit, coddoc, correlativo) {
@@ -341,6 +367,7 @@ async function loadPedidoEnvOperado(db, empnit, coddoc, correlativo) {
 }
 
 async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCorrelativo, dstCoddoc, dstCorrelativo, parts) {
+  const tipom = await getTipomDocumento(transaction, empnit, dstCoddoc);
   await transaction
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -351,6 +378,7 @@ async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCor
     .input('CORR_SRC', sql.Decimal(18, 0), srcCorrelativo)
     .input('CODDOC_DST', sql.VarChar, dstCoddoc)
     .input('CORR_DST', sql.Decimal(18, 0), dstCorrelativo)
+    .input('TIPOM', sql.Int, tipom)
     .query(`
       INSERT INTO dbo.DOCPRODUCTOS (
         EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -359,7 +387,7 @@ async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCor
         ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
         COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
         DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, LASTUPDATE
+        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
       )
       SELECT
         l.EMPNIT, @ANIO, @MES, @DIA, @CODDOC_DST, @CORR_DST,
@@ -371,10 +399,11 @@ async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCor
         ISNULL(l.CODBODEGAENTRADA, ${DEFAULT_BODEGA}), ISNULL(l.CODBODEGASALIDA, ${DEFAULT_BODEGA}),
         ISNULL(l.DESCUENTO, 0), ISNULL(l.PORCDESCUENTO, 0), ISNULL(l.NOSERIE, 'SN'), ISNULL(l.EXENTO, 0), ISNULL(l.OBS, 'SN'),
         ISNULL(l.TIPOPROD, 'P'), ISNULL(l.TIPOPRECIO, 'P'), ISNULL(l.PESO, 0), ISNULL(l.TOTALPESO, 0),
-        CAST(GETDATE() AS DATE)
+        @TIPOM, CAST(GETDATE() AS DATE)
       FROM dbo.DOCPRODUCTOS l
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC_SRC AND l.CORRELATIVO = @CORR_SRC
     `);
+  return tipom;
 }
 
 async function cerrarPedidoReferenciaFactura(transaction, empnit, facCoddoc, facCorrelativo, pedCoddoc, pedCorrelativo) {
@@ -491,15 +520,17 @@ router.get('/config', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { id: grupoId, tipodocs } = resolveFacturacionGrupo(req);
+  const tipodocIn = tipodocSqlIn(tipodocs);
   try {
     const pool = await req.app.locals.getDbPool();
     const tipos = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .query(`
-        SELECT CODDOC, DESDOC, CORRELATIVO
+        SELECT CODDOC, DESDOC, CORRELATIVO, TIPODOC
         FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${TIPODOC_SQL_IN}) AND ACTIVO = 'SI'
+        WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
         ORDER BY CODDOC
       `);
     const def = tipos.recordset[0] || null;
@@ -514,7 +545,8 @@ router.get('/config', async (req, res) => {
       `);
     res.json({
       empnit,
-      tipodocs: TIPODOC_FACTURACION,
+      grupo: grupoId,
+      tipodocs,
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
@@ -558,6 +590,8 @@ router.get('/pedidos', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { tipodocs } = resolveFacturacionGrupo(req);
+  const tipodocIn = tipodocSqlIn(tipodocs);
   const coddoc = String(req.query.coddoc || '').trim();
   const statusFilter = sqlPedidosListStatusFilter(req.query.status, { defaultAll: true });
   const statusLabel = resolvePedidosListStatusLabel(req.query.status, { defaultAll: true });
@@ -583,6 +617,7 @@ router.get('/pedidos', async (req, res) => {
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.ANIO, d.MES, d.DIA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
         d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
+        d.ID_COLA_TRABAJO,
         t.TIPODOC,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
@@ -595,7 +630,7 @@ router.get('/pedidos', async (req, res) => {
       LEFT JOIN dbo.Empleados emp ON d.CODVEN = emp.CODEMPLEADO AND d.EMPNIT = emp.EMPNIT
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
-        AND t.TIPODOC IN (${TIPODOC_SQL_IN})
+        AND t.TIPODOC IN (${tipodocIn})
         ${statusFilter}
         AND ${sqlDocumentoFechaDiaWhere('d')}
         ${coddocFilter}
@@ -615,6 +650,8 @@ router.get('/pedidos-env', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { tipodocs } = resolveFacturacionGrupo(req);
+  const tipodocIn = tipodocSqlIn(tipodocs);
   const q = String(req.query.q || '').trim();
   const qLike = q ? `%${q}%` : null;
   try {
@@ -658,7 +695,7 @@ router.get('/pedidos-env', async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM dbo.DOCUMENTOS f
           JOIN dbo.TIPODOCUMENTOS tf ON f.CODDOC = tf.CODDOC AND f.EMPNIT = tf.EMPNIT
-          WHERE tf.TIPODOC IN (${TIPODOC_SQL_IN})
+          WHERE tf.TIPODOC IN (${tipodocIn})
             AND ${SQL_FACTURA_VINCULADA_PEDIDO}
         )
         AND (d.SERIEFAC IS NULL OR LTRIM(RTRIM(d.SERIEFAC)) = '')
@@ -675,6 +712,8 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { tipodocs } = resolveFacturacionGrupo(req);
+  const tipodocIn = tipodocSqlIn(tipodocs);
   const pedCoddoc = String(req.body?.CODDOC_PEDIDO || req.body?.CODDOC || '').trim();
   const pedCorrelativo = parseCorrelativo(req.body?.CORRELATIVO_PEDIDO ?? req.body?.CORRELATIVO);
   const coddocFacPref = String(req.body?.CODDOC_FAC || req.body?.CODDOC_FACTURA || '').trim();
@@ -687,7 +726,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     const pedido = await loadPedidoEnvOperado(pool, empnit, pedCoddoc, pedCorrelativo);
     if (!pedido) {
-      return res.status(404).json({ error: 'Pedido o cotización no encontrado o no está operado' });
+      return res.status(404).json({ error: 'Pedido, cotización o comanda no encontrado o no está operado' });
     }
 
     const dupCheck = await pool
@@ -700,7 +739,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
         FROM dbo.DOCUMENTOS d
         JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
         WHERE d.EMPNIT = @EMPNIT
-          AND t.TIPODOC IN (${TIPODOC_SQL_IN})
+          AND t.TIPODOC IN (${tipodocIn})
           AND d.SERIEFAC = @SERIEFAC
           AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR_PED
           AND d.STATUS <> '${STATUS_ANULADO}'
@@ -712,10 +751,10 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
       });
     }
 
-    const tipo = await getTipoDocFacturacion(pool, empnit, coddocFacPref);
+    const tipo = await getTipoDocFacturacion(pool, empnit, coddocFacPref, tipodocs);
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento de facturación (${TIPODOC_FACTURACION.join(', ')}) activo`,
+        error: `No hay tipo de documento de facturación (${tipodocs.join(', ')}) activo`,
       });
     }
     const coddocFac = tipo.CODDOC;
@@ -770,7 +809,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             @SERIEFAC, @NOFAC
           )
         `);
-      await copyDocProductosFromPedido(
+      const tipom = await copyDocProductosFromPedido(
         transaction,
         empnit,
         pedCoddoc,
@@ -798,13 +837,20 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
           desprod: line.DESPROD,
           totalUnidades: line.TOTALUNIDADES,
           tipoprod: line.TIPOPROD,
+          tipom,
           codbodegaEntrada: DEFAULT_BODEGA,
           codbodegaSalida: DEFAULT_BODEGA,
         });
       }
       await recalcDocumentTotals(transaction, empnit, coddocFac, correlativoFac);
       await transaction.commit();
-      const factura = await loadPedido(pool, empnit, coddocFac, correlativoFac);
+      const factura = await loadPedido(
+        pool,
+        empnit,
+        coddocFac,
+        correlativoFac,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.status(201).json({
         ok: true,
         pedidoRef: { CODDOC: pedCoddoc, CORRELATIVO: pedCorrelativo },
@@ -836,7 +882,13 @@ router.get('/pedidos/:coddoc/:correlativo', async (req, res) => {
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   try {
     const pool = await req.app.locals.getDbPool();
-    const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+    const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
     if (!pedido) return res.status(404).json({ error: 'Pedido no encontrado' });
     res.json(pedido);
   } catch (err) {
@@ -849,6 +901,7 @@ router.post('/pedidos', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { tipodocs } = resolveFacturacionGrupo(req);
   const coddocBody = String(req.body?.CODDOC || '').trim();
   const codcliente = parseInt(req.body?.CODCLIENTE, 10);
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'FAC').trim();
@@ -856,10 +909,10 @@ router.post('/pedidos', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const tipo = await getTipoDocFacturacion(pool, empnit, coddocBody);
+    const tipo = await getTipoDocFacturacion(pool, empnit, coddocBody, tipodocs);
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento de facturación (${TIPODOC_FACTURACION.join(', ')}) activo para la empresa`,
+        error: `No hay tipo de documento de facturación (${tipodocs.join(', ')}) activo para la empresa`,
       });
     }
     const coddoc = tipo.CODDOC;
@@ -916,7 +969,13 @@ router.post('/pedidos', async (req, res) => {
           )
         `);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.status(201).json(pedido);
     } catch (inner) {
       await transaction.rollback();
@@ -1067,7 +1126,13 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
         }
       }
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.json(pedido);
     } catch (inner) {
       await transaction.rollback();
@@ -1137,6 +1202,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
+      const tipom = await getTipomDocumento(transaction, empnit, coddoc);
       const ins = await transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -1160,6 +1226,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TIPOPRECIO', sql.VarChar, tipoprecio)
         .input('PESO', sql.Decimal(18, 3), peso)
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
+        .input('TIPOM', sql.Int, tipom)
         .query(`
           INSERT INTO dbo.DOCPRODUCTOS (
             EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -1168,7 +1235,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, LASTUPDATE
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -1176,7 +1243,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, CAST(GETDATE() AS DATE)
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);
@@ -1189,12 +1256,19 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         desprod: prod.DESPROD,
         totalUnidades,
         tipoprod,
+        tipom,
         codbodegaEntrada: DEFAULT_BODEGA,
         codbodegaSalida: DEFAULT_BODEGA,
       });
       const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.status(201).json({ lineId, totals, pedido });
     } catch (inner) {
       await transaction.rollback();
@@ -1236,7 +1310,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       .query(`
         SELECT
           l.COSTO, l.PRECIO, l.EQUIVALE, l.PESO, l.TOTALUNIDADES,
-          l.CODPROD, l.DESPROD, l.TIPOPROD, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
+          l.CODPROD, l.DESPROD, l.TIPOPROD, l.TIPOM, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
           d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE
         FROM dbo.DOCPRODUCTOS l
         JOIN dbo.DOCUMENTOS d ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
@@ -1263,6 +1337,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         anteriorTotalUnidades: line.TOTALUNIDADES,
         nuevoTotalUnidades: totals.totalUnidades,
         tipoprod: line.TIPOPROD,
+        tipom: line.TIPOM,
         codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
         codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
       });
@@ -1289,7 +1364,13 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         `);
       const docTotals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.json({ totals: docTotals, pedido });
     } catch (inner) {
       await transaction.rollback();
@@ -1331,7 +1412,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .query(`
           SELECT
-            l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD,
+            l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD, l.TIPOM,
             l.CODBODEGAENTRADA, l.CODBODEGASALIDA, d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE
           FROM dbo.DOCPRODUCTOS l
           JOIN dbo.DOCUMENTOS d
@@ -1355,6 +1436,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         desprod: line.DESPROD,
         totalUnidades: line.TOTALUNIDADES,
         tipoprod: line.TIPOPROD,
+        tipom: line.TIPOM,
         codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
         codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
       });
@@ -1368,7 +1450,13 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
       }
       const totals = await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.json({ totals, pedido });
     } catch (inner) {
       await transaction.rollback();
@@ -1538,7 +1626,13 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       }
 
       await transaction.commit();
-      const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+      const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
       res.json({ ok: true, pedido, inventario: { tipom: 0, lineas: 0, productos: 0 } });
     } catch (inner) {
       await transaction.rollback();
@@ -1585,10 +1679,98 @@ router.post('/pedidos/:coddoc/:correlativo/bloquear', async (req, res) => {
     if (result.rowsAffected[0] === 0) {
       return res.status(404).json({ error: 'Pedido no encontrado o no se puede bloquear' });
     }
-    const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+    const pedido = await loadPedido(
+        pool,
+        empnit,
+        coddoc,
+        correlativo,
+        (req.facturacionGrupo || resolveFacturacionGrupo(req)).tipodocs
+      );
     res.json({ ok: true, pedido });
   } catch (err) {
     console.warn('[API POST /facturacion/pedidos/bloquear]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Encola la factura para fraccionamiento: crea el registro en
+ * DOCUMENTOS_COLA_TRABAJO (TIPO = FRACCIONAR) y guarda el ID generado
+ * en DOCUMENTOS.ID_COLA_TRABAJO.
+ */
+router.post('/pedidos/:coddoc/:correlativo/fraccionar', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const tx = new sql.Transaction(pool);
+    await tx.begin();
+    try {
+      const docRes = await new sql.Request(tx)
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .query(`
+          SELECT ID_COLA_TRABAJO
+          FROM dbo.DOCUMENTOS WITH (UPDLOCK, ROWLOCK)
+          WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        `);
+      if (!docRes.recordset.length) {
+        await tx.rollback();
+        return res.status(404).json({ error: 'Documento no encontrado' });
+      }
+      const idActual = docRes.recordset[0].ID_COLA_TRABAJO;
+      if (idActual !== null && idActual !== undefined && Number(idActual) > 0) {
+        await tx.rollback();
+        return res
+          .status(409)
+          .json({ error: `El documento ya está en cola de trabajo (ID ${idActual})` });
+      }
+
+      const insRes = await new sql.Request(tx)
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .query(`
+          INSERT INTO dbo.DOCUMENTOS_COLA_TRABAJO
+            (EMPNIT, TIPO, CODDOC, CORRELATIVO, FECHA_INICIO, HORA_INICIO)
+          VALUES
+            (@EMPNIT, 'FRACCIONAR', @CODDOC, @CORRELATIVO,
+             CAST(GETDATE() AS date), FORMAT(GETDATE(), 'HH:mm'));
+          SELECT SCOPE_IDENTITY() AS ID;
+        `);
+      const idCola = Number(insRes.recordset?.[0]?.ID);
+      if (!Number.isFinite(idCola) || idCola <= 0) {
+        throw new Error('No se pudo obtener el ID de la cola de trabajo');
+      }
+
+      await new sql.Request(tx)
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .input('ID_COLA', sql.Int, idCola)
+        .query(`
+          UPDATE dbo.DOCUMENTOS SET ID_COLA_TRABAJO = @ID_COLA
+          WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        `);
+
+      await tx.commit();
+      res.json({ ok: true, ID: idCola });
+    } catch (err) {
+      try {
+        await tx.rollback();
+      } catch (_) {
+        /* transacción ya revertida */
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.warn('[API POST /facturacion/pedidos/fraccionar]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

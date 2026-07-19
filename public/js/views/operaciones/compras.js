@@ -1146,6 +1146,11 @@ const ComprasView = {
     });
 
     this._container?.querySelector('#btn-compras-list-nuevo')?.addEventListener('click', () => this.onNuevaCompra());
+
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => false,
+      onNuevo: () => this.onNuevaCompra(),
+    });
   },
 
   bindEditorEvents() {
@@ -1153,6 +1158,13 @@ const ComprasView = {
       getEditable: () => this.docEditable(this._compra?.header),
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
+    });
+
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => true,
+      getEditable: () => this.docEditable(this._compra?.header),
+      onNuevo: () => this.onNuevaCompra(),
+      onFinalizar: () => this.finalizarCompra(),
     });
 
     this._container?.querySelector('#compras-proveedor-nuevo')?.addEventListener('click', () => {
@@ -1368,6 +1380,7 @@ const ComprasView = {
   async showList() {
     this._screen = 'list';
     this._compra = null;
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('compras');
     await this.fetchComprasList();
     this._container.innerHTML = this.renderListScreen();
@@ -1376,6 +1389,7 @@ const ComprasView = {
 
   async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('compras');
     if (coddoc && correlativo) {
       await this.loadCompra(coddoc, correlativo, { skipRender: true });
@@ -1403,6 +1417,7 @@ const ComprasView = {
   },
 
   async load(container) {
+    PosDocSearchUI.clearActiveDocKeyboard();
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-2', 'p-md-3');

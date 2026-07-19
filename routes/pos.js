@@ -700,6 +700,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
+      const tipom = await getTipomDocumento(transaction, empnit, coddoc);
       const ins = await transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -723,6 +724,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TIPOPRECIO', sql.VarChar, tipoprecio)
         .input('PESO', sql.Decimal(18, 3), peso)
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
+        .input('TIPOM', sql.Int, tipom)
         .query(`
           INSERT INTO dbo.DOCPRODUCTOS (
             EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -731,7 +733,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, LASTUPDATE
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -739,7 +741,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, CAST(GETDATE() AS DATE)
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);
@@ -752,6 +754,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         desprod: prod.DESPROD,
         totalUnidades,
         tipoprod,
+        tipom,
         codbodegaEntrada: DEFAULT_BODEGA,
         codbodegaSalida: DEFAULT_BODEGA,
       });
@@ -799,7 +802,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       .query(`
         SELECT
           l.COSTO, l.PRECIO, l.EQUIVALE, l.PESO, l.TOTALUNIDADES,
-          l.CODPROD, l.DESPROD, l.TIPOPROD, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
+          l.CODPROD, l.DESPROD, l.TIPOPROD, l.TIPOM, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
           d.STATUS
         FROM dbo.DOCPRODUCTOS l
         JOIN dbo.DOCUMENTOS d ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
@@ -825,6 +828,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         anteriorTotalUnidades: line.TOTALUNIDADES,
         nuevoTotalUnidades: totals.totalUnidades,
         tipoprod: line.TIPOPROD,
+        tipom: line.TIPOM,
         codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
         codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
       });
@@ -893,7 +897,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .query(`
           SELECT
-            l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD,
+            l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD, l.TIPOM,
             l.CODBODEGAENTRADA, l.CODBODEGASALIDA, d.STATUS
           FROM dbo.DOCPRODUCTOS l
           JOIN dbo.DOCUMENTOS d
@@ -917,6 +921,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         desprod: line.DESPROD,
         totalUnidades: line.TOTALUNIDADES,
         tipoprod: line.TIPOPROD,
+        tipom: line.TIPOM,
         codbodegaEntrada: line.CODBODEGAENTRADA ?? DEFAULT_BODEGA,
         codbodegaSalida: line.CODBODEGASALIDA ?? DEFAULT_BODEGA,
       });

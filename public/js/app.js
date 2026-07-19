@@ -454,7 +454,9 @@
   const menuLabels = {
     inicio: 'Inicio',
     'pedidos-mostrador': 'Pedidos de Mostrador',
-    facturacion: 'Facturación',
+    'comandas-restaurante': 'Comandas Restaurante',
+    facturacion: 'Facturas normales',
+    'facturas-electronicas': 'Facturas Electrónicas',
     'notas-credito': 'Notas de Credito (clientes)',
     'notas-abono': 'Notas de Abono',
     compras: 'Compras',
@@ -462,6 +464,7 @@
     gastos: 'Gastos',
     'corte-caja': 'Corte de Caja',
     cotizaciones: 'Cotizaciones',
+    'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
     'cuentas-cobrar': 'Cuentas por Cobrar',
     'cuentas-pagar': 'Cuentas por Pagar',
@@ -503,9 +506,11 @@
     proveedores: 'Proveedores',
     fabricantes: 'Fabricantes',
     ubicaciones: 'Ubicaciones',
+    'mesas-restaurante': 'Mesas Restaurante',
     empresas: 'Empresas',
     'config-general': 'Config general',
     'tipo-documentos': 'Tipo documentos',
+    'formatos-impresion': 'Formatos de impresión',
     'credenciales-fel': 'Credenciales FEL',
     cajas: 'Cajas',
     'servicio-mecanica': 'Servicio Mecánica',
@@ -537,6 +542,7 @@
       link.classList.add('is-active');
       mainTitle.textContent = label;
       mainContent.className = 'main-content flex-grow-1 d-flex p-3';
+      if (typeof PosDocSearchUI !== 'undefined') PosDocSearchUI.clearActiveDocKeyboard();
 
       if (key === 'inicio') {
         loadInicio();
@@ -544,8 +550,12 @@
         ComprasView.load(mainContent);
       } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
         PosView.load(mainContent);
+      } else if (key === 'comandas-restaurante' && typeof ComandasRestauranteView !== 'undefined') {
+        ComandasRestauranteView.load(mainContent);
       } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
         FacturacionView.load(mainContent);
+      } else if (key === 'facturas-electronicas' && typeof FacturasElectronicasView !== 'undefined') {
+        FacturasElectronicasView.load(mainContent);
       } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
         NotasCreditoView.load(mainContent);
       } else if (key === 'notas-abono' && typeof NotasAbonoView !== 'undefined') {
@@ -556,6 +566,8 @@
         CorteCajaView.load(mainContent);
       } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {
         CotizacionesView.load(mainContent);
+      } else if (key === 'fraccionamiento-fac' && typeof FraccionamientoFacView !== 'undefined') {
+        FraccionamientoFacView.load(mainContent);
       } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
         TareasView.load(mainContent);
       } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
@@ -625,6 +637,8 @@
         FabricantesView.load(mainContent);
       } else if (key === 'ubicaciones' && typeof UbicacionesView !== 'undefined') {
         UbicacionesView.load(mainContent);
+      } else if (key === 'mesas-restaurante' && typeof MesasRestauranteView !== 'undefined') {
+        MesasRestauranteView.load(mainContent);
       } else if (key === 'clientes' && typeof ClientesView !== 'undefined') {
         ClientesView.load(mainContent);
       } else if (key === 'tipo-negocios' && typeof TipoNegociosView !== 'undefined') {
@@ -649,6 +663,8 @@
         NominaIgssView.load(mainContent);
       } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
         TipoDocumentosView.load(mainContent);
+      } else if (key === 'formatos-impresion' && typeof FormatosImpresionView !== 'undefined') {
+        FormatosImpresionView.load(mainContent);
       } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
         CajasView.load(mainContent);
       } else if (key === 'vehiculos' && typeof VehiculosView !== 'undefined') {

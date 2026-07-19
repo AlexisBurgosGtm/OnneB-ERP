@@ -1,0 +1,4 @@
+-- Asociación mesa ↔ comanda CRS:
+-- DOCUMENTOS.CODEMBARQUE = CAST(RESTAURANTE_MESAS.ID AS VARCHAR)
+-- RESTAURANTE_MESAS.OCUPADA = 'SI' | 'NO'
+-- Campos CUENTA y SECTOR no se usan en la aplicación.

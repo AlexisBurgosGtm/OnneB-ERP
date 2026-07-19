@@ -918,6 +918,11 @@ const PosView = {
     });
 
     this._container?.querySelector('#btn-pos-list-nuevo')?.addEventListener('click', () => this.onNuevoPedido());
+
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => false,
+      onNuevo: () => this.onNuevoPedido(),
+    });
   },
 
   bindEditorEvents() {
@@ -925,6 +930,13 @@ const PosView = {
       getEditable: () => this.docEditable(this._pedido?.header),
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
+    });
+
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => true,
+      getEditable: () => this.docEditable(this._pedido?.header),
+      onNuevo: () => this.onNuevoPedido(),
+      onFinalizar: () => this.finalizarPedido(),
     });
 
     const precioCampoSel = this._container?.querySelector('#pos-precio-campo');
@@ -1161,6 +1173,7 @@ const PosView = {
   async showList() {
     this._screen = 'list';
     this._pedido = null;
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('pos');
     if (this._config) DocTipoSelect.initView(this);
     this._container.innerHTML = this.renderListScreen();
@@ -1171,6 +1184,7 @@ const PosView = {
 
   async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('pos');
     if (coddoc && correlativo) {
       await this.loadPedido(coddoc, correlativo, { skipRender: true });
@@ -1199,6 +1213,7 @@ const PosView = {
   },
 
   async load(container) {
+    PosDocSearchUI.clearActiveDocKeyboard();
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-2', 'p-md-3');

@@ -81,6 +81,7 @@ const PrintReport = {
 
   baseStyles(extra = '') {
     return `
+      html,body{zoom:1!important;transform:none!important;-webkit-text-size-adjust:100%}
       body{font-family:Segoe UI,sans-serif;padding:1.25rem;font-size:12px;color:#111}
       .report-header{margin-bottom:1rem;border-bottom:1px solid #ccc;padding-bottom:.75rem}
       .report-brand{display:flex;align-items:center;gap:.75rem}
@@ -97,27 +98,94 @@ const PrintReport = {
       .text-end{text-align:right}
       tr.totals td{background:#f5f5f5;border-top:2px solid #999}
       .warn{color:#666;margin-top:.5rem}
-      @media print{body{padding:.5rem}}
+      .doc-anulado-stamp{
+        text-align:center;color:#dc2626;font-size:3.25rem;font-weight:900;
+        letter-spacing:.14em;text-transform:uppercase;line-height:1.1;
+        margin:0 0 .85rem;padding:.45rem .6rem;border:3px solid #dc2626;
+        background:rgba(254,226,226,.55)
+      }
+      @media print{
+        html,body{zoom:1!important;transform:none!important}
+        body{padding:.5rem}
+        .doc-anulado-stamp{font-size:2.75rem;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      }
       ${extra}
     `;
   },
 
   wrapDocument({ title, bodyHtml, extraStyles = '' }) {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${this.escapeHtml(title || 'Reporte')}</title>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>${this.escapeHtml(title || 'Reporte')}</title>
       <style>${this.baseStyles(extraStyles)}</style></head>
       <body>${bodyHtml}</body></html>`;
   },
 
-  _openPrintWindow(html, windowFeatures = 'width=900,height=700') {
-    const w = window.open('', '_blank', windowFeatures);
+  maximizedFeatures() {
+    const w = Math.max(800, Number(window.screen?.availWidth) || 1200);
+    const h = Math.max(600, Number(window.screen?.availHeight) || 800);
+    return `left=0,top=0,width=${w},height=${h}`;
+  },
+
+  _maximizeWindow(win) {
+    if (!win) return;
+    try {
+      const aw = Number(window.screen?.availWidth) || 0;
+      const ah = Number(window.screen?.availHeight) || 0;
+      if (aw > 0 && ah > 0) {
+        win.moveTo(0, 0);
+        win.resizeTo(aw, ah);
+      }
+    } catch {
+      /* algunos navegadores bloquean resize */
+    }
+  },
+
+  _forceZoom100(win) {
+    if (!win?.document) return;
+    try {
+      const doc = win.document;
+      if (doc.documentElement) doc.documentElement.style.zoom = '1';
+      if (doc.body) {
+        doc.body.style.zoom = '1';
+        doc.body.style.transform = 'none';
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+
+  _openPrintWindow(html, windowFeatures) {
+    const features = windowFeatures || this.maximizedFeatures();
+    const w = window.open('', '_blank', features);
     if (!w) {
       F.toast('Permita ventanas emergentes para imprimir', 'warning');
       return false;
     }
+    this._maximizeWindow(w);
     w.document.write(html);
     w.document.close();
+    this._forceZoom100(w);
+    this._maximizeWindow(w);
     w.focus();
-    w.print();
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      this._forceZoom100(w);
+      this._maximizeWindow(w);
+      try {
+        w.print();
+      } catch {
+        /* ignore */
+      }
+    };
+    if (w.document.readyState === 'complete') {
+      window.setTimeout(doPrint, 60);
+    } else {
+      w.addEventListener('load', () => window.setTimeout(doPrint, 60), { once: true });
+      window.setTimeout(doPrint, 400);
+    }
     return true;
   },
 
@@ -125,9 +193,9 @@ const PrintReport = {
    * Abre ventana de impresión. Asegura logo de empresa antes de generar el HTML.
    * @param {string|function(): string} htmlOrBuilder — HTML listo o función que lo construye tras cargar el logo.
    */
-  async openAndPrint(htmlOrBuilder, windowFeatures = 'width=900,height=700') {
+  async openAndPrint(htmlOrBuilder, windowFeatures) {
     await this.ensureLogo();
     const html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
-    return this._openPrintWindow(html, windowFeatures);
+    return this._openPrintWindow(html, windowFeatures || this.maximizedFeatures());
   },
 };

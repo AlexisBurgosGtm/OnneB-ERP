@@ -17,6 +17,70 @@ const io = new Server(server, {
 });
 
 let dbPool = null;
+let dbConnecting = null;
+
+function isPoolAlive(pool) {
+  return Boolean(pool && pool.connected && !pool.connecting);
+}
+
+async function closeDbPoolQuietly(pool) {
+  if (!pool) return;
+  try {
+    await pool.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function createDbPool(dbConfig) {
+  const pool = new sql.ConnectionPool(dbConfig);
+  pool.on('error', (err) => {
+    console.warn('[DB] pool error:', err?.message || err);
+    if (dbPool === pool) dbPool = null;
+  });
+  await pool.connect();
+  return pool;
+}
+
+/**
+ * Pool SQL con reconexión automática si la conexión local se cae.
+ */
+async function getDbPool() {
+  const dbConfig = getDbConfig();
+  if (!dbConfig) return null;
+
+  if (isPoolAlive(dbPool)) return dbPool;
+  if (dbConnecting) return dbConnecting;
+
+  dbConnecting = (async () => {
+    const previous = dbPool;
+    dbPool = null;
+    await closeDbPoolQuietly(previous);
+
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const pool = await createDbPool(dbConfig);
+        dbPool = pool;
+        if (attempt > 1) {
+          console.warn(`[DB] reconectado en intento ${attempt}`);
+        }
+        return pool;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[DB] conexión fallida (intento ${attempt}/3):`, err?.message || err);
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+      }
+    }
+    throw lastErr || new Error('No se pudo conectar a SQL Server');
+  })();
+
+  try {
+    return await dbConnecting;
+  } finally {
+    dbConnecting = null;
+  }
+}
 
 const empresasRouter = require('./routes/empresas');
 const marcasRouter = require('./routes/marcas');
@@ -24,6 +88,7 @@ const medidasRouter = require('./routes/medidas');
 const rutasRouter = require('./routes/rutas');
 const fabricantesRouter = require('./routes/fabricantes');
 const ubicacionesRouter = require('./routes/ubicaciones');
+const mesasRestauranteRouter = require('./routes/mesas-restaurante');
 const clientesRouter = require('./routes/clientes');
 const tipoNegociosRouter = require('./routes/tipo-negocios');
 const proveedoresRouter = require('./routes/proveedores');
@@ -41,7 +106,10 @@ const authRouter = require('./routes/auth');
 const { router: configRouter } = require('./routes/config');
 const developerRouter = require('./routes/developer');
 const posRouter = require('./routes/pos');
+const comandasRestauranteRouter = require('./routes/comandas-restaurante');
 const cotizacionesRouter = require('./routes/cotizaciones');
+const fraccionamientoFacRouter = require('./routes/fraccionamiento-fac');
+const formatosImpresionRouter = require('./routes/formatos-impresion');
 const facturacionRouter = require('./routes/facturacion');
 const notasCreditoRouter = require('./routes/notas-credito');
 const notasAbonoRouter = require('./routes/notas-abono');
@@ -74,18 +142,6 @@ const nominaRouter = require('./routes/nomina');
 const bancosRouter = require('./routes/bancos');
 const cuentasBancariasRouter = require('./routes/cuentas-bancarias');
 const movimientosBancoRouter = require('./routes/movimientos-banco');
-
-async function getDbPool() {
-  const dbConfig = getDbConfig();
-  if (!dbConfig) {
-    return null;
-  }
-  if (dbPool && dbPool.connected) {
-    return dbPool;
-  }
-  dbPool = await sql.connect(dbConfig);
-  return dbPool;
-}
 
 /** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
 app.use(express.json({ limit: '3mb' }));
@@ -159,6 +215,7 @@ app.use('/api/medidas', medidasRouter);
 app.use('/api/rutas', rutasRouter);
 app.use('/api/fabricantes', fabricantesRouter);
 app.use('/api/ubicaciones', ubicacionesRouter);
+app.use('/api/mesas-restaurante', mesasRestauranteRouter);
 app.use('/api/clientes', clientesRouter);
 app.use('/api/tipo-negocios', tipoNegociosRouter);
 app.use('/api/proveedores', proveedoresRouter);
@@ -176,7 +233,10 @@ app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
 app.use('/api/developer', developerRouter);
 app.use('/api/pos', posRouter);
+app.use('/api/comandas-restaurante', comandasRestauranteRouter);
 app.use('/api/cotizaciones', cotizacionesRouter);
+app.use('/api/fraccionamiento-fac', fraccionamientoFacRouter);
+app.use('/api/formatos-impresion', formatosImpresionRouter);
 app.use('/api/facturacion', facturacionRouter);
 app.use('/api/notas-credito', notasCreditoRouter);
 app.use('/api/notas-abono', notasAbonoRouter);
@@ -221,6 +281,9 @@ app.get('/api/health', async (_req, res) => {
     } catch (err) {
       dbStatus = 'error';
       console.warn('[MSSQL]', err.message);
+      // Forzar reconexión en el siguiente request
+      await closeDbPoolQuietly(dbPool);
+      dbPool = null;
     }
   }
   res.json({ ok: true, db: dbStatus });

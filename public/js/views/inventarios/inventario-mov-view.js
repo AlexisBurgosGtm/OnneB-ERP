@@ -776,6 +776,11 @@ function createInventarioMovView(cfg) {
       });
 
       this._container?.querySelector(`#${NS}-btn-nuevo`)?.addEventListener('click', () => this.onNuevo());
+
+      PosDocSearchUI.bindDocKeyboard(this, {
+        isDetail: () => false,
+        onNuevo: () => this.onNuevo(),
+      });
     },
 
     bindEditorEvents() {
@@ -783,6 +788,13 @@ function createInventarioMovView(cfg) {
         getEditable: () => this.docEditable(this._documento?.header),
         buscarProductos: this.buscarProductos,
         onProductPick: (row) => this.onProductClick(row),
+      });
+
+      PosDocSearchUI.bindDocKeyboard(this, {
+        isDetail: () => true,
+        getEditable: () => this.docEditable(this._documento?.header),
+        onNuevo: () => this.onNuevo(),
+        onFinalizar: () => this.finalizarDocumento(),
       });
 
       this._container?.querySelector(`#${NS}-cart-tbody`)?.addEventListener('click', async (e) => {
@@ -866,6 +878,7 @@ function createInventarioMovView(cfg) {
     async showList() {
       this._screen = 'list';
       this._documento = null;
+      PosDocSearchUI.unbindDocKeyboard(this);
       PosDocSearchUI.teardown(NS);
       await this.fetchDocsList();
       this._container.innerHTML = this.renderListScreen();
@@ -874,6 +887,7 @@ function createInventarioMovView(cfg) {
 
     async showEditor(coddoc, correlativo, opts = {}) {
       this._screen = 'editor';
+      PosDocSearchUI.unbindDocKeyboard(this);
       PosDocSearchUI.teardown(NS);
       if (coddoc && correlativo) {
         await this.loadDocumento(coddoc, correlativo, { skipRender: true });
@@ -901,6 +915,7 @@ function createInventarioMovView(cfg) {
     },
 
     async load(container) {
+      PosDocSearchUI.clearActiveDocKeyboard();
       this._container = container;
       container.classList.remove('align-items-center', 'justify-content-center');
       container.classList.add('align-items-stretch', 'justify-content-start', 'p-2', 'p-md-3');

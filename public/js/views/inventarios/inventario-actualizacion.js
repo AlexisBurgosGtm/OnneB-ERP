@@ -31,6 +31,12 @@ const InventarioActualizacionView = {
     return `/api/inventario/recalcular?${params.toString()}`;
   },
 
+  corregirTipomApiUrl() {
+    const empNit = F.getEmpNit();
+    const params = new URLSearchParams({ empnit: empNit || '' });
+    return `/api/inventario/recalcular/corregir-tipom?${params.toString()}`;
+  },
+
   renderStat(label, value, extraClass = '') {
     return `
       <div class="inventario-recalc-stat ${extraClass}">
@@ -50,14 +56,19 @@ const InventarioActualizacionView = {
         </div>`;
     }
 
+    const tipomNulos = Number(p.tipomNulos) || 0;
     const hayCambios =
       (Number(p.discrepancias) || 0) > 0 ||
       (Number(p.invsaldoSinMovimiento) || 0) > 0 ||
-      (Number(p.registrosDuplicados) || 0) > 0;
+      (Number(p.registrosDuplicados) || 0) > 0 ||
+      tipomNulos > 0;
     const alertClass = hayCambios ? 'alert-warning' : 'alert-success';
     let alertText = hayCambios
       ? `Se detectaron ${this.formatQty(p.discrepancias)} diferencia(s) de saldo`
       : 'Los saldos calculados coinciden con INVSALDO según los movimientos actuales.';
+    if (tipomNulos > 0) {
+      alertText += `; ${this.formatQty(tipomNulos)} línea(s) con TIPOM nulo (usar «Corregir TIPOM nulos»).`;
+    }
     if ((Number(p.invsaldoSinMovimiento) || 0) > 0) {
       alertText += `; ${this.formatQty(p.invsaldoSinMovimiento)} producto(s) sin movimientos se pondrán en cero.`;
     }
@@ -76,11 +87,12 @@ const InventarioActualizacionView = {
           </h6>
           <p class="small text-muted mb-3">
             Se consideran líneas de <strong>DOCPRODUCTOS</strong> cuyo documento <strong>no</strong> está anulado (STATUS ≠ A).
-            Movimiento = TOTALUNIDADES × TIPOM. Solo se actualiza el registro principal de <strong>INVSALDO</strong> por producto (no se crean filas nuevas).
+            Movimiento = TOTALUNIDADES × <strong>DOCPRODUCTOS.TIPOM</strong>. Solo se actualiza el registro principal de <strong>INVSALDO</strong> por producto (no se crean filas nuevas).
           </p>
           <div class="inventario-recalc-stats">
             ${this.renderStat('Líneas consideradas', this.formatQty(p.lineas))}
             ${this.renderStat('Productos', this.formatQty(p.productos))}
+            ${this.renderStat('TIPOM nulos', this.formatQty(tipomNulos), tipomNulos > 0 ? 'text-warning' : '')}
             ${this.renderStat('Duplicados INVSALDO', this.formatQty(p.registrosDuplicados), (Number(p.registrosDuplicados) || 0) > 0 ? 'text-warning' : '')}
             ${this.renderStat('Total entradas', this.formatQty(p.totalEntradas), 'text-success')}
             ${this.renderStat('Total salidas', this.formatQty(p.totalSalidas), 'text-danger')}
@@ -114,6 +126,9 @@ const InventarioActualizacionView = {
         <div class="inventario-recalc-actions mt-3 d-flex flex-wrap gap-2">
           <button type="button" class="btn btn-primary" id="btn-inventario-recalc-ejecutar">
             <i class="fa-solid fa-play me-1"></i>Ejecutar actualización
+          </button>
+          <button type="button" class="btn btn-outline-warning" id="btn-inventario-recalc-tipom">
+            <i class="fa-solid fa-wrench me-1"></i>Corregir TIPOM nulos
           </button>
           <button type="button" class="btn btn-outline-secondary" id="btn-inventario-recalc-refrescar">
             <i class="fa-solid fa-rotate-right me-1"></i>Refrescar resumen
@@ -149,6 +164,7 @@ const InventarioActualizacionView = {
     this._loading = busy;
     const btnRun = document.getElementById('btn-inventario-recalc-ejecutar');
     const btnRefresh = document.getElementById('btn-inventario-recalc-refrescar');
+    const btnTipom = document.getElementById('btn-inventario-recalc-tipom');
     if (btnRun) {
       btnRun.disabled = busy;
       btnRun.innerHTML = busy
@@ -156,6 +172,54 @@ const InventarioActualizacionView = {
         : '<i class="fa-solid fa-play me-1"></i>Ejecutar actualización';
     }
     if (btnRefresh) btnRefresh.disabled = busy;
+    if (btnTipom) btnTipom.disabled = busy;
+  },
+
+  async onCorregirTipom() {
+    if (this._loading) return;
+    const empNit = F.getEmpNit();
+    if (!empNit) {
+      F.toast('No hay empresa activa en la sesión', 'warning');
+      return;
+    }
+
+    if (!this._preview) {
+      await this.loadPreview();
+    }
+
+    const nulos = Number(this._preview?.tipomNulos) || 0;
+    if (nulos === 0) {
+      F.toast('No hay líneas con TIPOM nulo', 'info');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Corregir TIPOM nulos?',
+      html: `
+        <p class="mb-2">Se actualizarán <strong>${this.escapeHtml(this.formatQty(nulos))}</strong> línea(s)
+        de DOCPRODUCTOS con TIPOM NULL, copiando el TIPOM actual de TIPODOCUMENTOS.</p>
+      <p class="small text-muted mb-0">Esto no recalcula inventario; después puede ejecutar la actualización.</p>`,
+      icon: 'warning',
+      confirmText: 'Sí, corregir',
+    });
+    if (!ok) return;
+
+    this.setBusy(true);
+    try {
+      const data = await F.fetchJson(this.corregirTipomApiUrl(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      this._preview = data.resumen || null;
+      const previewEl = document.getElementById('inventario-recalc-preview');
+      if (previewEl) previewEl.innerHTML = this.renderPreviewCard();
+      F.toast(`TIPOM corregido en ${data.actualizados ?? 0} línea(s)`, 'success');
+    } catch (err) {
+      F.alert('Error al corregir TIPOM', err.message, 'error');
+    } finally {
+      this.setBusy(false);
+    }
   },
 
   async onEjecutar() {
@@ -171,6 +235,20 @@ const InventarioActualizacionView = {
     }
 
     const p = this._preview || {};
+    const tipomNulos = Number(p.tipomNulos) || 0;
+    if (tipomNulos > 0) {
+      const okTipom = await CatalogosUI.fireConfirm({
+        title: 'Hay TIPOM nulos',
+        html: `
+          <p class="mb-2">Hay <strong>${this.escapeHtml(this.formatQty(tipomNulos))}</strong> línea(s) con TIPOM nulo.
+          Esas líneas no se incluirán en el cálculo.</p>
+          <p class="small text-muted mb-0">Puede corregirlas antes con «Corregir TIPOM nulos», o continuar de todos modos.</p>`,
+        icon: 'warning',
+        confirmText: 'Continuar sin corregir',
+      });
+      if (!okTipom) return;
+    }
+
     const lineas = Number(p.lineas) || 0;
     if (lineas === 0) {
       const okEmpty = await CatalogosUI.fireConfirm({
@@ -220,6 +298,9 @@ const InventarioActualizacionView = {
   bindEvents() {
     document.getElementById('btn-inventario-recalc-ejecutar')?.addEventListener('click', () => {
       this.onEjecutar();
+    });
+    document.getElementById('btn-inventario-recalc-tipom')?.addEventListener('click', () => {
+      this.onCorregirTipom();
     });
     document.getElementById('btn-inventario-recalc-refrescar')?.addEventListener('click', () => {
       this.loadPreview();

@@ -1,7 +1,9 @@
 /**
- * Vista Facturación — documentos FAC, FEF, FES, FEC (misma UI que POS).
+ * Vista Facturación — Facturas normales (TIPODOC=FAC) o Electrónicas (FEF/FEC/FES).
  */
 const FacturacionView = {
+  _grupo: 'fac',
+  _tituloModulo: 'Facturas normales',
   _container: null,
   _config: null,
   _pedido: null,
@@ -45,8 +47,19 @@ const FacturacionView = {
     const emp = F.getEmpNit();
     if (!emp) throw new Error('No hay empresa activa');
     const segment = path ? (path.startsWith('/') ? path : `/${path}`) : '';
-    const params = new URLSearchParams({ empnit: emp, ...extraParams });
+    const params = new URLSearchParams({
+      empnit: emp,
+      grupo: this._grupo || 'fac',
+      ...extraParams,
+    });
     return `/api/facturacion${segment}?${params}`;
+  },
+
+  tipodocsLabelHtml() {
+    if (this._grupo === 'fel') {
+      return '<strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
+    }
+    return '<strong>FAC</strong>';
   },
 
   formatMoney(value) {
@@ -180,10 +193,21 @@ const FacturacionView = {
     window.open(url, '_blank', 'noopener,noreferrer');
   },
 
+  puedeFraccionar(row) {
+    if (this._grupo !== 'fac') return false;
+    const idCola = Number(row?.ID_COLA_TRABAJO);
+    return !(Number.isFinite(idCola) && idCola > 0);
+  },
+
   renderListActionsHtml(row) {
     const certBtn = this.needsCertificar(row)
       ? `<button type="button" class="btn btn-sm btn-outline-success inv-card-btn" data-action="certificar" title="Certificar FEL">
           <i class="fa-solid fa-certificate me-1"></i>CERTIFICAR
+        </button>`
+      : '';
+    const fraccionarBtn = this.puedeFraccionar(row)
+      ? `<button type="button" class="btn btn-sm btn-outline-warning inv-card-btn" data-action="fraccionar" title="Fraccionar factura">
+          <i class="fa-solid fa-scissors me-1"></i>Fraccionar factura
         </button>`
       : '';
     return `
@@ -194,6 +218,7 @@ const FacturacionView = {
         <i class="fa-solid fa-print"></i>
       </button>
       ${certBtn}
+      ${fraccionarBtn}
       <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar" title="Eliminar">
         <i class="fa-solid fa-trash"></i>
       </button>`;
@@ -298,21 +323,20 @@ const FacturacionView = {
   },
 
   async fetchProductos(q) {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40', campoPrecio: this._precioCampo });
-    if (q) params.set('q', q);
-    params.set('_', String(Date.now()));
-    return F.fetchJson(`/api/facturacion/productos?${params}`);
+    return F.fetchJson(
+      this.apiUrl('/productos', {
+        limit: '40',
+        campoPrecio: this._precioCampo,
+        ...(q ? { q } : {}),
+        _: String(Date.now()),
+      })
+    );
   },
 
   async fetchPedidosList() {
     const fecha = String(this._listFecha || this.todayIsoDate()).slice(0, 10);
     this._listFecha = fecha;
-    const params = new URLSearchParams({
-      empnit: F.getEmpNit(),
-      fecha,
-    });
-    params.set('_', String(Date.now()));
-    const data = await F.fetchJson(`/api/facturacion/pedidos?${params}`);
+    const data = await F.fetchJson(this.apiUrl('/pedidos', { fecha, _: String(Date.now()) }));
     this._pedidosList = data.rows || [];
     if (data.fecha) this._listFecha = String(data.fecha).slice(0, 10);
     return this.pedidosForSelectedDate();
@@ -340,8 +364,9 @@ const FacturacionView = {
   },
 
   async loadPedido(coddoc, correlativo, opts = {}) {
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
-    this._pedido = await F.fetchJson(url);
+    this._pedido = await F.fetchJson(
+      this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`, { _: Date.now() })
+    );
     if (this._screen === 'editor' && !opts.skipRender) this.renderAll();
   },
 
@@ -351,7 +376,7 @@ const FacturacionView = {
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
-    const url = `/api/facturacion/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl('/pedidos');
     this._pedido = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -530,7 +555,7 @@ const FacturacionView = {
     const solicitaClave = !skipClaveVendedor && (await DocVendedorClave.fetchSolicitaClave());
     if (solicitaClave) {
       const ok = await DocVendedorClave.promptAndApply({
-        apiLookupUrl: `/api/facturacion/vendedores/por-clave?empnit=${encodeURIComponent(F.getEmpNit())}`,
+        apiLookupUrl: this.apiUrl('/vendedores/por-clave'),
         vendedorSelectId: '#fac-doc-vendedor',
         view: this,
       });
@@ -656,7 +681,7 @@ const FacturacionView = {
 
     if (!isConfirmed) return;
 
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar`);
     await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -689,7 +714,7 @@ const FacturacionView = {
       F.toast('El pedido no está en edición', 'warning');
       return;
     }
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`);
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -719,7 +744,9 @@ const FacturacionView = {
   async actualizarCantidad(lineId, cantidad) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(
+      `/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+    );
     const res = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -733,7 +760,9 @@ const FacturacionView = {
   async eliminarLinea(lineId) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(
+      `/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+    );
     const res = await F.fetchJson(url, { method: 'DELETE' });
     this._pedido = res.pedido;
     this.renderCart();
@@ -1060,7 +1089,7 @@ const FacturacionView = {
     const label = `${coddoc} #${correlativo}`;
     const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'pedido' });
     if (!pass) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`);
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1071,9 +1100,31 @@ const FacturacionView = {
     this.refreshListDom();
   },
 
+  async fraccionarFactura(coddoc, correlativo) {
+    const label = `${coddoc} #${correlativo}`;
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Enviar a cola de trabajo?',
+      html: `<p class="mb-0">La factura <strong>${this.escapeHtml(label)}</strong> se enviará a la cola de trabajo de fraccionamiento.</p>
+             <p class="mb-0 mt-2 small text-muted">Esta acción no se puede deshacer desde aquí.</p>`,
+      icon: 'warning',
+      confirmText: 'Sí, fraccionar',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+    const res = await F.fetchJson(
+      this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/fraccionar`),
+      { method: 'POST' }
+    );
+    F.toast(`Factura enviada a fraccionamiento (cola #${res.ID})`, 'success');
+    await this.fetchPedidosList();
+    this.refreshListDom();
+  },
+
   async imprimirPedido(coddoc, correlativo) {
     try {
-      const url = `/api/facturacion/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+      const url = this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`, {
+        _: Date.now(),
+      });
       const pedido = await F.fetchJson(url);
       const h = pedido.header || {};
       const titulo = h.DESDOC || 'Factura';
@@ -1161,7 +1212,7 @@ const FacturacionView = {
       rows.length === 0
         ? `<div class="fac-env-modal-empty text-muted text-center py-4">
             <i class="fa-solid fa-inbox fa-2x mb-2 opacity-50"></i>
-            <p class="mb-0 small">No hay pedidos (ENV) ni cotizaciones (COT) operados disponibles.</p>
+            <p class="mb-0 small">No hay pedidos (ENV), cotizaciones (COT) ni comandas (CRS) operados disponibles.</p>
           </div>`
         : `<div class="table-responsive fac-env-modal-table-wrap">
             <table class="table table-sm table-hover align-middle mb-0 fac-env-modal-table">
@@ -1203,7 +1254,7 @@ const FacturacionView = {
                 <h5 class="fac-env-modal-title mb-1" id="fac-pedido-env-title">
                   <i class="fa-solid fa-file-import me-2 text-primary"></i>Tomar datos
                 </h5>
-                <p class="small text-muted mb-0">Seleccione un pedido (ENV) o cotización (COT) operado para cargarlo en facturación.</p>
+                <p class="small text-muted mb-0">Seleccione un pedido (ENV), cotización (COT) o comanda (CRS) operado para cargarlo en facturación.</p>
               </div>
               <button type="button" class="btn btn-sm btn-light fac-env-modal-close" id="btn-fac-pedido-env-cerrar" aria-label="Cerrar">
                 <i class="fa-solid fa-xmark"></i>
@@ -1226,7 +1277,7 @@ const FacturacionView = {
           <h2 class="pos-list-title">Facturación del día</h2>
           <p class="pos-list-sub text-muted mb-0">${count} factura(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
           <button type="button" class="btn btn-sm btn-outline-primary fac-btn-tomar-pedido mt-2" id="btn-fac-tomar-pedido">
-            <i class="fa-solid fa-file-import me-1"></i>Tomar datos (pedido / cotización)
+            <i class="fa-solid fa-file-import me-1"></i>Tomar datos (pedido / cotización / comanda)
           </button>
         </div>
         <div id="fac-pedido-env-modal-root">${this.renderPedidoEnvModalHtml()}</div>`;
@@ -1252,9 +1303,10 @@ const FacturacionView = {
   },
 
   async fetchPedidosEnv(q = '') {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), _: String(Date.now()) });
-    if (q) params.set('q', q);
-    const data = await F.fetchJson(`/api/facturacion/pedidos-env?${params}`, { cache: 'no-store' });
+    const data = await F.fetchJson(
+      this.apiUrl('/pedidos-env', { ...(q ? { q } : {}), _: String(Date.now()) }),
+      { cache: 'no-store' }
+    );
     this._pedidosEnvList = data.rows || [];
     return this._pedidosEnvList;
   },
@@ -1351,7 +1403,7 @@ const FacturacionView = {
     if (this._container?.querySelector('#fac-list-coddoc')) {
       DocTipoSelect.syncFromDom(this._container, 'fac-list-coddoc', this);
     }
-    const url = `/api/facturacion/pedidos/desde-pedido?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl('/pedidos/desde-pedido');
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1541,6 +1593,7 @@ const FacturacionView = {
         if (action === 'editar') await this.showEditor(coddoc, correlativo);
         else if (action === 'imprimir') await this.imprimirPedido(coddoc, correlativo);
         else if (action === 'certificar') await this.certificarPedido(coddoc, correlativo);
+        else if (action === 'fraccionar') await this.fraccionarFactura(coddoc, correlativo);
         else if (action === 'eliminar') await this.eliminarPedido(coddoc, correlativo);
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
@@ -1551,6 +1604,11 @@ const FacturacionView = {
     this._container?.querySelector('#btn-fac-tomar-pedido')?.addEventListener('click', () => {
       this.openPedidoEnvModal().catch((err) => F.toast(err.message, 'error'));
     });
+
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => false,
+      onNuevo: () => this.onNuevoPedido(),
+    });
   },
 
   bindEditorEvents() {
@@ -1560,6 +1618,12 @@ const FacturacionView = {
       onProductPick: (row) => this.onProductClick(row),
     });
 
+    PosDocSearchUI.bindDocKeyboard(this, {
+      isDetail: () => true,
+      getEditable: () => this.docEditable(this._pedido?.header),
+      onNuevo: () => this.onNuevoPedido(),
+      onFinalizar: () => this.finalizarPedido(),
+    });
     const precioCampoSel = this._container?.querySelector('#fac-precio-campo');
     if (precioCampoSel) {
       precioCampoSel.addEventListener('change', () => {
@@ -1727,7 +1791,7 @@ const FacturacionView = {
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const actual = DocFecha.inputValueFromHeader(this._pedido.header);
     if (fecha === actual) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`);
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1757,7 +1821,7 @@ const FacturacionView = {
     const actual = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
     const next = codven || '';
     if (next === actual) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`);
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1771,7 +1835,7 @@ const FacturacionView = {
   async aplicarCliente(codcliente) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
-    const url = `/api/facturacion/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`);
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1808,6 +1872,7 @@ const FacturacionView = {
   async showList() {
     this._screen = 'list';
     this._pedido = null;
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('fac');
     await this.fetchPedidosList();
     this._container.innerHTML = this.renderListScreen();
@@ -1816,6 +1881,7 @@ const FacturacionView = {
 
   async showEditor(coddoc, correlativo, opts = {}) {
     this._screen = 'editor';
+    PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('fac');
     if (coddoc && correlativo) {
       await this.loadPedido(coddoc, correlativo, { skipRender: true });
@@ -1846,6 +1912,7 @@ const FacturacionView = {
   },
 
   async load(container) {
+    PosDocSearchUI.clearActiveDocKeyboard();
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-2', 'p-md-3');
@@ -1859,7 +1926,7 @@ const FacturacionView = {
       return;
     }
 
-    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando Facturación…</div>`;
+    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando ${this.escapeHtml(this._tituloModulo || 'Facturación')}…</div>`;
 
     try {
       const [config] = await Promise.all([this.fetchConfig(), this.fetchUrlFel().catch(() => '')]);
@@ -1868,7 +1935,7 @@ const FacturacionView = {
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
-            Configure un tipo de documento de facturación (<strong>FAC</strong>, <strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>) activo para esta empresa.
+            Configure un tipo de documento de facturación (${this.tipodocsLabelHtml()}) activo para esta empresa.
           </div>`;
         return;
       }
@@ -1884,3 +1951,39 @@ const FacturacionView = {
     }
   },
 };
+
+function createFacturacionViewClone(overrides = {}) {
+  const view = Object.create(FacturacionView);
+  Object.assign(
+    view,
+    {
+      _container: null,
+      _config: null,
+      _pedido: null,
+      _productos: [],
+      _pedidosList: [],
+      _listFilter: '',
+      _listFecha: null,
+      _selectedCoddoc: '',
+      _screen: 'list',
+      _loadingProducts: false,
+      _searchTimer: null,
+      _cartBusy: false,
+      _vendedores: [],
+      _cajas: [],
+      _selectedCodcaja: null,
+      _precioCampo: 'PRECIO',
+      _urlFel: '',
+      _pedidosEnvList: [],
+      _pedidoEnvModalOpen: false,
+      _pedidoEnvFilter: '',
+    },
+    overrides
+  );
+  return view;
+}
+
+const FacturasElectronicasView = createFacturacionViewClone({
+  _grupo: 'fel',
+  _tituloModulo: 'Facturas Electrónicas',
+});

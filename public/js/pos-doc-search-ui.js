@@ -182,6 +182,70 @@ const PosDocSearchUI = {
     document.body.classList.remove('pos-product-sheet-open');
   },
 
+  unbindDocKeyboard(view) {
+    if (view?._posDocKeyHandler) {
+      document.removeEventListener('keydown', view._posDocKeyHandler, true);
+      view._posDocKeyHandler = null;
+    }
+    if (this._activeDocKeyboardView === view) this._activeDocKeyboardView = null;
+  },
+
+  clearActiveDocKeyboard() {
+    if (this._activeDocKeyboardView) this.unbindDocKeyboard(this._activeDocKeyboardView);
+  },
+
+  /**
+   * Atajos de documento:
+   * - Ctrl/+ (también Numpad +) → nuevo documento
+   * - Ctrl+Enter (Enter y NumpadEnter) → finalizar (solo en detalle)
+   */
+  bindDocKeyboard(view, opts = {}) {
+    if (this._activeDocKeyboardView && this._activeDocKeyboardView !== view) {
+      this.unbindDocKeyboard(this._activeDocKeyboardView);
+    }
+    this.unbindDocKeyboard(view);
+    if (!view) return;
+
+    const handler = (e) => {
+      if (this._activeDocKeyboardView !== view) return;
+      if (!view._container || !document.body.contains(view._container)) return;
+      if (document.querySelector('.swal2-container.swal2-shown')) return;
+
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl || e.altKey) return;
+
+      const isPlus = e.key === '+' || e.code === 'NumpadAdd';
+      if (isPlus) {
+        if (typeof opts.onNuevo !== 'function') return;
+        e.preventDefault();
+        e.stopPropagation();
+        Promise.resolve(opts.onNuevo()).catch((err) =>
+          F.toast(err?.message || 'Error', 'error')
+        );
+        return;
+      }
+
+      const isEnter = e.key === 'Enter' || e.code === 'NumpadEnter';
+      if (!isEnter) return;
+
+      const isDetail = typeof opts.isDetail === 'function' ? opts.isDetail() : !!opts.isDetail;
+      if (!isDetail) return;
+      const editable = typeof opts.getEditable === 'function' ? opts.getEditable() : true;
+      if (!editable) return;
+      if (typeof opts.onFinalizar !== 'function') return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      Promise.resolve(opts.onFinalizar()).catch((err) =>
+        F.toast(err?.message || 'Error', 'error')
+      );
+    };
+
+    document.addEventListener('keydown', handler, true);
+    view._posDocKeyHandler = handler;
+    this._activeDocKeyboardView = view;
+  },
+
   bind(view, prefix, opts = {}) {
     const container = view._container;
     if (!container) return;
@@ -235,6 +299,10 @@ const PosDocSearchUI = {
       this.syncSearchValues(container, prefix);
       const term = String(q ?? '').trim();
       if (!term) {
+        if (opts.allowEmptySearch) {
+          buscarProductos.call(view, '');
+          return;
+        }
         this.resetProductSearch(view, prefix);
         return;
       }
@@ -244,7 +312,7 @@ const PosDocSearchUI = {
     this.searchInputs(container, prefix).forEach((inp) => {
       if (!inp) return;
       inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
           e.preventDefault();
           runSearch(inp.value.trim());
         }

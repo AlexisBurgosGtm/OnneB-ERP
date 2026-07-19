@@ -44,6 +44,11 @@ async function validateInsertTipoDocumento(pool, empnit, data) {
     return 'CONTABLE debe ser NO o SI';
   }
   data.CONTABLE = contable;
+  const reportes = String(data.REPORTES ?? 'NO').trim().toUpperCase();
+  if (reportes !== 'NO' && reportes !== 'SI') {
+    return 'REPORTES debe ser NO o SI';
+  }
+  data.REPORTES = reportes;
   if (await tipoDocCoddocExists(pool, empnit, coddoc)) {
     return `Ya existe un tipo de documento con el código "${coddoc}"`;
   }
@@ -66,6 +71,13 @@ async function validateUpdateTipoDocumento(pool, empnit, data) {
     }
     data.CONTABLE = contable;
   }
+  if (data.REPORTES !== undefined && data.REPORTES !== null) {
+    const reportes = String(data.REPORTES).trim().toUpperCase();
+    if (reportes !== 'NO' && reportes !== 'SI') {
+      return 'REPORTES debe ser NO o SI';
+    }
+    data.REPORTES = reportes;
+  }
   return null;
 }
 
@@ -81,6 +93,7 @@ const DOC_FORM_FIELDS = [
 
 const DOC_LIST_EXTRA = [
   'CONTABLE',
+  'REPORTES',
   'RESOLUCION',
   'AUTORIZACION',
   'FRASE1',
@@ -111,6 +124,7 @@ const router = createCatalogoRouter({
     { name: 'CODFORMATOCON', type: 'varchar' },
     { name: 'CODFORMATOCRE', type: 'varchar' },
     { name: 'CONTABLE', type: 'varchar' },
+    { name: 'REPORTES', type: 'varchar' },
     { name: 'ACTIVO', type: 'varchar' },
     { name: 'RESOLUCION', type: 'varchar' },
     { name: 'AUTORIZACION', type: 'varchar' },
@@ -120,8 +134,8 @@ const router = createCatalogoRouter({
     { name: 'TIPOMOV', type: 'varchar' },
     { name: 'CODFORMATO', type: 'varchar' },
   ],
-  insertFields: ['CODDOC', ...DOC_FORM_FIELDS, 'CONTABLE', 'ACTIVO'],
-  updateFields: [...DOC_FORM_FIELDS, 'CONTABLE'],
+  insertFields: ['CODDOC', ...DOC_FORM_FIELDS, 'CONTABLE', 'REPORTES', 'ACTIVO'],
+  updateFields: [...DOC_FORM_FIELDS, 'CONTABLE', 'REPORTES'],
   validateInsert: validateInsertTipoDocumento,
   validateUpdate: validateUpdateTipoDocumento,
   validateDelete: validateDeleteTipoDocumento,

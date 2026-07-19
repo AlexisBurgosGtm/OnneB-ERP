@@ -1,20 +1,22 @@
 /**
- * Vista Cotizaciones — documentos tipo COT (DOCUMENTOS + DOCPRODUCTOS).
+ * Comandas Restaurante (TIPODOC CRS) — DOCUMENTOS + DOCPRODUCTOS + mesas.
  */
-const CotizacionesView = {
+const ComandasRestauranteView = {
   _container: null,
   _config: null,
   _pedido: null,
   _productos: [],
   _pedidosList: [],
+  _mesas: [],
   _listFilter: '',
   _selectedCoddoc: '',
-  _screen: 'list',
+  _screen: 'mesas',
   _loadingProducts: false,
   _searchTimer: null,
   _cartBusy: false,
   _vendedores: [],
   _precioCampo: 'PRECIO',
+  PRELOAD_PRODUCTOS: 50,
 
   PRECIO_CAMPO_OPTIONS: [
     { value: 'PRECIO', label: 'PRECIO PUBLICO' },
@@ -37,7 +39,7 @@ const CotizacionesView = {
     if (!emp) throw new Error('No hay empresa activa');
     const segment = path ? (path.startsWith('/') ? path : `/${path}`) : '';
     const params = new URLSearchParams({ empnit: emp, ...extraParams });
-    return `/api/cotizaciones${segment}?${params}`;
+    return `/api/comandas-restaurante${segment}?${params}`;
   },
 
   formatMoney(value) {
@@ -78,7 +80,7 @@ const CotizacionesView = {
 
   docLabel() {
     const h = this._pedido?.header;
-    if (!h) return 'Sin cotización';
+    if (!h) return 'Sin comanda';
     return `${h.CODDOC} #${h.CORRELATIVO}`;
   },
 
@@ -94,7 +96,7 @@ const CotizacionesView = {
 
   usuario() {
     const u = F.session('user');
-    return u?.username || 'COT';
+    return u?.username || 'POS';
   },
 
   clienteTipoNegocio(h) {
@@ -115,6 +117,10 @@ const CotizacionesView = {
   hasVendedor(h) {
     const cod = h?.CODVEN;
     return cod != null && cod !== '' && Number(cod) > 0;
+  },
+
+  mesaOcupada(mesa) {
+    return String(mesa?.OCUPADA || '').trim().toUpperCase() === 'SI';
   },
 
   syncClienteSearchEmphasis() {
@@ -138,10 +144,14 @@ const CotizacionesView = {
   },
 
   async fetchProductos(q) {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), limit: '40', campoPrecio: this._precioCampo });
+    const params = new URLSearchParams({
+      empnit: F.getEmpNit(),
+      limit: String(this.PRELOAD_PRODUCTOS),
+      campoPrecio: this._precioCampo,
+    });
     if (q) params.set('q', q);
     params.set('_', String(Date.now()));
-    return F.fetchJson(`/api/cotizaciones/productos?${params}`);
+    return F.fetchJson(`/api/comandas-restaurante/productos?${params}`);
   },
 
   activeCoddoc() {
@@ -151,9 +161,15 @@ const CotizacionesView = {
   async fetchPedidosList() {
     const params = new URLSearchParams({ empnit: F.getEmpNit(), status: 'O' });
     params.set('_', String(Date.now()));
-    const data = await F.fetchJson(`/api/cotizaciones/pedidos?${params}`);
+    const data = await F.fetchJson(`/api/comandas-restaurante/pedidos?${params}`);
     this._pedidosList = data.rows || [];
     return this._pedidosList;
+  },
+
+  async fetchMesas() {
+    const data = await F.fetchJson(this.apiUrl('/mesas', { _: Date.now() }));
+    this._mesas = data.rows || data.mesas || [];
+    return this._mesas;
   },
 
   filteredPedidosList() {
@@ -175,7 +191,7 @@ const CotizacionesView = {
   },
 
   async loadPedido(coddoc, correlativo, opts = {}) {
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
     this._pedido = await F.fetchJson(url);
     if (this._screen === 'editor' && !opts.skipRender) this.renderAll();
   },
@@ -186,17 +202,21 @@ const CotizacionesView = {
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
-    const url = `/api/cotizaciones/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    F.toast('Nueva cotización creada', 'success');
+    F.toast('Nueva comanda creada', 'success');
   },
 
   docEditable(header) {
     return DocFecha.editableStatus(header?.STATUS);
+  },
+
+  permiteCambiarPrecioPedido() {
+    return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
   },
 
   async finalizarPedido() {
@@ -204,7 +224,7 @@ const CotizacionesView = {
     if (!key) return;
     const h = this._pedido?.header;
     if (!this.docEditable(h)) {
-      F.toast('La cotización no está operada', 'warning');
+      F.toast('La comanda no está operada', 'warning');
       return;
     }
     if (!(this._pedido?.lines || []).length) {
@@ -217,7 +237,16 @@ const CotizacionesView = {
       this._container?.querySelector('#pos-cliente-search')?.focus();
       return;
     }
-    if (!this.hasVendedor(h)) {
+
+    const solicitaClave = await DocVendedorClave.fetchSolicitaClave();
+    if (solicitaClave) {
+      const ok = await DocVendedorClave.promptAndApply({
+        apiLookupUrl: `/api/comandas-restaurante/vendedores/por-clave?empnit=${encodeURIComponent(F.getEmpNit())}`,
+        vendedorSelectId: '#pos-doc-vendedor',
+        view: this,
+      });
+      if (!ok) return;
+    } else if (!this.hasVendedor(h)) {
       F.toast('Seleccione un vendedor antes de finalizar', 'warning');
       this.syncVendedorEmphasis();
       this._container?.querySelector('#pos-doc-vendedor')?.focus();
@@ -231,7 +260,7 @@ const CotizacionesView = {
 
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Finalizar cotización',
+      title: 'Finalizar comanda',
       html: `
         <p class="small text-muted mb-3">${this.escapeHtml(this.docLabel())}</p>
         <div class="text-start">
@@ -252,7 +281,7 @@ const CotizacionesView = {
           <div class="mb-0">
             <label class="form-label small mb-0" for="pos-finalizar-obs">Observaciones</label>
             <textarea id="pos-finalizar-obs" class="form-control form-control-sm" rows="3"
-              placeholder="Observaciones de la cotización…">${obsVal}</textarea>
+              placeholder="Observaciones de la comanda…">${obsVal}</textarea>
           </div>
         </div>
       `,
@@ -278,37 +307,43 @@ const CotizacionesView = {
 
     if (!isConfirmed) return;
 
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(value),
     });
-    F.toast('Cotización finalizada', 'success');
+    F.toast('Comanda finalizada', 'success');
     this._pedido = null;
-    await this.showList();
+    await this.showMesas();
   },
 
-  async agregarLinea(codprod, codmedida, cantidad = 1) {
+  async agregarLinea(codprod, codmedida, cantidad = 1, precio = undefined, obs = '') {
     const key = this.docKey();
     if (!key) {
-      F.toast('No hay cotización activa', 'warning');
+      F.toast('No hay comanda activa', 'warning');
       return;
     }
     if (!this.docEditable(this._pedido?.header)) {
-      F.toast('La cotización no está en edición', 'warning');
+      F.toast('La comanda no está en edición', 'warning');
       return;
     }
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const body = {
+      CODPROD: codprod,
+      CODMEDIDA: codmedida,
+      CANTIDAD: cantidad,
+      CAMPO_PRECIO: this._precioCampo,
+    };
+    if (precio !== undefined && precio !== null) {
+      body.PRECIO = precio;
+    }
+    const obsTrim = String(obs ?? '').trim();
+    if (obsTrim) body.OBS = obsTrim.slice(0, 255);
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        CODPROD: codprod,
-        CODMEDIDA: codmedida,
-        CANTIDAD: cantidad,
-        CAMPO_PRECIO: this._precioCampo,
-      }),
+      body: JSON.stringify(body),
     });
     this._pedido = res.pedido;
     this.renderCart();
@@ -322,12 +357,14 @@ const CotizacionesView = {
     tbody?.classList.toggle('pos-cart-busy', busy);
     const fab = this._container?.querySelector('#btn-pos-finalizar');
     if (fab) fab.disabled = busy;
+    const barcodeFab = this._container?.querySelector('#pos-fab-barcode');
+    if (barcodeFab) barcodeFab.disabled = busy;
   },
 
   async actualizarCantidad(lineId, cantidad) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const res = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -341,7 +378,7 @@ const CotizacionesView = {
   async eliminarLinea(lineId) {
     const key = this.docKey();
     if (!key) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const res = await F.fetchJson(url, { method: 'DELETE' });
     this._pedido = res.pedido;
     this.renderCart();
@@ -365,6 +402,7 @@ const CotizacionesView = {
       precios.map((p) => [String(p.CODMEDIDA), Number(p.PRECIO) || 0])
     );
     const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
+    const permiteCambiarPrecio = this.permiteCambiarPrecioPedido();
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
@@ -384,10 +422,16 @@ const CotizacionesView = {
           </div>
           <div class="col-6">
             <label class="form-label small mb-0" for="pos-swal-precio">Precio</label>
-            <input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>
+            ${
+              permiteCambiarPrecio
+                ? `<input type="number" id="pos-swal-precio" class="form-control form-control-sm" value="${defaultPrecio}" min="0" step="any">`
+                : `<input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>`
+            }
           </div>
         </div>
         <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
+        <label class="form-label small mb-0 mt-2" for="pos-swal-obs">Notas:</label>
+        <textarea id="pos-swal-obs" class="form-control form-control-sm" rows="2" maxlength="255"></textarea>
       `,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
@@ -398,15 +442,31 @@ const CotizacionesView = {
         const cantInp = document.getElementById('pos-swal-cant');
         const precioInp = document.getElementById('pos-swal-precio');
         const totalEl = document.getElementById('pos-swal-total');
-        const updateTotal = () => {
+        const readPrecio = () => {
+          if (permiteCambiarPrecio) {
+            return Number(precioInp?.value) || 0;
+          }
           const med = medSel?.value;
-          const precio = priceByMedida[med] ?? 0;
+          return priceByMedida[med] ?? 0;
+        };
+        const updateTotal = () => {
           const cant = Number(cantInp?.value) || 0;
-          if (precioInp) precioInp.value = this.formatMoney(precio);
+          const precio = readPrecio();
           if (totalEl) totalEl.textContent = `Total: ${this.formatMoney(cant * precio)}`;
         };
-        medSel?.addEventListener('change', updateTotal);
+        const syncPrecioFromMedida = () => {
+          const med = medSel?.value;
+          const precio = priceByMedida[med] ?? 0;
+          if (precioInp) {
+            precioInp.value = permiteCambiarPrecio ? String(precio) : this.formatMoney(precio);
+          }
+          updateTotal();
+        };
+        medSel?.addEventListener('change', syncPrecioFromMedida);
         cantInp?.addEventListener('input', updateTotal);
+        if (permiteCambiarPrecio) {
+          precioInp?.addEventListener('input', updateTotal);
+        }
         PosProductKeyboardUI.focusInput(cantInp);
         PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
       },
@@ -421,11 +481,20 @@ const CotizacionesView = {
           Swal.showValidationMessage('Seleccione una medida');
           return false;
         }
-        return { medida, cantidad: cant };
+        const obs = document.getElementById('pos-swal-obs')?.value?.trim() || '';
+        if (permiteCambiarPrecio) {
+          const precio = Number(document.getElementById('pos-swal-precio')?.value);
+          if (!Number.isFinite(precio) || precio < 0) {
+            Swal.showValidationMessage('Precio inválido');
+            return false;
+          }
+          return { medida, cantidad: cant, precio, obs };
+        }
+        return { medida, cantidad: cant, obs };
       },
     });
     if (picked?.medida) {
-      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad);
+      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio, picked.obs);
     }
   },
 
@@ -434,32 +503,39 @@ const CotizacionesView = {
     if (!targets.length) return;
     if (!this._productos.length) {
       const empty =
-        '<p class="text-muted small text-center py-3 mb-0">Escriba código o descripción y presione Enter</p>';
+        '<p class="text-muted small text-center py-3 mb-0">No hay productos para mostrar</p>';
       targets.forEach((el) => {
         el.innerHTML = empty;
       });
       return;
     }
+    const logoHtml =
+      typeof EmpresaLogo !== 'undefined'
+        ? EmpresaLogo.posHeaderLogoHtml()
+        : '<img src="/icons/icon-72.png" width="72" height="72" alt="" class="crs-product-thumb-img">';
     const html = this._productos
-      .map(
-        (p) => `
-          <div class="pos-product-item" tabindex="0" role="button"
+      .map((p) => {
+        const des2 = String(p.DESPROD2 ?? '').trim();
+        return `
+          <div class="crs-product-card pos-product-item" tabindex="0" role="button"
             data-codprod="${this.escapeHtml(p.CODPROD)}"
             data-codmedida="${this.escapeHtml(p.CODMEDIDA)}"
             aria-label="Agregar ${this.escapeHtml(this.formatProdLabel(p.DESPROD, p.DESMARCA))} ${this.escapeHtml(p.CODMEDIDA)}">
-            <div>
-              <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(p.CODMEDIDA)}</div>
-              <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
-            </div>
-            <div class="pos-prod-meta text-end">
-              <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
-              <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+            <div class="crs-product-thumb">${logoHtml}</div>
+            <div class="crs-product-body">
+              <div class="crs-product-name">${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
+              ${des2 ? `<div class="crs-product-sub small text-muted">${this.escapeHtml(des2)}</div>` : ''}
+              <div class="crs-product-meta">
+                <span class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</span>
+                <span class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</span>
+              </div>
             </div>
           </div>
-        `
-      )
+        `;
+      })
       .join('');
     targets.forEach((el) => {
+      el.classList.add('crs-product-cards');
       el.innerHTML = html;
     });
   },
@@ -472,7 +548,7 @@ const CotizacionesView = {
     const editable = this.docEditable(h);
     if (!lines.length) {
       tbody.innerHTML =
-        '<tr><td colspan="6" class="text-center text-muted py-3">Sin productos en la cotización</td></tr>';
+        '<tr><td colspan="6" class="text-center text-muted py-3">Sin productos en la comanda</td></tr>';
       return;
     }
     tbody.innerHTML = lines
@@ -480,6 +556,8 @@ const CotizacionesView = {
         const lineId = this.lineId(ln);
         const qty = Number(ln.CANTIDAD) || 0;
         const unitPrice = this.formatMoney(ln.PRECIO);
+        const lineObsRaw = String(ln.OBS || '').trim();
+        const lineObs = lineObsRaw && lineObsRaw.toUpperCase() !== 'SN' ? lineObsRaw : '';
         const qtyControlsInner = editable
           ? `<button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>−</button>
               <span class="px-1">${qty}</span>
@@ -494,7 +572,7 @@ const CotizacionesView = {
           : '';
         return `<tr>
           <td class="small">${this.escapeHtml(ln.CODPROD)}</td>
-          <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
+          <td class="small">${this.escapeHtml(ln.DESPROD)}${lineObs ? `<br><span class="text-muted fst-italic">${this.escapeHtml(lineObs)}</span>` : ''}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
           <td class="text-end small pos-cart-exist">${this.escapeHtml(this.formatQty(ln.EXISTENCIA))}</td>
           <td class="text-center">${qtyCell}</td>
           <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
@@ -598,108 +676,140 @@ const CotizacionesView = {
     );
     const label = row ? `${coddoc} #${correlativo}` : `${coddoc} #${correlativo}`;
     const confirm = await CatalogosUI.fireConfirm({
-      title: '¿Bloquear cotización?',
-      html: `<p class="mb-0">La cotización <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse en el listado de operados.</p>`,
+      title: '¿Bloquear comanda?',
+      html: `<p class="mb-0">La comanda <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse como operada.</p>`,
       icon: 'warning',
       confirmText: 'BLOQUEAR',
       confirmClass: 'btn-catalogo-bloquear',
     });
     if (!confirm) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/bloquear?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/bloquear?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, { method: 'POST' });
-    F.toast('Cotización bloqueada', 'success');
-    await this.fetchPedidosList();
-    this.refreshListDom();
+    F.toast('Comanda bloqueada', 'success');
+    await this.showMesas();
   },
 
   async eliminarPedido(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
-    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'cotización' });
+    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'comanda' });
     if (!pass) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pass: String(pass) }),
     });
-    F.toast('Cotización eliminada', 'success');
-    await this.fetchPedidosList();
-    this.refreshListDom();
+    F.toast('Comanda eliminada', 'success');
+    await this.showMesas();
   },
 
   async imprimirPedido(coddoc, correlativo) {
     try {
-      const url = `/api/cotizaciones/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+      const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
       const pedido = await F.fetchJson(url);
-      await DocPrint.printDocument({
-        title: 'Cotización',
-        header: pedido.header,
-        lines: pedido.lines || [],
-        footerNote: 'Cotización — documento sin validez fiscal',
-      });
+      const h = pedido.header;
+      const lines = pedido.lines || [];
+      const rows = lines
+        .map(
+          (ln) => `<tr>
+            <td>${this.escapeHtml(ln.CODPROD)}</td>
+            <td>${this.escapeHtml(ln.DESPROD)}${ln.OBS ? `<br><em>${this.escapeHtml(ln.OBS)}</em>` : ''}</td>
+            <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
+            <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+          </tr>`
+        )
+        .join('');
+      await PrintReport.openAndPrint(
+        () =>
+          PrintReport.wrapDocument({
+            title: 'Comanda restaurante',
+            bodyHtml: `
+          ${PrintReport.reportHeaderHtml({
+            title: 'Comanda restaurante',
+            subtitleHtml: `
+              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaPedido(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
+              <p><strong>Cliente:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
+              ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
+            `,
+          })}
+          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
+          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
+        `,
+          }),
+        'width=800,height=600'
+      );
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }
   },
 
-  refreshListDom() {
-    const grid = this._container?.querySelector('#pos-pedido-cards');
-    if (grid) grid.innerHTML = this.renderListCardsHtml();
-    const sub = this._container?.querySelector('.pos-list-sub');
+  refreshMesasDom() {
+    const grid = this._container?.querySelector('#crs-mesas-grid');
+    if (grid) grid.innerHTML = this.renderMesasCardsHtml();
+    const sub = this._container?.querySelector('.crs-mesas-sub');
     if (sub) {
-      sub.textContent = `${this.filteredPedidosList().length} cotización(es) operadas`;
+      const ocupadas = this._mesas.filter((m) => this.mesaOcupada(m)).length;
+      sub.textContent = `${this._mesas.length} mesa(s) · ${ocupadas} ocupada(s)`;
     }
   },
 
-  renderListCardsHtml() {
-    const rows = this.filteredPedidosList();
+  renderMesasCardsHtml() {
+    const rows = this._mesas || [];
     if (!rows.length) {
-      return '<div class="pos-list-empty text-muted text-center py-5">No hay cotizaciones operadas</div>';
+      return '<div class="pos-list-empty text-muted text-center py-5">No hay mesas configuradas</div>';
     }
     return rows
-      .map((r) => {
-        const label = `${r.CODDOC} #${r.CORRELATIVO}`;
-        const cliente = r.DOC_NOMCLIE || r.NEGOCIO || 'Sin cliente';
-        const tipo = [r.TIPONEGOCIO, r.NEGOCIO].filter(Boolean).join(' · ');
+      .map((m) => {
+        const ocupada = this.mesaOcupada(m);
+        const statusLabel = ocupada ? 'Ocupada' : 'Disponible';
+        const statusClass = ocupada ? 'crs-mesa-ocupada' : 'crs-mesa-disponible';
+        const des = m.DESMESA || m.CODMESA || `Mesa ${m.ID}`;
+        const cod = m.CODMESA != null ? String(m.CODMESA) : '';
+        const docLabel =
+          ocupada && m.CODDOC
+            ? `${m.CODDOC} #${m.CORRELATIVO ?? ''}`
+            : '';
+        const total =
+          ocupada && m.TOTALPRECIO != null && m.TOTALPRECIO !== ''
+            ? this.formatMoney(m.TOTALPRECIO)
+            : '';
         return `
-          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
-            data-correlativo="${r.CORRELATIVO}">
-            <div class="pos-pedido-card-top">
-              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
-              <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</span>
+          <div class="crs-mesa-card inv-doc-card ${statusClass}" data-mesa-id="${this.escapeHtml(m.ID)}"
+            data-ocupada="${ocupada ? 'SI' : 'NO'}"
+            data-coddoc="${this.escapeHtml(m.CODDOC || '')}"
+            data-correlativo="${this.escapeHtml(m.CORRELATIVO ?? '')}"
+            role="button" tabindex="0">
+            <div class="crs-mesa-card-top">
+              <span class="crs-mesa-card-name">${this.escapeHtml(des)}</span>
+              <span class="crs-mesa-badge badge ${ocupada ? 'bg-warning text-dark' : 'bg-success'}">${statusLabel}</span>
             </div>
-            <div class="pos-pedido-card-cliente">${this.escapeHtml(cliente)}</div>
-            ${tipo ? `<div class="pos-pedido-card-meta">${this.escapeHtml(tipo)}</div>` : ''}
-            <div class="pos-pedido-card-footer">
-              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
-              <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaPedido(r))}</span>
-            </div>
-            <div class="inv-card-actions">
-              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
-                <i class="fa-solid fa-pen me-1"></i>Editar
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
-                <i class="fa-solid fa-print me-1"></i>Imprimir
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
-                <i class="fa-solid fa-lock me-1"></i>Bloquear
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
-                <i class="fa-solid fa-trash me-1"></i>Eliminar
-              </button>
-            </div>
+            ${cod ? `<div class="crs-mesa-card-cod small text-muted">Código: ${this.escapeHtml(cod)}</div>` : ''}
+            ${
+              ocupada
+                ? `<div class="crs-mesa-card-doc">${this.escapeHtml(docLabel)}</div>
+                   ${total ? `<div class="crs-mesa-card-total">${this.escapeHtml(total)}</div>` : ''}
+                   <div class="inv-card-actions">
+                     <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="cerrar-cuenta">
+                       <i class="fa-solid fa-circle-xmark me-1"></i>Cerrar Cuenta
+                     </button>
+                   </div>`
+                : ''
+            }
           </div>`;
       })
       .join('');
   },
 
-  renderListScreen() {
-    const count = this.filteredPedidosList().length;
+  renderMesasScreen() {
+    const ocupadas = (this._mesas || []).filter((m) => this.mesaOcupada(m)).length;
+    const count = (this._mesas || []).length;
     return `
-      <div class="pos-list-wrap">
+      <div class="pos-list-wrap crs-mesas-wrap">
         <div class="pos-list-header">
-          <h2 class="pos-list-title">Seleccione una cotización o cree una nueva</h2>
-          <p class="pos-list-sub text-muted mb-0">${count} cotización(es) operadas</p>
+          <h2 class="pos-list-title">Seleccione una mesa</h2>
+          <p class="pos-list-sub crs-mesas-sub text-muted mb-0">${count} mesa(s) · ${ocupadas} ocupada(s)</p>
         </div>
         <div class="pos-list-toolbar mb-3">
           ${DocTipoSelect.renderSelectHtml({
@@ -708,25 +818,13 @@ const CotizacionesView = {
             selected: this.activeCoddoc(),
             label: 'Serie',
           })}
-          <div class="pos-list-search flex-grow-1">
-            <label class="form-label small mb-1" for="pos-list-search">Buscar</label>
-            <div class="input-group">
-              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <input type="search" class="form-control pos-search-glow" id="pos-list-search"
-                placeholder="Buscar cotización, cliente, negocio…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
-            </div>
-          </div>
         </div>
-        <div class="pos-pedido-cards" id="pos-pedido-cards">${this.renderListCardsHtml()}</div>
-        <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-pos-list-nuevo"
-          aria-label="Nueva cotización" title="Nueva cotización"${this.activeCoddoc() ? '' : ' disabled'}>
-          <i class="fa-solid fa-plus" aria-hidden="true"></i>
-        </button>
+        <div class="crs-mesas-grid" id="crs-mesas-grid">${this.renderMesasCardsHtml()}</div>
       </div>`;
   },
 
   renderEditorShell() {
-    const tipoLabel = this._config?.tiposDocumento?.[0]?.DESDOC || 'Cotizaciones';
+    const tipoLabel = this._config?.tiposDocumento?.[0]?.DESDOC || 'Comandas';
     const editable = this.docEditable(this._pedido?.header);
     return `
       <div class="pos-vista-wrap">
@@ -763,16 +861,16 @@ const CotizacionesView = {
               <div class="input-group input-group-sm mb-2 pos-search-group">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="pos-product-search"
-                  placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
+                  placeholder="Código o descripción… (Enter)" autocomplete="off">
               </div>
-              <div class="pos-product-list" id="pos-product-list"></div>
+              <div class="pos-product-list crs-product-cards" id="pos-product-list"></div>
             </div>
           </div>
           <div class="pos-panel pos-panel-cart card shadow-sm">
             <div class="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
               <div class="d-flex align-items-center gap-2">
                 <i class="fa-solid fa-receipt"></i>
-                <span class="fw-semibold">Cotización actual</span>
+                <span class="fw-semibold">Comanda actual</span>
               </div>
             </div>
             <div class="card-body">
@@ -813,36 +911,117 @@ const CotizacionesView = {
       </div>`;
   },
 
-  bindListEvents() {
-    const search = this._container?.querySelector('#pos-list-search');
-    search?.addEventListener('input', () => {
-      this._listFilter = search.value;
-      this.refreshListDom();
-    });
+  findMesaById(id) {
+    const n = Number(id);
+    return (this._mesas || []).find((m) => Number(m.ID) === n) || null;
+  },
 
+  async onMesaClick(mesa) {
+    if (!mesa) return;
+    if (this.mesaOcupada(mesa)) {
+      if (!mesa.CODDOC || mesa.CORRELATIVO == null || mesa.CORRELATIVO === '') {
+        F.toast('La mesa no tiene comanda asociada', 'warning');
+        return;
+      }
+      await this.showEditor(mesa.CODDOC, mesa.CORRELATIVO, { focusProductSearch: true });
+      return;
+    }
+    await this.abrirMesa(mesa.ID);
+  },
+
+  async abrirMesa(id) {
+    const mesa = this.findMesaById(id) || { ID: id, DESMESA: `Mesa ${id}` };
+    const confirm = await CatalogosUI.fireConfirm({
+      title: '¿Iniciar cuenta en esta mesa?',
+      html: `<p class="mb-0">Se abrirá una comanda en <strong>${this.escapeHtml(mesa.DESMESA || mesa.CODMESA || `Mesa ${id}`)}</strong>.</p>`,
+      icon: 'question',
+      confirmText: 'INICIAR',
+    });
+    if (!confirm) return;
+    if (this._container?.querySelector('#pos-list-coddoc')) {
+      DocTipoSelect.syncFromDom(this._container, 'pos-list-coddoc', this);
+    }
+    const coddoc = this.activeCoddoc();
+    if (!coddoc) {
+      F.toast('Seleccione una serie de documento', 'warning');
+      return;
+    }
+    const url = `/api/comandas-restaurante/mesas/${encodeURIComponent(id)}/abrir?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CODDOC: coddoc, USUARIO: this.usuario() }),
+    });
+    this._pedido = res.pedido || res;
+    const key = this.docKey();
+    if (!key) {
+      F.toast('No se recibió la comanda de la mesa', 'error');
+      return;
+    }
+    F.toast('Cuenta iniciada', 'success');
+    await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
+  },
+
+  async cerrarMesa(id) {
+    const mesa = this.findMesaById(id);
+    const label = mesa?.DESMESA || mesa?.CODMESA || `Mesa ${id}`;
+    const confirm = await CatalogosUI.fireConfirm({
+      title: '¿Cerrar cuenta?',
+      html: `<p class="mb-0">Se cerrará la cuenta de <strong>${this.escapeHtml(label)}</strong> y la mesa quedará disponible.</p>`,
+      icon: 'warning',
+      confirmText: 'CERRAR',
+      confirmClass: 'btn-catalogo-bloquear',
+    });
+    if (!confirm) return;
+    const url = `/api/comandas-restaurante/mesas/${encodeURIComponent(id)}/cerrar?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    await F.fetchJson(url, { method: 'POST' });
+    F.toast('Cuenta cerrada', 'success');
+    await this.fetchMesas();
+    this.refreshMesasDom();
+  },
+
+  bindMesasEvents() {
     DocTipoSelect.bind(this._container, 'pos-list-coddoc', this);
 
-    this._container?.querySelector('#pos-pedido-cards')?.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.inv-card-btn');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const card = btn.closest('.inv-doc-card');
+    this._container?.querySelector('#crs-mesas-grid')?.addEventListener('click', async (e) => {
+      const cerrarBtn = e.target.closest('[data-action="cerrar-cuenta"]');
+      if (cerrarBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = cerrarBtn.closest('[data-mesa-id]');
+        if (!card) return;
+        try {
+          await this.cerrarMesa(card.getAttribute('data-mesa-id'));
+        } catch (err) {
+          F.toast(err.message || 'Error al cerrar cuenta', 'error');
+        }
+        return;
+      }
+      const card = e.target.closest('[data-mesa-id]');
       if (!card) return;
-      const coddoc = card.getAttribute('data-coddoc');
-      const correlativo = card.getAttribute('data-correlativo');
-      const action = btn.getAttribute('data-action');
+      e.preventDefault();
+      const mesa = this.findMesaById(card.getAttribute('data-mesa-id'));
+      if (!mesa) return;
       try {
-        if (action === 'editar') await this.showEditor(coddoc, correlativo);
-        else if (action === 'imprimir') await this.imprimirPedido(coddoc, correlativo);
-        else if (action === 'bloquear') await this.bloquearPedido(coddoc, correlativo);
-        else if (action === 'eliminar') await this.eliminarPedido(coddoc, correlativo);
+        await this.onMesaClick(mesa);
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
       }
     });
 
-    this._container?.querySelector('#btn-pos-list-nuevo')?.addEventListener('click', () => this.onNuevoPedido());
+    this._container?.querySelector('#crs-mesas-grid')?.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const card = e.target.closest('[data-mesa-id]');
+      if (!card || e.target.closest('button')) return;
+      e.preventDefault();
+      const mesa = this.findMesaById(card.getAttribute('data-mesa-id'));
+      if (!mesa) return;
+      try {
+        await this.onMesaClick(mesa);
+      } catch (err) {
+        F.toast(err.message || 'Error', 'error');
+      }
+    });
 
     PosDocSearchUI.bindDocKeyboard(this, {
       isDetail: () => false,
@@ -852,7 +1031,8 @@ const CotizacionesView = {
 
   bindEditorEvents() {
     PosDocSearchUI.bind(this, 'pos', {
-      getEditable: () => this.docEditable(this._pedido?.header),
+      getEditable: () => true,
+      allowEmptySearch: true,
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
     });
@@ -870,7 +1050,7 @@ const CotizacionesView = {
         if (precioCampoSel.disabled) return;
         this._precioCampo = precioCampoSel.value || 'PRECIO';
         const q = this._container?.querySelector('#pos-product-search')?.value?.trim() || '';
-        if (q) this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
+        this.buscarProductos(q).catch((err) => F.toast(err.message, 'error'));
       });
     }
 
@@ -885,7 +1065,7 @@ const CotizacionesView = {
       const id = Number(btn.getAttribute('data-id'));
       const line = this.findLineById(id);
       if (!line) {
-        F.toast('No se encontró la línea de la cotización', 'warning');
+        F.toast('No se encontró la línea de la comanda', 'warning');
         return;
       }
       const action = btn.getAttribute('data-action');
@@ -903,14 +1083,14 @@ const CotizacionesView = {
           else await this.actualizarCantidad(id, qty - 1);
         }
       } catch (err) {
-        F.toast(err.message || 'Error al actualizar la cotización', 'error');
+        F.toast(err.message || 'Error al actualizar la comanda', 'error');
       } finally {
         this.setCartBusy(false);
         this.renderCart();
       }
     });
 
-    this._container?.querySelector('#btn-pos-atras')?.addEventListener('click', () => this.showList());
+    this._container?.querySelector('#btn-pos-atras')?.addEventListener('click', () => this.showMesas());
     this._container?.querySelector('#btn-pos-finalizar')?.addEventListener('click', () => {
       this.finalizarPedido().catch((err) => F.toast(err.message, 'error'));
     });
@@ -983,10 +1163,6 @@ const CotizacionesView = {
 
   async buscarProductos(q) {
     const term = String(q ?? '').trim();
-    if (!term) {
-      PosDocSearchUI.resetProductSearch(this, 'pos');
-      return;
-    }
     if (this._loadingProducts) return;
     this._loadingProducts = true;
     const spinner = '<p class="text-muted small text-center py-3"><i class="fa-solid fa-spinner fa-spin"></i></p>';
@@ -998,7 +1174,9 @@ const CotizacionesView = {
         PosDocSearchUI.setListsHtml(
           this._container,
           'pos',
-          '<p class="text-muted small text-center py-3 mb-0">Sin resultados para la búsqueda</p>'
+          term
+            ? '<p class="text-muted small text-center py-3 mb-0">Sin resultados para la búsqueda</p>'
+            : '<p class="text-muted small text-center py-3 mb-0">No hay productos habilitados</p>'
         );
         return;
       }
@@ -1009,6 +1187,10 @@ const CotizacionesView = {
     } finally {
       this._loadingProducts = false;
     }
+  },
+
+  async preloadProductos() {
+    await this.buscarProductos('');
   },
 
   async buscarClientes(q) {
@@ -1023,7 +1205,7 @@ const CotizacionesView = {
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const actual = DocFecha.inputValueFromHeader(this._pedido.header);
     if (fecha === actual) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1047,7 +1229,7 @@ const CotizacionesView = {
     const actual = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
     const next = codven || '';
     if (next === actual) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1061,7 +1243,7 @@ const CotizacionesView = {
   async aplicarCliente(codcliente) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
-    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const url = `/api/comandas-restaurante/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1074,7 +1256,7 @@ const CotizacionesView = {
 
   async onNuevoCliente() {
     if (!this.docEditable(this._pedido?.header)) {
-      F.toast('La cotización no está en edición', 'warning');
+      F.toast('La comanda no está en edición', 'warning');
       return;
     }
     const data = await ClientesView.showForm('Nuevo cliente', {}, false, { profile: 'facturacion' });
@@ -1095,16 +1277,16 @@ const CotizacionesView = {
     }
   },
 
-  async showList() {
-    this._screen = 'list';
+  async showMesas() {
+    this._screen = 'mesas';
     this._pedido = null;
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('pos');
     if (this._config) DocTipoSelect.initView(this);
-    this._container.innerHTML = this.renderListScreen();
-    this.bindListEvents();
-    await this.fetchPedidosList();
-    this.refreshListDom();
+    this._container.innerHTML = this.renderMesasScreen();
+    this.bindMesasEvents();
+    await this.fetchMesas();
+    this.refreshMesasDom();
   },
 
   async showEditor(coddoc, correlativo, opts = {}) {
@@ -1117,7 +1299,7 @@ const CotizacionesView = {
     await this.fetchVendedores();
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
-    PosDocSearchUI.resetProductSearch(this, 'pos');
+    await this.preloadProductos();
     this.renderAll();
     if (opts.focusProductSearch) {
       PosDocSearchUI.focusProductSearch(this._container, 'pos');
@@ -1133,7 +1315,7 @@ const CotizacionesView = {
       const key = this.docKey();
       if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
     } catch (err) {
-      F.toast(err.message || 'Error al crear cotización', 'error');
+      F.toast(err.message || 'Error al crear comanda', 'error');
     }
   },
 
@@ -1152,19 +1334,20 @@ const CotizacionesView = {
       return;
     }
 
-    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cotizaciones…</div>`;
+    container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando comandas…</div>`;
 
     try {
       this._config = await this.fetchConfig();
       DocTipoSelect.initView(this);
+      await this.fetchVendedores();
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
-            Configure un tipo de documento <strong>COT</strong> (cotizaciones) activo para esta empresa.
+            Configure un tipo de documento <strong>CRS</strong> (comandas restaurante) activo para esta empresa.
           </div>`;
         return;
       }
-      await this.showList();
+      await this.showMesas();
     } catch (err) {
       container.innerHTML = `
         <div class="alert alert-danger m-3 w-100">

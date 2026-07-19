@@ -118,7 +118,8 @@ const LIST_SELECT = `
   ISNULL(cj.DESCAJA, '') AS DESCAJA,
   d.FEL_UUDI,
   d.FEL_SERIE,
-  d.FEL_NUMERO
+  d.FEL_NUMERO,
+  d.ID_COLA_TRABAJO
 `;
 
 const LIST_WHERE = `
@@ -173,6 +174,7 @@ function mapDocumentoRow(r) {
     FEL_UUDI: r.FEL_UUDI ?? null,
     FEL_SERIE: r.FEL_SERIE ?? null,
     FEL_NUMERO: r.FEL_NUMERO ?? null,
+    ID_COLA_TRABAJO: r.ID_COLA_TRABAJO ?? null,
   };
 }
 
@@ -465,6 +467,61 @@ router.patch('/:coddoc/:correlativo/caja', async (req, res) => {
   } catch (err) {
     console.warn('[API PATCH /documentos/caja]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/:coddoc/:correlativo/trazabilidad', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .input('NOFAC', sql.VarChar, String(correlativo))
+      .query(`
+        SELECT
+          d.FECHA,
+          d.CODDOC,
+          t.DESDOC,
+          t.TIPODOC,
+          d.CORRELATIVO,
+          d.DOC_NOMCLIE,
+          ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
+          d.STATUS,
+          d.SERIEFAC,
+          d.NOFAC,
+          d.USUARIO
+        FROM dbo.DOCUMENTOS d
+        LEFT JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT
+          AND LTRIM(RTRIM(ISNULL(d.SERIEFAC, ''))) = @CODDOC
+          AND (
+            TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18,0)) = @CORRELATIVO
+            OR LTRIM(RTRIM(ISNULL(d.NOFAC, ''))) = @NOFAC
+          )
+        ORDER BY d.FECHA DESC, d.CORRELATIVO DESC, d.ID DESC
+      `);
+    res.json({
+      origen: { EMPNIT: empnit, CODDOC: coddoc, CORRELATIVO: correlativo },
+      rows: result.recordset || [],
+    });
+  } catch (err) {
+    console.warn('[API GET /documentos/trazabilidad]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
