@@ -104,6 +104,7 @@ const servicioMecanicaRouter = require('./routes/servicio-mecanica');
 const plataformasRouter = require('./routes/plataformas');
 const authRouter = require('./routes/auth');
 const { router: configRouter } = require('./routes/config');
+const rolesUsuariosRouter = require('./routes/roles-usuarios');
 const developerRouter = require('./routes/developer');
 const posRouter = require('./routes/pos');
 const comandasRestauranteRouter = require('./routes/comandas-restaurante');
@@ -119,6 +120,7 @@ const comprasRouter = require('./routes/compras');
 const { entradasRouter, salidasRouter } = require('./routes/inventario-docs');
 const inventarioSaldoRouter = require('./routes/inventario-saldo');
 const documentosRouter = require('./routes/documentos');
+const resumenDelDiaRouter = require('./routes/resumen-del-dia');
 const productosRouter = require('./routes/productos');
 const suscripcionesRouter = require('./routes/suscripciones');
 const credencialesFelRouter = require('./routes/credenciales-fel');
@@ -150,11 +152,33 @@ app.locals.io = io;
 
 const publicDir = path.join(__dirname, 'public');
 const dataDir = path.join(__dirname, 'data');
+const fotosProductosDir = path.join(__dirname, 'Fotos_productos');
 const buildMetaPath = path.join(publicDir, 'build-meta.json');
+
+if (!fs.existsSync(fotosProductosDir)) {
+  try {
+    fs.mkdirSync(fotosProductosDir, { recursive: true });
+  } catch (err) {
+    console.warn('[Fotos_productos] no se pudo crear carpeta:', err.message);
+  }
+}
 
 app.use(
   '/data',
   express.static(dataDir, {
+    etag: false,
+    lastModified: true,
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    },
+  })
+);
+
+app.use(
+  '/fotos_productos',
+  express.static(fotosProductosDir, {
     etag: false,
     lastModified: true,
     setHeaders(res) {
@@ -231,6 +255,7 @@ app.use('/api/servicio-mecanica', servicioMecanicaRouter);
 app.use('/api/plataformas', plataformasRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
+app.use('/api/roles-usuarios', rolesUsuariosRouter);
 app.use('/api/developer', developerRouter);
 app.use('/api/pos', posRouter);
 app.use('/api/comandas-restaurante', comandasRestauranteRouter);
@@ -247,6 +272,7 @@ app.use('/api/inventario/ent', entradasRouter);
 app.use('/api/inventario/sal', salidasRouter);
 app.use('/api/inventario', inventarioSaldoRouter);
 app.use('/api/documentos', documentosRouter);
+app.use('/api/resumen-del-dia', resumenDelDiaRouter);
 app.use('/api/productos', productosRouter);
 app.use('/api/suscripciones', suscripcionesRouter);
 app.use('/api/credenciales-fel', credencialesFelRouter);

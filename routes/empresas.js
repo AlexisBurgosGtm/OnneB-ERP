@@ -1,6 +1,8 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
+const { verifySettingPass, SETTING_OPCION } = require('../lib/settings');
+const { cambiarEmpnitEnTodasLasTablas } = require('../lib/cambiar-empnit');
 
 const router = express.Router();
 
@@ -134,6 +136,67 @@ router.get('/combo', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /empresas/combo]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Cambia EMPNIT en todas las tablas base que tengan la columna.
+ * Responde NDJSON (una línea por evento) para progreso en UI.
+ */
+router.post('/cambiar-empnit', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
+  const fromEmpnit = String(req.body?.EMPNIT_ACTUAL ?? req.body?.from ?? '').trim();
+  const toEmpnit = String(req.body?.EMPNIT_NUEVO ?? req.body?.to ?? '').trim();
+  if (!pass) {
+    return res.status(401).json({ error: 'Clave de administrador requerida' });
+  }
+  if (!fromEmpnit || !toEmpnit) {
+    return res.status(400).json({ error: 'EMPNIT actual y nuevo son obligatorios' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const okPass = await verifySettingPass(pool, pass, SETTING_OPCION.CLAVE_ADMIN);
+    if (!okPass) {
+      return res.status(401).json({ error: 'Clave incorrecta' });
+    }
+
+    const wantsStream =
+      String(req.headers.accept || '').includes('application/x-ndjson') ||
+      String(req.query.stream || '') === '1';
+
+    if (wantsStream) {
+      res.status(200);
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Accel-Buffering', 'no');
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+      const writeEvent = (evt) => {
+        res.write(`${JSON.stringify(evt)}\n`);
+        if (typeof res.flush === 'function') res.flush();
+      };
+
+      try {
+        await cambiarEmpnitEnTodasLasTablas(pool, fromEmpnit, toEmpnit, writeEvent);
+      } catch (err) {
+        writeEvent({
+          type: 'fatal',
+          error: err.message || String(err),
+          statusCode: err.statusCode || 500,
+        });
+      }
+      return res.end();
+    }
+
+    const summary = await cambiarEmpnitEnTodasLasTablas(pool, fromEmpnit, toEmpnit);
+    res.json(summary);
+  } catch (err) {
+    console.warn('[API POST /empresas/cambiar-empnit]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

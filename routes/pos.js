@@ -20,6 +20,7 @@ const {
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
+const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
@@ -369,6 +370,7 @@ router.get('/pedidos', async (req, res) => {
       SELECT TOP 100
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
+        d.F_ENTREGA, d.DIRENTREGA,
         c.NEGOCIO, c.TIPONEGOCIO,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
@@ -415,6 +417,7 @@ router.post('/pedidos', async (req, res) => {
   const codcliente = parseInt(req.body?.CODCLIENTE, 10);
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'POS').trim();
   const obs = String(req.body?.OBS || '').trim();
+  const codvenRaw = req.body?.CODVEN;
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -434,6 +437,11 @@ router.post('/pedidos', async (req, res) => {
     }
     if (!cliente) {
       return res.status(400).json({ error: 'No hay cliente disponible para el pedido' });
+    }
+    let codven = null;
+    if (codvenRaw !== undefined && codvenRaw !== null && String(codvenRaw).trim() !== '') {
+      const vendedor = await getVendedorActivo(pool, empnit, codvenRaw);
+      if (vendedor) codven = vendedor.CODEMPLEADO;
     }
 
     const parts = nowParts();
@@ -459,17 +467,18 @@ router.post('/pedidos', async (req, res) => {
         .input('DOC_DIRCLIE', sql.VarChar, String(cliente.DIRCLIENTE || 'SN'))
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
+        .input('CODVEN', sql.Int, codven)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
-            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE, CODVEN,
             TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
-            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
+            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
             0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, 1,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',
@@ -965,6 +974,10 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (clienteFinalize.error) {
     return res.status(400).json({ error: clienteFinalize.error });
   }
+  const entregaFinalize = parseFinalizeEntregaBody(req.body);
+  if (entregaFinalize.error) {
+    return res.status(400).json({ error: entregaFinalize.error });
+  }
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -976,6 +989,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       if (clienteFinalize.nomClie !== null) {
         setParts.push('DOC_NOMCLIE = @DOC_NOMCLIE', 'DOC_DIRCLIE = @DOC_DIRCLIE');
       }
+      setParts.push('F_ENTREGA = @F_ENTREGA', 'DIRENTREGA = @DIRENTREGA');
       if (setParts.length) {
         const updReq = transaction
           .request()
@@ -987,6 +1001,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
           updReq.input('DOC_NOMCLIE', sql.VarChar, clienteFinalize.nomClie);
           updReq.input('DOC_DIRCLIE', sql.VarChar, clienteFinalize.dirClie);
         }
+        updReq.input('F_ENTREGA', sql.VarChar, entregaFinalize.fEntrega);
+        updReq.input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega);
         await updReq.query(`
             UPDATE dbo.DOCUMENTOS SET ${setParts.join(', ')}
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO

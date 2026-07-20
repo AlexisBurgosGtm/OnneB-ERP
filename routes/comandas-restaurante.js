@@ -416,6 +416,7 @@ router.post('/pedidos', async (req, res) => {
   const codcliente = parseInt(req.body?.CODCLIENTE, 10);
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'POS').trim();
   const obs = String(req.body?.OBS || '').trim();
+  const codvenRaw = req.body?.CODVEN;
   const mesaIdRaw = req.body?.MESA_ID ?? req.body?.ID_MESA ?? req.body?.CODEMBARQUE;
   const codEmbarque =
     mesaIdRaw != null && String(mesaIdRaw).trim() !== ''
@@ -440,6 +441,11 @@ router.post('/pedidos', async (req, res) => {
     }
     if (!cliente) {
       return res.status(400).json({ error: 'No hay cliente disponible para el pedido' });
+    }
+    let codven = null;
+    if (codvenRaw !== undefined && codvenRaw !== null && String(codvenRaw).trim() !== '') {
+      const vendedor = await getVendedorActivo(pool, empnit, codvenRaw);
+      if (vendedor) codven = vendedor.CODEMPLEADO;
     }
 
     const parts = nowParts();
@@ -466,17 +472,18 @@ router.post('/pedidos', async (req, res) => {
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
         .input('CODEMBARQUE', sql.VarChar, codEmbarque)
+        .input('CODVEN', sql.Int, codven)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
-            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE, CODVEN,
             TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
-            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
+            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
             0, 0, @CODEMBARQUE, '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, 1,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',
@@ -1236,6 +1243,7 @@ router.post('/mesas/:id/abrir', async (req, res) => {
   if (Number.isNaN(mesaId)) return res.status(400).json({ error: 'Mesa inválida' });
   const coddocBody = String(req.body?.CODDOC || '').trim();
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'POS').trim();
+  const codvenRaw = req.body?.CODVEN;
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -1282,6 +1290,11 @@ router.post('/mesas/:id/abrir', async (req, res) => {
     if (!cliente) {
       return res.status(400).json({ error: 'No hay cliente disponible para la comanda' });
     }
+    let codven = null;
+    if (codvenRaw !== undefined && codvenRaw !== null && String(codvenRaw).trim() !== '') {
+      const vendedor = await getVendedorActivo(pool, empnit, codvenRaw);
+      if (vendedor) codven = vendedor.CODEMPLEADO;
+    }
 
     const parts = nowParts();
     const transaction = new sql.Transaction(pool);
@@ -1309,17 +1322,18 @@ router.post('/mesas/:id/abrir', async (req, res) => {
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obsMesa)
         .input('CODEMBARQUE', sql.VarChar, String(mesaId))
+        .input('CODVEN', sql.Int, codven)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
-            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE, CODVEN,
             TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
-            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
+            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
             0, 0, @CODEMBARQUE, '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, 1,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',

@@ -141,6 +141,23 @@ let F = {
     return user?.empNombre ?? window.OnnebContext?.empNombre ?? '';
   },
 
+  /** CODEMPLEADO de la sesión (null si superusuario o no definido). */
+  sessionCodEmpleado() {
+    const n = parseInt(this.session('user')?.codempleado, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
+
+  /**
+   * CODVEN por defecto: empleado de sesión si aparece en la lista de vendedores.
+   * @param {Array<{CODEMPLEADO:number|string}>} vendedores
+   */
+  defaultCodvenFromSession(vendedores) {
+    const cod = this.sessionCodEmpleado();
+    if (cod == null) return null;
+    const ok = (vendedores || []).some((v) => String(v.CODEMPLEADO) === String(cod));
+    return ok ? cod : null;
+  },
+
   setEmpresaGlobal(empNit, empNombre = '') {
     window.OnnebContext = {
       ...(window.OnnebContext || {}),

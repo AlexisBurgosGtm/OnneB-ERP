@@ -27,6 +27,7 @@
   <link rel="stylesheet" href="/css/dashboard-admin.css">
   <link rel="stylesheet" href="/css/tareas.css">
   <link rel="stylesheet" href="/css/config-general.css">
+  <link rel="stylesheet" href="/css/roles-usuarios.css">
   <link rel="stylesheet" href="/css/formatos-impresion.css">
   <link rel="stylesheet" href="/css/nomina.css">
   <link rel="stylesheet" href="/css/developer.css">
@@ -44,6 +45,7 @@
   <link rel="stylesheet" href="/css/formatos-contables.css">
   <link rel="stylesheet" href="/css/config-contabilidad.css">
   <link rel="stylesheet" href="/css/cuentas-cxp.css">
+  <link rel="stylesheet" href="/css/resumen-del-dia.css">
   <link rel="stylesheet" href="/css/bancos.css">
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
@@ -197,6 +199,7 @@
               <div id="collapseArchivo" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="resumen-del-dia"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Resumen del día</a></li>
                 </ul>
               </div>
             </div>
@@ -308,6 +311,7 @@
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="empresas"><i class="fa-solid fa-building" aria-hidden="true"></i> Empresas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="config-general"><i class="fa-solid fa-gear" aria-hidden="true"></i> Config general</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="roles-usuarios"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Roles de usuarios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tipo-documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Tipo documentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="formatos-impresion"><i class="fa-solid fa-print" aria-hidden="true"></i> Formatos de impresión</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="credenciales-fel"><i class="fa-solid fa-key" aria-hidden="true"></i> Credenciales FEL</a></li>
@@ -401,9 +405,11 @@
   <script src="/js/views/configuraciones/formatos-impresion.js"></script>
   <script src="/js/views/configuraciones/credenciales-fel.js"></script>
   <script src="/js/views/configuraciones/config-general.js"></script>
+  <script src="/js/views/configuraciones/roles-usuarios.js"></script>
   <script src="/js/views/configuraciones/developer.js"></script>
   <script src="/js/views/configuraciones/updater.js"></script>
   <script src="/js/doc-fecha.js"></script>
+  <script src="/js/doc-entrega.js"></script>
   <script src="/js/doc-vendedor-clave.js"></script>
   <script src="/js/empresa-logo.js"></script>
   <script src="/js/print-report.js"></script>
@@ -430,6 +436,7 @@
   <script src="/js/views/cuentas/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
   <script src="/js/views/archivo/documentos.js"></script>
+  <script src="/js/views/archivo/resumen-del-dia.js"></script>
   <script src="/js/libro-contable-common.js"></script>
   <script src="/js/views/contabilidad/libro-ventas.js"></script>
   <script src="/js/views/contabilidad/libro-compras.js"></script>

@@ -197,11 +197,14 @@ const ComandasRestauranteView = {
   },
 
   async crearPedido() {
+    await this.fetchVendedores();
     const body = {
       CODDOC: this.activeCoddoc(),
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven != null) body.CODVEN = codven;
     const url = `/api/comandas-restaurante/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'POST',
@@ -509,19 +512,21 @@ const ComandasRestauranteView = {
       });
       return;
     }
-    const logoHtml =
-      typeof EmpresaLogo !== 'undefined'
-        ? EmpresaLogo.posHeaderLogoHtml()
-        : '<img src="/icons/icon-72.png" width="72" height="72" alt="" class="crs-product-thumb-img">';
+    const fallbackSrc = '/icons/icon-72.png';
     const html = this._productos
       .map((p) => {
         const des2 = String(p.DESPROD2 ?? '').trim();
+        const fotoUrl = `/api/productos/${encodeURIComponent(String(p.CODPROD).trim())}/foto?empnit=${encodeURIComponent(F.getEmpNit())}`;
         return `
           <div class="crs-product-card pos-product-item" tabindex="0" role="button"
             data-codprod="${this.escapeHtml(p.CODPROD)}"
             data-codmedida="${this.escapeHtml(p.CODMEDIDA)}"
             aria-label="Agregar ${this.escapeHtml(this.formatProdLabel(p.DESPROD, p.DESMARCA))} ${this.escapeHtml(p.CODMEDIDA)}">
-            <div class="crs-product-thumb">${logoHtml}</div>
+            <div class="crs-product-thumb">
+              <img src="${this.escapeHtml(fotoUrl)}" alt="" class="crs-product-thumb-img"
+                data-fallback="${this.escapeHtml(fallbackSrc)}"
+                onerror="if(!this.dataset.err){this.dataset.err='1';this.src=this.dataset.fallback;}">
+            </div>
             <div class="crs-product-body">
               <div class="crs-product-name">${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
               ${des2 ? `<div class="crs-product-sub small text-muted">${this.escapeHtml(des2)}</div>` : ''}
@@ -947,10 +952,14 @@ const ComandasRestauranteView = {
       return;
     }
     const url = `/api/comandas-restaurante/mesas/${encodeURIComponent(id)}/abrir?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    await this.fetchVendedores();
+    const body = { CODDOC: coddoc, USUARIO: this.usuario() };
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven != null) body.CODVEN = codven;
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ CODDOC: coddoc, USUARIO: this.usuario() }),
+      body: JSON.stringify(body),
     });
     this._pedido = res.pedido || res;
     const key = this.docKey();

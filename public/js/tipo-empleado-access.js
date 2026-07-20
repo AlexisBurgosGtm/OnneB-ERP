@@ -1,5 +1,6 @@
 /**
  * Permisos de menú e inicio según CODTIPOEMPLEADO (Empleados).
+ * El mapa por tipo puede sobrescribirse desde /api/roles-usuarios (Roles de usuarios).
  */
 const TipoEmpleadoAccess = {
   TIPO_ADMIN: 1,
@@ -47,6 +48,7 @@ const TipoEmpleadoAccess = {
     'inventario-retroactivo',
     'actualizacion-inventario',
     'documentos',
+    'resumen-del-dia',
     'empleados',
     'nomina-config',
     'nomina-conceptos',
@@ -72,6 +74,7 @@ const TipoEmpleadoAccess = {
     'plataformas',
     'empresas',
     'config-general',
+    'roles-usuarios',
     'tipo-documentos',
     'formatos-impresion',
     'credenciales-fel',
@@ -88,15 +91,15 @@ const TipoEmpleadoAccess = {
       'facturacion',
       'facturas-electronicas',
       'notas-credito',
-    'notas-abono',
+      'notas-abono',
       'compras',
       'notas-debito',
       'gastos',
-    'corte-caja',
-    'cotizaciones',
-    'fraccionamiento-fac',
-    'tareas',
-    'cuentas-cobrar',
+      'corte-caja',
+      'cotizaciones',
+      'fraccionamiento-fac',
+      'tareas',
+      'cuentas-cobrar',
       'cuentas-pagar',
       'retenciones-isr',
       'retenciones-iva',
@@ -118,6 +121,7 @@ const TipoEmpleadoAccess = {
       'inventario-retroactivo',
       'actualizacion-inventario',
       'documentos',
+      'resumen-del-dia',
       'empleados',
       'nomina-config',
       'nomina-conceptos',
@@ -137,7 +141,7 @@ const TipoEmpleadoAccess = {
       'tareas',
       'inventario',
     ],
-    4: ['inicio', 'clientes', 'rutas', 'documentos'],
+    4: ['inicio', 'clientes', 'rutas', 'documentos', 'resumen-del-dia'],
     5: [
       'inicio',
       'productos-precios',
@@ -174,6 +178,38 @@ const TipoEmpleadoAccess = {
     ],
   },
 
+  _accesoLoaded: false,
+
+  applyMenuAccesoMap(acceso) {
+    if (!acceso || typeof acceso !== 'object') return;
+    const next = { ...this.MENU_BY_TIPO };
+    for (const [key, val] of Object.entries(acceso)) {
+      const cod = parseInt(key, 10);
+      if (!Number.isFinite(cod) || cod <= 0) continue;
+      if (val === null) {
+        next[cod] = null;
+        continue;
+      }
+      if (!Array.isArray(val)) continue;
+      const menus = val.map((m) => String(m || '').trim()).filter((m) => this.ALL_MENUS.includes(m));
+      if (!menus.includes('inicio')) menus.unshift('inicio');
+      next[cod] = menus;
+    }
+    this.MENU_BY_TIPO = next;
+    this._accesoLoaded = true;
+  },
+
+  async refreshMenuAccess() {
+    try {
+      const data = await F.fetchJson(`/api/roles-usuarios/acceso?_=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      this.applyMenuAccesoMap(data.acceso || {});
+    } catch (err) {
+      console.warn('[TipoEmpleadoAccess] refreshMenuAccess:', err?.message || err);
+    }
+  },
+
   getSessionUser() {
     return F.session('user') || {};
   },
@@ -186,11 +222,14 @@ const TipoEmpleadoAccess = {
   },
 
   allowedMenus(codtipo) {
-    if (codtipo === this.TIPO_ADMIN || codtipo === null) {
+    if (codtipo === null) {
       return new Set(this.ALL_MENUS);
     }
     const list = this.MENU_BY_TIPO[codtipo];
-    return new Set(list && list.length ? list : ['inicio']);
+    if (list === null) return new Set(this.ALL_MENUS);
+    if (Array.isArray(list) && list.length) return new Set(list);
+    if (codtipo === this.TIPO_ADMIN) return new Set(this.ALL_MENUS);
+    return new Set(['inicio']);
   },
 
   canAccessMenu(menuKey, sessionUser) {
@@ -211,6 +250,7 @@ const TipoEmpleadoAccess = {
       4: 'VISITADOR',
       5: 'BODEGA',
       6: 'TRANSPORTE',
+      7: 'CONTABILIDAD',
       8: 'CAJERO',
     };
     return fallback[codtipo] || 'Empleado';

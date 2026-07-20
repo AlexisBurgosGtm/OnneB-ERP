@@ -9,10 +9,14 @@ const {
   getSettingSino,
   getSettingConcre,
   getSettingFormatoImpresion,
+  getSettingGuardadoFotos,
+  getSettingMuestraFormatoFelOnline,
   setSettingValue,
   verifySettingPass,
   ensureSettingDefault,
   normalizeFormatoImpresion,
+  normalizeGuardadoFotos,
+  normalizeMuestraFormatoFelOnline,
 } = require('../lib/settings');
 
 const router = express.Router();
@@ -92,6 +96,7 @@ router.get('/sino', async (req, res) => {
   if (!opcion) return;
   try {
     const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
     const sino = await getSettingSino(pool, opcion);
     res.json({ opcion, sino });
   } catch (err) {
@@ -112,6 +117,7 @@ router.put('/sino', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
     await setSettingValue(pool, opcion, raw);
     res.json({ ok: true, opcion, sino: raw });
   } catch (err) {
@@ -190,6 +196,81 @@ router.put('/formato-impresion', async (req, res) => {
     res.json({ ok: true, opcion, formato });
   } catch (err) {
     console.warn('[API PUT /config/formato-impresion]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/guardado-fotos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const modo = await getSettingGuardadoFotos(pool, opcion);
+    res.json({ opcion, modo });
+  } catch (err) {
+    console.warn('[API GET /config/guardado-fotos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/guardado-fotos', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const modo = normalizeGuardadoFotos(req.body?.modo ?? req.body?.valor ?? req.body?.formato);
+  if (modo !== 'LOCAL' && modo !== 'HOST') {
+    return res.status(400).json({ error: 'El valor debe ser LOCAL o HOST' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await setSettingValue(pool, opcion, modo);
+    res.json({ ok: true, opcion, modo });
+  } catch (err) {
+    console.warn('[API PUT /config/guardado-fotos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/muestra-formato-fel', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const modo = await getSettingMuestraFormatoFelOnline(pool, opcion);
+    res.json({ opcion, modo });
+  } catch (err) {
+    console.warn('[API GET /config/muestra-formato-fel]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/muestra-formato-fel', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const modo = normalizeMuestraFormatoFelOnline(req.body?.modo ?? req.body?.valor ?? req.body?.formato);
+  if (modo !== 'NO' && modo !== 'SI' && modo !== 'AMBOS') {
+    return res.status(400).json({ error: 'El valor debe ser NO, SI o AMBOS' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
+    await setSettingValue(pool, opcion, modo);
+    res.json({ ok: true, opcion, modo });
+  } catch (err) {
+    console.warn('[API PUT /config/muestra-formato-fel]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

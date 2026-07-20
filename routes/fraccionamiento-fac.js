@@ -670,7 +670,7 @@ router.get('/', async (req, res) => {
           c.ID, c.EMPNIT, c.TIPO, c.CODDOC, c.CORRELATIVO,
           c.FECHA_INICIO, c.HORA_INICIO, c.FINALIZADO, c.FECHA_FIN, c.HORA_FIN,
           d.DOC_NIT, d.DOC_NOMCLIE, d.DOC_DIRCLIE, d.STATUS AS DOC_STATUS,
-          d.TOTALPRECIO, d.FEL_UUDI, t.TIPODOC, t.DESDOC,
+          d.TOTALPRECIO, ISNULL(d.CONCRE, 'CON') AS CONCRE, d.FEL_UUDI, t.TIPODOC, t.DESDOC,
           ISNULL((
             SELECT SUM(ISNULL(df.TOTALPRECIO, 0))
             FROM dbo.DOCUMENTOS df

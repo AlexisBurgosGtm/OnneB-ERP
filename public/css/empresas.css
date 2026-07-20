@@ -67,3 +67,35 @@
   max-width: 120px;
   object-fit: contain;
 }
+
+.empresas-acciones {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.empresas-cambiar-empnit-progress {
+  margin-top: 0.75rem;
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: var(--app-radius-sm, 0.55rem);
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in srgb, var(--onneb-base-black) 2%, #ffffff);
+  text-align: left;
+}
+
+.empresas-cambiar-empnit-log {
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.empresas-cambiar-empnit-log-ok {
+  color: #1b7a3d;
+}
+
+.empresas-cambiar-empnit-log-err {
+  color: #b42318;
+}

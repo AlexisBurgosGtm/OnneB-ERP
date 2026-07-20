@@ -827,6 +827,10 @@ const NotasCreditoView = {
     });
     if (!ok.isConfirmed) return;
 
+    const tipodocFinalizar = String(h?.TIPODOC || '').trim().toUpperCase() || 'FNC';
+    const coddocFinalizar = key.coddoc;
+    const correlativoFinalizar = key.correlativo;
+
     await F.fetchJson(this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -835,6 +839,30 @@ const NotasCreditoView = {
     F.toast('Nota de crédito finalizada', 'success');
     this._pedido = null;
     await this.showList();
+    await this.maybeAutoCertificarTrasFinalizar(coddocFinalizar, correlativoFinalizar, tipodocFinalizar);
+  },
+
+  async maybeAutoCertificarTrasFinalizar(coddoc, correlativo, tipodoc) {
+    const tipo = String(tipodoc || '').trim().toUpperCase();
+    if (typeof DocOpciones === 'undefined' || !DocOpciones.esTipoCertificableFel(tipo)) return;
+    let auto = false;
+    try {
+      auto = await DocOpciones.fetchCertificaAlFinalizar();
+    } catch (_) {
+      return;
+    }
+    if (!auto) return;
+    try {
+      await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+        onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
+      });
+      await this.fetchPedidosList();
+      this.refreshListDom();
+    } catch (err) {
+      F.alert('Error FEL', err.message || 'No se pudo certificar automáticamente', 'error');
+      await this.fetchPedidosList().catch(() => {});
+      this.refreshListDom();
+    }
   },
 
   renderListActionsHtml(row) {
@@ -1164,17 +1192,9 @@ const NotasCreditoView = {
     });
     if (!confirm) return;
     try {
-      const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-      const data = await F.fetchJson(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+      await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+        onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
       });
-      const fel = data.fel || {};
-      F.toast(
-        `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
-        'success',
-      );
       await this.fetchPedidosList();
       this.refreshListDom();
     } catch (err) {

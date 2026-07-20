@@ -333,11 +333,16 @@ const FraccionamientoFacView = {
         r.DOC_NOMCLIE,
         r.TIPODOC,
         r.TOTALPRECIO,
+        r.CONCRE,
       ]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ');
       return hay.includes(q);
     });
+  },
+
+  formatFormaPago(concre) {
+    return String(concre || 'CON').trim().toUpperCase() === 'CRE' ? 'CRÉDITO' : 'CONTADO';
   },
 
   renderTableBodyHtml() {
@@ -346,7 +351,7 @@ const FraccionamientoFacView = {
       const msg = this._filterQuery.trim()
         ? 'Ningún registro coincide con la búsqueda'
         : 'Sin registros en la cola de trabajo';
-      return `<tr><td colspan="9" class="text-center text-muted py-4">${msg}</td></tr>`;
+      return `<tr><td colspan="10" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -356,6 +361,9 @@ const FraccionamientoFacView = {
         const busyThis = this._fraccionando && Number(this._fraccionandoId) === Number(id);
         const anyBusy = this._fraccionando || this._paramsLocked;
         const inQueue = this._fraccionQueue.includes(Number(id));
+        const pago = this.formatFormaPago(r.CONCRE);
+        const pagoClass =
+          String(r.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'text-warning' : 'text-success';
         let fracBtn;
         if (busyThis) {
           fracBtn = `<button type="button" class="btn btn-sm btn-primary" disabled>
@@ -398,6 +406,7 @@ const FraccionamientoFacView = {
             <td>${this.formatCell(r.CODDOC)}</td>
             <td class="text-end">${this.formatCell(r.CORRELATIVO)}</td>
             <td class="small">${this.formatCell(r.DOC_NOMCLIE)}</td>
+            <td class="small fw-semibold ${pagoClass}">${this.escapeHtml(pago)}</td>
             <td class="text-end text-nowrap">Q ${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
             <td class="text-nowrap">${this.renderProgressBadge(r)}</td>
             <td>${this.formatFecha(r.FECHA_INICIO)}</td>
@@ -500,6 +509,7 @@ const FraccionamientoFacView = {
                   <th>Documento</th>
                   <th class="text-end">Correlativo</th>
                   <th>Cliente</th>
+                  <th>Pago</th>
                   <th class="text-end">Total</th>
                   <th>Progreso</th>
                   <th>Inicio</th>
@@ -727,6 +737,17 @@ const FraccionamientoFacView = {
         `Certificado ${res.documento?.CODDOC || ''} #${res.documento?.CORRELATIVO ?? ''} — UUID ${fel.uuid || ''}`,
         'success'
       );
+      if (typeof DocOpciones !== 'undefined' && DocOpciones.mostrarFormatosTrasCertificar) {
+        const coddoc = res.documento?.CODDOC;
+        const correlativo = res.documento?.CORRELATIVO;
+        await DocOpciones.mostrarFormatosTrasCertificar({
+          felUuid: fel.uuid || '',
+          onImprimirSistema:
+            coddoc != null && correlativo != null
+              ? () => DocOpciones.imprimir(coddoc, correlativo)
+              : undefined,
+        });
+      }
       this.removeRowFromList(id);
       await this.reloadCorrelativoParam();
     } catch (err) {

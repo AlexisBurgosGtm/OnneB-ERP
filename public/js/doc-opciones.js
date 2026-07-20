@@ -4,6 +4,8 @@
 const DocOpciones = {
   FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
   FEL_URL_OPCION: 'URL FEL',
+  CERTIFICA_AL_FINALIZAR_OPCION: 'CERTIFICA AL FINALIZAR',
+  MUESTRA_FORMATO_FEL_ONLINE_OPCION: 'MUESTRA FORMATO FEL ONLINE',
 
   EDITOR_BY_TIPODOC: {
     ENV: { menu: 'pedidos-mostrador', view: () => PosView },
@@ -151,6 +153,74 @@ const DocOpciones = {
     return String(data.pass ?? '').trim();
   },
 
+  async fetchCertificaAlFinalizar() {
+    const params = new URLSearchParams({
+      opcion: this.CERTIFICA_AL_FINALIZAR_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+    return String(data.sino ?? 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  async fetchMuestraFormatoFelOnline() {
+    const params = new URLSearchParams({
+      opcion: this.MUESTRA_FORMATO_FEL_ONLINE_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/muestra-formato-fel?${params}`, { cache: 'no-store' });
+    const modo = String(data.modo ?? 'NO').trim().toUpperCase();
+    if (modo === 'SI' || modo === 'AMBOS') return modo;
+    return 'NO';
+  },
+
+  esTipoCertificableFel(tipodoc) {
+    return this.FEL_TIPOS_CERTIFICABLES.includes(String(tipodoc || '').trim().toUpperCase());
+  },
+
+  async abrirFelOnline(felValue) {
+    const fel = String(felValue ?? '').trim();
+    if (!fel) {
+      F.toast('No hay UUID FEL para abrir el documento online', 'warning');
+      return false;
+    }
+    let baseUrl = '';
+    try {
+      baseUrl = await this.fetchUrlFel();
+    } catch (err) {
+      F.toast(err.message || 'No se pudo leer la URL FEL', 'error');
+      return false;
+    }
+    if (!baseUrl) {
+      F.toast('Configure la URL FEL en Config general', 'warning');
+      return false;
+    }
+    const url = this.joinFelUrl(baseUrl, fel);
+    if (!url) {
+      F.toast('No se pudo construir la URL del documento FEL', 'warning');
+      return false;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return true;
+  },
+
+  /**
+   * Tras certificar: muestra formato según MUESTRA FORMATO FEL ONLINE.
+   * @param {{ felUuid?: string, onImprimirSistema?: () => Promise<void>|void }} opts
+   */
+  async mostrarFormatosTrasCertificar(opts = {}) {
+    const modo = await this.fetchMuestraFormatoFelOnline().catch(() => 'NO');
+    const felUuid = String(opts.felUuid ?? '').trim();
+    const showOnline = modo === 'SI' || modo === 'AMBOS';
+    const showSistema = modo === 'NO' || modo === 'AMBOS';
+
+    if (showOnline) {
+      await this.abrirFelOnline(felUuid);
+    }
+    if (showSistema && typeof opts.onImprimirSistema === 'function') {
+      await opts.onImprimirSistema();
+    }
+  },
+
   async certificar(coddoc, correlativo) {
     const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const data = await F.fetchJson(url, {
@@ -163,6 +233,23 @@ const DocOpciones = {
       `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
       'success'
     );
+    return data;
+  },
+
+  /**
+   * Certifica sin confirmación y aplica la visualización de formatos configurada.
+   * @param {string} coddoc
+   * @param {number|string} correlativo
+   * @param {{ onImprimirSistema?: () => Promise<void>|void, silentError?: boolean }} [opts]
+   */
+  async certificarYMostrarFormatos(coddoc, correlativo, opts = {}) {
+    const data = await this.certificar(coddoc, correlativo);
+    const fel = data.fel || {};
+    const felUuid = String(fel.uuid || fel.UUID || data.FEL_UUDI || '').trim();
+    await this.mostrarFormatosTrasCertificar({
+      felUuid,
+      onImprimirSistema: opts.onImprimirSistema,
+    });
     return data;
   },
 

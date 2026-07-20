@@ -14,6 +14,8 @@ const ConfigGeneralView = {
     CONFIGURACION_IVA: 'CONFIGURACION IVA',
     PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
+    CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
+    MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
   },
 
   TEXT_CARDS: [
@@ -63,6 +65,12 @@ const ConfigGeneralView = {
       icon: 'fa-tag',
       fallbackDesc: 'Permite modificar el precio al agregar productos en pedidos de mostrador',
     },
+    {
+      opcion: 'CERTIFICA AL FINALIZAR',
+      title: 'Certifica al finalizar',
+      icon: 'fa-certificate',
+      fallbackDesc: 'Al finalizar un documento FEL (FEF/FEC/FNC), certifica automáticamente ante SAT',
+    },
   ],
 
   CONCRE_OPTIONS: [
@@ -83,6 +91,30 @@ const ConfigGeneralView = {
       fallbackDesc: 'Carta: impresora normal. Ticket: impresora térmica 80 mm.',
       labels: { CARTA: 'Carta', TICKET: 'Ticket' },
       defaultValue: 'CARTA',
+    },
+  ],
+
+  FOTO_OPTIONS: [
+    {
+      opcion: 'GUARDADO DE FOTOS',
+      title: 'Guardado de fotos',
+      icon: 'fa-image',
+      fallbackDesc: 'LOCAL: carpeta Fotos_productos. HOST: almacenamiento WebDAV (STORAGE_SERVER).',
+      labels: { LOCAL: 'LOCAL', HOST: 'HOST' },
+      defaultValue: 'LOCAL',
+    },
+  ],
+
+  FEL_FORMATO_OPTIONS: [
+    {
+      opcion: 'MUESTRA FORMATO FEL ONLINE',
+      title: 'Muestra formato FEL online',
+      icon: 'fa-file-invoice',
+      fallbackDesc:
+        'Al certificar: NO = solo formato del sistema · SI = solo FEL online · AMBOS = los dos',
+      labels: { NO: 'NO', SI: 'SI', AMBOS: 'AMBOS' },
+      defaultValue: 'NO',
+      values: ['NO', 'SI', 'AMBOS'],
     },
   ],
 
@@ -109,6 +141,8 @@ const ConfigGeneralView = {
   _sinoMeta: {},
   _concreMeta: {},
   _formatoMeta: {},
+  _fotoMeta: {},
+  _felFormatoMeta: {},
   _invSaldoPendientes: null,
 
   escapeHtml(value) {
@@ -139,12 +173,41 @@ const ConfigGeneralView = {
     return String(value ?? 'CARTA').trim().toUpperCase() === 'TICKET' ? 'TICKET' : 'CARTA';
   },
 
+  normalizeFotoModo(value) {
+    return String(value ?? 'LOCAL').trim().toUpperCase() === 'HOST' ? 'HOST' : 'LOCAL';
+  },
+
+  normalizeFelFormatoModo(value) {
+    const s = String(value ?? 'NO').trim().toUpperCase();
+    if (s === 'SI') return 'SI';
+    if (s === 'AMBOS') return 'AMBOS';
+    return 'NO';
+  },
+
   getFormatoOption(opcion) {
     return this.FORMATO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
   },
 
+  getFotoOption(opcion) {
+    return this.FOTO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
+  },
+
+  getFelFormatoOption(opcion) {
+    return this.FEL_FORMATO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
+  },
+
   getFormatoLabel(option, formato) {
     const val = this.normalizeFormato(formato);
+    return option?.labels?.[val] || val;
+  },
+
+  getFotoLabel(option, modo) {
+    const val = this.normalizeFotoModo(modo);
+    return option?.labels?.[val] || val;
+  },
+
+  getFelFormatoLabel(option, modo) {
+    const val = this.normalizeFelFormatoModo(modo);
     return option?.labels?.[val] || val;
   },
 
@@ -169,6 +232,65 @@ const ConfigGeneralView = {
               <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
             </div>
             <select class="form-select form-select-sm config-formato-select" style="max-width:8rem"
+              data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  renderFotoCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const modo = this.normalizeFotoModo(meta.modo || option.defaultValue || 'LOCAL');
+    const options = ['LOCAL', 'HOST']
+      .map((val) => {
+        const label = this.getFotoLabel(option, val);
+        const sel = val === modo ? ' selected' : '';
+        return `<option value="${val}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <div class="card config-card-compact" data-foto-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            <select class="form-select form-select-sm config-foto-select" style="max-width:8rem"
+              data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  renderFelFormatoCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const modo = this.normalizeFelFormatoModo(meta.modo || option.defaultValue || 'NO');
+    const values = option.values || ['NO', 'SI', 'AMBOS'];
+    const options = values
+      .map((val) => {
+        const label = this.getFelFormatoLabel(option, val);
+        const sel = val === modo ? ' selected' : '';
+        return `<option value="${val}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <div class="card config-card-compact" data-fel-formato-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            <select class="form-select form-select-sm config-fel-formato-select" style="max-width:8rem"
               data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
               ${options}
             </select>
@@ -391,6 +513,12 @@ const ConfigGeneralView = {
     const formatoCards = this.FORMATO_OPTIONS.map((opt) =>
       this.renderFormatoCard(opt, this._formatoMeta[opt.opcion] || {})
     ).join('');
+    const fotoCards = this.FOTO_OPTIONS.map((opt) =>
+      this.renderFotoCard(opt, this._fotoMeta[opt.opcion] || {})
+    ).join('');
+    const felFormatoCards = this.FEL_FORMATO_OPTIONS.map((opt) =>
+      this.renderFelFormatoCard(opt, this._felFormatoMeta[opt.opcion] || {})
+    ).join('');
     return `
       <div class="config-general-wrap w-100">
         <div class="config-general-panel">
@@ -400,6 +528,8 @@ const ConfigGeneralView = {
             ${sinoCards}
             ${concreCards}
             ${formatoCards}
+            ${fotoCards}
+            ${felFormatoCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
           </div>
         </div>
@@ -465,6 +595,14 @@ const ConfigGeneralView = {
       sel.addEventListener('change', () => this.onChangeFormato(sel));
     });
 
+    this._container?.querySelectorAll('.config-foto-select').forEach((sel) => {
+      sel.addEventListener('change', () => this.onChangeFotoModo(sel));
+    });
+
+    this._container?.querySelectorAll('.config-fel-formato-select').forEach((sel) => {
+      sel.addEventListener('change', () => this.onChangeFelFormatoModo(sel));
+    });
+
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
       this.onSincronizarInvSaldo();
     });
@@ -498,6 +636,18 @@ const ConfigGeneralView = {
     });
   },
 
+  async fetchFotoModo(opcion) {
+    return F.fetchJson(`/api/config/guardado-fotos?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  async fetchFelFormatoModo(opcion) {
+    return F.fetchJson(`/api/config/muestra-formato-fel?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
   async onChangeFormato(sel) {
     const opcion = sel.getAttribute('data-setting-opcion');
     if (!opcion) return;
@@ -512,6 +662,50 @@ const ConfigGeneralView = {
       });
       this._formatoMeta[opcion] = { ...(this._formatoMeta[opcion] || {}), formato };
       if (typeof DocPrint !== 'undefined') DocPrint._formatoCache = formato;
+      F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      sel.value = prev;
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      sel.disabled = false;
+    }
+  },
+
+  async onChangeFotoModo(sel) {
+    const opcion = sel.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const modo = this.normalizeFotoModo(sel.value);
+    const prev = this.normalizeFotoModo(this._fotoMeta[opcion]?.modo || 'LOCAL');
+    sel.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/guardado-fotos?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, modo }),
+      });
+      this._fotoMeta[opcion] = { ...(this._fotoMeta[opcion] || {}), modo };
+      F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      sel.value = prev;
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      sel.disabled = false;
+    }
+  },
+
+  async onChangeFelFormatoModo(sel) {
+    const opcion = sel.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const modo = this.normalizeFelFormatoModo(sel.value);
+    const prev = this.normalizeFelFormatoModo(this._felFormatoMeta[opcion]?.modo || 'NO');
+    sel.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/muestra-formato-fel?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, modo }),
+      });
+      this._felFormatoMeta[opcion] = { ...(this._felFormatoMeta[opcion] || {}), modo };
       F.toast('Configuración actualizada', 'success');
     } catch (err) {
       sel.value = prev;
@@ -698,26 +892,27 @@ const ConfigGeneralView = {
       const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.opcion));
       const concreFetches = this.CONCRE_OPTIONS.map((opt) => this.fetchConcre(opt.opcion));
       const formatoFetches = this.FORMATO_OPTIONS.map((opt) => this.fetchFormato(opt.opcion));
-      const fetches = [...passFetches, ...textFetches, ...sinoFetches, ...concreFetches, ...formatoFetches];
+      const fotoFetches = this.FOTO_OPTIONS.map((opt) => this.fetchFotoModo(opt.opcion));
+      const felFormatoFetches = this.FEL_FORMATO_OPTIONS.map((opt) => this.fetchFelFormatoModo(opt.opcion));
+      const fetches = [
+        ...passFetches,
+        ...textFetches,
+        ...sinoFetches,
+        ...concreFetches,
+        ...formatoFetches,
+        ...fotoFetches,
+        ...felFormatoFetches,
+      ];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
       const results = await Promise.all(fetches);
-      const passResults = results.slice(0, this.PASS_CARDS.length);
-      const textResults = results.slice(
-        this.PASS_CARDS.length,
-        this.PASS_CARDS.length + this.TEXT_CARDS.length
-      );
-      const sinoResults = results.slice(
-        this.PASS_CARDS.length + this.TEXT_CARDS.length,
-        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length
-      );
-      const concreResults = results.slice(
-        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length,
-        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length
-      );
-      const formatoResults = results.slice(
-        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length,
-        this.PASS_CARDS.length + this.TEXT_CARDS.length + this.SINO_OPTIONS.length + this.CONCRE_OPTIONS.length + this.FORMATO_OPTIONS.length
-      );
+      let idx = 0;
+      const passResults = results.slice(idx, (idx += this.PASS_CARDS.length));
+      const textResults = results.slice(idx, (idx += this.TEXT_CARDS.length));
+      const sinoResults = results.slice(idx, (idx += this.SINO_OPTIONS.length));
+      const concreResults = results.slice(idx, (idx += this.CONCRE_OPTIONS.length));
+      const formatoResults = results.slice(idx, (idx += this.FORMATO_OPTIONS.length));
+      const fotoResults = results.slice(idx, (idx += this.FOTO_OPTIONS.length));
+      const felFormatoResults = results.slice(idx, (idx += this.FEL_FORMATO_OPTIONS.length));
       const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
 
       this._passMeta = {};
@@ -739,6 +934,14 @@ const ConfigGeneralView = {
       this._formatoMeta = {};
       this.FORMATO_OPTIONS.forEach((opt, i) => {
         this._formatoMeta[opt.opcion] = formatoResults[i];
+      });
+      this._fotoMeta = {};
+      this.FOTO_OPTIONS.forEach((opt, i) => {
+        this._fotoMeta[opt.opcion] = fotoResults[i];
+      });
+      this._felFormatoMeta = {};
+      this.FEL_FORMATO_OPTIONS.forEach((opt, i) => {
+        this._felFormatoMeta[opt.opcion] = felFormatoResults[i];
       });
       this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
 

@@ -453,8 +453,14 @@ const DocumentosView = {
       confirmClass: 'btn-catalogo-guardar',
     });
     if (!ok) return;
-    await DocOpciones.certificar(coddoc, correlativo);
-    await this.reload();
+    try {
+      await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+        onImprimirSistema: () => DocOpciones.imprimir(coddoc, correlativo),
+      });
+      await this.reload();
+    } catch (err) {
+      F.alert('Error FEL', err.message || 'No se pudo certificar', 'error');
+    }
   },
 
   async cambiarFechaDocumento(row) {

@@ -288,13 +288,10 @@ const FacturacionView = {
   },
 
   async resolveDefaultConcre(h) {
-    if (this.documentoTieneOrigen(h)) {
-      return String(h.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
-    }
     try {
       return await this.fetchCobroPredeterminado();
     } catch {
-      return String(h.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
+      return String(h?.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
     }
   },
 
@@ -356,6 +353,9 @@ const FacturacionView = {
         r.VENDEDOR,
         r.FEL_UUDI,
         r.OBS,
+        r.F_ENTREGA,
+        r.DIRENTREGA,
+        r.CONCRE,
       ]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ');
@@ -371,11 +371,14 @@ const FacturacionView = {
   },
 
   async crearPedido() {
+    await this.fetchVendedores();
     const body = {
       CODDOC: this.activeCoddoc(),
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven != null) body.CODVEN = codven;
     const url = this.apiUrl('/pedidos');
     this._pedido = await F.fetchJson(url, {
       method: 'POST',
@@ -574,6 +577,14 @@ const FacturacionView = {
     const concreVal = await this.resolveDefaultConcre(h);
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
     const totalPrecio = this.docTotalPrecio(h);
+    const entregaHtml =
+      typeof DocEntrega !== 'undefined'
+        ? DocEntrega.fieldsHtml({
+            prefix: 'fac',
+            fEntrega: h.F_ENTREGA,
+            dirEntrega: DocEntrega.dirDefault(h),
+          })
+        : '';
 
     const fpagoColHidden = concreVal === 'CRE' ? ' d-none' : '';
 
@@ -602,6 +613,7 @@ const FacturacionView = {
                 <input type="text" id="fac-finalizar-dirclie" class="form-control form-control-sm"
                   value="${this.escapeHtml(dirRaw)}" autocomplete="off">
               </div>
+              ${entregaHtml}
               <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
                 <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
                   <label class="form-label small mb-0" for="fac-finalizar-concre">Forma de pago</label>
@@ -646,6 +658,7 @@ const FacturacionView = {
         };
         concreSel?.addEventListener('change', toggleVenc);
         toggleVenc();
+        if (typeof DocEntrega !== 'undefined') DocEntrega.bindToggle('fac');
         this.bindFinalizarFpagoToggle(totalPrecio);
         document.getElementById('fac-finalizar-nomclie')?.focus();
       },
@@ -662,6 +675,14 @@ const FacturacionView = {
           Swal.showValidationMessage('Ingrese la fecha de vencimiento');
           return false;
         }
+        const entrega =
+          typeof DocEntrega !== 'undefined'
+            ? DocEntrega.readFromDom('fac')
+            : { error: 'DocEntrega no disponible' };
+        if (entrega.error) {
+          Swal.showValidationMessage(entrega.error);
+          return false;
+        }
         const fpagoErr = this.validateFinalizarFpago(concre, totalPrecio);
         if (fpagoErr) {
           Swal.showValidationMessage(fpagoErr);
@@ -674,12 +695,18 @@ const FacturacionView = {
           dirclie: document.getElementById('fac-finalizar-dirclie')?.value?.trim() || '',
           concre,
           vencimiento: concre === 'CRE' ? venc : null,
+          F_ENTREGA: entrega.F_ENTREGA,
+          DIRENTREGA: entrega.DIRENTREGA,
           ...fpago,
         };
       },
     });
 
     if (!isConfirmed) return;
+
+    const tipodocFinalizar = String(h?.TIPODOC || '').trim().toUpperCase();
+    const coddocFinalizar = key.coddoc;
+    const correlativoFinalizar = key.correlativo;
 
     const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar`);
     await F.fetchJson(url, {
@@ -692,6 +719,8 @@ const FacturacionView = {
         CONCRE: value.concre,
         VENCIMIENTO: value.vencimiento,
         CODCAJA: this.readCodcajaForFinalizar(),
+        F_ENTREGA: value.F_ENTREGA,
+        DIRENTREGA: value.DIRENTREGA,
         FPAGO_EFECTIVO: value.FPAGO_EFECTIVO,
         FPAGO_TARJETA: value.FPAGO_TARJETA,
         FPAGO_DEPOSITO: value.FPAGO_DEPOSITO,
@@ -702,6 +731,30 @@ const FacturacionView = {
     F.toast('Pedido finalizado', 'success');
     this._pedido = null;
     await this.showList();
+    await this.maybeAutoCertificarTrasFinalizar(coddocFinalizar, correlativoFinalizar, tipodocFinalizar);
+  },
+
+  async maybeAutoCertificarTrasFinalizar(coddoc, correlativo, tipodoc) {
+    const tipo = String(tipodoc || '').trim().toUpperCase();
+    if (!DocOpciones.esTipoCertificableFel(tipo)) return;
+    let auto = false;
+    try {
+      auto = await DocOpciones.fetchCertificaAlFinalizar();
+    } catch (_) {
+      return;
+    }
+    if (!auto) return;
+    try {
+      await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+        onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
+      });
+      await this.fetchPedidosList();
+      this.refreshListDom();
+    } catch (err) {
+      F.alert('Error FEL', err.message || 'No se pudo certificar automáticamente', 'error');
+      await this.fetchPedidosList().catch(() => {});
+      this.refreshListDom();
+    }
   },
 
   async agregarLinea(codprod, codmedida, cantidad = 1) {
@@ -1067,17 +1120,9 @@ const FacturacionView = {
     if (!confirm) return;
 
     try {
-      const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-      const data = await F.fetchJson(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+      await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+        onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
       });
-      const fel = data.fel || {};
-      F.toast(
-        `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
-        'success'
-      );
       await this.fetchPedidosList();
       this.refreshListDom();
     } catch (err) {
@@ -1150,7 +1195,7 @@ const FacturacionView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay facturas en esta fecha</td></tr>`;
+      return `<tr><td colspan="12" class="text-center text-muted py-4">No hay facturas en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1161,6 +1206,8 @@ const FacturacionView = {
         const caja = this.formatCajaLista(r);
         const pago = this.formatFormaPago(r.CONCRE);
         const pagoClass = String(r.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'text-warning' : 'text-success';
+        const entrega =
+          typeof DocEntrega !== 'undefined' ? DocEntrega.formatListLabel(r) : String(r.F_ENTREGA || '').trim();
         return `
           <tr class="fac-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
@@ -1169,6 +1216,7 @@ const FacturacionView = {
             <td class="small">${this.escapeHtml(vendedor)}</td>
             <td class="small text-nowrap">${this.escapeHtml(caja)}</td>
             <td class="small fw-semibold ${pagoClass}">${this.escapeHtml(pago)}</td>
+            <td class="small">${this.escapeHtml(entrega || '—')}</td>
             <td class="fac-fel-col">${this.formatFelCell(r)}</td>
             <td class="text-center">${Number(r.LINEAS) || 0}</td>
             <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
@@ -1192,6 +1240,7 @@ const FacturacionView = {
                 <th scope="col">Vendedor</th>
                 <th scope="col">Caja</th>
                 <th scope="col">Pago</th>
+                <th scope="col">Entrega</th>
                 <th scope="col">FEL</th>
                 <th scope="col" class="text-center">Líneas</th>
                 <th scope="col" class="text-end">Total</th>

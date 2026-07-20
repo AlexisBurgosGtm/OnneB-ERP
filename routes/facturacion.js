@@ -21,6 +21,11 @@ const {
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
+const {
+  parseFinalizeEntregaBody,
+  normalizeFEntrega,
+  F_ENTREGA_DOMICILIO,
+} = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
 const {
   STATUS_OPERADO,
@@ -616,6 +621,7 @@ router.get('/pedidos', async (req, res) => {
       SELECT
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.ANIO, d.MES, d.DIA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
+        d.F_ENTREGA, d.DIRENTREGA,
         d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.ID_COLA_TRABAJO,
         t.TIPODOC,
@@ -759,6 +765,17 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
     }
     const coddocFac = tipo.CODDOC;
     const parts = nowParts();
+    const fEntrega = normalizeFEntrega(pedido.F_ENTREGA);
+    let dirEntrega = 'SN';
+    if (fEntrega === F_ENTREGA_DOMICILIO) {
+      const dirRaw = String(pedido.DIRENTREGA || '').trim();
+      dirEntrega = dirRaw && dirRaw.toUpperCase() !== 'SN' ? dirRaw : String(pedido.DOC_DIRCLIE || 'SN').trim() || 'SN';
+    } else if (fEntrega) {
+      dirEntrega = 'SN';
+    } else {
+      const dirRaw = String(pedido.DIRENTREGA || '').trim();
+      if (dirRaw && dirRaw.toUpperCase() !== 'SN') dirEntrega = dirRaw;
+    }
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -784,6 +801,8 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
         .input('OBS', sql.VarChar, String(pedido.OBS || ''))
         .input('SERIEFAC', sql.VarChar, pedCoddoc)
         .input('NOFAC', sql.VarChar, String(pedCorrelativo))
+        .input('F_ENTREGA', sql.VarChar, fEntrega)
+        .input('DIRENTREGA', sql.VarChar, dirEntrega)
         .input(
           'CODCAJA',
           sql.Int,
@@ -797,16 +816,16 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO,
-            SERIEFAC, NOFAC
+            SERIEFAC, NOFAC, F_ENTREGA
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
             0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, @CONCRE, 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, @CODCAJA,
-            'SN', 'SN', 0, 0,
+            @DIRENTREGA, 'SN', 0, 0,
             CASE WHEN @CONCRE = 'CRE' THEN 'CREDITO' ELSE 'CONTADO' END, 'SN',
             @FECHA, 0, 0, 0, 0, 0,
-            @SERIEFAC, @NOFAC
+            @SERIEFAC, @NOFAC, @F_ENTREGA
           )
         `);
       const tipom = await copyDocProductosFromPedido(
@@ -906,6 +925,7 @@ router.post('/pedidos', async (req, res) => {
   const codcliente = parseInt(req.body?.CODCLIENTE, 10);
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'FAC').trim();
   const obs = String(req.body?.OBS || '').trim();
+  const codvenRaw = req.body?.CODVEN;
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -925,6 +945,11 @@ router.post('/pedidos', async (req, res) => {
     }
     if (!cliente) {
       return res.status(400).json({ error: 'No hay cliente disponible para el pedido' });
+    }
+    let codven = null;
+    if (codvenRaw !== undefined && codvenRaw !== null && String(codvenRaw).trim() !== '') {
+      const vendedor = await getVendedorActivo(pool, empnit, codvenRaw);
+      if (vendedor) codven = vendedor.CODEMPLEADO;
     }
 
     const parts = nowParts();
@@ -951,17 +976,18 @@ router.post('/pedidos', async (req, res) => {
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
         .input('CODCAJA', sql.Int, null)
+        .input('CODVEN', sql.Int, codven)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
-            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE, CODVEN,
             TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
-            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
+            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
             0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, @CODCAJA,
             'SN', 'SN', 0, 0, 'CONTADO', 'SN',
@@ -1486,6 +1512,10 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (clienteFinalize.error) {
     return res.status(400).json({ error: clienteFinalize.error });
   }
+  const entregaFinalize = parseFinalizeEntregaBody(req.body);
+  if (entregaFinalize.error) {
+    return res.status(400).json({ error: entregaFinalize.error });
+  }
   const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
   if (concre !== 'CON' && concre !== 'CRE') {
     return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
@@ -1514,7 +1544,9 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .input('CONCRE', sql.VarChar, concre)
-        .input('TIPOPAGO', sql.VarChar, concre === 'CRE' ? 'CREDITO' : 'CONTADO');
+        .input('TIPOPAGO', sql.VarChar, concre === 'CRE' ? 'CREDITO' : 'CONTADO')
+        .input('F_ENTREGA', sql.VarChar, entregaFinalize.fEntrega)
+        .input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega);
       let vencSql = '';
       if (concre === 'CRE') {
         txnUpd.input('VENCIMIENTO', sql.Date, vencParts.fecha);
@@ -1537,7 +1569,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       }
       await txnUpd.query(`
         UPDATE dbo.DOCUMENTOS
-        SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO${vencSql}${obsSql}${clienteSql}${cajaSql}
+        SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO,
+            F_ENTREGA = @F_ENTREGA, DIRENTREGA = @DIRENTREGA${vencSql}${obsSql}${clienteSql}${cajaSql}
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
           AND ${SQL_DOCUMENTO_EDITABLE}
       `);

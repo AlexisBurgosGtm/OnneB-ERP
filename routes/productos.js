@@ -1,5 +1,6 @@
 const express = require('express');
 const sql = require('mssql');
+const multer = require('multer');
 const { isDbConfigured } = require('../config/database');
 const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
 const { assertAdminPass } = require('../lib/config-auth');
@@ -9,8 +10,22 @@ const {
   listVentasProducto,
   listComprasProducto,
 } = require('../lib/producto-reportes');
+const {
+  resolveProductoFoto,
+  readProductoFotoBuffer,
+  saveProductoFoto,
+  removeProductoFotos,
+} = require('../lib/producto-fotos');
 
 const router = express.Router();
+const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const ok = /^image\/(jpeg|jpg|png|webp|gif)$/i.test(String(file.mimetype || ''));
+    cb(ok ? null : new Error('Solo se permiten imágenes jpg, png, webp o gif'), ok);
+  },
+});
 
 const DEFAULT_LIMIT = 50;
 const SEARCH_LIMIT = 500;
@@ -684,6 +699,85 @@ router.patch('/:codprod/habilitado', async (req, res) => {
   }
 });
 
+router.get('/:codprod/foto', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const wantMeta =
+      String(req.query.meta || '') === '1' || String(req.headers.accept || '').includes('application/json');
+    if (wantMeta) {
+      const meta = await resolveProductoFoto(pool, empnit, codprod);
+      if (!meta) return res.status(404).json({ error: 'Sin foto', url: null });
+      return res.json({ ok: true, url: meta.url, filename: meta.filename, modo: meta.modo });
+    }
+    const file = await readProductoFotoBuffer(pool, empnit, codprod);
+    if (!file) return res.status(404).json({ error: 'Sin foto', url: null });
+    const ext = String(file.filename || '').toLowerCase();
+    const type =
+      ext.endsWith('.png')
+        ? 'image/png'
+        : ext.endsWith('.webp')
+          ? 'image/webp'
+          : ext.endsWith('.gif')
+            ? 'image/gif'
+            : 'image/jpeg';
+    res.setHeader('Content-Type', type);
+    res.send(file.buffer);
+  } catch (err) {
+    console.warn('[API GET /productos/:codprod/foto]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.post('/:codprod/foto', (req, res) => {
+  uploadFoto.single('foto')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message || 'Error al subir imagen' });
+    }
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = requireEmpNit(req, res);
+    if (!empnit) return;
+    const codprod = String(req.params.codprod || '').trim();
+    if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+    if (!req.file) return res.status(400).json({ error: 'Seleccione una imagen' });
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const exists = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODPROD', sql.VarChar, codprod)
+        .query(`SELECT TOP 1 CODPROD FROM dbo.PRODUCTOS WHERE EMPNIT = @EMPNIT AND CODPROD = @CODPROD`);
+      if (!exists.recordset.length) return res.status(404).json({ error: 'Producto no encontrado' });
+      const saved = await saveProductoFoto(pool, empnit, codprod, req.file);
+      res.json({ ok: true, url: saved.url, filename: saved.filename, modo: saved.modo });
+    } catch (err) {
+      console.warn('[API POST /productos/:codprod/foto]', err.message);
+      res.status(err.statusCode || 500).json({ error: err.message });
+    }
+  });
+});
+
+router.delete('/:codprod/foto', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await removeProductoFotos(pool, empnit, codprod);
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[API DELETE /productos/:codprod/foto]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 router.get('/:codprod', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -860,6 +954,11 @@ router.delete('/:codprod', async (req, res) => {
         return res.status(404).json({ error: 'Producto no encontrado' });
       }
       await transaction.commit();
+      try {
+        await removeProductoFotos(pool, empnit, codprod);
+      } catch (_) {
+        /* ignore */
+      }
       res.json({ ok: true });
     } catch (inner) {
       await transaction.rollback();

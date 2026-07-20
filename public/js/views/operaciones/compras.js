@@ -16,6 +16,7 @@ const ComprasView = {
   _urlFel: '',
 
   FEL_URL_OPCION: 'URL FEL',
+  COBRO_PREDETERMINADO_OPCION: 'COBRO PREDETERMINADO',
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -237,6 +238,24 @@ const ComprasView = {
     return `${y}-${m}-${day}`;
   },
 
+  async fetchCobroPredeterminado() {
+    const params = new URLSearchParams({
+      opcion: this.COBRO_PREDETERMINADO_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/concre?${params}`, { cache: 'no-store' });
+    const val = String(data.concre || 'CON').trim().toUpperCase();
+    return val === 'CRE' ? 'CRE' : 'CON';
+  },
+
+  async resolveDefaultConcre(h) {
+    try {
+      return await this.fetchCobroPredeterminado();
+    } catch {
+      return String(h?.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'CRE' : 'CON';
+    }
+  },
+
   resolveFinalizarFacDefaults(h, key) {
     const seriefacStored = String(h?.SERIEFAC ?? '').trim();
     const nofacStored = String(h?.NOFAC ?? '').trim();
@@ -450,7 +469,7 @@ const ComprasView = {
     const seriefacVal = this.escapeHtml(facDefaults.seriefac);
     const nofacVal = this.escapeHtml(facDefaults.nofac);
     const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
-    const concreVal = String(h.CONCRE || 'CON').trim().toUpperCase();
+    const concreVal = await this.resolveDefaultConcre(h);
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
 
     const value = await new Promise((resolve) => {

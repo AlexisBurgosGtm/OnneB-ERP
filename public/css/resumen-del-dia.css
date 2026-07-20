@@ -1,0 +1,27 @@
+.resumen-dia-wrap {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1rem;
+}
+
+.resumen-dia-table {
+  font-size: 0.82rem;
+}
+
+.resumen-dia-table th,
+.resumen-dia-table td {
+  vertical-align: middle;
+}
+
+.resumen-dia-filters .form-label {
+  color: var(--app-text-muted, #666);
+}
+
+.resumen-dia-cal-day.cxp-cal-cell--clickable:hover {
+  border-color: var(--bs-primary, #0d6efd);
+}

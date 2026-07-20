@@ -17,6 +17,8 @@ const ProductosView = {
   _formRow: {},
   _formCodprod: null,
   _selectedCodprod: null,
+  _pendingFotoFile: null,
+  _fotoUrl: null,
   _precios: [],
   _loadingList: false,
   _loadingPrecios: false,
@@ -480,6 +482,85 @@ const ProductosView = {
     `;
   },
 
+  renderFotoSelectorHtml(codprod) {
+    const preview = this._fotoUrl
+      ? `<img src="${this.escapeHtml(this._fotoUrl)}" alt="Foto producto" class="productos-foto-preview-img" id="productos-foto-preview-img">`
+      : `<div class="productos-foto-placeholder" id="productos-foto-placeholder">
+          <i class="fa-solid fa-camera" aria-hidden="true"></i>
+          <span>Sin foto</span>
+        </div>`;
+    return `
+      <div class="card productos-glass-card productos-foto-card mb-3">
+        <div class="card-body productos-foto-card-body">
+          <div class="productos-foto-preview" id="productos-foto-preview">${preview}</div>
+          <div class="productos-foto-actions">
+            <div class="fw-semibold mb-1"><i class="fa-solid fa-image me-1"></i>Foto del producto</div>
+            <p class="small text-muted mb-2 mb-md-3">LOCAL: Fotos_productos. HOST: WebDAV (STORAGE_SERVER).</p>
+            <div class="d-flex flex-wrap gap-2">
+              <label class="btn btn-sm btn-outline-primary mb-0" for="productos-foto-input">
+                <i class="fa-solid fa-upload me-1"></i>Seleccionar imagen
+              </label>
+              <input type="file" id="productos-foto-input" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
+              <button type="button" class="btn btn-sm btn-outline-danger" id="btn-productos-foto-quitar"${this._fotoUrl || this._pendingFotoFile ? '' : ' disabled'}>
+                <i class="fa-solid fa-trash me-1"></i>Quitar
+              </button>
+            </div>
+            ${codprod ? `<div class="small text-muted mt-2">Producto: ${this.escapeHtml(codprod)}</div>` : '<div class="small text-muted mt-2">La foto se subirá al guardar el producto nuevo.</div>'}
+          </div>
+        </div>
+      </div>`;
+  },
+
+  fotoApiUrl(codprod, extra = {}) {
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), ...extra, _: String(Date.now()) });
+    return `/api/productos/${encodeURIComponent(codprod)}/foto?${params}`;
+  },
+
+  setFotoPreview(url) {
+    this._fotoUrl = url || null;
+    const wrap = this._container?.querySelector('#productos-foto-preview');
+    if (!wrap) return;
+    if (this._fotoUrl) {
+      wrap.innerHTML = `<img src="${this.escapeHtml(this._fotoUrl)}" alt="Foto producto" class="productos-foto-preview-img" id="productos-foto-preview-img">`;
+    } else {
+      wrap.innerHTML = `<div class="productos-foto-placeholder" id="productos-foto-placeholder">
+          <i class="fa-solid fa-camera" aria-hidden="true"></i>
+          <span>Sin foto</span>
+        </div>`;
+    }
+    const quitar = this._container?.querySelector('#btn-productos-foto-quitar');
+    if (quitar) quitar.disabled = !(this._fotoUrl || this._pendingFotoFile);
+  },
+
+  async loadProductoFoto(codprod) {
+    this._pendingFotoFile = null;
+    this._fotoUrl = null;
+    if (!codprod) return;
+    try {
+      const data = await F.fetchJson(this.fotoApiUrl(codprod, { meta: '1' }), {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      this._fotoUrl = data?.url || null;
+    } catch (_) {
+      this._fotoUrl = null;
+    }
+  },
+
+  async uploadProductoFoto(codprod, file) {
+    if (!codprod || !file) return null;
+    const body = new FormData();
+    body.append('foto', file);
+    const res = await fetch(this.fotoApiUrl(codprod), {
+      method: 'POST',
+      body,
+      credentials: 'same-origin',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'No se pudo guardar la foto');
+    return data;
+  },
+
   buildProductFormPageHtml(row = {}, isEdit = false) {
     const L = this._lookups || {};
     const r = row || {};
@@ -560,6 +641,7 @@ const ProductosView = {
           <span class="productos-form-title">${this.escapeHtml(title)}</span>
           <div class="d-flex flex-wrap gap-2 ms-auto">${opcionesBtn}${deleteBtn}</div>
         </div>
+        ${this.renderFotoSelectorHtml(isEdit ? r.CODPROD : null)}
         <div class="row g-3">
           <div class="col-lg-7">
             <div class="card productos-glass-card productos-form-card h-100">
@@ -696,6 +778,8 @@ const ProductosView = {
     const isEdit = Boolean(codprod);
     this._formMode = isEdit ? 'edit' : 'new';
     this._formCodprod = codprod;
+    this._pendingFotoFile = null;
+    this._fotoUrl = null;
 
     if (isEdit) {
       let row = this.findRow(codprod);
@@ -707,6 +791,7 @@ const ProductosView = {
         return;
       }
       this._formRow = row || {};
+      await this.loadProductoFoto(codprod);
     } else {
       this._formRow = {
         HABILITADO: 'SI',
@@ -751,6 +836,60 @@ const ProductosView = {
         btn.title = `Clic para cambiar a ${siguiente === 'SI' ? 'NO' : 'SI'}`;
         if (hidden) hidden.value = siguiente;
       });
+    });
+    this.bindFotoEvents();
+  },
+
+  bindFotoEvents() {
+    const input = document.getElementById('productos-foto-input');
+    input?.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(file.type)) {
+        F.toast('Formato no válido. Use jpg, png, webp o gif', 'warning');
+        input.value = '';
+        return;
+      }
+      if (this._formMode === 'edit' && this._formCodprod) {
+        try {
+          const data = await this.uploadProductoFoto(this._formCodprod, file);
+          this._pendingFotoFile = null;
+          this.setFotoPreview(data.url);
+          F.toast('Foto guardada', 'success');
+        } catch (err) {
+          F.toast(err.message || 'Error al guardar foto', 'error');
+        } finally {
+          input.value = '';
+        }
+        return;
+      }
+      this._pendingFotoFile = file;
+      const localUrl = URL.createObjectURL(file);
+      this.setFotoPreview(localUrl);
+      input.value = '';
+    });
+
+    document.getElementById('btn-productos-foto-quitar')?.addEventListener('click', async () => {
+      if (this._formMode === 'edit' && this._formCodprod && this._fotoUrl && !this._pendingFotoFile) {
+        const ok = await CatalogosUI.fireConfirm({
+          title: '¿Quitar foto?',
+          html: '<p class="mb-0">Se eliminará la foto del producto.</p>',
+          icon: 'warning',
+          confirmText: 'Quitar',
+        });
+        if (!ok) return;
+        try {
+          await F.fetchJson(this.fotoApiUrl(this._formCodprod), { method: 'DELETE' });
+          this._pendingFotoFile = null;
+          this.setFotoPreview(null);
+          F.toast('Foto eliminada', 'success');
+        } catch (err) {
+          F.toast(err.message || 'Error al quitar foto', 'error');
+        }
+        return;
+      }
+      this._pendingFotoFile = null;
+      this.setFotoPreview(null);
     });
   },
 
@@ -1456,6 +1595,14 @@ const ProductosView = {
           body: JSON.stringify(data),
         });
         F.toast('Producto creado', 'success');
+      }
+      if (this._pendingFotoFile) {
+        try {
+          await this.uploadProductoFoto(codprod, this._pendingFotoFile);
+          this._pendingFotoFile = null;
+        } catch (fotoErr) {
+          F.toast(fotoErr.message || 'Producto guardado, pero falló la foto', 'warning');
+        }
       }
       await this.showListWithProduct(codprod);
     } catch (err) {

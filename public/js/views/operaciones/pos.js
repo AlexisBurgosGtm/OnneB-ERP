@@ -167,6 +167,8 @@ const PosView = {
         r.NEGOCIO,
         r.TIPONEGOCIO,
         r.OBS,
+        r.F_ENTREGA,
+        r.DIRENTREGA,
       ]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ');
@@ -181,11 +183,14 @@ const PosView = {
   },
 
   async crearPedido() {
+    await this.fetchVendedores();
     const body = {
       CODDOC: this.activeCoddoc(),
       CODCLIENTE: this._config?.clienteDefault?.CODCLIENTE,
       USUARIO: this.usuario(),
     };
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven != null) body.CODVEN = codven;
     const url = `/api/pos/pedidos?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._pedido = await F.fetchJson(url, {
       method: 'POST',
@@ -241,6 +246,14 @@ const PosView = {
     const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
     const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
+    const entregaHtml =
+      typeof DocEntrega !== 'undefined'
+        ? DocEntrega.fieldsHtml({
+            prefix: 'pos',
+            fEntrega: h.F_ENTREGA,
+            dirEntrega: DocEntrega.dirDefault(h),
+          })
+        : '';
 
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase(),
@@ -262,6 +275,7 @@ const PosView = {
             <input type="text" id="pos-finalizar-dirclie" class="form-control form-control-sm"
               value="${this.escapeHtml(dirRaw)}" autocomplete="off">
           </div>
+          ${entregaHtml}
           <div class="mb-0">
             <label class="form-label small mb-0" for="pos-finalizar-obs">Observaciones</label>
             <textarea id="pos-finalizar-obs" class="form-control form-control-sm" rows="3"
@@ -274,17 +288,30 @@ const PosView = {
       confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => document.getElementById('pos-finalizar-nomclie')?.focus(),
+      didOpen: () => {
+        if (typeof DocEntrega !== 'undefined') DocEntrega.bindToggle('pos');
+        document.getElementById('pos-finalizar-nomclie')?.focus();
+      },
       preConfirm: () => {
         const nom = document.getElementById('pos-finalizar-nomclie')?.value?.trim() || '';
         if (!nom) {
           Swal.showValidationMessage('Ingrese el nombre del cliente');
           return false;
         }
+        const entrega =
+          typeof DocEntrega !== 'undefined'
+            ? DocEntrega.readFromDom('pos')
+            : { error: 'DocEntrega no disponible' };
+        if (entrega.error) {
+          Swal.showValidationMessage(entrega.error);
+          return false;
+        }
         return {
           OBS: document.getElementById('pos-finalizar-obs')?.value?.trim() || '',
           DOC_NOMCLIE: nom,
           DOC_DIRCLIE: document.getElementById('pos-finalizar-dirclie')?.value?.trim() || '',
+          F_ENTREGA: entrega.F_ENTREGA,
+          DIRENTREGA: entrega.DIRENTREGA,
         };
       },
     });
@@ -745,6 +772,13 @@ const PosView = {
             </div>
             <div class="pos-pedido-card-cliente">${this.escapeHtml(cliente)}</div>
             ${tipo ? `<div class="pos-pedido-card-meta">${this.escapeHtml(tipo)}</div>` : ''}
+            ${
+              typeof DocEntrega !== 'undefined' && DocEntrega.formatListLabel(r)
+                ? `<div class="pos-pedido-card-meta"><i class="fa-solid fa-truck me-1"></i>${this.escapeHtml(
+                    DocEntrega.formatListLabel(r)
+                  )}</div>`
+                : ''
+            }
             <div class="pos-pedido-card-footer">
               <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
               <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaPedido(r))}</span>

@@ -1168,17 +1168,23 @@ const NotasAbonoView = {
     });
     if (!confirm) return;
     try {
-      const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-      const data = await F.fetchJson(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const fel = data.fel || {};
-      F.toast(
-        `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
-        'success',
-      );
+      if (typeof DocOpciones !== 'undefined' && DocOpciones.certificarYMostrarFormatos) {
+        await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
+          onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
+        });
+      } else {
+        const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+        const data = await F.fetchJson(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const fel = data.fel || {};
+        F.toast(
+          `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
+          'success',
+        );
+      }
       await this.fetchPedidosList();
       this.refreshListDom();
     } catch (err) {

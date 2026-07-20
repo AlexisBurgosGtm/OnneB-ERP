@@ -384,6 +384,7 @@
         setViewImmediate(false);
         updateHeaderSessionInfo();
         if (typeof TipoEmpleadoAccess !== 'undefined') {
+          await TipoEmpleadoAccess.refreshMenuAccess();
           TipoEmpleadoAccess.applySidebarVisibility();
         }
         loadInicioDefault();
@@ -490,6 +491,7 @@
     'inventario-retroactivo': 'Inventario Retroactivo',
     'actualizacion-inventario': 'Actualización de inventario',
     documentos: 'Documentos',
+    'resumen-del-dia': 'Resumen del día',
     empleados: 'Empleados',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
@@ -509,6 +511,7 @@
     'mesas-restaurante': 'Mesas Restaurante',
     empresas: 'Empresas',
     'config-general': 'Config general',
+    'roles-usuarios': 'Roles de usuarios',
     'tipo-documentos': 'Tipo documentos',
     'formatos-impresion': 'Formatos de impresión',
     'credenciales-fel': 'Credenciales FEL',
@@ -587,6 +590,8 @@
         InventarioActualizacionView.load(mainContent);
       } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
         DocumentosView.load(mainContent);
+      } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {
+        ResumenDelDiaView.load(mainContent);
       } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
         LibroVentasView.load(mainContent);
       } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
@@ -679,6 +684,8 @@
         ServicioMecanicaView.load(mainContent);
       } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
         ConfigGeneralView.load(mainContent);
+      } else if (key === 'roles-usuarios' && typeof RolesUsuariosView !== 'undefined') {
+        RolesUsuariosView.load(mainContent);
       } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {
         CredencialesFelView.load(mainContent);
       } else {
