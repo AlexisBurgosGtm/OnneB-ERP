@@ -89,4 +89,92 @@ const NominaPrint = {
       'width=720,height=680'
     );
   },
+
+  formatFecha(value) {
+    if (!value) return '—';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      const d = String(value.getDate()).padStart(2, '0');
+      const m = String(value.getMonth() + 1).padStart(2, '0');
+      return `${d}/${m}/${value.getFullYear()}`;
+    }
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    return String(value);
+  },
+
+  async printValeEmpleado(vale) {
+    await PrintReport.ensureLogo();
+    const saldo =
+      Number.isFinite(Number(vale?.SALDO))
+        ? Number(vale.SALDO)
+        : Math.max(0, (Number(vale?.MONTO) || 0) - (Number(vale?.ABONOS) || 0));
+    const pendiente = saldo > 0.005;
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({
+        title: 'Vale a empleado',
+        subtitleHtml: `
+          <p><strong>No. vale:</strong> ${PrintReport.escapeHtml(vale.ID)}</p>
+          <p><strong>Fecha:</strong> ${PrintReport.escapeHtml(this.formatFecha(vale.FECHA))}</p>
+        `,
+      })}
+      <table class="table table-sm">
+        <tr><td>Empleado</td><td class="text-end fw-semibold">${PrintReport.escapeHtml(vale.NOMEMPLEADO || vale.CODEMP || '—')}</td></tr>
+        <tr><td>Código empleado</td><td class="text-end">${PrintReport.escapeHtml(vale.CODEMP || '—')}</td></tr>
+        <tr><td>Caja</td><td class="text-end">${PrintReport.escapeHtml(vale.DESCAJA || vale.CODCAJA || '—')}</td></tr>
+        <tr><td>Descripción</td><td class="text-end">${PrintReport.escapeHtml(vale.DESCRIPCION || '—')}</td></tr>
+        <tr class="fw-semibold"><td>Monto del vale</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale.MONTO))}</td></tr>
+        <tr><td>Abonos</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale.ABONOS || 0))}</td></tr>
+        <tr class="fw-bold"><td>Saldo pendiente</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(saldo))}</td></tr>
+        <tr><td>Estado</td><td class="text-end">${PrintReport.escapeHtml(pendiente ? 'Pendiente' : 'Finalizado')}</td></tr>
+      </table>
+      <div style="margin-top:2.5rem;display:flex;justify-content:space-between;gap:2rem;">
+        <div style="flex:1;text-align:center;border-top:1px solid #333;padding-top:.4rem;">Entregó</div>
+        <div style="flex:1;text-align:center;border-top:1px solid #333;padding-top:.4rem;">Recibió</div>
+      </div>`;
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: `Vale #${vale.ID || ''}`,
+          bodyHtml,
+          extraStyles: 'table{font-size:13px;} td{padding:6px 8px;}',
+        }),
+      'width=720,height=780'
+    );
+  },
+
+  async printAbonoVale({ pago, vale }) {
+    await PrintReport.ensureLogo();
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({
+        title: 'Abono a vale de empleado',
+        subtitleHtml: `
+          <p><strong>No. abono:</strong> ${PrintReport.escapeHtml(pago.ID)}</p>
+          <p><strong>Fecha de pago:</strong> ${PrintReport.escapeHtml(this.formatFecha(pago.FECHA || pago.FECHA_PAGO))}</p>
+        `,
+      })}
+      <table class="table table-sm">
+        <tr><td>Vale</td><td class="text-end fw-semibold">#${PrintReport.escapeHtml(pago.IDVALE || vale?.ID || '—')}</td></tr>
+        <tr><td>Empleado</td><td class="text-end">${PrintReport.escapeHtml(vale?.NOMEMPLEADO || pago.NOMEMPLEADO || vale?.CODEMP || pago.CODEMP || '—')}</td></tr>
+        <tr><td>Caja del abono</td><td class="text-end">${PrintReport.escapeHtml(pago.DESCAJA || pago.CODCAJA || vale?.DESCAJA || vale?.CODCAJA || '—')}</td></tr>
+        <tr><td>Descripción del vale</td><td class="text-end">${PrintReport.escapeHtml(vale?.DESCRIPCION || pago.VALE_DESC || '—')}</td></tr>
+        <tr class="fw-bold"><td>Importe abonado</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(pago.MONTO || pago.ABONO))}</td></tr>
+        <tr><td>Monto original del vale</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale?.MONTO))}</td></tr>
+        <tr><td>Abonos acumulados</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale?.ABONOS))}</td></tr>
+        <tr><td>Saldo del vale</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale?.SALDO))}</td></tr>
+      </table>
+      <div style="margin-top:2.5rem;display:flex;justify-content:space-between;gap:2rem;">
+        <div style="flex:1;text-align:center;border-top:1px solid #333;padding-top:.4rem;">Recibió caja</div>
+        <div style="flex:1;text-align:center;border-top:1px solid #333;padding-top:.4rem;">Empleado</div>
+      </div>`;
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: `Abono vale #${pago.ID || ''}`,
+          bodyHtml,
+          extraStyles: 'table{font-size:13px;} td{padding:6px 8px;}',
+        }),
+      'width=720,height=780'
+    );
+  },
 };

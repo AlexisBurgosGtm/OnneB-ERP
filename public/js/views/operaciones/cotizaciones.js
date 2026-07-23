@@ -204,6 +204,10 @@ const CotizacionesView = {
     return DocFecha.editableStatus(header?.STATUS);
   },
 
+  permiteCambiarPrecioPedido() {
+    return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
+  },
+
   async finalizarPedido() {
     const key = this.docKey();
     if (!key) return;
@@ -316,7 +320,7 @@ const CotizacionesView = {
     await this.showList();
   },
 
-  async agregarLinea(codprod, codmedida, cantidad = 1) {
+  async agregarLinea(codprod, codmedida, cantidad = 1, precio = undefined) {
     const key = this.docKey();
     if (!key) {
       F.toast('No hay cotización activa', 'warning');
@@ -327,15 +331,19 @@ const CotizacionesView = {
       return;
     }
     const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const body = {
+      CODPROD: codprod,
+      CODMEDIDA: codmedida,
+      CANTIDAD: cantidad,
+      CAMPO_PRECIO: this._precioCampo,
+    };
+    if (precio !== undefined && precio !== null) {
+      body.PRECIO = precio;
+    }
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        CODPROD: codprod,
-        CODMEDIDA: codmedida,
-        CANTIDAD: cantidad,
-        CAMPO_PRECIO: this._precioCampo,
-      }),
+      body: JSON.stringify(body),
     });
     this._pedido = res.pedido;
     this.renderCart();
@@ -392,6 +400,7 @@ const CotizacionesView = {
       precios.map((p) => [String(p.CODMEDIDA), Number(p.PRECIO) || 0])
     );
     const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
+    const permiteCambiarPrecio = this.permiteCambiarPrecioPedido();
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
@@ -411,7 +420,11 @@ const CotizacionesView = {
           </div>
           <div class="col-6">
             <label class="form-label small mb-0" for="pos-swal-precio">Precio</label>
-            <input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>
+            ${
+              permiteCambiarPrecio
+                ? `<input type="number" id="pos-swal-precio" class="form-control form-control-sm" value="${defaultPrecio}" min="0" step="any">`
+                : `<input type="text" id="pos-swal-precio" class="form-control form-control-sm bg-light" value="${this.escapeHtml(this.formatMoney(defaultPrecio))}" readonly>`
+            }
           </div>
         </div>
         <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
@@ -425,15 +438,31 @@ const CotizacionesView = {
         const cantInp = document.getElementById('pos-swal-cant');
         const precioInp = document.getElementById('pos-swal-precio');
         const totalEl = document.getElementById('pos-swal-total');
-        const updateTotal = () => {
+        const readPrecio = () => {
+          if (permiteCambiarPrecio) {
+            return Number(precioInp?.value) || 0;
+          }
           const med = medSel?.value;
-          const precio = priceByMedida[med] ?? 0;
+          return priceByMedida[med] ?? 0;
+        };
+        const updateTotal = () => {
           const cant = Number(cantInp?.value) || 0;
-          if (precioInp) precioInp.value = this.formatMoney(precio);
+          const precio = readPrecio();
           if (totalEl) totalEl.textContent = `Total: ${this.formatMoney(cant * precio)}`;
         };
-        medSel?.addEventListener('change', updateTotal);
+        const syncPrecioFromMedida = () => {
+          const med = medSel?.value;
+          const precio = priceByMedida[med] ?? 0;
+          if (precioInp) {
+            precioInp.value = permiteCambiarPrecio ? String(precio) : this.formatMoney(precio);
+          }
+          updateTotal();
+        };
+        medSel?.addEventListener('change', syncPrecioFromMedida);
         cantInp?.addEventListener('input', updateTotal);
+        if (permiteCambiarPrecio) {
+          precioInp?.addEventListener('input', updateTotal);
+        }
         PosProductKeyboardUI.focusInput(cantInp);
         PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
       },
@@ -448,11 +477,19 @@ const CotizacionesView = {
           Swal.showValidationMessage('Seleccione una medida');
           return false;
         }
+        if (permiteCambiarPrecio) {
+          const precio = Number(document.getElementById('pos-swal-precio')?.value);
+          if (!Number.isFinite(precio) || precio < 0) {
+            Swal.showValidationMessage('Precio inválido');
+            return false;
+          }
+          return { medida, cantidad: cant, precio };
+        }
         return { medida, cantidad: cant };
       },
     });
     if (picked?.medida) {
-      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad);
+      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio);
     }
   },
 
@@ -592,17 +629,22 @@ const CotizacionesView = {
     return `
       <div class="pos-doc-vendedor-wrap">
         <label class="form-label small mb-0" for="pos-doc-vendedor">Vendedor <span class="text-danger">*</span></label>
-        <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
-          <option value="">— Seleccione —</option>
-          ${opts}
-        </select>
+        <div class="input-group input-group-sm">
+          <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
+            <option value="">— Seleccione —</option>
+            ${opts}
+          </select>
+          <button type="button" class="btn btn-outline-secondary btn-refresh-vendedores" title="Actualizar vendedores" aria-label="Actualizar vendedores"${disabled}>
+            <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>`;
   },
 
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
     PosDocSearchUI.syncControls(this._container, 'pos', editable);
-    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo'].forEach((sel) => {
+    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo', '.btn-refresh-vendedores'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -968,6 +1010,13 @@ const CotizacionesView = {
       });
     }
 
+    const refreshVenBtn = this._container?.querySelector('.btn-refresh-vendedores');
+    if (refreshVenBtn) {
+      refreshVenBtn.addEventListener('click', () => {
+        this.reloadVendedoresOptions().catch((err) => F.toast(err.message || 'No se pudo actualizar', 'error'));
+      });
+    }
+
     const clienteSearch = this._container?.querySelector('#pos-cliente-search');
     const clienteList = this._container?.querySelector('#pos-cliente-results');
     if (clienteSearch && clienteList) {
@@ -1067,11 +1116,34 @@ const CotizacionesView = {
     F.toast('Fecha actualizada', 'success');
   },
 
-  async fetchVendedores() {
-    if (this._vendedores.length) return this._vendedores;
+  async fetchVendedores(force = false) {
+    if (!force && this._vendedores.length) return this._vendedores;
     const data = await F.fetchJson(this.apiUrl('/vendedores', { _: Date.now() }));
     this._vendedores = data.rows || [];
     return this._vendedores;
+  },
+
+  async reloadVendedoresOptions() {
+    const sel = this._container?.querySelector('#pos-doc-vendedor');
+    const btn = this._container?.querySelector('.btn-refresh-vendedores');
+    if (!sel || btn?.disabled) return;
+    const current = String(sel.value || '').trim();
+    const icon = btn?.querySelector('i');
+    if (btn) btn.disabled = true;
+    if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+    try {
+      await this.fetchVendedores(true);
+      const opts = (this._vendedores || [])
+        .map((v) => `<option value="${v.CODEMPLEADO}">${this.escapeHtml(v.NOMEMPLEADO)}</option>`)
+        .join('');
+      sel.innerHTML = `<option value="">— Seleccione —</option>${opts}`;
+      if (current && [...sel.options].some((o) => o.value === current)) sel.value = current;
+      F.toast('Vendedores actualizados', 'success');
+    } finally {
+      const editable = this.docEditable(this._pedido?.header);
+      if (btn) btn.disabled = !editable;
+      if (icon) icon.className = 'fa-solid fa-rotate';
+    }
   },
 
   async guardarVendedorDocumento(codven) {

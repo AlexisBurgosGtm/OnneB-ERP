@@ -90,12 +90,14 @@ const CorteCajaView = {
         : this.renderStat(label, value, extraClass);
 
     let html = `
-      ${this.renderStat('Movimientos', String(r.totalMovimientos))}
-      ${this.renderStat('Ventas brutas', this.formatMoney(r.totalVentasBrutas ?? r.totalVenta))}
+      ${statOrClick('Movimientos', String(r.totalMovimientos), 'todos')}
+      ${statOrClick('Ventas brutas', this.formatMoney(r.totalVentasBrutas ?? r.totalVenta), 'ventas')}
       ${statOrClick('Notas de crédito', this.formatMoney(r.totalDevoluciones || 0), 'devoluciones', 'text-danger')}
-      ${this.renderStat('Total venta (neto)', this.formatMoney(r.totalVenta))}
+      ${statOrClick('Total venta (neto)', this.formatMoney(r.totalVenta), 'todos')}
       ${statOrClick('Crédito', this.formatMoney(r.totalCredito), 'credito')}
       ${this.renderStat('Efectivo inicial', this.formatMoney(r.efectivoInicial))}
+      ${statOrClick('Vales empleados (−)', this.formatMoney(r.totalVales || 0), 'vales', 'text-danger')}
+      ${statOrClick('Abonos vales (+)', this.formatMoney(r.totalPagosVales || 0), 'pagos-vales', 'text-success')}
       ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'contado', 'text-primary')}
       ${statOrClick('Tarjeta', this.formatMoney(r.fpTarjeta), 'tarjeta')}
       ${statOrClick('Depósito', this.formatMoney(r.fpDeposito), 'deposito')}
@@ -263,6 +265,8 @@ const CorteCajaView = {
           ${row('Ventas al crédito', money(resumen.totalCredito))}
           ${row('Efectivo inicial', money(resumen.efectivoInicial))}
           ${row('Efectivo ventas (neto)', money(resumen.fpEfectivo))}
+          ${row('Vales a empleados (−)', money(resumen.totalVales || 0))}
+          ${row('Abonos a vales (+)', money(resumen.totalPagosVales || 0))}
           ${row('Efectivo esperado', money(resumen.efectivoEsperado))}
           ${row('Tarjeta (sistema)', money(resumen.fpTarjeta))}
           ${row('Depósito (sistema)', money(resumen.fpDeposito))}
@@ -317,14 +321,157 @@ const CorteCajaView = {
 
   filtroTitulo(filtro) {
     const map = {
+      todos: 'Documentos del corte',
+      ventas: 'Ventas brutas (facturas)',
       credito: 'Facturas al crédito',
       contado: 'Ventas al contado',
       devoluciones: 'Notas de crédito (DEV, FNC)',
       tarjeta: 'Pagos con tarjeta',
       deposito: 'Pagos con depósito',
       cheque: 'Pagos con cheque',
+      vales: 'Vales a empleados (−)',
+      'pagos-vales': 'Abonos a vales (+)',
     };
     return map[filtro] || 'Documentos';
+  },
+
+  formatFechaCorta(value) {
+    if (!value) return '—';
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    return this.formatFecha(value);
+  },
+
+  renderValesModalHtml(tipo, rows) {
+    const isPagos = tipo === 'pagos';
+    if (!rows.length) {
+      return `<p class="text-muted small mb-0 text-center py-3">Sin ${isPagos ? 'abonos' : 'vales'} pendientes en esta caja.</p>`;
+    }
+    let total = 0;
+    const body = rows
+      .map((r) => {
+        const monto = Number(r.MONTO) || 0;
+        total += monto;
+        return `
+        <tr data-row-id="${this.escapeHtml(r.ID)}">
+          <td>${this.escapeHtml(r.ID)}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFechaCorta(r.FECHA))}</td>
+          <td>${this.escapeHtml(r.NOMEMPLEADO || r.CODEMP || '—')}</td>
+          <td class="small">${this.escapeHtml(isPagos ? `Vale #${r.IDVALE}` : r.DESCRIPCION || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(monto))}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary corte-vale-print" title="Imprimir">
+              <i class="fa-solid fa-print"></i>
+            </button>
+          </td>
+        </tr>`;
+      })
+      .join('');
+    return `
+      <div class="table-responsive" style="max-height: 22rem;" id="corte-vales-detalle-wrap">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>ID</th>
+              <th>Fecha</th>
+              <th>Empleado</th>
+              <th>${isPagos ? 'Vale' : 'Descripción'}</th>
+              <th class="text-end">Monto</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <th colspan="4" class="text-end">${rows.length} registro(s)</th>
+              <th class="text-end">${this.escapeHtml(this.formatMoney(total))}</th>
+              <th></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+  },
+
+  async printCorteValeRow(tipo, row) {
+    if (!row || typeof NominaPrint === 'undefined') {
+      F.toast('Impresión no disponible', 'warning');
+      return;
+    }
+    if (tipo === 'pagos') {
+      await NominaPrint.printAbonoVale({
+        pago: row,
+        vale: {
+          ID: row.IDVALE,
+          CODEMP: row.CODEMP,
+          NOMEMPLEADO: row.NOMEMPLEADO,
+          DESCRIPCION: row.VALE_DESC,
+          MONTO: row.VALE_MONTO,
+          ABONOS: row.VALE_ABONOS,
+          SALDO: row.VALE_SALDO,
+          CODCAJA: row.CODCAJA,
+          DESCAJA: row.DESCAJA,
+        },
+      });
+      return;
+    }
+    await NominaPrint.printValeEmpleado(row);
+  },
+
+  async showValesDetalleModal(filtro) {
+    const caja = this.selectedCaja();
+    if (!caja || !this.isAbierta(caja)) return;
+    const tipo = filtro === 'pagos-vales' ? 'pagos' : 'vales';
+    try {
+      const data = await F.fetchJson(this.apiUrl(`/${caja.CODCAJA}/vales-detalle`, { tipo }));
+      const rows = data.rows || [];
+      await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: this.filtroTitulo(filtro),
+        width: '42rem',
+        html: this.renderValesModalHtml(tipo, rows),
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        showCancelButton: false,
+        didOpen: () => {
+          document.getElementById('corte-vales-detalle-wrap')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.corte-vale-print');
+            if (!btn) return;
+            const tr = btn.closest('tr[data-row-id]');
+            const id = tr?.getAttribute('data-row-id');
+            const row = rows.find((r) => String(r.ID) === String(id));
+            if (!row) return;
+            this.printCorteValeRow(tipo, row).catch((err) =>
+              F.toast(err.message || 'No se pudo imprimir', 'error')
+            );
+          });
+        },
+      });
+    } catch (err) {
+      F.toast(err.message || 'No se pudo cargar el detalle', 'error');
+    }
+  },
+
+  async showDocumentosModal(filtro) {
+    if (filtro === 'vales' || filtro === 'pagos-vales') {
+      return this.showValesDetalleModal(filtro);
+    }
+    const caja = this.selectedCaja();
+    if (!caja || !this.isAbierta(caja)) return;
+    try {
+      const data = await F.fetchJson(
+        this.apiUrl(`/${caja.CODCAJA}/documentos`, { filtro })
+      );
+      await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: this.filtroTitulo(filtro),
+        width: '42rem',
+        html: this.renderDocumentosModalHtml(filtro, data.rows || []),
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        showCancelButton: false,
+      });
+    } catch (err) {
+      F.toast(err.message || 'No se pudo cargar el detalle', 'error');
+    }
   },
 
   importeColumnLabel(filtro) {
@@ -391,26 +538,6 @@ const CorteCajaView = {
           </tfoot>
         </table>
       </div>`;
-  },
-
-  async showDocumentosModal(filtro) {
-    const caja = this.selectedCaja();
-    if (!caja || !this.isAbierta(caja)) return;
-    try {
-      const data = await F.fetchJson(
-        this.apiUrl(`/${caja.CODCAJA}/documentos`, { filtro })
-      );
-      await Swal.fire({
-        ...CatalogosUI.modalBase(),
-        title: this.filtroTitulo(filtro),
-        width: '42rem',
-        html: this.renderDocumentosModalHtml(filtro, data.rows || []),
-        confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
-        showCancelButton: false,
-      });
-    } catch (err) {
-      F.toast(err.message || 'No se pudo cargar el detalle', 'error');
-    }
   },
 
   renderCajasHtml() {

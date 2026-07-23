@@ -640,17 +640,22 @@ const PosView = {
     return `
       <div class="pos-doc-vendedor-wrap">
         <label class="form-label small mb-0" for="pos-doc-vendedor">Vendedor <span class="text-danger">*</span></label>
-        <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
-          <option value="">— Seleccione —</option>
-          ${opts}
-        </select>
+        <div class="input-group input-group-sm">
+          <select class="form-select form-select-sm" id="pos-doc-vendedor"${disabled}>
+            <option value="">— Seleccione —</option>
+            ${opts}
+          </select>
+          <button type="button" class="btn btn-outline-secondary btn-refresh-vendedores" title="Actualizar vendedores" aria-label="Actualizar vendedores"${disabled}>
+            <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>`;
   },
 
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
     PosDocSearchUI.syncControls(this._container, 'pos', editable);
-    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo'].forEach((sel) => {
+    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo', '.btn-refresh-vendedores'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -1043,6 +1048,13 @@ const PosView = {
       });
     }
 
+    const refreshVenBtn = this._container?.querySelector('.btn-refresh-vendedores');
+    if (refreshVenBtn) {
+      refreshVenBtn.addEventListener('click', () => {
+        this.reloadVendedoresOptions().catch((err) => F.toast(err.message || 'No se pudo actualizar', 'error'));
+      });
+    }
+
     const clienteSearch = this._container?.querySelector('#pos-cliente-search');
     const clienteList = this._container?.querySelector('#pos-cliente-results');
     if (clienteSearch && clienteList) {
@@ -1142,11 +1154,34 @@ const PosView = {
     F.toast('Fecha actualizada', 'success');
   },
 
-  async fetchVendedores() {
-    if (this._vendedores.length) return this._vendedores;
+  async fetchVendedores(force = false) {
+    if (!force && this._vendedores.length) return this._vendedores;
     const data = await F.fetchJson(this.apiUrl('/vendedores', { _: Date.now() }));
     this._vendedores = data.rows || [];
     return this._vendedores;
+  },
+
+  async reloadVendedoresOptions() {
+    const sel = this._container?.querySelector('#pos-doc-vendedor');
+    const btn = this._container?.querySelector('.btn-refresh-vendedores');
+    if (!sel || btn?.disabled) return;
+    const current = String(sel.value || '').trim();
+    const icon = btn?.querySelector('i');
+    if (btn) btn.disabled = true;
+    if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+    try {
+      await this.fetchVendedores(true);
+      const opts = (this._vendedores || [])
+        .map((v) => `<option value="${v.CODEMPLEADO}">${this.escapeHtml(v.NOMEMPLEADO)}</option>`)
+        .join('');
+      sel.innerHTML = `<option value="">— Seleccione —</option>${opts}`;
+      if (current && [...sel.options].some((o) => o.value === current)) sel.value = current;
+      F.toast('Vendedores actualizados', 'success');
+    } finally {
+      const editable = this.docEditable(this._pedido?.header);
+      if (btn) btn.disabled = !editable;
+      if (icon) icon.className = 'fa-solid fa-rotate';
+    }
   },
 
   async guardarVendedorDocumento(codven) {

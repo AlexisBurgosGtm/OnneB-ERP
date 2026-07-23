@@ -188,12 +188,11 @@ const RolesUsuariosView = {
           </div>
         </div>
         <div class="roles-groups">${groupsHtml}</div>
-        <div class="roles-editor-actions">
-          <button type="button" class="btn btn-primary" id="roles-btn-guardar"${this._saving ? ' disabled' : ''}>
-            <i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>
-            ${this._saving ? 'Guardando…' : 'Guardar acceso'}
-          </button>
-        </div>
+        <button type="button" class="btn-roles-guardar-fab" id="roles-btn-guardar"
+          title="Guardar acceso" aria-label="Guardar acceso"${this._saving ? ' disabled' : ''}>
+          <i class="fa-solid ${this._saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}" aria-hidden="true"></i>
+          <span class="roles-guardar-fab-label">${this._saving ? 'Guardando…' : 'Guardar'}</span>
+        </button>
       </div>
     `;
   },

@@ -271,7 +271,79 @@ const CuentasPorPagarView = {
           title="Calendario de pagos">
           <i class="fa-solid fa-calendar-days me-1"></i>Calendario
         </button>
+        <button type="button" class="btn btn-outline-secondary" id="cxp-vista-resumen"
+          title="Resumen por proveedor">
+          <i class="fa-solid fa-table-cells me-1"></i>Resumen
+        </button>
       </div>`;
+  },
+
+  buildResumenPorProveedor() {
+    const map = new Map();
+    for (const r of this.filteredRows()) {
+      const cod =
+        r.CODPROV != null && r.CODPROV !== ''
+          ? String(r.CODPROV)
+          : r.CODCLIENTE != null && r.CODCLIENTE !== ''
+            ? String(r.CODCLIENTE)
+            : '—';
+      const nombre = r.DOC_NOMCLIE || r.NEGOCIO || '—';
+      const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
+      const cur = map.get(cod) || { codigo: cod, nombre, documentos: 0, saldo: 0 };
+      if ((!cur.nombre || cur.nombre === '—') && nombre && nombre !== '—') cur.nombre = nombre;
+      cur.documentos += 1;
+      cur.saldo += saldo;
+      map.set(cod, cur);
+    }
+    return [...map.values()].sort((a, b) => b.saldo - a.saldo || String(a.nombre).localeCompare(String(b.nombre)));
+  },
+
+  async mostrarResumen() {
+    const rows = this.buildResumenPorProveedor();
+    const totalDocs = rows.reduce((s, r) => s + r.documentos, 0);
+    const totalSaldo = rows.reduce((s, r) => s + r.saldo, 0);
+    const body = rows.length
+      ? rows
+          .map(
+            (r) => `
+        <tr>
+          <td class="text-nowrap">${this.escapeHtml(r.codigo)}</td>
+          <td>${this.escapeHtml(r.nombre)}</td>
+          <td class="text-end">${r.documentos}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.saldo))}</td>
+        </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="4" class="text-center text-muted py-3">Sin documentos</td></tr>`;
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Resumen por proveedor',
+      width: 720,
+      html: `
+        <div class="table-responsive" style="max-height: 420px">
+          <table class="table table-sm table-hover table-striped mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Cód. proveedor</th>
+                <th>Proveedor</th>
+                <th class="text-end">Documentos</th>
+                <th class="text-end">Saldo total</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+            <tfoot class="table-light fw-semibold">
+              <tr>
+                <td colspan="2" class="text-end">Totales</td>
+                <td class="text-end">${totalDocs}</td>
+                <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+    });
   },
 
   monthLabel(year, month) {
@@ -1167,6 +1239,10 @@ const CuentasPorPagarView = {
 
     this._container?.querySelector('#cxp-vista-calendario')?.addEventListener('click', () => {
       switchVista('calendario');
+    });
+
+    this._container?.querySelector('#cxp-vista-resumen')?.addEventListener('click', () => {
+      this.mostrarResumen().catch((err) => F.toast(err.message || 'Error', 'error'));
     });
 
     this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {

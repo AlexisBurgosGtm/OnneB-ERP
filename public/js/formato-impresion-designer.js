@@ -87,6 +87,8 @@ ${this.designerChromeCss()}
   <div class="doc-meta-item"><strong>NIT:</strong> {{DOC.DOC_NIT}}</div>
   <div class="doc-meta-item"><strong>Dirección:</strong> {{DOC.DOC_DIRCLIE}}</div>
   <div class="doc-meta-item"><strong>Pago:</strong> {{DOC.CONCRE_LABEL}}</div>
+  {{#DOC.VENDEDOR}}<div class="doc-meta-item"><strong>Vendedor:</strong> {{DOC.VENDEDOR}}</div>{{/DOC.VENDEDOR}}
+  {{#DOC.VENDEDOR_TELEFONO}}<div class="doc-meta-item"><strong>Tel. vendedor:</strong> {{DOC.VENDEDOR_TELEFONO}}</div>{{/DOC.VENDEDOR_TELEFONO}}
 </div>`,
     },
     {

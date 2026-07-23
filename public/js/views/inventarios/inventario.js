@@ -22,10 +22,21 @@ const InventarioView = {
     { key: 'TIPOPROD', label: 'Tipo' },
     { key: 'SALDO', label: 'Saldo', type: 'qty' },
     { key: 'EXISTENCIA', label: 'Existencia', type: 'qty' },
-    { key: 'COSTO', label: 'Costo', type: 'money' },
-    { key: 'TOTALCOSTO', label: 'Total costo', type: 'money' },
+    { key: 'COSTO', label: 'Costo', type: 'money', ventasHidden: true },
+    { key: 'TOTALCOSTO', label: 'Total costo', type: 'money', ventasHidden: true },
     { key: 'HABILITADO', label: 'Habilitado' },
   ],
+
+  isUsuarioVentas() {
+    if (typeof TipoEmpleadoAccess === 'undefined') return false;
+    const tipo = TipoEmpleadoAccess.getCodTipo();
+    return Number(tipo) === TipoEmpleadoAccess.TIPO_VENDEDOR;
+  },
+
+  visibleTableColumns() {
+    if (!this.isUsuarioVentas()) return this.tableColumns;
+    return this.tableColumns.filter((c) => !c.ventasHidden);
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -75,7 +86,8 @@ const InventarioView = {
   },
 
   renderTableBodyHtml(rows) {
-    const colSpan = this.tableColumns.length;
+    const cols = this.visibleTableColumns();
+    const colSpan = cols.length;
     if (!rows.length) {
       const msg = this._filterQuery.trim() || this._filterMarca || this._filterHabilitado
         ? 'Ningún producto coincide con los filtros'
@@ -85,7 +97,7 @@ const InventarioView = {
     return rows
       .map((row) => {
         const codprod = String(this.cellValue(row, 'CODPROD') || '').trim();
-        const cells = this.tableColumns
+        const cells = cols
           .map((c) => {
             const align = c.type === 'money' || c.type === 'qty' ? ' text-end' : '';
             const extra = c.cellClass ? ` ${c.cellClass}` : '';
@@ -103,14 +115,23 @@ const InventarioView = {
 
   renderTableFooterHtml() {
     if (!this._rows.length) return '';
+    const cols = this.visibleTableColumns();
+    const lead = cols.findIndex((c) => c.key === 'SALDO');
+    const leadSpan = lead > 0 ? lead : 4;
+    const afterSaldo = cols.slice(lead + 1);
+    const cellsAfter = afterSaldo
+      .map((c) => {
+        if (c.key === 'TOTALCOSTO') {
+          return `<td class="text-end inventario-money">${this.escapeHtml(this.formatMoney(this._totals.TOTALCOSTO))}</td>`;
+        }
+        return '<td></td>';
+      })
+      .join('');
     return `
       <tr class="inventario-total-row table-light fw-semibold">
-        <td colspan="4" class="text-end">Totales</td>
+        <td colspan="${leadSpan}" class="text-end">Totales</td>
         <td class="text-end inventario-qty">${this.escapeHtml(this.formatQty(this._totals.SALDO))}</td>
-        <td></td>
-        <td></td>
-        <td class="text-end inventario-money">${this.escapeHtml(this.formatMoney(this._totals.TOTALCOSTO))}</td>
-        <td></td>
+        ${cellsAfter}
       </tr>
     `;
   },
@@ -231,7 +252,7 @@ const InventarioView = {
                 </button>
               </div>
             </div>
-            <div class="inventario-filter-export">
+            <div class="inventario-filter-export"${this.isUsuarioVentas() ? ' hidden' : ''}>
               <label class="form-label small mb-1 d-block inventario-export-label" aria-hidden="true">&nbsp;</label>
               <button type="button" class="btn btn-sm btn-outline-success" id="btn-inventario-export">
                 <i class="fa-solid fa-file-excel me-1" aria-hidden="true"></i>Exportar (xlsx)
@@ -245,7 +266,7 @@ const InventarioView = {
   },
 
   renderTableCard() {
-    const headers = this.tableColumns
+    const headers = this.visibleTableColumns()
       .map((c) => {
         const align = c.type === 'money' || c.type === 'qty' ? ' text-end' : '';
         const extra = c.cellClass ? ` ${c.cellClass}` : '';
@@ -412,6 +433,10 @@ const InventarioView = {
   },
 
   async onExportExcel() {
+    if (this.isUsuarioVentas()) {
+      F.toast('No tiene permiso para exportar inventario', 'warning');
+      return;
+    }
     if (this._exporting) return;
     const empNit = F.getEmpNit();
     if (!empNit) {
@@ -456,7 +481,8 @@ const InventarioView = {
   buildPrintHtml(rows, totals, truncated) {
     const now = new Date();
     const fecha = now.toLocaleString('es-GT');
-    const headers = this.tableColumns
+    const cols = this.visibleTableColumns();
+    const headers = cols
       .map((c) => {
         const align = c.type === 'money' || c.type === 'qty' ? ' class="text-end"' : '';
         return `<th${align}>${PrintReport.escapeHtml(c.label)}</th>`;
@@ -465,7 +491,7 @@ const InventarioView = {
     const body = rows.length
       ? rows
           .map((row) => {
-            const cells = this.tableColumns
+            const cells = cols
               .map((c) => {
                 const align = c.type === 'money' || c.type === 'qty' ? ' class="text-end"' : '';
                 const val = this.cellValue(row, c.key);
@@ -475,13 +501,22 @@ const InventarioView = {
             return `<tr>${cells}</tr>`;
           })
           .join('')
-      : '<tr><td colspan="9" class="text-center">Sin registros</td></tr>';
+      : `<tr><td colspan="${cols.length}" class="text-center">Sin registros</td></tr>`;
+    const lead = cols.findIndex((c) => c.key === 'SALDO');
+    const leadSpan = lead > 0 ? lead : 4;
+    const afterSaldo = cols.slice(lead + 1);
+    const cellsAfter = afterSaldo
+      .map((c) => {
+        if (c.key === 'TOTALCOSTO') {
+          return `<td class="text-end"><strong>${PrintReport.escapeHtml(this.formatMoney(totals.TOTALCOSTO))}</strong></td>`;
+        }
+        return '<td></td>';
+      })
+      .join('');
     const footer = rows.length
-      ? `<tr class="totals"><td colspan="4" class="text-end"><strong>Totales</strong></td>
+      ? `<tr class="totals"><td colspan="${leadSpan}" class="text-end"><strong>Totales</strong></td>
           <td class="text-end"><strong>${PrintReport.escapeHtml(this.formatQty(totals.SALDO))}</strong></td>
-          <td></td><td></td>
-          <td class="text-end"><strong>${PrintReport.escapeHtml(this.formatMoney(totals.TOTALCOSTO))}</strong></td>
-          <td></td></tr>`
+          ${cellsAfter}</tr>`
       : '';
     const truncNote = truncated
       ? '<p class="warn"><em>Nota: el listado impreso está limitado a 2000 registros.</em></p>'

@@ -215,7 +215,7 @@ async function cargarCostosDesdeLinea(pool, empnit, coddoc, correlativo, lineId)
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .input('ID', sql.Int, lineId)
     .query(`
-      SELECT Id AS ID, CODPROD, DESPROD, COSTO, EQUIVALE
+      SELECT Id AS ID, CODPROD, DESPROD, COSTO, EQUIVALE, TIPOPROD
       FROM dbo.DOCPRODUCTOS
       WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO AND Id = @ID
     `);
@@ -225,6 +225,11 @@ async function cargarCostosDesdeLinea(pool, empnit, coddoc, correlativo, lineId)
     throw err;
   }
   const line = lineRes.recordset[0];
+  if (String(line.TIPOPROD || '').trim().toUpperCase() === 'S') {
+    const err = new Error('Producto sin existencia (PSE): no actualiza catálogo');
+    err.statusCode = 400;
+    throw err;
+  }
   const equivale = Number(line.EQUIVALE) || 0;
   if (equivale <= 0) {
     const err = new Error('Equivalente inválido en la línea');
@@ -298,7 +303,7 @@ async function loadCompra(pool, empnit, coddoc, correlativo) {
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
       SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
-        l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO,
+        l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO, l.TIPOPROD,
         ${sqlExistenciaMedidaExpr('l.EQUIVALE')}
       FROM dbo.DOCPRODUCTOS l
       ${SQL_INVSALDO_UNICO_JOIN_LINEA}
@@ -688,10 +693,21 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
   if (!empnit) return;
   const coddoc = String(req.params.coddoc || '').trim();
   const correlativo = parseCorrelativo(req.params.correlativo);
-  const codprod = String(req.body?.CODPROD || '').trim();
-  const codmedida = String(req.body?.CODMEDIDA || '').trim();
+  const isPse = String(req.body?.tipo || '').trim().toLowerCase() === 'pse';
+  const desprodPse = String(req.body?.DESPROD || '').trim();
+  const importePse = roundMoney(req.body?.IMPORTE ?? req.body?.COSTO ?? req.body?.PRECIO);
+  const codprod = isPse ? `PSE${Date.now()}` : String(req.body?.CODPROD || '').trim();
+  const codmedida = isPse ? 'UNIDAD' : String(req.body?.CODMEDIDA || '').trim();
   const cantidad = Number(req.body?.CANTIDAD ?? 1);
-  if (!coddoc || correlativo === null || !codprod || !codmedida) {
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+  if (isPse) {
+    if (!desprodPse) return res.status(400).json({ error: 'La descripción es obligatoria' });
+    if (!Number.isFinite(importePse) || importePse < 0) {
+      return res.status(400).json({ error: 'Importe inválido' });
+    }
+  } else if (!codprod || !codmedida) {
     return res.status(400).json({ error: 'CODPROD y CODMEDIDA son obligatorios' });
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
@@ -712,26 +728,52 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
       return res.status(400).json({ error: 'La compra ya no está en edición' });
     }
 
-    const found = await fetchProductoPrecioForLinea(pool, sql, {
-      empnit,
-      codprod,
-      codmedida,
-    });
-    if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
-    const prod = found.row;
-    const medidaLinea = found.codmedida;
-    const { tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
-    const costoDefault = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const costoBody = req.body?.COSTO;
-    const costo =
-      costoBody !== undefined && costoBody !== null && costoBody !== ''
-        ? Number(costoBody)
-        : costoDefault;
-    if (Number.isNaN(costo) || costo < 0) {
-      return res.status(400).json({ error: 'Costo inválido' });
+    let desprod;
+    let medidaLinea;
+    let tipoprod;
+    let tipoprecio;
+    let costo;
+    let precio;
+    let equivale;
+    let exento;
+    let peso;
+
+    if (isPse) {
+      desprod = desprodPse;
+      medidaLinea = 'UNIDAD';
+      tipoprod = 'S';
+      tipoprecio = 'P';
+      costo = importePse;
+      precio = importePse;
+      equivale = 1;
+      exento = 0;
+      peso = 0;
+    } else {
+      const found = await fetchProductoPrecioForLinea(pool, sql, {
+        empnit,
+        codprod,
+        codmedida,
+      });
+      if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
+      const prod = found.row;
+      medidaLinea = found.codmedida;
+      ({ tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD));
+      const costoDefault = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+      const costoBody = req.body?.COSTO;
+      costo =
+        costoBody !== undefined && costoBody !== null && costoBody !== ''
+          ? Number(costoBody)
+          : costoDefault;
+      if (Number.isNaN(costo) || costo < 0) {
+        return res.status(400).json({ error: 'Costo inválido' });
+      }
+      precio = costo;
+      equivale = Number(prod.EQUIVALE) || 1;
+      desprod = prod.DESPROD;
+      exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+      peso = pesoFromPreciosRow(prod);
     }
-    const precio = costo;
-    const equivale = Number(prod.EQUIVALE) || 1;
+
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
       costo,
@@ -739,8 +781,6 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
       equivale
     );
     const parts = nowParts();
-    const exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
-    const peso = pesoFromPreciosRow(prod);
     const totalPeso = calcLinePeso(cantidad, peso);
 
     const transaction = new sql.Transaction(pool);
@@ -756,7 +796,7 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .input('CODPROD', sql.VarChar, codprod)
-        .input('DESPROD', sql.VarChar, prod.DESPROD)
+        .input('DESPROD', sql.VarChar, desprod)
         .input('CODMEDIDA', sql.VarChar, medidaLinea)
         .input('CANTIDAD', sql.Float, cantidad)
         .input('EQUIVALE', sql.Int, equivale)
@@ -797,7 +837,7 @@ router.post('/compras/:coddoc/:correlativo/lineas', async (req, res) => {
         coddoc,
         correlativo,
         codprod,
-        desprod: prod.DESPROD,
+        desprod,
         totalUnidades,
         tipoprod,
         tipom,

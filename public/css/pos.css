@@ -1165,8 +1165,8 @@ body.pos-product-sheet-open {
   min-width: 10rem;
 }
 
-.pos-doc-vendedor-wrap .form-select {
-  max-width: 14rem;
+.pos-doc-vendedor-wrap .input-group {
+  max-width: 16rem;
 }
 
 .pos-doc-fecha-wrap .form-control {

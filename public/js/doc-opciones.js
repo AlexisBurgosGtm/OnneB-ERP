@@ -91,8 +91,25 @@ const DocOpciones = {
     return this.estaCertificadoFel(row);
   },
 
+  /** Tipos que usan CORTE=SI al finalizar (inventario) sin ser corte de caja real. */
+  TIPOS_ELIMINABLES_IGNORA_CORTE: ['ENV', 'COT', 'RCC', 'CRS'],
+
   puedeEliminar(row) {
-    return this.puedeEditar(row);
+    if (!row) return false;
+    if (this.estaCertificadoFel(row)) return false;
+    const tipodoc = String(row.TIPODOC || '').trim().toUpperCase();
+    const status = String(row.STATUS || '').trim().toUpperCase();
+    if (status === 'A') return false;
+
+    const ignoraCorte = this.TIPOS_ELIMINABLES_IGNORA_CORTE.includes(tipodoc);
+    if (ignoraCorte) {
+      // Pedidos/cotizaciones/recibos: operados o bloqueados, aunque CORTE=SI.
+      return status === 'O' || status === 'I';
+    }
+
+    const corte = String(row.CORTE || 'NO').trim().toUpperCase();
+    if (corte === 'SI') return false;
+    return DocFecha.editableStatus(status);
   },
 
   fechaInputFromRow(row) {

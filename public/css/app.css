@@ -178,6 +178,7 @@ body.onneb-mutation-busy #btn-menu-toggle,
 body.onneb-mutation-busy #btn-menu-fab,
 body.onneb-mutation-busy .btn-catalogo-nuevo,
 body.onneb-mutation-busy .btn-onneb-nuevo-fab,
+body.onneb-mutation-busy .btn-roles-guardar-fab,
 body.onneb-mutation-busy .pos-fab-finalizar,
 body.onneb-mutation-busy .pos-fab-barcode,
 body.onneb-mutation-busy .pos-list-fab-nuevo {
@@ -228,7 +229,7 @@ body.onneb-mutation-busy .swal2-container button {
   border-bottom-right-radius: 0;
 }
 
-#view-main .btn:not(.rounded-pill):not(.btn-menu-fab):not(.btn-onneb-nuevo-fab):not(.pos-list-fab-nuevo):not(.pos-fab-finalizar):not(.pos-fab-agregar):not(.pos-fab-barcode):not(.btn-theme-fab) {
+#view-main .btn:not(.rounded-pill):not(.btn-menu-fab):not(.btn-onneb-nuevo-fab):not(.btn-roles-guardar-fab):not(.pos-list-fab-nuevo):not(.pos-fab-finalizar):not(.pos-fab-agregar):not(.pos-fab-barcode):not(.btn-theme-fab) {
   border-radius: var(--app-radius-sm);
 }
 

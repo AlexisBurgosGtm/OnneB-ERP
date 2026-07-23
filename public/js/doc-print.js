@@ -144,6 +144,8 @@ const DocPrint = {
       this.metaItem('Cliente', h.DOC_NOMCLIE),
       this.metaItem('NIT', h.DOC_NIT),
       this.metaItem('Dirección', h.DOC_DIRCLIE),
+      this.metaItem('Vendedor', h.VENDEDOR || h.NOMEMPLEADO),
+      this.metaItem('Tel. vendedor', h.VENDEDOR_TELEFONO || h.TELEFONOS),
       ...extraMeta.map((m) => this.metaItem(m.label, m.value)).filter(Boolean),
     ]
       .filter(Boolean)

@@ -4,6 +4,7 @@ const multer = require('multer');
 const { isDbConfigured } = require('../config/database');
 const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
 const { assertAdminPass } = require('../lib/config-auth');
+const { corregirProductosYPrecios } = require('../lib/correccion-productos-precios');
 const {
   listMovimientosProducto,
   listMovimientosFiscalesProducto,
@@ -291,6 +292,23 @@ router.get('/stats', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /productos/stats]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Deduplica PRODUCTOS / INVSALDO / PRECIOS y crea índices únicos.
+ */
+router.post('/correccion-duplicados', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await corregirProductosYPrecios(pool, empnit);
+    res.json(result);
+  } catch (err) {
+    console.warn('[API POST /productos/correccion-duplicados]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

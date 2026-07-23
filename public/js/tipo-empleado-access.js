@@ -53,6 +53,7 @@ const TipoEmpleadoAccess = {
     'nomina-config',
     'nomina-conceptos',
     'nomina-empleados',
+    'nomina-vales',
     'nomina-interna',
     'nomina-igss',
     'marcas',
@@ -126,6 +127,7 @@ const TipoEmpleadoAccess = {
       'nomina-config',
       'nomina-conceptos',
       'nomina-empleados',
+      'nomina-vales',
       'nomina-interna',
       'nomina-igss',
       'clientes',
@@ -193,8 +195,18 @@ const TipoEmpleadoAccess = {
       if (!Array.isArray(val)) continue;
       const menus = val.map((m) => String(m || '').trim()).filter((m) => this.ALL_MENUS.includes(m));
       if (!menus.includes('inicio')) menus.unshift('inicio');
+      // Admin con lista casi completa → acceso total (incluye menús nuevos)
+      if (cod === this.TIPO_ADMIN) {
+        const meaningful = this.ALL_MENUS.filter((m) => m !== 'developer');
+        const missing = meaningful.filter((m) => !menus.includes(m));
+        if (missing.length <= 5 && menus.length >= meaningful.length - 5) {
+          next[cod] = null;
+          continue;
+        }
+      }
       next[cod] = menus;
     }
+    if (next[this.TIPO_ADMIN] === undefined) next[this.TIPO_ADMIN] = null;
     this.MENU_BY_TIPO = next;
     this._accesoLoaded = true;
   },
@@ -221,14 +233,25 @@ const TipoEmpleadoAccess = {
     return Number.isFinite(n) && n > 0 ? n : null;
   },
 
+  /**
+   * Menús permitidos según perfil (Roles de usuarios).
+   * null en el mapa = acceso a todas las opciones del catálogo actual.
+   * Admin sin restricción explícita → siempre acceso total.
+   */
   allowedMenus(codtipo) {
-    if (codtipo === null) {
+    if (codtipo === null || codtipo === undefined) {
       return new Set(this.ALL_MENUS);
     }
     const list = this.MENU_BY_TIPO[codtipo];
-    if (list === null) return new Set(this.ALL_MENUS);
-    if (Array.isArray(list) && list.length) return new Set(list);
-    if (codtipo === this.TIPO_ADMIN) return new Set(this.ALL_MENUS);
+    if (list === null || list === undefined) {
+      return new Set(this.ALL_MENUS);
+    }
+    if (Array.isArray(list) && list.length) {
+      return new Set(list);
+    }
+    if (Number(codtipo) === this.TIPO_ADMIN) {
+      return new Set(this.ALL_MENUS);
+    }
     return new Set(['inicio']);
   },
 

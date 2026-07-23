@@ -21,6 +21,7 @@ const { searchMovimientoProductos } = require('../lib/movimiento-productos-searc
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -191,10 +192,13 @@ async function loadPedido(pool, empnit, coddoc, correlativo) {
     .query(`
       SELECT d.*, t.DESDOC, t.TIPODOC,
         c.NEGOCIO AS CLI_NEGOCIO, c.TIPONEGOCIO AS CLI_TIPONEGOCIO,
-        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR
+        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR,
+        ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
+        ISNULL(emp.TELEFONOS, '') AS VENDEDOR_TELEFONO
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.Empleados emp ON emp.EMPNIT = d.EMPNIT AND emp.CODEMPLEADO = d.CODVEN
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   if (!headerRes.recordset.length) return null;
@@ -282,6 +286,10 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND HABILITADO = 'SI'
         ORDER BY CODCLIENTE
       `);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
     res.json({
       empnit,
       tipodoc: TIPODOC_COTIZACION,
@@ -292,6 +300,7 @@ router.get('/config', async (req, res) => {
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
+      permiteCambiarPrecio,
     });
   } catch (err) {
     console.warn('[API GET /cotizaciones/config]', err.message);
@@ -656,7 +665,18 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
     const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    let precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
+    if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+      const customPrecio = Number(req.body.PRECIO);
+      if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      precio = roundMoney(customPrecio);
+    }
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,

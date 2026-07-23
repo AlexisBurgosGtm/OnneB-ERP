@@ -185,6 +185,29 @@ const ClientesView = {
     `;
   },
 
+  selectTipoNegocioField(options, value) {
+    const strVal = value !== null && value !== undefined ? String(value) : '';
+    const optsHtml = (options || [])
+      .map(
+        (o) =>
+          `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+      )
+      .join('');
+    return `
+      <label class="form-label small mb-0" for="cliente-tiponegocio-select">Tipo negocio</label>
+      <div class="input-group input-group-sm">
+        <select class="form-select form-select-sm" name="TIPONEGOCIO" id="cliente-tiponegocio-select">
+          <option value="">— Seleccione —</option>
+          ${optsHtml}
+        </select>
+        <button type="button" class="btn btn-outline-secondary" id="btn-refresh-tipos-negocio"
+          title="Actualizar tipos de negocio" aria-label="Actualizar tipos de negocio">
+          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        </button>
+      </div>
+    `;
+  },
+
   inputField(name, label, value, opts = {}) {
     const { type = 'text', readonly = false, required = false, step = '' } = opts;
     const ro = readonly ? 'readonly' : '';
@@ -334,7 +357,7 @@ const ClientesView = {
       ),
       this.fieldBlock(this.inputField('NIT', 'NIT', r.NIT)),
       this.row2(
-        this.selectField('TIPONEGOCIO', 'Tipo negocio', L.tiposNegocio, r.TIPONEGOCIO),
+        this.selectTipoNegocioField(L.tiposNegocio, r.TIPONEGOCIO),
         this.inputField('NEGOCIO', 'Negocio', r.NEGOCIO)
       ),
       this.fieldBlock(this.inputField('NOMBRECLIENTE', 'Nombre cliente', r.NOMBRECLIENTE, { required: true })),
@@ -454,9 +477,38 @@ const ClientesView = {
     return null;
   },
 
+  async reloadTiposNegocioOptions(selectEl) {
+    const empNit = F.getEmpNit() || '';
+    if (!empNit || !selectEl) return;
+    const current = String(selectEl.value || '').trim();
+    const tiposUrl = `/api/tipo-negocios?empnit=${encodeURIComponent(empNit)}&_=${Date.now()}`;
+    const tiposRes = await F.fetchJson(tiposUrl, { cache: 'no-store' });
+    const tipos = (tiposRes.rows || []).map((t) => ({
+      value: String(t.TIPONEGOCIO || '').trim(),
+      label: String(t.TIPONEGOCIO || '').trim(),
+    }));
+    if (this._lookups) this._lookups.tiposNegocio = tipos;
+    const opts = ['<option value="">— Seleccione —</option>']
+      .concat(
+        tipos.map(
+          (o) =>
+            `<option value="${this.escapeHtml(o.value)}"${
+              current === String(o.value) ? ' selected' : ''
+            }>${this.escapeHtml(o.label)}</option>`
+        )
+      )
+      .join('');
+    selectEl.innerHTML = opts;
+    if (current && !tipos.some((t) => t.value === current)) {
+      selectEl.value = '';
+    }
+  },
+
   async showForm(title, row = {}, isEdit = false, options = {}) {
     const profile = options.profile || 'full';
     try {
+      this._lookups = null;
+      this._lookupsEmpNit = null;
       await this.loadLookups();
     } catch (err) {
       F.alert('Error', `No se pudieron cargar catálogos: ${err.message}`, 'error');
@@ -476,6 +528,22 @@ const ClientesView = {
           });
           popup?.querySelector('[name="NIT"]')?.focus();
         }
+        const refreshBtn = popup?.querySelector('#btn-refresh-tipos-negocio');
+        const tipoSel = popup?.querySelector('#cliente-tiponegocio-select');
+        refreshBtn?.addEventListener('click', async () => {
+          refreshBtn.disabled = true;
+          const icon = refreshBtn.querySelector('i');
+          if (icon) icon.className = 'fa-solid fa-spinner fa-spin';
+          try {
+            await view.reloadTiposNegocioOptions(tipoSel);
+            F.toast('Tipos de negocio actualizados', 'success');
+          } catch (err) {
+            F.toast(err.message || 'No se pudo actualizar', 'error');
+          } finally {
+            refreshBtn.disabled = false;
+            if (icon) icon.className = 'fa-solid fa-rotate';
+          }
+        });
       },
       preConfirm() {
         const data = view.readFormData();

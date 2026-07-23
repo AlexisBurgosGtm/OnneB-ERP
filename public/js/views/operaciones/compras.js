@@ -294,7 +294,12 @@ const ComprasView = {
   },
 
   cargarCostosPendingLines() {
-    return (this._compra?.lines || []).filter((ln) => this.lineId(ln) != null);
+    return (this._compra?.lines || []).filter((ln) => {
+      if (this.lineId(ln) == null) return false;
+      if (String(ln.TIPOPROD || '').trim().toUpperCase() === 'S') return false;
+      if (String(ln.CODPROD || '').trim().toUpperCase().startsWith('PSE')) return false;
+      return true;
+    });
   },
 
   cargarCostosBtnIdleHtml() {
@@ -623,6 +628,77 @@ const ComprasView = {
     F.toast('Producto agregado', 'success');
   },
 
+  async agregarLineaPse(desprod, importe) {
+    const key = this.docKey();
+    if (!key) {
+      F.toast('No hay compra activa', 'warning');
+      return;
+    }
+    if (!this.docEditable(this._compra?.header)) {
+      F.toast('La compra no está en edición', 'warning');
+      return;
+    }
+    const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'pse',
+        DESPROD: desprod,
+        IMPORTE: importe,
+        CANTIDAD: 1,
+      }),
+    });
+    this._compra = res.compra;
+    this.renderCart();
+    this.renderOrderSummary();
+    F.toast('PSE agregado', 'success');
+  },
+
+  async onAgregarPse() {
+    if (!this.docEditable(this._compra?.header)) {
+      F.toast('La compra no está en edición', 'warning');
+      return;
+    }
+    const { value } = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Agregar PSE',
+      html: `
+        <p class="small text-muted mb-2 text-start">Producto sin existencia (no está en catálogo). Medida: UNIDAD.</p>
+        <label class="form-label small mb-0 text-start d-block" for="compras-swal-pse-desprod">Descripción</label>
+        <input type="text" id="compras-swal-pse-desprod" class="form-control form-control-sm" placeholder="Descripción del producto" autocomplete="off">
+        <label class="form-label small mb-0 mt-2 text-start d-block" for="compras-swal-pse-importe">Importe</label>
+        <input type="number" id="compras-swal-pse-importe" class="form-control form-control-sm" value="0" min="0" step="any">
+      `,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        PosProductKeyboardUI.focusInput(document.getElementById('compras-swal-pse-desprod'));
+      },
+      preConfirm: () => {
+        const desprod = String(document.getElementById('compras-swal-pse-desprod')?.value || '').trim();
+        if (!desprod) {
+          Swal.showValidationMessage('La descripción es obligatoria');
+          return false;
+        }
+        const importe = Number(document.getElementById('compras-swal-pse-importe')?.value);
+        if (!Number.isFinite(importe) || importe < 0) {
+          Swal.showValidationMessage('Importe inválido');
+          return false;
+        }
+        return { desprod, importe };
+      },
+    });
+    if (!value) return;
+    try {
+      await this.agregarLineaPse(value.desprod, value.importe);
+    } catch (err) {
+      F.toast(err.message || 'No se pudo agregar el PSE', 'error');
+    }
+  },
+
   setCartBusy(busy) {
     this._cartBusy = busy;
     const tbody = this._container?.querySelector('#compras-cart-tbody');
@@ -853,7 +929,7 @@ const ComprasView = {
   syncEditorControls() {
     const editable = this.docEditable(this._compra?.header);
     PosDocSearchUI.syncControls(this._container, 'compras', editable);
-    ['#compras-proveedor-search', '#compras-doc-fecha', '#compras-seriefac', '#compras-nofac'].forEach((sel) => {
+    ['#compras-proveedor-search', '#compras-doc-fecha', '#compras-seriefac', '#compras-nofac', '#compras-btn-agregar-pse'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -1065,6 +1141,8 @@ const ComprasView = {
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="compras-product-search"
                   placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
+                <button type="button" class="btn btn-outline-secondary text-nowrap" id="compras-btn-agregar-pse"
+                  title="Agregar producto sin existencia"${editable ? '' : ' disabled'}>Agregar PSE</button>
               </div>
               <div class="pos-product-list" id="compras-product-list"></div>
             </div>
@@ -1188,6 +1266,10 @@ const ComprasView = {
 
     this._container?.querySelector('#compras-proveedor-nuevo')?.addEventListener('click', () => {
       this.onNuevoProveedor().catch((err) => F.toast(err.message, 'error'));
+    });
+
+    this._container?.querySelector('#compras-btn-agregar-pse')?.addEventListener('click', () => {
+      this.onAgregarPse().catch((err) => F.toast(err.message || 'Error al agregar PSE', 'error'));
     });
 
     this._container?.querySelector('#compras-cart-tbody')?.addEventListener('click', async (e) => {

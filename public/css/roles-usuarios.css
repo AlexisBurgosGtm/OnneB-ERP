@@ -6,7 +6,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 1rem;
+  padding-bottom: 5.5rem;
 }
 
 .roles-usuarios-panel {
@@ -145,10 +145,60 @@
   margin-top: 0.15rem;
 }
 
-.roles-editor-actions {
-  position: sticky;
-  bottom: 0;
-  margin-top: 0.85rem;
-  padding: 0.65rem 0 0.15rem;
-  background: linear-gradient(to top, var(--app-bg, #f5f6f8) 70%, transparent);
+.btn-roles-guardar-fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 9998;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-width: 3.5rem;
+  height: 3.5rem;
+  padding: 0 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(22, 163, 74, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 22px rgba(22, 163, 74, 0.38);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.btn-roles-guardar-fab:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.03);
+  color: #ffffff;
+  background: rgba(22, 163, 74, 0.94);
+  box-shadow: 0 10px 28px rgba(22, 163, 74, 0.48);
+}
+
+.btn-roles-guardar-fab:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.btn-roles-guardar-fab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.roles-guardar-fab-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+  .btn-roles-guardar-fab {
+    right: 1rem;
+    bottom: 1rem;
+    padding: 0;
+    width: 3.5rem;
+  }
+
+  .roles-guardar-fab-label {
+    display: none;
+  }
 }

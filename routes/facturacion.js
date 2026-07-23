@@ -27,6 +27,7 @@ const {
   F_ENTREGA_DOMICILIO,
 } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -548,6 +549,10 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND HABILITADO = 'SI'
         ORDER BY CODCLIENTE
       `);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
     res.json({
       empnit,
       grupo: grupoId,
@@ -559,6 +564,7 @@ router.get('/config', async (req, res) => {
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
+      permiteCambiarPrecio,
     });
   } catch (err) {
     console.warn('[API GET /facturacion/config]', err.message);
@@ -1212,7 +1218,18 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
     const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    const precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    let precio = getPrecioFromPreciosRow(prod, campoPrecio);
+    const permiteCambiarPrecio = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+    );
+    if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+      const customPrecio = Number(req.body.PRECIO);
+      if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      precio = roundMoney(customPrecio);
+    }
     const equivale = Number(prod.EQUIVALE) || 1;
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,

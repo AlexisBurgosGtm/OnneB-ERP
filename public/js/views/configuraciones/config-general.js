@@ -16,6 +16,7 @@ const ConfigGeneralView = {
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
     MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
+    MAXIMO_FRACCIONAMIENTO_FACTURAS: 'MAXIMO FRACCIONAMIENTO FACTURAS',
   },
 
   TEXT_CARDS: [
@@ -31,6 +32,21 @@ const ConfigGeneralView = {
       saveConfirmTitle: '¿Actualizar URL?',
       saveConfirmText: 'Se guardará la URL del servicio FEL.',
       saveToast: 'URL FEL actualizada',
+    },
+    {
+      opcion: 'MAXIMO FRACCIONAMIENTO FACTURAS',
+      slug: 'maximo-fraccionamiento-fac',
+      title: 'Máximo fraccionamiento facturas',
+      fallbackDesc:
+        'Monto máximo permitido por factura fraccionada (CF). Debe actualizarse según la legislación vigente.',
+      placeholder: '2500',
+      fieldLabel: 'Monto máximo (Q)',
+      inputType: 'number',
+      inputStep: '0.01',
+      icon: 'fa-file-invoice-dollar',
+      saveConfirmTitle: '¿Actualizar máximo?',
+      saveConfirmText: 'Se guardará el monto máximo para fraccionamiento de facturas.',
+      saveToast: 'Máximo de fraccionamiento actualizado',
     },
   ],
 
@@ -63,7 +79,8 @@ const ConfigGeneralView = {
       opcion: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
       title: 'Permite cambiar precio en pedidos',
       icon: 'fa-tag',
-      fallbackDesc: 'Permite modificar el precio al agregar productos en pedidos de mostrador',
+      fallbackDesc:
+        'Permite modificar el precio al agregar productos en pedidos de mostrador y facturas (FAC/FEF/FEC/FES)',
     },
     {
       opcion: 'CERTIFICA AL FINALIZAR',
@@ -419,12 +436,19 @@ const ConfigGeneralView = {
           <label for="input-${card.slug}-pass" class="form-label config-field-label">Valor actual (PASS)</label>
           <div class="input-group input-group-sm">
             <input
-              type="password"
-              class="form-control"
+              type="text"
+              class="form-control config-pass-mask"
               id="input-${card.slug}-pass"
-              name="${card.slug}-pass"
-              autocomplete="off"
+              name="${card.slug}-pass-onneb"
+              autocomplete="new-password"
+              autocapitalize="off"
+              autocorrect="off"
               spellcheck="false"
+              inputmode="text"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-bwignore="true"
+              data-form-type="other"
               placeholder="${this.escapeHtml(card.placeholder)}"
             >
             <button
@@ -503,6 +527,25 @@ const ConfigGeneralView = {
       </div>`;
   },
 
+  renderCorreccionProductosCard() {
+    return `
+      <div class="card config-card-compact">
+        <div class="card-body">
+          <h6 class="card-title mb-1">
+            <i class="fa-solid fa-broom me-1 text-primary"></i>Corrección de Productos y Precios
+          </h6>
+          <p class="card-text mb-2">
+            Elimina duplicados en <strong>PRODUCTOS</strong> y <strong>INVSALDO</strong> (EMPNIT+CODPROD)
+            y en <strong>PRECIOS</strong> (EMPNIT+CODPROD+CODMEDIDA). Luego crea índices únicos para evitarlos.
+          </p>
+          <p class="config-correccion-prod-status mb-2 small text-muted" id="config-correccion-prod-status"></p>
+          <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-correccion-productos-precios">
+            <i class="fa-solid fa-play me-1" aria-hidden="true"></i> Ejecutar corrección
+          </button>
+        </div>
+      </div>`;
+  },
+
   renderAll() {
     const sinoCards = this.SINO_OPTIONS.map((opt) =>
       this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
@@ -531,6 +574,7 @@ const ConfigGeneralView = {
             ${fotoCards}
             ${felFormatoCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+            ${this.renderCorreccionProductosCard()}
           </div>
         </div>
       </div>`;
@@ -562,10 +606,11 @@ const ConfigGeneralView = {
     const input = document.getElementById(`input-${card.slug}-pass`);
     const btnToggle = document.getElementById(`btn-toggle-${card.slug}-pass`);
     btnToggle?.addEventListener('click', () => {
-      const isPass = input.type === 'password';
-      input.type = isPass ? 'text' : 'password';
-      btnToggle.querySelector('i').className = isPass ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
-      btnToggle.title = isPass ? 'Ocultar clave' : 'Ver clave';
+      const masked = input?.classList.contains('config-pass-mask');
+      input?.classList.toggle('config-pass-mask', !masked);
+      const icon = btnToggle.querySelector('i');
+      if (icon) icon.className = masked ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+      btnToggle.title = masked ? 'Ocultar clave' : 'Ver clave';
     });
 
     document.getElementById(`btn-actualizar-${card.slug}-pass`)?.addEventListener('click', () => {
@@ -605,6 +650,10 @@ const ConfigGeneralView = {
 
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
       this.onSincronizarInvSaldo();
+    });
+
+    document.getElementById('btn-correccion-productos-precios')?.addEventListener('click', () => {
+      this.onCorreccionProductosPrecios();
     });
   },
 
@@ -873,6 +922,76 @@ const ConfigGeneralView = {
     } catch (err) {
       this.updateInvSaldoCard(this._invSaldoPendientes);
       F.alert('Error', err.message, 'error');
+    }
+  },
+
+  async onCorreccionProductosPrecios() {
+    const empNit = F.getEmpNit();
+    if (!empNit) {
+      F.toast('No hay empresa activa en la sesión', 'warning');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Corregir productos y precios?',
+      html: `
+        <p class="mb-2 text-start">Se eliminarán filas duplicadas en:</p>
+        <ul class="text-start small mb-2">
+          <li><strong>PRODUCTOS</strong> e <strong>INVSALDO</strong>: EMPNIT + CODPROD</li>
+          <li><strong>PRECIOS</strong>: EMPNIT + CODPROD + CODMEDIDA</li>
+        </ul>
+        <p class="mb-0 small text-muted text-start">Después se crearán índices únicos para evitar nuevas duplicidades.</p>
+      `,
+      icon: 'warning',
+      confirmText: 'Ejecutar',
+    });
+    if (!ok) return;
+
+    const btn = document.getElementById('btn-correccion-productos-precios');
+    const statusEl = document.getElementById('config-correccion-prod-status');
+    const prevHtml = btn?.innerHTML;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin me-1" aria-hidden="true"></i> Corrigiendo…';
+    }
+    if (statusEl) statusEl.textContent = 'Recorriendo tablas y eliminando duplicados…';
+
+    try {
+      const params = new URLSearchParams({ empnit: empNit });
+      const data = await F.fetchJson(`/api/productos/correccion-duplicados?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const prodDel = data.productos?.eliminados ?? 0;
+      const invDel = data.invsaldo?.eliminados ?? 0;
+      const precDel = data.precios?.eliminados ?? 0;
+      const idxCreated = (data.indexes?.created || []).length;
+      const idxErrors = data.indexes?.errors || [];
+      if (statusEl) {
+        statusEl.textContent = `Listo: productos −${prodDel}, invsaldo −${invDel}, precios −${precDel}. Índices nuevos: ${idxCreated}.`;
+      }
+      if (idxErrors.length) {
+        F.alert(
+          'Corrección parcial',
+          `Duplicados eliminados, pero hubo problemas al crear índices:\n${idxErrors.join('\n')}`,
+          'warning'
+        );
+      } else {
+        F.toast(
+          `Corrección lista: −${prodDel} productos, −${invDel} invsaldo, −${precDel} precios`,
+          'success'
+        );
+      }
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Error en la corrección';
+      F.alert('Error', err.message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        if (prevHtml) btn.innerHTML = prevHtml;
+      }
     }
   },
 

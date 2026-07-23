@@ -156,6 +156,7 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
       SELECT d.*, t.DESDOC, t.TIPODOC,
         c.NEGOCIO AS CLI_NEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
+        ISNULL(emp.TELEFONOS, '') AS VENDEDOR_TELEFONO,
         ISNULL(cj.DESCAJA, '') AS DESCAJA
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
@@ -261,6 +262,7 @@ router.get('/variables', (_req, res) => {
           'DOC.CONCRE',
           'DOC.CONCRE_LABEL',
           'DOC.VENDEDOR',
+          'DOC.VENDEDOR_TELEFONO',
           'DOC.OBS',
           'DOC.FEL_UUDI',
           'DOC.FEL_SERIE',

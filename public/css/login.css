@@ -167,6 +167,13 @@
   opacity: 1;
 }
 
+.login-input-line.config-pass-mask {
+  -webkit-text-security: disc;
+  text-security: disc;
+  font-family: Verdana, sans-serif;
+  letter-spacing: 0.05em;
+}
+
 .login-input-line option {
   background: var(--login-bg-base, #1a0a2e);
   color: var(--login-glass-fg, #fff);

@@ -7,11 +7,20 @@ const { STATUS_OPERADO, STATUS_ANULADO } = require('../lib/documento-status');
 const { certificarDocumentoFel } = require('../lib/fel/certificar');
 const { getTipomDocumento } = require('../lib/inventario');
 const { getIvaFactor, splitIvaFromTotal } = require('../lib/impuestos');
+const { getSettingValue, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
 
 const router = express.Router();
 
 const TIPODOC_CERT_FAC = ['FEF', 'FEC'];
 const DEFAULT_BODEGA = 0;
+const DEFAULT_MAXIMO_LEGAL = 2500;
+
+async function getMaximoFraccionamientoLegal(pool) {
+  await ensureSettingDefault(pool, SETTING_OPCION.MAXIMO_FRACCIONAMIENTO_FACTURAS);
+  const raw = await getSettingValue(pool, SETTING_OPCION.MAXIMO_FRACCIONAMIENTO_FACTURAS);
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : DEFAULT_MAXIMO_LEGAL;
+}
 
 function tipodocSqlIn(tipodocs) {
   return tipodocs.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(', ');
@@ -732,7 +741,8 @@ router.get('/tipodocs-fel', async (req, res) => {
         CORRELATIVO_SIGUIENTE: next,
       });
     }
-    res.json({ rows: withNext });
+    const maximoLegal = await getMaximoFraccionamientoLegal(pool);
+    res.json({ rows: withNext, maximoLegal });
   } catch (err) {
     console.warn('[API GET /fraccionamiento-fac/tipodocs-fel]', err.message);
     res.status(500).json({ error: err.message });
@@ -1027,6 +1037,12 @@ router.post('/:id/fraccionar-cf', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    const maximoLegal = await getMaximoFraccionamientoLegal(pool);
+    if (maximo > maximoLegal) {
+      return res.status(400).json({
+        error: `El máximo no puede superar Q ${maximoLegal.toFixed(2)} (configuración legal)`,
+      });
+    }
     const cola = await loadColaRow(pool, empnit, id);
     if (!cola) return res.status(404).json({ error: 'Registro de cola no encontrado' });
     if (String(cola.FINALIZADO || '').trim().toUpperCase() === 'SI') {

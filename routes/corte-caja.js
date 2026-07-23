@@ -3,6 +3,7 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
 const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
+const { sumValesSesionCaja, marcarValesCorte, sumPagosValesSesionCaja, marcarPagosValesCorte, listValesSesionCaja, listPagosValesSesionCaja } = require('../lib/nomina-vales');
 
 const router = express.Router();
 
@@ -95,7 +96,7 @@ function isFacturaDoc(row) {
   return TIPODOC_FACTURA.includes(docTipodoc(row));
 }
 
-function buildResumenFromRows(rows, efectivoInicial) {
+function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosVales = 0) {
   const docs = rows || [];
   const first = docs[0] || null;
   const last = docs[docs.length - 1] || null;
@@ -151,7 +152,13 @@ function buildResumenFromRows(rows, efectivoInicial) {
   fpCheque = roundMoney(fpCheque);
   const totalUtilidad = roundMoney(totalVenta - totalCosto);
   const margen = totalVenta > 0 ? roundMoney((totalUtilidad / totalVenta) * 100) : 0;
-  const efectivoEsperado = roundMoney((Number(efectivoInicial) || 0) + fpEfectivo);
+  const vales = roundMoney(totalVales);
+  const pagosVales = roundMoney(totalPagosVales);
+  // Gastos netos de vales: vales restan, abonos suman efectivo
+  const totalGastos = roundMoney(vales - pagosVales);
+  const efectivoEsperado = roundMoney(
+    (Number(efectivoInicial) || 0) + fpEfectivo - vales + pagosVales
+  );
 
   return {
     totalMovimientos: docs.length,
@@ -167,6 +174,9 @@ function buildResumenFromRows(rows, efectivoInicial) {
     fpTarjeta,
     fpDeposito,
     fpCheque,
+    totalGastos,
+    totalVales: vales,
+    totalPagosVales: pagosVales,
     efectivoInicial: roundMoney(efectivoInicial),
     efectivoEsperado,
     docInicial: first
@@ -266,7 +276,16 @@ router.get('/:codcaja/resumen', async (req, res) => {
       .input('CODCAJA', sql.Int, codcaja)
       .input('APERTURA', sql.DateTime, apertura)
       .query(sessionDocsSql());
-    const resumen = buildResumenFromRows(docs.recordset, caja.EFECTIVOINICIAL);
+    const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
+    const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
+    const resumen = buildResumenFromRows(
+      docs.recordset,
+      caja.EFECTIVOINICIAL,
+      valesInfo.totalVales,
+      pagosInfo.totalPagos
+    );
+    resumen.cantidadVales = valesInfo.cantidadVales;
+    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     res.json({ caja, resumen });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/resumen]', err.message);
@@ -301,6 +320,36 @@ router.get('/:codcaja/documentos', async (req, res) => {
     res.json({ filtro, rows: result.recordset });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/documentos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codcaja/vales-detalle', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codcaja = parseCodcaja(req.params.codcaja);
+  if (!codcaja) return res.status(400).json({ error: 'CODCAJA inválido' });
+  const tipo = String(req.query.tipo || 'vales').trim().toLowerCase();
+  if (tipo !== 'vales' && tipo !== 'pagos') {
+    return res.status(400).json({ error: 'Tipo inválido (vales|pagos)' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const caja = await loadCaja(pool, empnit, codcaja);
+    if (!caja) return res.status(404).json({ error: 'Caja no encontrada' });
+    if (Number(caja.STATUS) !== 1) {
+      return res.status(400).json({ error: 'La caja no está abierta' });
+    }
+    const apertura = caja.LASTUPDATE || new Date();
+    const rows =
+      tipo === 'pagos'
+        ? await listPagosValesSesionCaja(pool, empnit, codcaja, apertura)
+        : await listValesSesionCaja(pool, empnit, codcaja, apertura);
+    res.json({ tipo, rows });
+  } catch (err) {
+    console.warn('[API GET /corte-caja/:codcaja/vales-detalle]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -389,7 +438,16 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .input('CODCAJA', sql.Int, codcaja)
       .input('APERTURA', sql.DateTime, apertura)
       .query(sessionDocsSql());
-    const resumen = buildResumenFromRows(docsResult.recordset, caja.EFECTIVOINICIAL);
+    const valesInfo = await sumValesSesionCaja(transaction, empnit, codcaja, apertura);
+    const pagosInfo = await sumPagosValesSesionCaja(transaction, empnit, codcaja, apertura);
+    const resumen = buildResumenFromRows(
+      docsResult.recordset,
+      caja.EFECTIVOINICIAL,
+      valesInfo.totalVales,
+      pagosInfo.totalPagos
+    );
+    resumen.cantidadVales = valesInfo.cantidadVales;
+    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
 
     const diff = roundMoney(totalReportado - resumen.efectivoEsperado);
     const faltante = diff < 0 ? roundMoney(Math.abs(diff)) : 0;
@@ -435,7 +493,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .input('FALTANTE', sql.Decimal(18, 3), faltante)
       .input('SOBRANTE', sql.Decimal(18, 3), sobrante)
       .input('OBS', sql.VarChar, obs)
-      .input('TOTALGASTOS', sql.Decimal(18, 3), 0)
+      .input('TOTALGASTOS', sql.Decimal(18, 3), resumen.totalGastos)
       .input('TOTALRECIBOS', sql.Decimal(18, 3), 0)
       .input('CODCAJA', sql.Int, codcaja)
       .input('TOTALTARJETA', sql.Decimal(18, 3), resumen.fpTarjeta)
@@ -479,6 +537,14 @@ router.post('/:codcaja/cerrar', async (req, res) => {
     const newId = insertResult.recordset[0]?.ID;
 
     const docsMarcados = await marcarDocumentosCorte(transaction, empnit, codcaja, correlativo, apertura);
+    const valesMarcados = await marcarValesCorte(transaction, empnit, codcaja, correlativo, apertura);
+    const pagosValesMarcados = await marcarPagosValesCorte(
+      transaction,
+      empnit,
+      codcaja,
+      correlativo,
+      apertura
+    );
 
     await transaction
       .request()
@@ -495,6 +561,8 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       ok: true,
       corte: { ID: newId, CORRELATIVO: correlativo },
       documentosMarcados: docsMarcados,
+      valesMarcados,
+      pagosValesMarcados,
       resumen,
       faltante,
       sobrante,

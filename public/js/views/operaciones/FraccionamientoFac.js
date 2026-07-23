@@ -16,6 +16,7 @@ const FraccionamientoFacView = {
   _nextAt: null,
   _timerBadgeInterval: null,
   _runGeneration: 0,
+  _maximoLegal: 2500,
 
   MINUTOS_OPTS: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90],
 
@@ -23,7 +24,7 @@ const FraccionamientoFacView = {
   LS_PROCESS_KEY: 'pos_onneb_ffac_process',
 
   defaultParams() {
-    return { minutos: 15, minimo: 100, maximo: 500, coddoc: '' };
+    return { minutos: 15, minimo: 100, maximo: Math.min(500, this._maximoLegal || 2500), coddoc: '' };
   },
 
   escapeHtml(value) {
@@ -82,12 +83,15 @@ const FraccionamientoFacView = {
       if (!raw) return this.defaultParams();
       const parsed = JSON.parse(raw);
       const base = this.defaultParams();
+      const maxLegal = Number(this._maximoLegal) > 0 ? Number(this._maximoLegal) : 2500;
+      let maximo = Number(parsed.maximo) > 0 ? Number(parsed.maximo) : base.maximo;
+      if (maximo > maxLegal) maximo = maxLegal;
       return {
         minutos: this.MINUTOS_OPTS.includes(Number(parsed.minutos))
           ? Number(parsed.minutos)
           : base.minutos,
         minimo: Number(parsed.minimo) > 0 ? Number(parsed.minimo) : base.minimo,
-        maximo: Number(parsed.maximo) > 0 ? Number(parsed.maximo) : base.maximo,
+        maximo,
         coddoc: String(parsed.coddoc || '').trim(),
       };
     } catch (_) {
@@ -312,10 +316,14 @@ const FraccionamientoFacView = {
   },
 
   validateParams(params = this.getParams()) {
+    const maxLegal = Number(this._maximoLegal) > 0 ? Number(this._maximoLegal) : 2500;
     if (!params.coddoc) return 'Seleccione el CODDOC a generar en Parámetros';
     if (!(params.minimo > 0)) return 'Indique un Mínimo válido en Parámetros';
     if (!(params.maximo > 0)) return 'Indique un Máximo válido en Parámetros';
     if (params.maximo < params.minimo) return 'El Máximo debe ser mayor o igual al Mínimo';
+    if (params.maximo > maxLegal) {
+      return `El Máximo no puede superar Q ${this.formatMoney(maxLegal)} (límite en Configuraciones)`;
+    }
     if (!this.MINUTOS_OPTS.includes(Number(params.minutos))) return 'Seleccione un intervalo de minutos válido';
     return null;
   },
@@ -473,9 +481,12 @@ const FraccionamientoFacView = {
                     min="0.01" step="0.01" value="${this.escapeHtml(p.minimo)}">
                 </div>
                 <div class="col-6 col-md-2">
-                  <label class="form-label small mb-0" for="ffac-param-maximo">Máximo</label>
+                <div class="form-text small mb-0">Tope legal Q ${this.escapeHtml(this.formatMoney(this._maximoLegal))}</div>
+                <label class="form-label small mb-0" for="ffac-param-maximo">Máximo</label>
                   <input type="number" class="form-control form-control-sm" id="ffac-param-maximo"
-                    min="0.01" step="0.01" value="${this.escapeHtml(p.maximo)}">
+                    min="0.01" step="0.01" max="${this.escapeHtml(this._maximoLegal)}"
+                    value="${this.escapeHtml(p.maximo)}">
+                  
                 </div>
                 <div class="col-6 col-md-3">
                   <label class="form-label small mb-0" for="ffac-param-coddoc">CODDOC a generar</label>
@@ -568,6 +579,7 @@ const FraccionamientoFacView = {
     const root = this._container;
     if (!root) return;
     const persist = () => {
+      this.clampMaximoInput();
       this.saveParams();
       const st = root.querySelector('#ffac-param-status');
       if (st) st.textContent = 'Guardado';
@@ -614,7 +626,21 @@ const FraccionamientoFacView = {
       cache: 'no-store',
     });
     this._tipodocs = data.rows || [];
+    const legal = Number(data.maximoLegal);
+    if (Number.isFinite(legal) && legal > 0) this._maximoLegal = legal;
     return this._tipodocs;
+  },
+
+  clampMaximoInput() {
+    const inp = this._container?.querySelector('#ffac-param-maximo');
+    if (!inp) return;
+    const maxLegal = Number(this._maximoLegal) > 0 ? Number(this._maximoLegal) : 2500;
+    inp.setAttribute('max', String(maxLegal));
+    const val = Number(inp.value);
+    if (Number.isFinite(val) && val > maxLegal) {
+      inp.value = String(maxLegal);
+      F.toast(`Máximo limitado a Q ${this.formatMoney(maxLegal)} (configuración)`, 'info');
+    }
   },
 
   async fetchRows() {
@@ -1071,8 +1097,17 @@ const FraccionamientoFacView = {
       }
 
       await Promise.all([this.fetchRows(), this.fetchTipodocs()]);
+      // Releer params con el tope legal ya cargado
+      params = this.loadParams();
+      if (saved?.active && saved.empnit === emp && saved.params) {
+        params = { ...params, ...saved.params };
+        if (Number(params.maximo) > Number(this._maximoLegal)) {
+          params.maximo = Number(this._maximoLegal);
+        }
+      }
       container.innerHTML = this.renderScreen(params);
       this.bindEvents();
+      this.clampMaximoInput();
 
       if (wasRunning || (saved?.active && saved.empnit === emp && saved.params)) {
         this.setParamsLocked(true);

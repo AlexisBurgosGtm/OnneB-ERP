@@ -97,7 +97,10 @@
 
     const userInput = document.getElementById('username');
     const passInput = document.getElementById('password');
-    if (passInput) passInput.value = '';
+    if (passInput) {
+      passInput.value = '';
+      passInput.setAttribute('readonly', 'readonly');
+    }
     if (userInput) userInput.value = '';
 
     if (mainTitle) mainTitle.textContent = 'OnneB POS';
@@ -340,8 +343,56 @@
   }
 
   if (loginForm) {
-    loginForm.addEventListener('submit', async (e) => {
+    const passInput = document.getElementById('password');
+    passInput?.addEventListener('focus', () => {
+      passInput.removeAttribute('readonly');
+    });
+    passInput?.addEventListener('mousedown', () => {
+      passInput.removeAttribute('readonly');
+    });
 
+    async function completeLoginSession(auth, empNit, empNombre, fallbackUsername) {
+      const authUser = auth.user;
+      const displayName = authUser?.nomempleado || authUser?.usuario || fallbackUsername;
+      const sessionData = {
+        username: displayName,
+        usuario: authUser?.usuario || fallbackUsername,
+        codempleado: authUser?.codempleado ?? null,
+        codtipoempleado: authUser?.codtipoempleado ?? (authUser?.superUser ? 1 : null),
+        superUser: Boolean(authUser?.superUser),
+        email: authUser?.email ?? '',
+        hasPasskey: Boolean(auth.hasPasskey || authUser?.hasPasskey),
+        empNit,
+        empNombre,
+        at: new Date().toISOString(),
+      };
+      F.session('user', sessionData);
+      F.setEmpresaGlobal(empNit, empNombre);
+      registerSocketSession();
+      document.getElementById('password').value = '';
+      stopLoadingOverlays();
+      setViewImmediate(false);
+      updateHeaderSessionInfo();
+      if (typeof TipoEmpleadoAccess !== 'undefined') {
+        await TipoEmpleadoAccess.refreshMenuAccess();
+        TipoEmpleadoAccess.applySidebarVisibility();
+      }
+      loadInicioDefault();
+      F.toast(`Bienvenido — ${empNombre}`, 'success');
+      if (typeof EmpresaLogo !== 'undefined') {
+        EmpresaLogo.loadForSession(empNit)
+          .then(() => updateHeaderEmpresaLogo())
+          .catch(() => updateHeaderEmpresaLogo());
+      }
+      if (typeof WebAuthnClient !== 'undefined') {
+        WebAuthnClient.offerRegisterAfterLogin({
+          ...auth,
+          empnit: empNit,
+        }).catch(() => {});
+      }
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const empresaSelect = document.getElementById('login-empresa');
       const empNit = empresaSelect?.value?.trim();
@@ -363,42 +414,43 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ usuario: username, password, empnit: empNit }),
         });
-        const authUser = auth.user;
-        const displayName = authUser?.nomempleado || authUser?.usuario || username;
-        const sessionData = {
-          username: displayName,
-          usuario: authUser?.usuario || username,
-          codempleado: authUser?.codempleado ?? null,
-          codtipoempleado: authUser?.codtipoempleado ?? (authUser?.superUser ? 1 : null),
-          superUser: Boolean(authUser?.superUser),
-          email: authUser?.email ?? '',
-          empNit,
-          empNombre,
-          at: new Date().toISOString(),
-        };
-        F.session('user', sessionData);
-        F.setEmpresaGlobal(empNit, empNombre);
-        registerSocketSession();
-        document.getElementById('password').value = '';
-        stopLoadingOverlays();
-        setViewImmediate(false);
-        updateHeaderSessionInfo();
-        if (typeof TipoEmpleadoAccess !== 'undefined') {
-          await TipoEmpleadoAccess.refreshMenuAccess();
-          TipoEmpleadoAccess.applySidebarVisibility();
-        }
-        loadInicioDefault();
-        F.toast(`Bienvenido — ${empNombre}`, 'success');
-        if (typeof EmpresaLogo !== 'undefined') {
-          EmpresaLogo.loadForSession(empNit)
-            .then(() => updateHeaderEmpresaLogo())
-            .catch(() => updateHeaderEmpresaLogo());
-        }
+        await completeLoginSession(auth, empNit, empNombre, username);
       } catch (err) {
         stopLoadingOverlays();
         F.toast(err.message || 'Error al iniciar sesión', 'error');
       }
     });
+
+    const passkeyBtn = document.getElementById('login-passkey-btn');
+    if (passkeyBtn && typeof WebAuthnClient !== 'undefined' && WebAuthnClient.isSupported()) {
+      passkeyBtn.style.display = '';
+      passkeyBtn.addEventListener('click', async () => {
+        const empresaSelect = document.getElementById('login-empresa');
+        const empNit = empresaSelect?.value?.trim();
+        if (!empNit || empresaSelect?.disabled) {
+          F.toast('Seleccione la empresa', 'warning');
+          return;
+        }
+        const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
+        const username = document.getElementById('username').value.trim();
+        if (window.OnnebPace) OnnebPace.start();
+        try {
+          const auth = await WebAuthnClient.login({
+            empnit: empNit,
+            ...(username ? { usuario: username } : {}),
+          });
+          const loginUser = auth.user?.usuario || username || 'passkey';
+          await completeLoginSession(auth, empNit, empNombre, loginUser);
+        } catch (err) {
+          stopLoadingOverlays();
+          if (err?.name === 'NotAllowedError') {
+            F.toast('Autenticación cancelada', 'warning');
+            return;
+          }
+          F.toast(err.message || 'No se pudo iniciar con passkey', 'error');
+        }
+      });
+    }
   }
 
   function setMenuExpanded(expanded) {
@@ -496,6 +548,7 @@
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
     'nomina-empleados': 'Datos nómina empleados',
+    'nomina-vales': 'Vales a Empleados',
     'nomina-interna': 'Nómina interna',
     'nomina-igss': 'Planilla IGSS',
     municipios: 'Municipios',
@@ -662,6 +715,8 @@
         NominaConceptosView.load(mainContent);
       } else if (key === 'nomina-empleados' && typeof NominaEmpleadosView !== 'undefined') {
         NominaEmpleadosView.load(mainContent);
+      } else if (key === 'nomina-vales' && typeof NominaValesView !== 'undefined') {
+        NominaValesView.load(mainContent);
       } else if (key === 'nomina-interna' && typeof NominaInternaView !== 'undefined') {
         NominaInternaView.load(mainContent);
       } else if (key === 'nomina-igss' && typeof NominaIgssView !== 'undefined') {

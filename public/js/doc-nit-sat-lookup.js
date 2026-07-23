@@ -12,6 +12,14 @@ const DocNitSatLookup = {
     return `/api/fel/contribuyente?${params}`;
   },
 
+  /** Quita solo comas y puntos del nombre consultado en SAT. */
+  cleanNombreSat(nombre) {
+    return String(nombre || '')
+      .replace(/[.,]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
   ensureStatusEl(nitInput) {
     const wrap = nitInput.closest('.mb-2') || nitInput.parentElement;
     if (!wrap) return null;
@@ -31,13 +39,6 @@ const DocNitSatLookup = {
     el.textContent = message;
   },
 
-  lockNitInput(nitInput, locked) {
-    if (!nitInput) return;
-    nitInput.readOnly = !!locked;
-    nitInput.classList.toggle('bg-light', !!locked);
-    nitInput.setAttribute('aria-readonly', locked ? 'true' : 'false');
-  },
-
   bindEnterLookup(opts = {}) {
     const { popup, nitFieldName = 'NIT', nameFieldName } = opts;
     if (!popup || !nitFieldName || !nameFieldName) return;
@@ -53,31 +54,30 @@ const DocNitSatLookup = {
 
       const ident = nitInput.value.trim();
       if (!ident) {
-        this.setStatus(nitInput, 'Ingrese un NIT o CUI', 'warning');
+        this.setStatus(nitInput, 'Ingrese un NIT o DPI/CUI', 'warning');
         return;
       }
 
-      this.lockNitInput(nitInput, true);
-      this.setStatus(nitInput, 'Buscando nit en SAT', 'primary');
+      this.setStatus(nitInput, 'Consultando en SAT…', 'primary');
 
       try {
         const data = await F.fetchJson(this.apiUrl(ident), { cache: 'no-store' });
-        const nombre = String(data?.nombre || '').trim();
+        const nombre = this.cleanNombreSat(data?.nombre || '');
         if (nombre && nameInput) {
           nameInput.value = nombre;
           nameInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
         const mensaje = String(data?.mensaje || '').trim();
+        const tipo = String(data?.tipo || '').trim();
         if (nombre) {
-          this.setStatus(nitInput, mensaje || 'Nombre obtenido de SAT', 'success');
+          const okMsg = mensaje || (tipo === 'CUI' ? 'Nombre obtenido de SAT (DPI/CUI)' : 'Nombre obtenido de SAT');
+          this.setStatus(nitInput, okMsg, 'success');
           nameInput?.focus();
         } else {
           this.setStatus(nitInput, mensaje || 'No se encontró nombre para el identificador', 'warning');
-          this.lockNitInput(nitInput, false);
         }
       } catch (err) {
         this.setStatus(nitInput, err.message || 'Error al consultar SAT', 'danger');
-        this.lockNitInput(nitInput, false);
         nitInput.focus();
       }
     });
