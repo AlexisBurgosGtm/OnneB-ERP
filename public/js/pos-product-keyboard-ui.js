@@ -149,4 +149,87 @@ const PosProductKeyboardUI = {
       });
     });
   },
+
+  partyResultItems(listEl, itemSelector = 'button.list-group-item-action') {
+    if (!listEl || listEl.classList.contains('d-none')) return [];
+    return Array.from(listEl.querySelectorAll(itemSelector));
+  },
+
+  focusPartyResultItem(item) {
+    if (!item) return;
+    item.focus();
+    item.scrollIntoView({ block: 'nearest' });
+  },
+
+  /**
+   * Flechas ↑/↓ y Enter en resultados de cliente/proveedor (list-group bajo el input).
+   * @param {HTMLElement} searchInput
+   * @param {HTMLElement} resultsList
+   * @param {{ itemSelector?: string }} [opts]
+   */
+  bindPartyResultsKeyboard(searchInput, resultsList, opts = {}) {
+    if (!searchInput || !resultsList) return;
+    const itemSelector = opts.itemSelector || 'button.list-group-item-action';
+
+    const hideResults = () => {
+      resultsList.classList.add('d-none');
+    };
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (!resultsList.classList.contains('d-none')) {
+          e.preventDefault();
+          hideResults();
+        }
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        const items = this.partyResultItems(resultsList, itemSelector);
+        if (!items.length) return;
+        e.preventDefault();
+        this.focusPartyResultItem(items[0]);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        const items = this.partyResultItems(resultsList, itemSelector);
+        if (!items.length) return;
+        e.preventDefault();
+        this.focusPartyResultItem(items[items.length - 1]);
+      }
+    });
+
+    resultsList.addEventListener('keydown', (e) => {
+      const item = e.target.closest(itemSelector);
+      if (!item || !resultsList.contains(item)) return;
+      const items = this.partyResultItems(resultsList, itemSelector);
+      const idx = items.indexOf(item);
+      if (idx < 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this.focusPartyResultItem(items[Math.min(idx + 1, items.length - 1)]);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (idx <= 0) {
+          searchInput.focus();
+          if (typeof searchInput.select === 'function') searchInput.select();
+        } else {
+          this.focusPartyResultItem(items[idx - 1]);
+        }
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        item.click();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideResults();
+        searchInput.focus();
+      }
+    });
+  },
 };

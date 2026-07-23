@@ -98,6 +98,7 @@ const CorteCajaView = {
       ${this.renderStat('Efectivo inicial', this.formatMoney(r.efectivoInicial))}
       ${statOrClick('Vales empleados (−)', this.formatMoney(r.totalVales || 0), 'vales', 'text-danger')}
       ${statOrClick('Abonos vales (+)', this.formatMoney(r.totalPagosVales || 0), 'pagos-vales', 'text-success')}
+      ${statOrClick('Retiros a banco (−)', this.formatMoney(r.totalRetiros || 0), 'retiros', 'text-danger')}
       ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'contado', 'text-primary')}
       ${statOrClick('Tarjeta', this.formatMoney(r.fpTarjeta), 'tarjeta')}
       ${statOrClick('Depósito', this.formatMoney(r.fpDeposito), 'deposito')}
@@ -267,6 +268,7 @@ const CorteCajaView = {
           ${row('Efectivo ventas (neto)', money(resumen.fpEfectivo))}
           ${row('Vales a empleados (−)', money(resumen.totalVales || 0))}
           ${row('Abonos a vales (+)', money(resumen.totalPagosVales || 0))}
+          ${row('Retiros a banco (−)', money(resumen.totalRetiros || 0))}
           ${row('Efectivo esperado', money(resumen.efectivoEsperado))}
           ${row('Tarjeta (sistema)', money(resumen.fpTarjeta))}
           ${row('Depósito (sistema)', money(resumen.fpDeposito))}
@@ -331,6 +333,7 @@ const CorteCajaView = {
       cheque: 'Pagos con cheque',
       vales: 'Vales a empleados (−)',
       'pagos-vales': 'Abonos a vales (+)',
+      retiros: 'Retiros de efectivo a banco (−)',
     };
     return map[filtro] || 'Documentos';
   },
@@ -455,6 +458,9 @@ const CorteCajaView = {
     if (filtro === 'vales' || filtro === 'pagos-vales') {
       return this.showValesDetalleModal(filtro);
     }
+    if (filtro === 'retiros') {
+      return this.showRetirosDetalleModal();
+    }
     const caja = this.selectedCaja();
     if (!caja || !this.isAbierta(caja)) return;
     try {
@@ -471,6 +477,159 @@ const CorteCajaView = {
       });
     } catch (err) {
       F.toast(err.message || 'No se pudo cargar el detalle', 'error');
+    }
+  },
+
+  renderRetirosModalHtml(rows) {
+    if (!rows.length) {
+      return '<p class="text-muted small mb-0 text-center py-3">Sin retiros de efectivo en esta sesión.</p>';
+    }
+    const body = rows
+      .map(
+        (r) => `<tr>
+          <td class="text-nowrap small">${this.escapeHtml(this.formatFechaCorta(r.FECHA))}</td>
+          <td class="small fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td class="small">${this.escapeHtml(r.DESBANCO || '—')}<div class="text-muted">${this.escapeHtml(r.NOCUENTA || '')}</div></td>
+          <td class="small">${this.escapeHtml(r.NODOCUMENTO || '—')}</td>
+          <td class="text-end fw-semibold text-danger">${this.escapeHtml(this.formatMoney(Math.abs(Number(r.IMPORTE) || 0)))}</td>
+        </tr>`
+      )
+      .join('');
+    return `
+      <div class="table-responsive" style="max-height: 22rem;">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Fecha</th>
+              <th>Documento</th>
+              <th>Cuenta</th>
+              <th>No. boleta</th>
+              <th class="text-end">Importe</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+  },
+
+  async showRetirosDetalleModal() {
+    const caja = this.selectedCaja();
+    if (!caja || !this.isAbierta(caja)) return;
+    try {
+      const data = await F.fetchJson(this.apiUrl(`/${caja.CODCAJA}/retiros-detalle`));
+      await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: this.filtroTitulo('retiros'),
+        width: '42rem',
+        html: this.renderRetirosModalHtml(data.rows || []),
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        showCancelButton: false,
+      });
+    } catch (err) {
+      F.toast(err.message || 'No se pudo cargar el detalle', 'error');
+    }
+  },
+
+  cuentaOptionsHtml(cuentas, selected) {
+    if (!cuentas?.length) {
+      return '<option value="">— Sin cuentas bancarias —</option>';
+    }
+    return (
+      '<option value="">— Seleccione cuenta —</option>' +
+      cuentas
+        .map((c) => {
+          const label = `${c.DESBANCO || 'Banco'} — ${c.NOCUENTA || c.CODCUENTA}`;
+          const sel = String(c.CODCUENTA) === String(selected) ? ' selected' : '';
+          return `<option value="${this.escapeHtml(c.CODCUENTA)}"${sel}>${this.escapeHtml(label)}</option>`;
+        })
+        .join('')
+    );
+  },
+
+  async onRetiroEfectivo() {
+    const caja = this.selectedCaja();
+    if (!caja || !this.isAbierta(caja) || this._loading) return;
+
+    let cuentas = [];
+    try {
+      const data = await F.fetchJson(
+        `/api/cuentas-bancarias?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`
+      );
+      cuentas = data.rows || data || [];
+      if (!Array.isArray(cuentas)) cuentas = [];
+    } catch (err) {
+      F.toast(err.message || 'No se pudieron cargar las cuentas', 'error');
+      return;
+    }
+    if (!cuentas.length) {
+      F.toast('No hay cuentas bancarias configuradas', 'warning');
+      return;
+    }
+
+    const descPreview = `RETIRO DE EFECTIVO DE CAJA # ${caja.CODCAJA}`;
+    const { isConfirmed, value } = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Retiro de efectivo',
+      width: '28rem',
+      html: `
+        <p class="small text-muted mb-2 text-start">
+          Se registrará un <strong>depósito (entrada)</strong> en banco y se descontará del efectivo esperado de la caja.
+        </p>
+        <p class="small text-start mb-3"><span class="text-muted">Descripción:</span> ${this.escapeHtml(descPreview)}</p>
+        <label class="form-label small mb-0 text-start w-100" for="corte-retiro-cuenta">Cuenta bancaria</label>
+        <select id="corte-retiro-cuenta" class="form-select form-select-sm mb-2">
+          ${this.cuentaOptionsHtml(cuentas)}
+        </select>
+        <label class="form-label small mb-0 text-start w-100" for="corte-retiro-importe">Importe a depositar</label>
+        <input type="number" id="corte-retiro-importe" class="form-control form-control-sm mb-2" min="0.01" step="0.01" value="">
+        <label class="form-label small mb-0 text-start w-100" for="corte-retiro-boleta">No. boleta / documento (opcional)</label>
+        <input type="text" id="corte-retiro-boleta" class="form-control form-control-sm" maxlength="50" autocomplete="off">
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Registrar retiro'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        document.getElementById('corte-retiro-cuenta')?.focus();
+      },
+      preConfirm: () => {
+        const codcuenta = Number(document.getElementById('corte-retiro-cuenta')?.value || 0);
+        const importe = Number(document.getElementById('corte-retiro-importe')?.value || 0);
+        const nodocumento = document.getElementById('corte-retiro-boleta')?.value?.trim() || '';
+        if (!codcuenta) {
+          Swal.showValidationMessage('Seleccione la cuenta bancaria');
+          return false;
+        }
+        if (!Number.isFinite(importe) || importe <= 0) {
+          Swal.showValidationMessage('Ingrese un importe válido');
+          return false;
+        }
+        return { CODCUENTA: codcuenta, IMPORTE: importe, NODOCUMENTO: nodocumento };
+      },
+    });
+    if (!isConfirmed || !value) return;
+
+    this._loading = true;
+    try {
+      const url = `/api/corte-caja/${encodeURIComponent(caja.CODCAJA)}/retiro-efectivo?empnit=${encodeURIComponent(F.getEmpNit())}`;
+      const res = await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          CODCUENTA: value.CODCUENTA,
+          IMPORTE: value.IMPORTE,
+          NODOCUMENTO: value.NODOCUMENTO,
+          USUARIO: this.usuario(),
+        }),
+      });
+      if (res.resumen) this._resumen = res.resumen;
+      F.toast('Retiro registrado como depósito bancario', 'success');
+      this.refreshPanels();
+    } catch (err) {
+      F.toast(err.message || 'No se pudo registrar el retiro', 'error');
+    } finally {
+      this._loading = false;
     }
   },
 
@@ -625,13 +784,18 @@ const CorteCajaView = {
               <hr class="my-3">
               <h6 class="small fw-semibold mb-2">Cerrar caja — arqueo</h6>
               ${this.renderArqueoInputs(r)}
-              <div class="d-flex flex-wrap gap-2 mt-3">
-                <button type="button" class="btn btn-danger btn-sm" id="btn-corte-cerrar">
-                  <i class="fa-solid fa-lock me-1"></i>Cerrar caja
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-danger btn-sm" id="btn-corte-cerrar">
+                    <i class="fa-solid fa-lock me-1"></i>Cerrar caja
+                  </button>
+                  ${this._muestraDatos ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="btn-corte-refrescar">
+                    <i class="fa-solid fa-rotate-right me-1"></i>Refrescar
+                  </button>` : ''}
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-corte-retiro">
+                  <i class="fa-solid fa-building-columns me-1"></i>Retiro de efectivo
                 </button>
-                ${this._muestraDatos ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="btn-corte-refrescar">
-                  <i class="fa-solid fa-rotate-right me-1"></i>Refrescar
-                </button>` : ''}
               </div>
             </div>
           </div>
@@ -712,6 +876,9 @@ const CorteCajaView = {
     document.getElementById('btn-corte-abrir')?.addEventListener('click', () => this.onAbrir());
     document.getElementById('btn-corte-cerrar')?.addEventListener('click', () => this.onCerrar());
     document.getElementById('btn-corte-refrescar')?.addEventListener('click', () => this.refreshResumen());
+    document.getElementById('btn-corte-retiro')?.addEventListener('click', () => {
+      this.onRetiroEfectivo().catch((err) => F.toast(err.message || 'Error en retiro', 'error'));
+    });
     this._container?.querySelectorAll('[data-corte-filtro]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const filtro = btn.getAttribute('data-corte-filtro');

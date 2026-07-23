@@ -208,6 +208,10 @@ const CotizacionesView = {
     return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
   },
 
+  solicitaAutorizaciones() {
+    return String(this._config?.solicitaAutorizaciones || 'NO').trim().toUpperCase() === 'SI';
+  },
+
   async finalizarPedido() {
     const key = this.docKey();
     if (!key) return;
@@ -401,12 +405,14 @@ const CotizacionesView = {
     );
     const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
     const permiteCambiarPrecio = this.permiteCambiarPrecioPedido();
+    const solicitaAuth = this.solicitaAutorizaciones();
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
         return `<option value="${this.escapeHtml(p.CODMEDIDA)}"${selected}>${this.escapeHtml(p.CODMEDIDA)} — ${this.escapeHtml(this.formatMoney(p.PRECIO))} (eq. ${this.escapeHtml(p.EQUIVALE)}, exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))})</option>`;
       })
       .join('');
+    let authGate = null;
     const { value: picked } = await Swal.fire({
       ...CatalogosUI.modalBase(),
       title: row.DESPROD || row.CODPROD,
@@ -428,6 +434,7 @@ const CotizacionesView = {
           </div>
         </div>
         <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
+        <p class="small mb-0 mt-2 text-center" id="authz-precio-status"></p>
       `,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
@@ -463,8 +470,24 @@ const CotizacionesView = {
         if (permiteCambiarPrecio) {
           precioInp?.addEventListener('input', updateTotal);
         }
+        if (permiteCambiarPrecio && solicitaAuth && typeof AutorizacionesUI !== 'undefined') {
+          authGate = AutorizacionesUI.wirePrecioAuthGate({
+            popup,
+            precioInput: precioInp,
+            medidaSelect: medSel,
+            cantidadInput: cantInp,
+            priceByMedida,
+            permiteCambiarPrecio,
+            solicitaAutorizaciones: true,
+            buildDescripcion: ({ precio, cantidad, medida }) =>
+              `${AutorizacionesUI.usuario()} quiere agregar el producto ${cantidad} ${medida} ${row.DESPROD || row.CODPROD} al precio ${AutorizacionesUI.formatPrecioDesc(precio)}`,
+          });
+        }
         PosProductKeyboardUI.focusInput(cantInp);
         PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
+      },
+      willClose: () => {
+        authGate?.dispose?.();
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('pos-swal-cant')?.value);
@@ -483,6 +506,15 @@ const CotizacionesView = {
             Swal.showValidationMessage('Precio inválido');
             return false;
           }
+          const catalog = Number(priceByMedida[String(medida)] ?? 0) || 0;
+          if (
+            solicitaAuth &&
+            typeof AutorizacionesUI !== 'undefined' &&
+            !AutorizacionesUI.precioChangeAllowed(precio, catalog)
+          ) {
+            Swal.showValidationMessage('Espere la autorización del administrador');
+            return false;
+          }
           return { medida, cantidad: cant, precio };
         }
         return { medida, cantidad: cant };
@@ -490,6 +522,9 @@ const CotizacionesView = {
     });
     if (picked?.medida) {
       await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio);
+      if (solicitaAuth && picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
+        AutorizacionesUI.consumePrecioGrant();
+      }
     }
   },
 
@@ -1056,6 +1091,11 @@ const CotizacionesView = {
         clienteList.classList.add('d-none');
         await this.aplicarCliente(cod);
       });
+      if (typeof PosProductKeyboardUI !== 'undefined') {
+        PosProductKeyboardUI.bindPartyResultsKeyboard(clienteSearch, clienteList, {
+          itemSelector: 'button[data-codcliente]',
+        });
+      }
       document.addEventListener('click', (e) => {
         if (!clienteSearch.contains(e.target) && !clienteList.contains(e.target)) {
           clienteList.classList.add('d-none');

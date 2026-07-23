@@ -1663,3 +1663,11 @@ body.pos-product-sheet-open {
     border-radius: calc(var(--app-radius) - 0.15rem) !important;
   }
 }
+
+/* Resaltado al navegar resultados cliente/proveedor con flechas */
+.pos-cliente-wrap .list-group-item-action:focus {
+  z-index: 2;
+  outline: none;
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 16%, #fff);
+  border-color: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 45%, #ccc);
+}

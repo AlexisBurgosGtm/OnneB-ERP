@@ -4,6 +4,12 @@ const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
 const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
 const { sumValesSesionCaja, marcarValesCorte, sumPagosValesSesionCaja, marcarPagosValesCorte, listValesSesionCaja, listPagosValesSesionCaja } = require('../lib/nomina-vales');
+const {
+  crearMovimientoBanco,
+  sumRetirosEfectivoSesionCaja,
+  listRetirosEfectivoSesionCaja,
+  marcarRetirosEfectivoCorte,
+} = require('../lib/movimientos-banco');
 
 const router = express.Router();
 
@@ -96,7 +102,7 @@ function isFacturaDoc(row) {
   return TIPODOC_FACTURA.includes(docTipodoc(row));
 }
 
-function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosVales = 0) {
+function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosVales = 0, totalRetiros = 0) {
   const docs = rows || [];
   const first = docs[0] || null;
   const last = docs[docs.length - 1] || null;
@@ -154,10 +160,11 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
   const margen = totalVenta > 0 ? roundMoney((totalUtilidad / totalVenta) * 100) : 0;
   const vales = roundMoney(totalVales);
   const pagosVales = roundMoney(totalPagosVales);
+  const retiros = roundMoney(totalRetiros);
   // Gastos netos de vales: vales restan, abonos suman efectivo
-  const totalGastos = roundMoney(vales - pagosVales);
+  const totalGastos = roundMoney(vales - pagosVales + retiros);
   const efectivoEsperado = roundMoney(
-    (Number(efectivoInicial) || 0) + fpEfectivo - vales + pagosVales
+    (Number(efectivoInicial) || 0) + fpEfectivo - vales + pagosVales - retiros
   );
 
   return {
@@ -177,6 +184,7 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
     totalGastos,
     totalVales: vales,
     totalPagosVales: pagosVales,
+    totalRetiros: retiros,
     efectivoInicial: roundMoney(efectivoInicial),
     efectivoEsperado,
     docInicial: first
@@ -278,14 +286,17 @@ router.get('/:codcaja/resumen', async (req, res) => {
       .query(sessionDocsSql());
     const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
     const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
+    const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docs.recordset,
       caja.EFECTIVOINICIAL,
       valesInfo.totalVales,
-      pagosInfo.totalPagos
+      pagosInfo.totalPagos,
+      retirosInfo.totalRetiros
     );
     resumen.cantidadVales = valesInfo.cantidadVales;
     resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
+    resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
     res.json({ caja, resumen });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/resumen]', err.message);
@@ -350,6 +361,100 @@ router.get('/:codcaja/vales-detalle', async (req, res) => {
     res.json({ tipo, rows });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/vales-detalle]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codcaja/retiros-detalle', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codcaja = parseCodcaja(req.params.codcaja);
+  if (!codcaja) return res.status(400).json({ error: 'CODCAJA inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const caja = await loadCaja(pool, empnit, codcaja);
+    if (!caja) return res.status(404).json({ error: 'Caja no encontrada' });
+    if (Number(caja.STATUS) !== 1) {
+      return res.status(400).json({ error: 'La caja no está abierta' });
+    }
+    const apertura = caja.LASTUPDATE || new Date();
+    const rows = await listRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    res.json({ rows });
+  } catch (err) {
+    console.warn('[API GET /corte-caja/:codcaja/retiros-detalle]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Retiro de efectivo de caja → depósito (entrada) en DOCUMENTOS_BANCO.
+ * CATEGORIA=DEPOSITO, DESCRIPCION=RETIRO DE EFECTIVO DE CAJA # {CODCAJA}
+ */
+router.post('/:codcaja/retiro-efectivo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codcaja = parseCodcaja(req.params.codcaja);
+  if (!codcaja) return res.status(400).json({ error: 'CODCAJA inválido' });
+
+  const importe = parseAmount(req.body?.IMPORTE ?? req.body?.importe);
+  if (importe <= 0) return res.status(400).json({ error: 'Ingrese un importe mayor a cero' });
+  const codcuenta = parseInt(req.body?.CODCUENTA ?? req.body?.codcuenta, 10);
+  if (Number.isNaN(codcuenta) || codcuenta <= 0) {
+    return res.status(400).json({ error: 'Seleccione la cuenta bancaria' });
+  }
+  const nodocumento = String(req.body?.NODOCUMENTO || req.body?.nodocumento || '').trim();
+  const usuario = String(req.body?.USUARIO || req.body?.usuario || '').trim() || 'CAJA';
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const caja = await loadCaja(pool, empnit, codcaja);
+    if (!caja) return res.status(404).json({ error: 'Caja no encontrada' });
+    if (Number(caja.STATUS) !== 1) {
+      return res.status(400).json({ error: 'La caja no está abierta' });
+    }
+
+    const movimiento = await crearMovimientoBanco(pool, sql, empnit, {
+      TIPO: 'E',
+      CODCUENTA: codcuenta,
+      IMPORTE: importe,
+      CATEGORIA: 'DEPOSITO',
+      DESCRIPCION: `RETIRO DE EFECTIVO DE CAJA # ${codcaja}`,
+      NODOCUMENTO: nodocumento,
+      USUARIO: usuario,
+      CODCAJA: codcaja,
+      CORTE: 'NO',
+      autoCoddoc: true,
+    });
+
+    const apertura = caja.LASTUPDATE || new Date();
+    const docs = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCAJA', sql.Int, codcaja)
+      .input('APERTURA', sql.DateTime, apertura)
+      .query(sessionDocsSql());
+    const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
+    const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
+    const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    const resumen = buildResumenFromRows(
+      docs.recordset,
+      caja.EFECTIVOINICIAL,
+      valesInfo.totalVales,
+      pagosInfo.totalPagos,
+      retirosInfo.totalRetiros
+    );
+    resumen.cantidadVales = valesInfo.cantidadVales;
+    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
+    resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+
+    res.status(201).json({ ok: true, movimiento, caja, resumen });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    console.warn('[API POST /corte-caja/:codcaja/retiro-efectivo]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -440,14 +545,17 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .query(sessionDocsSql());
     const valesInfo = await sumValesSesionCaja(transaction, empnit, codcaja, apertura);
     const pagosInfo = await sumPagosValesSesionCaja(transaction, empnit, codcaja, apertura);
+    const retirosInfo = await sumRetirosEfectivoSesionCaja(transaction, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docsResult.recordset,
       caja.EFECTIVOINICIAL,
       valesInfo.totalVales,
-      pagosInfo.totalPagos
+      pagosInfo.totalPagos,
+      retirosInfo.totalRetiros
     );
     resumen.cantidadVales = valesInfo.cantidadVales;
     resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
+    resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
 
     const diff = roundMoney(totalReportado - resumen.efectivoEsperado);
     const faltante = diff < 0 ? roundMoney(Math.abs(diff)) : 0;
@@ -545,6 +653,13 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       correlativo,
       apertura
     );
+    const retirosMarcados = await marcarRetirosEfectivoCorte(
+      transaction,
+      empnit,
+      codcaja,
+      correlativo,
+      apertura
+    );
 
     await transaction
       .request()
@@ -563,6 +678,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       documentosMarcados: docsMarcados,
       valesMarcados,
       pagosValesMarcados,
+      retirosMarcados,
       resumen,
       faltante,
       sobrante,

@@ -454,6 +454,94 @@
   cursor: wait !important;
 }
 
+.compras-revisar-precios-modal .swal2-html-container {
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  margin: 0;
+  padding: 0 0.25rem;
+}
+
+.compras-rev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.compras-rev-prod {
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-radius: var(--app-radius-sm, 0.55rem);
+  overflow: hidden;
+  background: var(--app-surface, #fff);
+}
+
+.compras-rev-prod-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 7%, var(--app-surface, #fff));
+  border-bottom: 1px solid var(--app-border, #e5e7eb);
+}
+
+.compras-rev-cod {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.compras-rev-des {
+  font-size: 0.85rem;
+  flex: 1 1 12rem;
+}
+
+.compras-rev-unit {
+  font-size: 0.75rem;
+}
+
+.compras-rev-table {
+  font-size: 0.8rem;
+}
+
+.compras-rev-table thead th {
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--app-text-muted, #666);
+  background: var(--app-surface-2, #f8fafc);
+}
+
+.compras-rev-table td {
+  vertical-align: middle;
+}
+
+.compras-rev-row.is-cost-changed {
+  background: color-mix(in srgb, #f59e0b 8%, transparent);
+}
+
+.compras-rev-input {
+  min-width: 5.5rem;
+  max-width: 7rem;
+  margin-left: auto;
+}
+
+.compras-rev-delta {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.compras-rev-delta.is-up {
+  color: #b45309;
+}
+
+.compras-rev-delta.is-down {
+  color: #047857;
+}
+
+.compras-rev-delta.is-same {
+  color: var(--app-text-muted, #999);
+  font-weight: 500;
+}
+
 .swal2-popup.modal-catalogo .swal2-actions .btn-catalogo-eliminar {
   padding: 0.5rem 1rem !important;
   font-size: 0.875rem !important;

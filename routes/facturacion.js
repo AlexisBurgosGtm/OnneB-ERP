@@ -553,6 +553,10 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const solicitaAutorizaciones = await getSettingSino(
+      pool,
+      SETTING_OPCION.SOLICITA_AUTORIZACIONES
+    );
     res.json({
       empnit,
       grupo: grupoId,
@@ -565,6 +569,7 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      solicitaAutorizaciones,
     });
   } catch (err) {
     console.warn('[API GET /facturacion/config]', err.message);

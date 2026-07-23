@@ -8,6 +8,7 @@ const ComprasView = {
   _productos: [],
   _comprasList: [],
   _listFilter: '',
+  _listFecha: null,
   _selectedCoddoc: '',
   _screen: 'list',
   _loadingProducts: false,
@@ -65,13 +66,31 @@ const ComprasView = {
     return DocFecha.formatDisplay(row);
   },
 
+  formatHoraCompra(row) {
+    if (row?.HORA == null || row?.HORA === '') return '—';
+    const h = String(Number(row.HORA)).padStart(2, '0');
+    const m = String(Number(row.MINUTO ?? 0)).padStart(2, '0');
+    return `${h}:${m}`;
+  },
+
+  todayIsoDate() {
+    return DocFecha.todayIsoDate();
+  },
+
+  listFechaLabel() {
+    const s = String(this._listFecha || '').slice(0, 10);
+    const [y, m, d] = s.split('-');
+    if (d && m && y) return `${d}/${m}/${y}`;
+    return s || '—';
+  },
+
   felUudiValue(row) {
     return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
   },
 
   formatFelCell(row) {
     const v = this.felUudiValue(row);
-    if (!v) return '';
+    if (!v) return '—';
     const label =
       v.length <= 16 ? this.escapeHtml(v) : this.escapeHtml(`${v.slice(0, 8)}…${v.slice(-4)}`);
     return `<button type="button" class="btn btn-link btn-sm p-0 compras-fel-link text-start"
@@ -179,10 +198,17 @@ const ComprasView = {
   },
 
   async fetchComprasList() {
-    const params = new URLSearchParams({ empnit: F.getEmpNit(), status: 'O' });
-    params.set('_', String(Date.now()));
+    const fecha = String(this._listFecha || this.todayIsoDate()).slice(0, 10);
+    this._listFecha = fecha;
+    const params = new URLSearchParams({
+      empnit: F.getEmpNit(),
+      status: 'O',
+      fecha,
+      _: String(Date.now()),
+    });
     const data = await F.fetchJson(`/api/compras/compras?${params}`);
     this._comprasList = data.rows || [];
+    if (data.fecha) this._listFecha = String(data.fecha).slice(0, 10);
     return this._comprasList;
   },
 
@@ -304,6 +330,193 @@ const ComprasView = {
 
   cargarCostosBtnIdleHtml() {
     return '<i class="fa-solid fa-coins" aria-hidden="true"></i> Cargar Costos';
+  },
+
+  revisarPreciosUrl(key) {
+    return `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${encodeURIComponent(key.correlativo)}/revisar-precios?empnit=${encodeURIComponent(F.getEmpNit())}`;
+  },
+
+  parseMoneyInput(raw) {
+    const n = Number(String(raw ?? '').replace(/,/g, '').trim());
+    if (Number.isNaN(n) || n < 0) return null;
+    return Math.round(n * 1000) / 1000;
+  },
+
+  moneyInputHtml(name, value, precioId) {
+    const v = Number(value);
+    const shown = Number.isNaN(v) ? '0' : String(v);
+    return `<input type="number" class="form-control form-control-sm text-end compras-rev-input"
+      data-field="${name}" data-precio-id="${precioId}" step="0.001" min="0" value="${this.escapeHtml(shown)}">`;
+  },
+
+  deltaCostoHtml(delta) {
+    const n = Number(delta) || 0;
+    if (Math.abs(n) < 0.0005) {
+      return '<span class="compras-rev-delta is-same">—</span>';
+    }
+    const cls = n > 0 ? 'is-up' : 'is-down';
+    const sign = n > 0 ? '+' : '';
+    return `<span class="compras-rev-delta ${cls}">${sign}${this.escapeHtml(this.formatMoney(n))}</span>`;
+  },
+
+  renderRevisarPreciosRows(rows) {
+    if (!rows?.length) {
+      return '<p class="text-muted small mb-0 text-center py-3">No hay productos con medidas de precio para revisar.</p>';
+    }
+    return rows
+      .map((prod) => {
+        const medidas = prod.medidas || [];
+        const body = !medidas.length
+          ? `<tr><td colspan="9" class="text-muted small">Sin medidas en PRECIOS</td></tr>`
+          : medidas
+              .map((m) => {
+                const changed = Math.abs(Number(m.deltaCosto) || 0) >= 0.0005;
+                return `<tr class="compras-rev-row${changed ? ' is-cost-changed' : ''}" data-precio-id="${m.ID}" data-codprod="${this.escapeHtml(prod.CODPROD)}">
+                  <td class="small fw-semibold">${this.escapeHtml(m.CODMEDIDA)}</td>
+                  <td class="small text-muted text-center">${this.escapeHtml(this.formatQty(m.EQUIVALE))}</td>
+                  <td class="text-end small">${this.escapeHtml(this.formatMoney(m.COSTO))}</td>
+                  <td class="text-end small fw-semibold">${this.escapeHtml(this.formatMoney(m.costoNuevo))}</td>
+                  <td class="text-end small">${this.deltaCostoHtml(m.deltaCosto)}</td>
+                  <td>${this.moneyInputHtml('PRECIO', m.PRECIO, m.ID)}</td>
+                  <td>${this.moneyInputHtml('MAYOREOA', m.MAYOREOA, m.ID)}</td>
+                  <td>${this.moneyInputHtml('MAYOREOB', m.MAYOREOB, m.ID)}</td>
+                  <td>${this.moneyInputHtml('MAYOREOC', m.MAYOREOC, m.ID)}</td>
+                </tr>`;
+              })
+              .join('');
+        return `
+          <div class="compras-rev-prod">
+            <div class="compras-rev-prod-head">
+              <span class="compras-rev-cod">${this.escapeHtml(prod.CODPROD)}</span>
+              <span class="compras-rev-des">${this.escapeHtml(prod.DESPROD || '')}</span>
+              <span class="compras-rev-unit text-muted">Costo unit. compra: ${this.escapeHtml(this.formatMoney(prod.costoUnitario))}</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0 compras-rev-table">
+                <thead>
+                  <tr>
+                    <th>Medida</th>
+                    <th class="text-center">Eq.</th>
+                    <th class="text-end">Costo actual</th>
+                    <th class="text-end">Costo nuevo</th>
+                    <th class="text-end">Diff.</th>
+                    <th class="text-end">Precio</th>
+                    <th class="text-end">Mayoreo A</th>
+                    <th class="text-end">Mayoreo B</th>
+                    <th class="text-end">Mayoreo C</th>
+                  </tr>
+                </thead>
+                <tbody>${body}</tbody>
+              </table>
+            </div>
+          </div>`;
+      })
+      .join('');
+  },
+
+  collectRevisarPreciosUpdates(root) {
+    const updates = [];
+    const rows = root?.querySelectorAll('.compras-rev-row[data-precio-id]') || [];
+    for (const tr of rows) {
+      const id = parseInt(tr.getAttribute('data-precio-id'), 10);
+      const codprod = String(tr.getAttribute('data-codprod') || '').trim();
+      if (Number.isNaN(id) || !codprod) continue;
+      const read = (field) => {
+        const inp = tr.querySelector(`input[data-field="${field}"]`);
+        return this.parseMoneyInput(inp?.value);
+      };
+      const PRECIO = read('PRECIO');
+      const MAYOREOA = read('MAYOREOA');
+      const MAYOREOB = read('MAYOREOB');
+      const MAYOREOC = read('MAYOREOC');
+      if ([PRECIO, MAYOREOA, MAYOREOB, MAYOREOC].some((v) => v === null)) {
+        throw new Error(`Revise los precios de ${codprod}`);
+      }
+      updates.push({ ID: id, CODPROD: codprod, PRECIO, MAYOREOA, MAYOREOB, MAYOREOC });
+    }
+    return updates;
+  },
+
+  async abrirRevisarPrecios() {
+    const key = this.docKey();
+    if (!key) {
+      F.toast('No hay compra activa', 'warning');
+      return;
+    }
+    if (!this.cargarCostosPendingLines().length) {
+      F.toast('Agregue productos a la compra para revisar precios', 'warning');
+      return;
+    }
+
+    let data;
+    try {
+      data = await F.fetchJson(this.revisarPreciosUrl(key));
+    } catch (err) {
+      F.toast(err.message || 'Error al cargar precios', 'error');
+      return;
+    }
+
+    const rows = data?.rows || [];
+    await Swal.fire({
+      title: 'Revisar Precios',
+      width: 'min(1100px, 96vw)',
+      customClass: {
+        popup: 'modal-catalogo compras-revisar-precios-modal',
+        htmlContainer: 'text-start',
+      },
+      html: `
+        <p class="small text-muted mb-2">${this.escapeHtml(this.docLabel())} · Compare el costo actual vs el de esta compra y actualice precios de venta.</p>
+        <div id="compras-revisar-precios-body" class="compras-rev-body">
+          ${this.renderRevisarPreciosRows(rows)}
+        </div>
+        <div class="compras-finalizar-footer mt-3">
+          <button type="button" class="btn-modal-cancelar" id="compras-revisar-precios-cerrar">
+            ${CatalogosUI.cancelButtonHtml('Cerrar')}
+          </button>
+          <button type="button" class="btn-modal-guardar" id="compras-revisar-precios-guardar"${rows.length ? '' : ' disabled'}>
+            ${CatalogosUI.guardarButtonHtml('Guardar precios')}
+          </button>
+        </div>
+      `,
+      showConfirmButton: false,
+      showCancelButton: false,
+      focusConfirm: false,
+      didOpen: () => {
+        const popup = Swal.getPopup();
+        document.getElementById('compras-revisar-precios-cerrar')?.addEventListener('click', () => Swal.close());
+        document.getElementById('compras-revisar-precios-guardar')?.addEventListener('click', async (ev) => {
+          const btn = ev.currentTarget;
+          if (btn.disabled) return;
+          let updates;
+          try {
+            updates = this.collectRevisarPreciosUpdates(popup);
+          } catch (err) {
+            F.toast(err.message || 'Datos inválidos', 'warning');
+            return;
+          }
+          if (!updates.length) {
+            F.toast('No hay filas para actualizar', 'warning');
+            return;
+          }
+          btn.disabled = true;
+          const prevHtml = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Guardando…';
+          try {
+            const res = await F.fetchJson(this.revisarPreciosUrl(key), {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ updates }),
+            });
+            F.toast(`Precios actualizados (${res.updated || updates.length})`, 'success');
+            Swal.close();
+          } catch (err) {
+            F.toast(err.message || 'Error al guardar precios', 'error');
+            btn.disabled = false;
+            btn.innerHTML = prevHtml;
+          }
+        });
+      },
+    });
   },
 
   ocultarConfirmacionCargarCostos() {
@@ -1020,56 +1233,79 @@ const ComprasView = {
   },
 
   refreshListDom() {
-    const grid = this._container?.querySelector('#compras-list-cards');
-    if (grid) grid.innerHTML = this.renderListCardsHtml();
+    const tbody = this._container?.querySelector('#compras-list-tbody');
+    if (tbody) tbody.innerHTML = this.renderListTableBodyHtml();
     const sub = this._container?.querySelector('.pos-list-sub');
     if (sub) {
-      sub.textContent = `${this.filteredComprasList().length} compra(s) operadas`;
+      sub.textContent = `${this.filteredComprasList().length} compra(s) · ${this.listFechaLabel()}`;
     }
   },
 
-  renderListCardsHtml() {
+  renderListActionsHtml() {
+    return `
+      <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar" title="Editar">
+        <i class="fa-solid fa-pen"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir" title="Imprimir">
+        <i class="fa-solid fa-print"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear" title="Bloquear">
+        <i class="fa-solid fa-lock"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar" title="Eliminar">
+        <i class="fa-solid fa-trash"></i>
+      </button>`;
+  },
+
+  renderListTableBodyHtml() {
     const rows = this.filteredComprasList();
     if (!rows.length) {
-      return '<div class="pos-list-empty text-muted text-center py-5">No hay compras operadas</div>';
+      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay compras en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
         const label = `${r.CODDOC} #${r.CORRELATIVO}`;
         const proveedor = r.DOC_NOMCLIE || r.EMPRESA || r.RAZONSOCIAL || 'Sin proveedor';
-        const meta = [r.EMPRESA, r.RAZONSOCIAL].filter(Boolean).join(' · ');
-        const felHtml = this.formatFelCell(r);
+        const meta = [r.EMPRESA, r.RAZONSOCIAL].filter(Boolean).join(' · ') || '—';
         return `
-          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
+          <tr class="compras-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}"
             data-correlativo="${r.CORRELATIVO}">
-            <div class="pos-pedido-card-top">
-              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
-              <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</span>
-            </div>
-            <div class="pos-pedido-card-cliente">${this.escapeHtml(proveedor)}</div>
-            ${meta ? `<div class="pos-pedido-card-meta">${this.escapeHtml(meta)}</div>` : ''}
-            <div class="pos-pedido-card-footer">
-              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
-              <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaCompra(r))}</span>
-              ${felHtml ? `<span class="ms-auto">${felHtml}</span>` : ''}
-            </div>
-            <div class="inv-card-actions">
-              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
-                <i class="fa-solid fa-pen me-1"></i>Editar
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
-                <i class="fa-solid fa-print me-1"></i>Imprimir
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
-                <i class="fa-solid fa-lock me-1"></i>Bloquear
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
-                <i class="fa-solid fa-trash me-1"></i>Eliminar
-              </button>
-            </div>
-          </div>`;
+            <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
+            <td>${this.escapeHtml(proveedor)}</td>
+            <td class="small text-muted">${this.escapeHtml(meta)}</td>
+            <td class="fac-fel-col">${this.formatFelCell(r)}</td>
+            <td class="text-center">${Number(r.LINEAS) || 0}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-nowrap">${this.escapeHtml(this.formatFechaCompra(r))}</td>
+            <td class="text-nowrap">${this.escapeHtml(this.formatHoraCompra(r))}</td>
+            <td class="text-end text-nowrap fac-list-actions">${this.renderListActionsHtml(r)}</td>
+          </tr>`;
       })
       .join('');
+  },
+
+  renderListTableHtml() {
+    return `
+      <div class="card fac-list-table-card shadow-sm">
+        <div class="table-responsive fac-list-table-scroll">
+          <table class="table table-sm table-hover table-striped mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th scope="col">Documento</th>
+                <th scope="col">Proveedor</th>
+                <th scope="col">Empresa</th>
+                <th scope="col">FEL</th>
+                <th scope="col" class="text-center">Líneas</th>
+                <th scope="col" class="text-end">Total</th>
+                <th scope="col">Fecha</th>
+                <th scope="col">Hora</th>
+                <th scope="col" class="text-end">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="compras-list-tbody">${this.renderListTableBodyHtml()}</tbody>
+          </table>
+        </div>
+      </div>`;
   },
 
   renderListScreen() {
@@ -1078,25 +1314,31 @@ const ComprasView = {
       <div class="pos-list-wrap">
         <div class="pos-list-header">
           <h2 class="pos-list-title">Seleccione una compra o cree una nueva</h2>
-          <p class="pos-list-sub text-muted mb-0">${count} compra(s) operadas</p>
+          <p class="pos-list-sub text-muted mb-0">${count} compra(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
         </div>
-        <div class="pos-list-toolbar mb-3">
+        <div class="fac-list-toolbar mb-3">
+          <div class="fac-list-toolbar-fecha">
+            <label class="form-label small mb-1" for="compras-list-fecha">Fecha</label>
+            <input type="date" class="form-control form-control-sm" id="compras-list-fecha"
+              value="${this.escapeHtml(this._listFecha || this.todayIsoDate())}" aria-label="Fecha del listado">
+          </div>
           ${DocTipoSelect.renderSelectHtml({
             selectId: 'compras-list-coddoc',
             tipos: this._config?.tiposDocumento,
             selected: this.activeCoddoc(),
             label: 'Serie',
+            className: 'doc-tipo-select-wrap fac-list-toolbar-serie',
           })}
-          <div class="pos-list-search flex-grow-1">
+          <div class="fac-list-toolbar-search flex-grow-1">
             <label class="form-label small mb-1" for="compras-list-search">Buscar</label>
-            <div class="input-group">
+            <div class="input-group input-group-sm">
               <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
               <input type="search" class="form-control pos-search-glow" id="compras-list-search"
                 placeholder="Buscar compra, proveedor…" value="${this.escapeHtml(this._listFilter)}" autocomplete="off">
             </div>
           </div>
         </div>
-        <div class="pos-pedido-cards" id="compras-list-cards">${this.renderListCardsHtml()}</div>
+        ${this.renderListTableHtml()}
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-compras-list-nuevo"
           aria-label="Nueva compra" title="Nueva compra"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -1153,6 +1395,11 @@ const ComprasView = {
                 <i class="fa-solid fa-receipt"></i>
                 <span class="fw-semibold">Compra actual</span>
               </div>
+              ${editable ? `
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="compras-btn-revisar-precios"
+                title="Comparar costos y actualizar precios de venta">
+                <i class="fa-solid fa-tags me-1" aria-hidden="true"></i>Revisar Precios
+              </button>` : ''}
             </div>
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
@@ -1211,9 +1458,23 @@ const ComprasView = {
       this.refreshListDom();
     });
 
+    const fechaInp = this._container?.querySelector('#compras-list-fecha');
+    fechaInp?.addEventListener('change', async () => {
+      const val = fechaInp.value?.trim();
+      if (!val || val === this._listFecha) return;
+      this._listFecha = val;
+      this._listFilter = search?.value || '';
+      try {
+        await this.fetchComprasList();
+        this.refreshListDom();
+      } catch (err) {
+        F.toast(err.message || 'Error al cargar compras', 'error');
+      }
+    });
+
     DocTipoSelect.bind(this._container, 'compras-list-coddoc', this);
 
-    this._container?.querySelector('#compras-list-cards')?.addEventListener('click', async (e) => {
+    this._container?.querySelector('#compras-list-tbody')?.addEventListener('click', async (e) => {
       const felLink = e.target.closest('[data-action="fel-open"]');
       if (felLink) {
         e.preventDefault();
@@ -1227,10 +1488,10 @@ const ComprasView = {
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
-      const card = btn.closest('.inv-doc-card');
-      if (!card) return;
-      const coddoc = card.getAttribute('data-coddoc');
-      const correlativo = card.getAttribute('data-correlativo');
+      const row = btn.closest('.compras-list-row');
+      if (!row) return;
+      const coddoc = row.getAttribute('data-coddoc');
+      const correlativo = row.getAttribute('data-correlativo');
       const action = btn.getAttribute('data-action');
       try {
         if (action === 'editar') await this.showEditor(coddoc, correlativo);
@@ -1308,6 +1569,9 @@ const ComprasView = {
     this._container?.querySelector('#btn-compras-finalizar')?.addEventListener('click', () => {
       this.finalizarCompra().catch((err) => F.toast(err.message, 'error'));
     });
+    this._container?.querySelector('#compras-btn-revisar-precios')?.addEventListener('click', () => {
+      this.abrirRevisarPrecios().catch((err) => F.toast(err.message || 'Error al revisar precios', 'error'));
+    });
 
     const fechaInp = this._container?.querySelector('#compras-doc-fecha');
     if (fechaInp) {
@@ -1368,6 +1632,11 @@ const ComprasView = {
         provList.classList.add('d-none');
         await this.aplicarProveedor(cod);
       });
+      if (typeof PosProductKeyboardUI !== 'undefined') {
+        PosProductKeyboardUI.bindPartyResultsKeyboard(provSearch, provList, {
+          itemSelector: 'button[data-codprov]',
+        });
+      }
       document.addEventListener('click', (e) => {
         if (!provSearch.contains(e.target) && !provList.contains(e.target)) {
           provList.classList.add('d-none');
@@ -1544,6 +1813,9 @@ const ComprasView = {
           </div>`;
         return;
       }
+      this._listFecha = this.todayIsoDate();
+      this._listFilter = '';
+      this._comprasList = [];
       await this.showList();
     } catch (err) {
       container.innerHTML = `

@@ -16,6 +16,7 @@ const {
   corregirSaldosCxp,
 } = require('../lib/cuentas-pago');
 const { fetchEstadoCuentaProveedor } = require('../lib/cuentas-estado-proveedor');
+const { fetchConsolidadoProductos } = require('../lib/cuentas-consolidado-productos');
 
 const router = express.Router();
 const DEFAULT_LIMIT = 500;
@@ -186,6 +187,24 @@ router.get('/documentos', async (req, res) => {
     });
   } catch (err) {
     console.warn('[API GET /cuentas-pagar/documentos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/consolidado-productos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await fetchConsolidadoProductos(pool, sql, empnit, {
+      tipodocSqlIn: SQL_TIPODOC_CUENTAS_PAGAR_IN,
+      saldoWhereSql: `(ISNULL(d.DOC_SALDO, 0) > 0 OR ${SQL_DOC_SALDO_PENDIENTE} > 0)`,
+    });
+    res.json({ ...data, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-pagar/consolidado-productos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

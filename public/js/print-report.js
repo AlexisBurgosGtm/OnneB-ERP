@@ -127,8 +127,20 @@ const PrintReport = {
     return `left=0,top=0,width=${w},height=${h}`;
   },
 
+  /** Teléfonos / tablets: window.open deja la app detrás de una pestaña de impresión. */
+  isCompactPrintViewport() {
+    try {
+      if (window.matchMedia('(max-width: 900px)').matches) return true;
+      if (window.matchMedia('(pointer: coarse) and (max-width: 1200px)').matches) return true;
+    } catch {
+      /* ignore */
+    }
+    const w = Math.min(Number(window.innerWidth) || 0, Number(window.screen?.availWidth) || 0);
+    return w > 0 && w < 900;
+  },
+
   _maximizeWindow(win) {
-    if (!win) return;
+    if (!win || this.isCompactPrintViewport()) return;
     try {
       const aw = Number(window.screen?.availWidth) || 0;
       const ah = Number(window.screen?.availHeight) || 0;
@@ -155,12 +167,112 @@ const PrintReport = {
     }
   },
 
+  _removePrintFrame(frame) {
+    if (!frame) return;
+    try {
+      frame.remove();
+    } catch {
+      try {
+        frame.parentNode?.removeChild(frame);
+      } catch {
+        /* ignore */
+      }
+    }
+  },
+
+  /**
+   * Tras imprimir (o cancelar), limpia ventana/iframe.
+   * En móvil afterprint no siempre dispara → timeout de respaldo.
+   */
+  _afterPrintCleanup(targetWin, cleanup, delayMs = 1200) {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        cleanup?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    try {
+      targetWin?.addEventListener?.('afterprint', finish, { once: true });
+    } catch {
+      /* ignore */
+    }
+    window.setTimeout(finish, delayMs);
+  },
+
+  /** Impresión sin salir de la app (pantallas pequeñas / popup bloqueado). */
+  _printViaIframe(html) {
+    const existing = document.getElementById('onneb-print-frame');
+    if (existing) this._removePrintFrame(existing);
+
+    const frame = document.createElement('iframe');
+    frame.id = 'onneb-print-frame';
+    frame.setAttribute('title', 'Impresión');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.setAttribute('tabindex', '-1');
+    Object.assign(frame.style, {
+      position: 'fixed',
+      left: '0',
+      top: '0',
+      width: '1px',
+      height: '1px',
+      border: '0',
+      opacity: '0',
+      pointerEvents: 'none',
+      zIndex: '-1',
+    });
+    document.body.appendChild(frame);
+
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument || win?.document;
+    if (!win || !doc) {
+      this._removePrintFrame(frame);
+      if (typeof F !== 'undefined') F.toast('No se pudo preparar la impresión', 'warning');
+      return false;
+    }
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+    this._forceZoom100(win);
+
+    let printed = false;
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
+      this._forceZoom100(win);
+      this._afterPrintCleanup(win, () => this._removePrintFrame(frame), 1800);
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        this._removePrintFrame(frame);
+        if (typeof F !== 'undefined') F.toast('No se pudo abrir el diálogo de impresión', 'warning');
+      }
+    };
+
+    if (doc.readyState === 'complete') {
+      window.setTimeout(doPrint, 80);
+    } else {
+      frame.addEventListener('load', () => window.setTimeout(doPrint, 80), { once: true });
+      window.setTimeout(doPrint, 500);
+    }
+    return true;
+  },
+
   _openPrintWindow(html, windowFeatures) {
+    if (this.isCompactPrintViewport()) {
+      return this._printViaIframe(html);
+    }
+
     const features = windowFeatures || this.maximizedFeatures();
     const w = window.open('', '_blank', features);
     if (!w) {
-      F.toast('Permita ventanas emergentes para imprimir', 'warning');
-      return false;
+      // Popup bloqueado: no abandonar la app; imprimir en iframe.
+      return this._printViaIframe(html);
     }
     this._maximizeWindow(w);
     w.document.write(html);
@@ -174,10 +286,25 @@ const PrintReport = {
       printed = true;
       this._forceZoom100(w);
       this._maximizeWindow(w);
+      this._afterPrintCleanup(
+        w,
+        () => {
+          try {
+            w.close();
+          } catch {
+            /* ignore */
+          }
+        },
+        1500
+      );
       try {
         w.print();
       } catch {
-        /* ignore */
+        try {
+          w.close();
+        } catch {
+          /* ignore */
+        }
       }
     };
     if (w.document.readyState === 'complete') {
@@ -190,7 +317,8 @@ const PrintReport = {
   },
 
   /**
-   * Abre ventana de impresión. Asegura logo de empresa antes de generar el HTML.
+   * Abre impresión. Asegura logo de empresa antes de generar el HTML.
+   * En pantallas pequeñas usa iframe oculto para no tapar/bloquear la app.
    * @param {string|function(): string} htmlOrBuilder — HTML listo o función que lo construye tras cargar el logo.
    */
   async openAndPrint(htmlOrBuilder, windowFeatures) {

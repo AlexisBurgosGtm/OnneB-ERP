@@ -100,10 +100,12 @@
           </div>
           <div class="login-field-line">
             <i class="fa-solid fa-lock login-field-icon" aria-hidden="true"></i>
-            <input type="text" class="login-input login-input-line config-pass-mask" id="password" name="onneb-pass"
-              placeholder="Contraseña" required autocomplete="new-password" autocapitalize="off" autocorrect="off"
-              spellcheck="false" inputmode="text" readonly
-              data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+            <input type="text" class="login-input login-input-line config-pass-mask" id="password"
+              name="onneb-pass-x" placeholder="Contraseña" required
+              autocomplete="off" autocapitalize="off" autocorrect="off"
+              spellcheck="false" inputmode="text" readonly value=""
+              data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+              data-form-type="other" data-autocomplete="off" aria-autocomplete="none">
           </div>
           <br>
           <button type="submit" class="btn btn-login w-100">
@@ -138,6 +140,23 @@
             </li>
           </ul>
           <div class="accordion sidebar-accordion" id="sidebarAccordion">
+            <div class="accordion-item sidebar-favoritos-item" id="sidebar-favoritos-accordion">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFavoritos" aria-expanded="false" aria-controls="collapseFavoritos">
+                  <i class="fa-solid fa-star sidebar-icon" aria-hidden="true"></i>
+                  <span>FAVORITOS</span>
+                </button>
+              </h2>
+              <div id="collapseFavoritos" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                <ul class="sidebar-submenu list-unstyled mb-0" id="sidebar-favoritos-list">
+                  <li>
+                    <a href="#" class="sidebar-link sidebar-favoritos-config" id="btn-favoritos-config" data-favoritos-config="1">
+                      <i class="fa-solid fa-gear" aria-hidden="true"></i> Configurar
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
             <div class="accordion-item">
               <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOperaciones" aria-expanded="false" aria-controls="collapseOperaciones">
@@ -206,6 +225,7 @@
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="resumen-del-dia"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Resumen del día</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="autorizaciones"><i class="fa-solid fa-lock" aria-hidden="true"></i> Autorizaciones</a></li>
                 </ul>
               </div>
             </div>
@@ -443,8 +463,10 @@
   <script src="/js/views/cuentas/cuentas-por-cobrar.js"></script>
   <script src="/js/views/cuentas/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
+  <script src="/js/autorizaciones-ui.js"></script>
   <script src="/js/views/archivo/documentos.js"></script>
   <script src="/js/views/archivo/resumen-del-dia.js"></script>
+  <script src="/js/views/archivo/autorizaciones.js"></script>
   <script src="/js/libro-contable-common.js"></script>
   <script src="/js/views/contabilidad/libro-ventas.js"></script>
   <script src="/js/views/contabilidad/libro-compras.js"></script>
@@ -462,6 +484,7 @@
   <script src="/js/views/bancos/cuentas-bancarias.js"></script>
   <script src="/js/views/inventarios/productos.js"></script>
   <script src="/js/tipo-empleado-access.js"></script>
+  <script src="/js/menu-favoritos.js"></script>
   <script src="/js/views/inicio/dashboard-admin.js"></script>
   <script src="/js/views/inicio/vendedor-inicio.js"></script>
   <script src="/js/views/inicio/cajero-inicio.js"></script>

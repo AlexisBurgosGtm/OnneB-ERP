@@ -168,6 +168,18 @@ let F = {
     this.session('user', { ...user, empNit, empNombre });
   },
 
+  /** Socket.IO compartido (misma conexión / rooms de sesión). */
+  _socket: null,
+
+  setSocket(socket) {
+    this._socket = socket || null;
+    window.OnnebSocket = this._socket;
+  },
+
+  getSocket() {
+    return this._socket || window.OnnebSocket || null;
+  },
+
   /**
    * Bloqueo global durante POST/PUT/PATCH/DELETE (evita doble envío).
    */

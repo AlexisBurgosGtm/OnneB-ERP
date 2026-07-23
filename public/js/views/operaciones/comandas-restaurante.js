@@ -1174,6 +1174,11 @@ const ComandasRestauranteView = {
         clienteList.classList.add('d-none');
         await this.aplicarCliente(cod);
       });
+      if (typeof PosProductKeyboardUI !== 'undefined') {
+        PosProductKeyboardUI.bindPartyResultsKeyboard(clienteSearch, clienteList, {
+          itemSelector: 'button[data-codcliente]',
+        });
+      }
       document.addEventListener('click', (e) => {
         if (!clienteSearch.contains(e.target) && !clienteList.contains(e.target)) {
           clienteList.classList.add('d-none');

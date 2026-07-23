@@ -49,6 +49,7 @@ const TipoEmpleadoAccess = {
     'actualizacion-inventario',
     'documentos',
     'resumen-del-dia',
+    'autorizaciones',
     'empleados',
     'nomina-config',
     'nomina-conceptos',
@@ -123,6 +124,7 @@ const TipoEmpleadoAccess = {
       'actualizacion-inventario',
       'documentos',
       'resumen-del-dia',
+      'autorizaciones',
       'empleados',
       'nomina-config',
       'nomina-conceptos',
@@ -287,6 +289,10 @@ const TipoEmpleadoAccess = {
       if (li) li.hidden = !allowed.has(key);
     });
     document.querySelectorAll('.sidebar-accordion .accordion-item').forEach((item) => {
+      if (item.classList.contains('sidebar-favoritos-item')) {
+        item.hidden = false;
+        return;
+      }
       const links = item.querySelectorAll('.sidebar-link[data-menu]');
       const anyVisible = Array.from(links).some((link) => {
         const li = link.closest('li');
@@ -294,6 +300,9 @@ const TipoEmpleadoAccess = {
       });
       item.hidden = !anyVisible;
     });
+    if (typeof MenuFavoritos !== 'undefined') {
+      MenuFavoritos.render();
+    }
   },
 
   resetSidebarVisibility() {

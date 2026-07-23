@@ -8,7 +8,15 @@ const {
   aplicarMovimientoInventarioLineaPatch,
   revertirMovimientoInventarioLinea,
 } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
+const {
+  parseFechaInput,
+  applyDocumentoFecha,
+  nowParts,
+  normalizePedidoResponse,
+  normalizeDocumentoRows,
+  bindDocumentoFechaDiaParams,
+  sqlDocumentoFechaDiaWhere,
+} = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { lineProductMeta, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
@@ -32,6 +40,7 @@ const router = express.Router();
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
 const TIPODOC_COMPRAS = 'COM';
+const SQL_TIPODOC_COMPRAS_IN = `'COM', 'COP'`;
 const DEFAULT_BODEGA = 0;
 const CODEMBARQUE_COMPRAS = 'COMPRAS';
 
@@ -55,6 +64,68 @@ function parseCorrelativo(raw) {
 
 function roundMoney(n) {
   return Math.round(Number(n) * 1000) / 1000;
+}
+
+/**
+ * Evita duplicar serie+número de factura del proveedor en compras del mismo EMPNIT.
+ * Si serie o número están en blanco, no valida.
+ */
+async function assertCompraSerieNofacUnique(
+  requestable,
+  empnit,
+  seriefac,
+  nofac,
+  excludeCoddoc,
+  excludeCorrelativo
+) {
+  const s = String(seriefac || '').trim();
+  const n = String(nofac || '').trim();
+  if (!s || !n) return;
+
+  const result = await requestable
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('SERIEFAC', sql.VarChar, s)
+    .input('NOFAC', sql.VarChar, n)
+    .input('CODDOC', sql.VarChar, excludeCoddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), excludeCorrelativo)
+    .query(`
+      SELECT TOP 1 d.CODDOC, d.CORRELATIVO
+      FROM dbo.DOCUMENTOS d
+      INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE d.EMPNIT = @EMPNIT
+        AND t.TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN})
+        AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
+        AND LTRIM(RTRIM(ISNULL(d.SERIEFAC, ''))) = @SERIEFAC
+        AND LTRIM(RTRIM(ISNULL(d.NOFAC, ''))) = @NOFAC
+        AND NOT (d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO)
+    `);
+  if (!result.recordset.length) return;
+  const row = result.recordset[0];
+  const err = new Error(
+    `Ya existe la compra ${row.CODDOC} #${row.CORRELATIVO} con serie "${s}" y número "${n}"`
+  );
+  err.statusCode = 409;
+  throw err;
+}
+
+async function loadSerieNofacActual(requestable, empnit, coddoc, correlativo) {
+  const result = await requestable
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT LTRIM(RTRIM(ISNULL(SERIEFAC, ''))) AS SERIEFAC,
+             LTRIM(RTRIM(ISNULL(NOFAC, ''))) AS NOFAC
+      FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+    `);
+  const row = result.recordset[0];
+  return {
+    SERIEFAC: String(row?.SERIEFAC || '').trim(),
+    NOFAC: String(row?.NOFAC || '').trim(),
+  };
 }
 
 function calcLineTotals(cantidad, costo, precio, equivale) {
@@ -423,19 +494,28 @@ router.get('/compras', async (req, res) => {
   const statusRaw = String(req.query.status || STATUS_OPERADO).trim().toUpperCase();
   const allowed = [STATUS_OPERADO, STATUS_BLOQUEADO, STATUS_ANULADO];
   const status = allowed.includes(statusRaw) ? statusRaw : STATUS_OPERADO;
+  let fechaParts = parseFechaInput(req.query.fecha);
+  if (!fechaParts) {
+    const now = nowParts();
+    fechaParts = { anio: now.anio, mes: now.mes, dia: now.dia, fecha: now.fecha };
+  }
   try {
     const pool = await req.app.locals.getDbPool();
-    const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
+    const request = bindDocumentoFechaDiaParams(
+      pool.request().input('EMPNIT', sql.VarChar, empnit),
+      sql,
+      fechaParts
+    );
     let coddocFilter = '';
     if (coddoc) {
       request.input('CODDOC', sql.VarChar, coddoc);
       coddocFilter = ' AND d.CODDOC = @CODDOC';
     }
     const result = await request.query(`
-      SELECT TOP 100
-        d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
+      SELECT
+        d.CODDOC, d.CORRELATIVO, d.FECHA, d.ANIO, d.MES, d.DIA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALCOSTO, d.CODCLIENTE AS CODPROV, d.OBS, d.DOC_DIRCLIE,
-        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO,
+        d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         p.EMPRESA, p.RAZONSOCIAL,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
@@ -445,10 +525,13 @@ router.get('/compras', async (req, res) => {
       WHERE d.EMPNIT = @EMPNIT
         AND t.TIPODOC = '${TIPODOC_COMPRAS}'
         AND d.STATUS = '${status}'
+        AND ${sqlDocumentoFechaDiaWhere('d')}
         ${coddocFilter}
-      ORDER BY d.ID DESC
+      ORDER BY d.HORA DESC, d.MINUTO DESC, d.ID DESC
     `);
-    res.json({ rows: normalizeDocumentoRows(result.recordset), status });
+    const fecha =
+      `${fechaParts.anio}-${String(fechaParts.mes).padStart(2, '0')}-${String(fechaParts.dia).padStart(2, '0')}`;
+    res.json({ rows: normalizeDocumentoRows(result.recordset), status, fecha });
   } catch (err) {
     console.warn('[API GET /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
@@ -617,6 +700,19 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
 
     if (!updates.length && !fechaParts) return res.status(400).json({ error: 'Sin campos para actualizar' });
 
+    if (req.body?.SERIEFAC !== undefined || req.body?.NOFAC !== undefined) {
+      const actual = await loadSerieNofacActual(pool, empnit, coddoc, correlativo);
+      const seriefac =
+        req.body?.SERIEFAC !== undefined ? String(req.body.SERIEFAC || '').trim() : actual.SERIEFAC;
+      const nofac = req.body?.NOFAC !== undefined ? String(req.body.NOFAC || '').trim() : actual.NOFAC;
+      try {
+        await assertCompraSerieNofacUnique(pool, empnit, seriefac, nofac, coddoc, correlativo);
+      } catch (dupErr) {
+        if (dupErr.statusCode) return res.status(dupErr.statusCode).json({ error: dupErr.message });
+        throw dupErr;
+      }
+    }
+
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -682,6 +778,7 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
       throw inner;
     }
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     console.warn('[API PATCH /compras/compras]', err.message);
     res.status(500).json({ error: err.message });
   }
@@ -1061,6 +1158,226 @@ router.post('/compras/:coddoc/:correlativo/cargar-costos', async (req, res) => {
   }
 });
 
+/**
+ * Productos de la compra + todas sus medidas en PRECIOS,
+ * con costo actual (catálogo) vs costo nuevo (según línea de compra).
+ */
+async function loadRevisarPrecios(pool, empnit, coddoc, correlativo) {
+  const exists = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT 1 AS ok FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+    `);
+  if (!exists.recordset.length) {
+    const err = new Error('Compra no encontrada');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const linesRes = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.COSTO, l.EQUIVALE, l.TIPOPROD
+      FROM dbo.DOCPRODUCTOS l
+      WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
+        AND ISNULL(l.TIPOPROD, '') <> 'S'
+        AND LEFT(UPPER(LTRIM(RTRIM(ISNULL(l.CODPROD, '')))), 3) <> 'PSE'
+      ORDER BY l.Id
+    `);
+
+  const byProd = new Map();
+  for (const ln of linesRes.recordset) {
+    const codprod = String(ln.CODPROD || '').trim();
+    if (!codprod) continue;
+    const equivale = Number(ln.EQUIVALE) || 0;
+    if (equivale <= 0) continue;
+    const costoUnitario = roundMoney(Number(ln.COSTO) / equivale);
+    if (!byProd.has(codprod)) {
+      byProd.set(codprod, {
+        CODPROD: codprod,
+        DESPROD: ln.DESPROD,
+        lineId: ln.ID,
+        lineCODMEDIDA: ln.CODMEDIDA,
+        lineCOSTO: Number(ln.COSTO) || 0,
+        lineEQUIVALE: equivale,
+        costoUnitario,
+        medidas: [],
+      });
+    }
+  }
+
+  const codprods = [...byProd.keys()];
+  if (!codprods.length) return { rows: [] };
+
+  const precReq = pool.request().input('EMPNIT', sql.VarChar, empnit);
+  const inParams = codprods.map((c, i) => {
+    const name = `P${i}`;
+    precReq.input(name, sql.VarChar, c);
+    return `@${name}`;
+  });
+  const precRes = await precReq.query(`
+    SELECT ID, CODPROD, CODMEDIDA, EQUIVALE, COSTO, PRECIO, MAYOREOA, MAYOREOB, MAYOREOC, HABILITADO
+    FROM dbo.PRECIOS
+    WHERE EMPNIT = @EMPNIT AND CODPROD IN (${inParams.join(', ')})
+    ORDER BY CODPROD, EQUIVALE, CODMEDIDA
+  `);
+
+  for (const pr of precRes.recordset) {
+    const codprod = String(pr.CODPROD || '').trim();
+    const group = byProd.get(codprod);
+    if (!group) continue;
+    const eq = Number(pr.EQUIVALE) || 0;
+    const costoActual = Number(pr.COSTO) || 0;
+    const costoNuevo = eq > 0 ? roundMoney(group.costoUnitario * eq) : 0;
+    group.medidas.push({
+      ID: pr.ID,
+      CODMEDIDA: pr.CODMEDIDA,
+      EQUIVALE: eq,
+      COSTO: costoActual,
+      costoNuevo,
+      deltaCosto: roundMoney(costoNuevo - costoActual),
+      PRECIO: Number(pr.PRECIO) || 0,
+      MAYOREOA: Number(pr.MAYOREOA) || 0,
+      MAYOREOB: Number(pr.MAYOREOB) || 0,
+      MAYOREOC: Number(pr.MAYOREOC) || 0,
+      HABILITADO: pr.HABILITADO,
+    });
+  }
+
+  return { rows: [...byProd.values()] };
+}
+
+function parsePrecioMoney(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < 0) return NaN;
+  return roundMoney(n);
+}
+
+router.get('/compras/:coddoc/:correlativo/revisar-precios', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await loadRevisarPrecios(pool, empnit, coddoc, correlativo);
+    res.json({ ok: true, empnit, coddoc, correlativo, ...data });
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    console.warn('[API GET /compras/compras/revisar-precios]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/compras/:coddoc/:correlativo/revisar-precios', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+
+  const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+  if (!updates.length) return res.status(400).json({ error: 'Sin actualizaciones' });
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const exists = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .query(`
+        SELECT 1 AS ok FROM dbo.DOCUMENTOS
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+      `);
+    if (!exists.recordset.length) return res.status(404).json({ error: 'Compra no encontrada' });
+
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    const saved = [];
+    try {
+      for (const item of updates) {
+        const precioId = parseInt(item?.ID ?? item?.id, 10);
+        const codprod = String(item?.CODPROD || '').trim();
+        if (Number.isNaN(precioId) || !codprod) {
+          const err = new Error('Cada actualización requiere ID y CODPROD');
+          err.statusCode = 400;
+          throw err;
+        }
+        const precio = parsePrecioMoney(item.PRECIO);
+        const mayoreoA = parsePrecioMoney(item.MAYOREOA);
+        const mayoreoB = parsePrecioMoney(item.MAYOREOB);
+        const mayoreoC = parsePrecioMoney(item.MAYOREOC);
+        if ([precio, mayoreoA, mayoreoB, mayoreoC].some((v) => Number.isNaN(v))) {
+          const err = new Error(`Valores inválidos en ${codprod}`);
+          err.statusCode = 400;
+          throw err;
+        }
+        if (precio === null && mayoreoA === null && mayoreoB === null && mayoreoC === null) {
+          const err = new Error(`Sin campos de precio en ${codprod}`);
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const fields = [];
+        const reqUpd = transaction
+          .request()
+          .input('ID', sql.Int, precioId)
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODPROD', sql.VarChar, codprod);
+        if (precio !== null) {
+          reqUpd.input('PRECIO', sql.Decimal(18, 3), precio);
+          fields.push('PRECIO = @PRECIO');
+        }
+        if (mayoreoA !== null) {
+          reqUpd.input('MAYOREOA', sql.Decimal(18, 3), mayoreoA);
+          fields.push('MAYOREOA = @MAYOREOA');
+        }
+        if (mayoreoB !== null) {
+          reqUpd.input('MAYOREOB', sql.Decimal(18, 3), mayoreoB);
+          fields.push('MAYOREOB = @MAYOREOB');
+        }
+        if (mayoreoC !== null) {
+          reqUpd.input('MAYOREOC', sql.Decimal(18, 3), mayoreoC);
+          fields.push('MAYOREOC = @MAYOREOC');
+        }
+
+        const result = await reqUpd.query(`
+          UPDATE dbo.PRECIOS SET ${fields.join(', ')}
+          WHERE ID = @ID AND EMPNIT = @EMPNIT AND CODPROD = @CODPROD
+        `);
+        if (result.rowsAffected[0] === 0) {
+          const err = new Error(`Precio no encontrado: ${codprod} #${precioId}`);
+          err.statusCode = 404;
+          throw err;
+        }
+        saved.push({ ID: precioId, CODPROD: codprod });
+      }
+      await transaction.commit();
+      res.json({ ok: true, updated: saved.length, rows: saved });
+    } catch (inner) {
+      await transaction.rollback();
+      throw inner;
+    }
+  } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    console.warn('[API PATCH /compras/compras/revisar-precios]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
@@ -1085,6 +1402,12 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    try {
+      await assertCompraSerieNofacUnique(pool, empnit, seriefac, nofac, coddoc, correlativo);
+    } catch (dupErr) {
+      if (dupErr.statusCode) return res.status(dupErr.statusCode).json({ error: dupErr.message });
+      throw dupErr;
+    }
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -1195,6 +1518,7 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
     if (err instanceof InventarioError) {
       return res.status(err.statusCode).json({ error: err.message, code: err.code });
     }
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     console.warn('[API POST /compras/compras/finalizar]', err.message);
     res.status(500).json({ error: err.message });
   }

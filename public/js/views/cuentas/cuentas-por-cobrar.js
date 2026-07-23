@@ -16,6 +16,8 @@ const CuentasPorCobrarView = {
   _saldoAnio: null,
   _saldoMesesRows: [],
   _saldoMesesTotales: null,
+  _consolidadoRows: [],
+  _consolidadoTotales: null,
   _loading: false,
   _guardandoRecibo: false,
   _corregiendoSaldos: false,
@@ -129,6 +131,12 @@ const CuentasPorCobrarView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  formatQty(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return '0';
+    return n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+  },
+
   formatFecha(value) {
     if (!value) return '—';
     const s = String(value).slice(0, 10);
@@ -225,6 +233,22 @@ const CuentasPorCobrarView = {
     this._saldoMes = Number(data.mes) || this._saldoMes;
     this._saldoAnio = Number(data.anio) || this._saldoAnio;
     return this._saldoMesesRows;
+  },
+
+  consolidadoProductosUrl() {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      _: String(Date.now()),
+    });
+    return `/api/cuentas-cobrar/consolidado-productos?${params}`;
+  },
+
+  async fetchConsolidadoProductos() {
+    const data = await F.fetchJson(this.consolidadoProductosUrl(), { cache: 'no-store' });
+    this._consolidadoRows = data.rows || [];
+    this._consolidadoTotales = data.totales || null;
+    return this._consolidadoRows;
   },
 
   shiftSaldoMes(delta) {
@@ -340,6 +364,7 @@ const CuentasPorCobrarView = {
     const listaActive = this._vistaTipo === 'lista';
     const calActive = this._vistaTipo === 'calendario';
     const saldoActive = this._vistaTipo === 'saldo-meses';
+    const consActive = this._vistaTipo === 'consolidado-productos';
     return `
       <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
         <button type="button" class="btn ${listaActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-lista"
@@ -357,6 +382,10 @@ const CuentasPorCobrarView = {
         <button type="button" class="btn ${saldoActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-saldo-meses"
           title="Saldos por mes">
           <i class="fa-solid fa-calendar-check me-1"></i>Saldo meses
+        </button>
+        <button type="button" class="btn ${consActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-consolidado"
+          title="Consolidado de productos en facturas con saldo">
+          <i class="fa-solid fa-boxes-stacked me-1"></i>Consolidado productos
         </button>
       </div>`;
   },
@@ -735,6 +764,62 @@ const CuentasPorCobrarView = {
       </p>`;
   },
 
+  renderConsolidadoProductosHtml() {
+    const totals = this._consolidadoTotales || {
+      productos: 0,
+      totalUnidades: 0,
+      totalPrecio: 0,
+    };
+    const body =
+      this._consolidadoRows.length === 0
+        ? `<tr><td colspan="4" class="text-center text-muted py-4">Sin productos en facturas con saldo</td></tr>`
+        : this._consolidadoRows
+            .map(
+              (r) => `
+        <tr>
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODPROD || '—')}</td>
+          <td>${this.escapeHtml(r.DESPROD || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+        </tr>`
+            )
+            .join('');
+    return `
+      <div class="card shadow-sm">
+        <div class="card-header bg-white py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <span class="fw-semibold"><i class="fa-solid fa-boxes-stacked me-1 text-primary"></i>Consolidado productos</span>
+            <span class="small text-muted ms-1">Agrupado por código en facturas con saldo pendiente</span>
+          </div>
+          <div class="d-flex flex-wrap gap-3 small">
+            <span><span class="text-muted">Productos:</span> <strong>${totals.productos || 0}</strong></span>
+            <span><span class="text-muted">Unidades:</span> <strong>${this.escapeHtml(this.formatQty(totals.totalUnidades))}</strong></span>
+            <span><span class="text-muted">Total:</span> <strong class="text-primary">${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</strong></span>
+          </div>
+        </div>
+        <div class="table-responsive" style="max-height: min(70vh, 36rem);">
+          <table class="table table-sm table-hover table-striped align-middle mb-0 cxp-table">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Código</th>
+                <th>Producto</th>
+                <th class="text-end">Total unidades</th>
+                <th class="text-end">Total precio</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+            <tfoot class="table-light">
+              <tr>
+                <th colspan="2" class="text-end">${totals.productos || 0} producto(s)</th>
+                <th class="text-end">${this.escapeHtml(this.formatQty(totals.totalUnidades))}</th>
+                <th class="text-end text-primary">${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>`;
+  },
+
   renderShell() {
     const count = this.filteredRows().length;
     const truncHint = this._truncated
@@ -744,6 +829,7 @@ const CuentasPorCobrarView = {
     let contentHtml = this.renderListaHtml();
     if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
     if (this._vistaTipo === 'saldo-meses') contentHtml = this.renderSaldoMesesHtml();
+    if (this._vistaTipo === 'consolidado-productos') contentHtml = this.renderConsolidadoProductosHtml();
 
     return `
       <div class="cxp-wrap w-100">
@@ -1562,6 +1648,14 @@ const CuentasPorCobrarView = {
           F.toast(err.message || 'No se pudo cargar saldo meses', 'error');
         }
       }
+      if (value === 'consolidado-productos') {
+        this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando consolidado de productos…</div>`;
+        try {
+          await this.fetchConsolidadoProductos();
+        } catch (err) {
+          F.toast(err.message || 'No se pudo cargar el consolidado', 'error');
+        }
+      }
       reloadShell();
     };
 
@@ -1576,6 +1670,9 @@ const CuentasPorCobrarView = {
     });
     this._container?.querySelector('#cxp-vista-saldo-meses')?.addEventListener('click', () => {
       switchVista('saldo-meses');
+    });
+    this._container?.querySelector('#cxp-vista-consolidado')?.addEventListener('click', () => {
+      switchVista('consolidado-productos');
     });
 
     this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {

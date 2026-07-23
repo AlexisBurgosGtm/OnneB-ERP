@@ -12,6 +12,8 @@ const CuentasPorPagarView = {
   _vistaTipo: 'lista',
   _calYear: null,
   _calMonth: null,
+  _consolidadoRows: [],
+  _consolidadoTotales: null,
   _loading: false,
   _guardandoRecibo: false,
   _corregiendoSaldos: false,
@@ -123,6 +125,12 @@ const CuentasPorPagarView = {
     const n = Number(value);
     if (Number.isNaN(n)) return 'Q 0.00';
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  formatQty(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return '0';
+    return n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
   },
 
   formatFecha(value) {
@@ -261,6 +269,7 @@ const CuentasPorPagarView = {
   renderVistaToggleHtml() {
     const listaActive = this._vistaTipo === 'lista';
     const calActive = this._vistaTipo === 'calendario';
+    const consActive = this._vistaTipo === 'consolidado-productos';
     return `
       <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
         <button type="button" class="btn ${listaActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-lista"
@@ -274,6 +283,10 @@ const CuentasPorPagarView = {
         <button type="button" class="btn btn-outline-secondary" id="cxp-vista-resumen"
           title="Resumen por proveedor">
           <i class="fa-solid fa-table-cells me-1"></i>Resumen
+        </button>
+        <button type="button" class="btn ${consActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-consolidado"
+          title="Consolidado de productos en compras con saldo">
+          <i class="fa-solid fa-boxes-stacked me-1"></i>Consolidado productos
         </button>
       </div>`;
   },
@@ -471,6 +484,22 @@ const CuentasPorPagarView = {
     return this._rows;
   },
 
+  consolidadoProductosUrl() {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      _: String(Date.now()),
+    });
+    return `/api/cuentas-pagar/consolidado-productos?${params}`;
+  },
+
+  async fetchConsolidadoProductos() {
+    const data = await F.fetchJson(this.consolidadoProductosUrl(), { cache: 'no-store' });
+    this._consolidadoRows = data.rows || [];
+    this._consolidadoTotales = data.totales || null;
+    return this._consolidadoRows;
+  },
+
   async corregirSaldos() {
     if (this._corregiendoSaldos) return;
     const ok = await Swal.fire({
@@ -549,6 +578,11 @@ const CuentasPorPagarView = {
     const truncHint = this._truncated
       ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
       : '';
+    const showListaTools = this._vistaTipo === 'lista' || this._vistaTipo === 'calendario';
+    let contentHtml = this.renderListaHtml();
+    if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
+    if (this._vistaTipo === 'consolidado-productos') contentHtml = this.renderConsolidadoProductosHtml();
+
     return `
       <div class="cxp-wrap w-100">
         <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3">
@@ -570,6 +604,9 @@ const CuentasPorPagarView = {
             </div>
           </div>
         </div>
+        ${
+          showListaTools
+            ? `
         <div class="card shadow-sm mb-3">
           <div class="card-body py-2">
             <div class="d-flex flex-wrap align-items-center gap-2">
@@ -588,8 +625,66 @@ const CuentasPorPagarView = {
             </div>
             ${truncHint}
           </div>
+        </div>`
+            : ''
+        }
+        ${contentHtml}
+      </div>`;
+  },
+
+  renderConsolidadoProductosHtml() {
+    const totals = this._consolidadoTotales || {
+      productos: 0,
+      totalUnidades: 0,
+      totalPrecio: 0,
+    };
+    const body =
+      this._consolidadoRows.length === 0
+        ? `<tr><td colspan="4" class="text-center text-muted py-4">Sin productos en compras con saldo</td></tr>`
+        : this._consolidadoRows
+            .map(
+              (r) => `
+        <tr>
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODPROD || '—')}</td>
+          <td>${this.escapeHtml(r.DESPROD || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+        </tr>`
+            )
+            .join('');
+    return `
+      <div class="card shadow-sm">
+        <div class="card-header bg-white py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <span class="fw-semibold"><i class="fa-solid fa-boxes-stacked me-1 text-primary"></i>Consolidado productos</span>
+            <span class="small text-muted ms-1">Agrupado por código en compras con saldo pendiente</span>
+          </div>
+          <div class="d-flex flex-wrap gap-3 small">
+            <span><span class="text-muted">Productos:</span> <strong>${totals.productos || 0}</strong></span>
+            <span><span class="text-muted">Unidades:</span> <strong>${this.escapeHtml(this.formatQty(totals.totalUnidades))}</strong></span>
+            <span><span class="text-muted">Total:</span> <strong class="text-primary">${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</strong></span>
+          </div>
         </div>
-        ${this._vistaTipo === 'calendario' ? this.renderCalendarHtml() : this.renderListaHtml()}
+        <div class="table-responsive" style="max-height: min(70vh, 36rem);">
+          <table class="table table-sm table-hover table-striped align-middle mb-0 cxp-table">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Código</th>
+                <th>Producto</th>
+                <th class="text-end">Total unidades</th>
+                <th class="text-end">Total precio</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+            <tfoot class="table-light">
+              <tr>
+                <th colspan="2" class="text-end">${totals.productos || 0} producto(s)</th>
+                <th class="text-end">${this.escapeHtml(this.formatQty(totals.totalUnidades))}</th>
+                <th class="text-end text-primary">${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>`;
   },
 
@@ -1225,10 +1320,18 @@ const CuentasPorPagarView = {
       }, 350);
     });
 
-    const switchVista = (value) => {
+    const switchVista = async (value) => {
       if (value === this._vistaTipo) return;
       this._vistaTipo = value;
       if (value === 'calendario') this.initCalMonth();
+      if (value === 'consolidado-productos') {
+        this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando consolidado de productos…</div>`;
+        try {
+          await this.fetchConsolidadoProductos();
+        } catch (err) {
+          F.toast(err.message || 'No se pudo cargar el consolidado', 'error');
+        }
+      }
       this._container.innerHTML = this.renderShell();
       this.bindEvents();
     };
@@ -1243,6 +1346,10 @@ const CuentasPorPagarView = {
 
     this._container?.querySelector('#cxp-vista-resumen')?.addEventListener('click', () => {
       this.mostrarResumen().catch((err) => F.toast(err.message || 'Error', 'error'));
+    });
+
+    this._container?.querySelector('#cxp-vista-consolidado')?.addEventListener('click', () => {
+      switchVista('consolidado-productos');
     });
 
     this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {

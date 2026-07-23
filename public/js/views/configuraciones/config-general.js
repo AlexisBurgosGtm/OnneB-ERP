@@ -13,6 +13,7 @@ const ConfigGeneralView = {
     MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
     CONFIGURACION_IVA: 'CONFIGURACION IVA',
     PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
+    SOLICITA_AUTORIZACIONES: 'SOLICITA AUTORIZACIONES',
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
     MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
@@ -81,6 +82,13 @@ const ConfigGeneralView = {
       icon: 'fa-tag',
       fallbackDesc:
         'Permite modificar el precio al agregar productos en pedidos de mostrador y facturas (FAC/FEF/FEC/FES)',
+    },
+    {
+      opcion: 'SOLICITA AUTORIZACIONES',
+      title: 'Solicita autorizaciones',
+      icon: 'fa-user-lock',
+      fallbackDesc:
+        'Exige autorización de un administrador para acciones sensibles (p. ej. cambio de precio). Si está en NO, no se solicita.',
     },
     {
       opcion: 'CERTIFICA AL FINALIZAR',
@@ -546,6 +554,46 @@ const ConfigGeneralView = {
       </div>`;
   },
 
+  renderCorregirSaldosCxcCard() {
+    return `
+      <div class="card config-card-compact">
+        <div class="card-body">
+          <h6 class="card-title mb-1">
+            <i class="fa-solid fa-file-invoice-dollar me-1 text-primary"></i>Corregir saldos — Cuentas por Cobrar
+          </h6>
+          <p class="card-text mb-2">
+            Recalcula <strong>DOC_ABONO</strong> y <strong>DOC_SALDO</strong> de facturas al crédito,
+            sumando recibos (RCC), notas de crédito (DEV/FNC) y abonos bancarios
+            (<strong>DOCUMENTOS_FACTURAS_ABONADAS</strong>) asociados.
+          </p>
+          <p class="config-correccion-cxc-status mb-2 small text-muted" id="config-correccion-cxc-status"></p>
+          <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-corregir-saldos-cxc">
+            <i class="fa-solid fa-arrows-rotate me-1" aria-hidden="true"></i> Corregir saldos CxC
+          </button>
+        </div>
+      </div>`;
+  },
+
+  renderCorregirSaldosCxpCard() {
+    return `
+      <div class="card config-card-compact">
+        <div class="card-body">
+          <h6 class="card-title mb-1">
+            <i class="fa-solid fa-file-invoice me-1 text-primary"></i>Corregir saldos — Cuentas por Pagar
+          </h6>
+          <p class="card-text mb-2">
+            Recalcula <strong>DOC_ABONO</strong> y <strong>DOC_SALDO</strong> de compras al crédito,
+            sumando pagos a proveedor (RCP), notas (DVP) y abonos bancarios
+            (<strong>DOCUMENTOS_FACTURAS_ABONADAS</strong>) asociados.
+          </p>
+          <p class="config-correccion-cxp-status mb-2 small text-muted" id="config-correccion-cxp-status"></p>
+          <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-corregir-saldos-cxp">
+            <i class="fa-solid fa-arrows-rotate me-1" aria-hidden="true"></i> Corregir saldos CxP
+          </button>
+        </div>
+      </div>`;
+  },
+
   renderAll() {
     const sinoCards = this.SINO_OPTIONS.map((opt) =>
       this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
@@ -575,6 +623,8 @@ const ConfigGeneralView = {
             ${felFormatoCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
             ${this.renderCorreccionProductosCard()}
+            ${this.renderCorregirSaldosCxcCard()}
+            ${this.renderCorregirSaldosCxpCard()}
           </div>
         </div>
       </div>`;
@@ -654,6 +704,14 @@ const ConfigGeneralView = {
 
     document.getElementById('btn-correccion-productos-precios')?.addEventListener('click', () => {
       this.onCorreccionProductosPrecios();
+    });
+
+    document.getElementById('btn-corregir-saldos-cxc')?.addEventListener('click', () => {
+      this.onCorregirSaldosCuentas('cxc');
+    });
+
+    document.getElementById('btn-corregir-saldos-cxp')?.addEventListener('click', () => {
+      this.onCorregirSaldosCuentas('cxp');
     });
   },
 
@@ -986,6 +1044,63 @@ const ConfigGeneralView = {
       }
     } catch (err) {
       if (statusEl) statusEl.textContent = err.message || 'Error en la corrección';
+      F.alert('Error', err.message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        if (prevHtml) btn.innerHTML = prevHtml;
+      }
+    }
+  },
+
+  async onCorregirSaldosCuentas(tipo) {
+    const isCxc = tipo === 'cxc';
+    const empNit = F.getEmpNit();
+    if (!empNit) {
+      F.toast('No hay empresa activa en la sesión', 'warning');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: isCxc ? '¿Corregir saldos CxC?' : '¿Corregir saldos CxP?',
+      html: isCxc
+        ? `<p class="mb-0 text-start small">Se recalcularán abonos y saldo de todas las <strong>facturas al crédito</strong>,
+           sumando RCC, notas de crédito (DEV/FNC) y abonos bancarios asociados.</p>`
+        : `<p class="mb-0 text-start small">Se recalcularán abonos y saldo de todas las <strong>compras al crédito</strong>,
+           sumando RCP, notas (DVP) y abonos bancarios asociados.</p>`,
+      icon: 'question',
+      confirmText: 'Corregir',
+    });
+    if (!ok) return;
+
+    const btnId = isCxc ? 'btn-corregir-saldos-cxc' : 'btn-corregir-saldos-cxp';
+    const statusId = isCxc ? 'config-correccion-cxc-status' : 'config-correccion-cxp-status';
+    const btn = document.getElementById(btnId);
+    const statusEl = document.getElementById(statusId);
+    const prevHtml = btn?.innerHTML;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin me-1" aria-hidden="true"></i> Corrigiendo…';
+    }
+    if (statusEl) statusEl.textContent = 'Recalculando saldos…';
+
+    try {
+      const api = isCxc ? '/api/cuentas-cobrar/corregir-saldos' : '/api/cuentas-pagar/corregir-saldos';
+      const data = await F.fetchJson(`${api}?empnit=${encodeURIComponent(empNit)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const actualizadas = data.actualizadas ?? 0;
+      const total = isCxc ? (data.totalFacturas ?? 0) : (data.totalCompras ?? 0);
+      const label = isCxc ? 'factura(s)' : 'compra(s)';
+      if (statusEl) {
+        statusEl.textContent = `Listo: ${actualizadas} de ${total} ${label} actualizada(s).`;
+      }
+      F.toast(`Saldos corregidos: ${actualizadas} de ${total} ${label}`, 'success');
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Error al corregir saldos';
       F.alert('Error', err.message, 'error');
     } finally {
       if (btn) {

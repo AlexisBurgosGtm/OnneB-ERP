@@ -161,6 +161,57 @@
   color: var(--onneb-color-accent);
 }
 
+.sidebar-favoritos-config {
+  font-weight: 600;
+  color: var(--onneb-text-muted);
+}
+
+.favoritos-config-list {
+  max-height: min(55vh, 22rem);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.15rem 0.1rem;
+}
+
+.favoritos-config-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--app-text, #1a1a1a);
+}
+
+.favoritos-config-row:hover {
+  background: color-mix(in srgb, var(--onneb-color-secondary, #2563eb) 10%, transparent);
+}
+
+.favoritos-config-row .form-check-input {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.favoritos-config-icon {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.favoritos-config-icon i {
+  font-size: 0.85rem;
+}
+
+.favoritos-config-label {
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+
 .main-layout {
   flex: 1;
   display: flex;

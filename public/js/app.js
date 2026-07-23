@@ -95,13 +95,7 @@
     window.OnnebContext = {};
     if (typeof EmpresaLogo !== 'undefined') EmpresaLogo.clearSession();
 
-    const userInput = document.getElementById('username');
-    const passInput = document.getElementById('password');
-    if (passInput) {
-      passInput.value = '';
-      passInput.setAttribute('readonly', 'readonly');
-    }
-    if (userInput) userInput.value = '';
+    resetLoginCredentials();
 
     if (mainTitle) mainTitle.textContent = 'OnneB POS';
     clearHeaderSessionInfo();
@@ -117,6 +111,25 @@
 
     setViewImmediate(true);
     loadLoginEmpresas();
+  }
+
+  /** Evita que el navegador muestre/sugiera la última contraseña (campo type=text enmascarado). */
+  function resetLoginCredentials() {
+    const userInput = document.getElementById('username');
+    const passInput = document.getElementById('password');
+    if (userInput) {
+      userInput.value = '';
+      userInput.setAttribute('autocomplete', 'off');
+    }
+    if (passInput) {
+      passInput.value = '';
+      passInput.setAttribute('readonly', 'readonly');
+      // Nombre y autocomplete únicos para que no reaparezca historial del navegador
+      const token = `x${Date.now().toString(36)}`;
+      passInput.setAttribute('name', `onneb-pass-${token}`);
+      passInput.setAttribute('autocomplete', `off-${token}`);
+      passInput.setAttribute('aria-autocomplete', 'none');
+    }
   }
 
   function updateFabVisibility() {
@@ -262,9 +275,17 @@
   function initSocket() {
     if (typeof io === 'undefined') return;
     socket = io();
+    if (typeof F !== 'undefined' && typeof F.setSocket === 'function') {
+      F.setSocket(socket);
+    } else {
+      window.OnnebSocket = socket;
+    }
     socket.on('connect', () => {
       console.log('[Socket.IO] Conectado');
       registerSocketSession();
+      if (typeof AutorizacionesUI !== 'undefined') {
+        AutorizacionesUI.bindSocket();
+      }
     });
     socket.on('welcome', (data) => {
       console.log('[Socket.IO]', data?.message || 'Conectado');
@@ -290,6 +311,9 @@
       const msg = String(data?.mensaje || '').trim() || 'Nuevo pedido de mostrador';
       F.toast(msg, 'info');
     });
+    if (typeof AutorizacionesUI !== 'undefined') {
+      AutorizacionesUI.bindSocket();
+    }
   }
 
   function escapeOptionText(value) {
@@ -344,12 +368,34 @@
 
   if (loginForm) {
     const passInput = document.getElementById('password');
-    passInput?.addEventListener('focus', () => {
+    resetLoginCredentials();
+
+    const unlockPass = () => {
+      if (!passInput) return;
       passInput.removeAttribute('readonly');
-    });
-    passInput?.addEventListener('mousedown', () => {
-      passInput.removeAttribute('readonly');
-    });
+    };
+    passInput?.addEventListener('focus', unlockPass);
+    passInput?.addEventListener('mousedown', unlockPass);
+    passInput?.addEventListener('touchstart', unlockPass, { passive: true });
+
+    /** Limpia autofill del navegador mientras el campo sigue readonly. */
+    const scrubAutofill = () => {
+      if (currentView !== 'login' || !passInput) return;
+      if (passInput.hasAttribute('readonly') && passInput.value) {
+        passInput.value = '';
+      }
+    };
+    [50, 200, 500, 1000].forEach((ms) => window.setTimeout(scrubAutofill, ms));
+    window.addEventListener(
+      'pageshow',
+      () => {
+        if (currentView === 'login') {
+          resetLoginCredentials();
+          [50, 200, 500].forEach((ms) => window.setTimeout(scrubAutofill, ms));
+        }
+      },
+      { passive: true }
+    );
 
     async function completeLoginSession(auth, empNit, empNombre, fallbackUsername) {
       const authUser = auth.user;
@@ -369,6 +415,9 @@
       F.session('user', sessionData);
       F.setEmpresaGlobal(empNit, empNombre);
       registerSocketSession();
+      if (typeof AutorizacionesUI !== 'undefined') {
+        AutorizacionesUI.bindSocket();
+      }
       document.getElementById('password').value = '';
       stopLoadingOverlays();
       setViewImmediate(false);
@@ -376,6 +425,10 @@
       if (typeof TipoEmpleadoAccess !== 'undefined') {
         await TipoEmpleadoAccess.refreshMenuAccess();
         TipoEmpleadoAccess.applySidebarVisibility();
+      }
+      if (typeof MenuFavoritos !== 'undefined') {
+        MenuFavoritos.bind();
+        MenuFavoritos.render();
       }
       loadInicioDefault();
       F.toast(`Bienvenido — ${empNombre}`, 'success');
@@ -390,6 +443,7 @@
           empnit: empNit,
         }).catch(() => {});
       }
+      resetLoginCredentials();
     }
 
     loginForm.addEventListener('submit', async (e) => {
@@ -544,6 +598,7 @@
     'actualizacion-inventario': 'Actualización de inventario',
     documentos: 'Documentos',
     'resumen-del-dia': 'Resumen del día',
+    autorizaciones: 'Autorizaciones',
     empleados: 'Empleados',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
@@ -580,182 +635,193 @@
   if (btnMenuFab) btnMenuFab.addEventListener('click', toggleSidebar);
   if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
 
-  document.querySelectorAll('.sidebar-link').forEach((link) => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (window.OnnebPace) OnnebPace.start();
-      const key = link.dataset.menu;
-      if (
-        typeof TipoEmpleadoAccess !== 'undefined' &&
-        !TipoEmpleadoAccess.canAccessMenu(key)
-      ) {
-        F.toast('No tiene permiso para acceder a esta opción', 'warning');
-        closeSidebar();
-        return;
-      }
-      const label = menuLabels[key] || key;
-      document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
-      link.classList.add('is-active');
-      mainTitle.textContent = label;
-      mainContent.className = 'main-content flex-grow-1 d-flex p-3';
-      if (typeof PosDocSearchUI !== 'undefined') PosDocSearchUI.clearActiveDocKeyboard();
+  if (typeof MenuFavoritos !== 'undefined') {
+    MenuFavoritos.bind();
+  }
 
-      if (key === 'inicio') {
-        loadInicio();
-      } else if (key === 'compras' && typeof ComprasView !== 'undefined') {
-        ComprasView.load(mainContent);
-      } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
-        PosView.load(mainContent);
-      } else if (key === 'comandas-restaurante' && typeof ComandasRestauranteView !== 'undefined') {
-        ComandasRestauranteView.load(mainContent);
-      } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
-        FacturacionView.load(mainContent);
-      } else if (key === 'facturas-electronicas' && typeof FacturasElectronicasView !== 'undefined') {
-        FacturasElectronicasView.load(mainContent);
-      } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
-        NotasCreditoView.load(mainContent);
-      } else if (key === 'notas-abono' && typeof NotasAbonoView !== 'undefined') {
-        NotasAbonoView.load(mainContent);
-      } else if (key === 'notas-debito' && typeof NotasDebitoView !== 'undefined') {
-        NotasDebitoView.load(mainContent);
-      } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
-        CorteCajaView.load(mainContent);
-      } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {
-        CotizacionesView.load(mainContent);
-      } else if (key === 'fraccionamiento-fac' && typeof FraccionamientoFacView !== 'undefined') {
-        FraccionamientoFacView.load(mainContent);
-      } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
-        TareasView.load(mainContent);
-      } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
-        CuentasPorCobrarView.load(mainContent);
-      } else if (key === 'cuentas-pagar' && typeof CuentasPorPagarView !== 'undefined') {
-        CuentasPorPagarView.load(mainContent);
-      } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
-        EntradasInventarioView.load(mainContent);
-      } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
-        SalidasInventarioView.load(mainContent);
-      } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
-        InventarioView.load(mainContent);
-      } else if (
-        key === 'actualizacion-inventario' &&
-        typeof InventarioActualizacionView !== 'undefined'
-      ) {
-        InventarioActualizacionView.load(mainContent);
-      } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
-        DocumentosView.load(mainContent);
-      } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {
-        ResumenDelDiaView.load(mainContent);
-      } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
-        LibroVentasView.load(mainContent);
-      } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
-        LibroComprasView.load(mainContent);
-      } else if (key === 'libro-diario' && typeof LibroDiarioView !== 'undefined') {
-        LibroDiarioView.load(mainContent);
-      } else if (key === 'libro-mayor' && typeof LibroMayorView !== 'undefined') {
-        LibroMayorView.load(mainContent);
-      } else if (key === 'libro-balance' && typeof LibroBalanceView !== 'undefined') {
-        LibroBalanceView.load(mainContent);
-      } else if (key === 'retenciones-iva' && typeof RetencionesIvaView !== 'undefined') {
-        RetencionesIvaView.load(mainContent);
-      } else if (key === 'retenciones-isr' && typeof RetencionesIsrView !== 'undefined') {
-        RetencionesIsrView.load(mainContent);
-      } else if (key === 'nomenclatura-contable' && typeof NomenclaturaContableView !== 'undefined') {
-        NomenclaturaContableView.load(mainContent);
-      } else if (key === 'formatos-contables' && typeof FormatosContablesView !== 'undefined') {
-        FormatosContablesView.load(mainContent);
-      } else if (
-        key === 'configuraciones-contabilidad' &&
-        typeof ConfiguracionesContabilidadView !== 'undefined'
-      ) {
-        ConfiguracionesContabilidadView.load(mainContent);
-      } else if (key === 'movimientos-banco' && typeof MovimientosBancoView !== 'undefined') {
-        MovimientosBancoView.load(mainContent);
-      } else if (key === 'bancos' && typeof BancosView !== 'undefined') {
-        BancosView.load(mainContent);
-      } else if (key === 'cuentas-bancarias' && typeof CuentasBancariasView !== 'undefined') {
-        CuentasBancariasView.load(mainContent);
-      } else if (
-        (key === 'productos-precios' || key === 'productos') &&
-        typeof ProductosView !== 'undefined'
-      ) {
-        ProductosView.load(mainContent);
-      } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
-        DeveloperView.load(mainContent);
-      } else if (key === 'updater' && typeof UpdaterView !== 'undefined') {
-        UpdaterView.load(mainContent);
-      } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
-        EmpresasView.load(mainContent);
-      } else if (key === 'marcas' && typeof MarcasView !== 'undefined') {
-        MarcasView.load(mainContent);
-      } else if (key === 'medidas' && typeof MedidasView !== 'undefined') {
-        MedidasView.load(mainContent);
-      } else if (key === 'rutas' && typeof RutasView !== 'undefined') {
-        RutasView.load(mainContent);
-      } else if (key === 'fabricantes' && typeof FabricantesView !== 'undefined') {
-        FabricantesView.load(mainContent);
-      } else if (key === 'ubicaciones' && typeof UbicacionesView !== 'undefined') {
-        UbicacionesView.load(mainContent);
-      } else if (key === 'mesas-restaurante' && typeof MesasRestauranteView !== 'undefined') {
-        MesasRestauranteView.load(mainContent);
-      } else if (key === 'clientes' && typeof ClientesView !== 'undefined') {
-        ClientesView.load(mainContent);
-      } else if (key === 'tipo-negocios' && typeof TipoNegociosView !== 'undefined') {
-        TipoNegociosView.load(mainContent);
-      } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
-        ProveedoresView.load(mainContent);
-      } else if (key === 'municipios' && typeof MunicipiosView !== 'undefined') {
-        MunicipiosView.load(mainContent);
-      } else if (key === 'departamentos' && typeof DepartamentosView !== 'undefined') {
-        DepartamentosView.load(mainContent);
-      } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
-        EmpleadosView.load(mainContent);
-      } else if (key === 'nomina-config' && typeof NominaConfigView !== 'undefined') {
-        NominaConfigView.load(mainContent);
-      } else if (key === 'nomina-conceptos' && typeof NominaConceptosView !== 'undefined') {
-        NominaConceptosView.load(mainContent);
-      } else if (key === 'nomina-empleados' && typeof NominaEmpleadosView !== 'undefined') {
-        NominaEmpleadosView.load(mainContent);
-      } else if (key === 'nomina-vales' && typeof NominaValesView !== 'undefined') {
-        NominaValesView.load(mainContent);
-      } else if (key === 'nomina-interna' && typeof NominaInternaView !== 'undefined') {
-        NominaInternaView.load(mainContent);
-      } else if (key === 'nomina-igss' && typeof NominaIgssView !== 'undefined') {
-        NominaIgssView.load(mainContent);
-      } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
-        TipoDocumentosView.load(mainContent);
-      } else if (key === 'formatos-impresion' && typeof FormatosImpresionView !== 'undefined') {
-        FormatosImpresionView.load(mainContent);
-      } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
-        CajasView.load(mainContent);
-      } else if (key === 'vehiculos' && typeof VehiculosView !== 'undefined') {
-        VehiculosView.load(mainContent);
-      } else if (key === 'plataformas' && typeof PlataformasView !== 'undefined') {
-        PlataformasView.load(mainContent);
-      } else if (key === 'mantenimiento-llantas' && typeof MantenimientoLlantasView !== 'undefined') {
-        MantenimientoLlantasView.load(mainContent);
-      } else if (key === 'registro-kilometrajes' && typeof KilometrajesView !== 'undefined') {
-        KilometrajesView.load(mainContent);
-      } else if (key === 'servicio-mecanica' && typeof ServicioMecanicaView !== 'undefined') {
-        ServicioMecanicaView.load(mainContent);
-      } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
-        ConfigGeneralView.load(mainContent);
-      } else if (key === 'roles-usuarios' && typeof RolesUsuariosView !== 'undefined') {
-        RolesUsuariosView.load(mainContent);
-      } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {
-        CredencialesFelView.load(mainContent);
-      } else {
-        mainContent.classList.add('align-items-center', 'justify-content-center');
-        mainContent.classList.remove('align-items-stretch', 'justify-content-start');
-        mainContent.innerHTML = `<p class="text-muted mb-0">${label} — contenido pendiente</p>`;
-      }
-
+  /** Delegación: soporta clones dinámicos de Favoritos. */
+  sidebar?.addEventListener('click', (e) => {
+    if (e.target.closest('[data-favoritos-config], #btn-favoritos-config')) return;
+    const link = e.target.closest('.sidebar-link[data-menu]');
+    if (!link || !sidebar.contains(link)) return;
+    e.preventDefault();
+    if (window.OnnebPace) OnnebPace.start();
+    const key = link.dataset.menu;
+    if (
+      typeof TipoEmpleadoAccess !== 'undefined' &&
+      !TipoEmpleadoAccess.canAccessMenu(key)
+    ) {
+      F.toast('No tiene permiso para acceder a esta opción', 'warning');
       closeSidebar();
-      setTimeout(() => {
-        if (typeof Pace !== 'undefined' && Pace.running) Pace.stop();
-      }, 600);
+      return;
+    }
+    const label = menuLabels[key] || key;
+    document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
+    document.querySelectorAll('.sidebar-link[data-menu]').forEach((l) => {
+      if (l.dataset.menu === key) l.classList.add('is-active');
     });
+    mainTitle.textContent = label;
+    mainContent.className = 'main-content flex-grow-1 d-flex p-3';
+    if (typeof PosDocSearchUI !== 'undefined') PosDocSearchUI.clearActiveDocKeyboard();
+
+    if (key === 'inicio') {
+      loadInicio();
+    } else if (key === 'compras' && typeof ComprasView !== 'undefined') {
+      ComprasView.load(mainContent);
+    } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
+      PosView.load(mainContent);
+    } else if (key === 'comandas-restaurante' && typeof ComandasRestauranteView !== 'undefined') {
+      ComandasRestauranteView.load(mainContent);
+    } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
+      FacturacionView.load(mainContent);
+    } else if (key === 'facturas-electronicas' && typeof FacturasElectronicasView !== 'undefined') {
+      FacturasElectronicasView.load(mainContent);
+    } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
+      NotasCreditoView.load(mainContent);
+    } else if (key === 'notas-abono' && typeof NotasAbonoView !== 'undefined') {
+      NotasAbonoView.load(mainContent);
+    } else if (key === 'notas-debito' && typeof NotasDebitoView !== 'undefined') {
+      NotasDebitoView.load(mainContent);
+    } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
+      CorteCajaView.load(mainContent);
+    } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {
+      CotizacionesView.load(mainContent);
+    } else if (key === 'fraccionamiento-fac' && typeof FraccionamientoFacView !== 'undefined') {
+      FraccionamientoFacView.load(mainContent);
+    } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
+      TareasView.load(mainContent);
+    } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
+      CuentasPorCobrarView.load(mainContent);
+    } else if (key === 'cuentas-pagar' && typeof CuentasPorPagarView !== 'undefined') {
+      CuentasPorPagarView.load(mainContent);
+    } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
+      EntradasInventarioView.load(mainContent);
+    } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
+      SalidasInventarioView.load(mainContent);
+    } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
+      InventarioView.load(mainContent);
+    } else if (
+      key === 'actualizacion-inventario' &&
+      typeof InventarioActualizacionView !== 'undefined'
+    ) {
+      InventarioActualizacionView.load(mainContent);
+    } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
+      DocumentosView.load(mainContent);
+    } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {
+      ResumenDelDiaView.load(mainContent);
+    } else if (key === 'autorizaciones' && typeof AutorizacionesView !== 'undefined') {
+      AutorizacionesView.load(mainContent);
+    } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
+      LibroVentasView.load(mainContent);
+    } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
+      LibroComprasView.load(mainContent);
+    } else if (key === 'libro-diario' && typeof LibroDiarioView !== 'undefined') {
+      LibroDiarioView.load(mainContent);
+    } else if (key === 'libro-mayor' && typeof LibroMayorView !== 'undefined') {
+      LibroMayorView.load(mainContent);
+    } else if (key === 'libro-balance' && typeof LibroBalanceView !== 'undefined') {
+      LibroBalanceView.load(mainContent);
+    } else if (key === 'retenciones-iva' && typeof RetencionesIvaView !== 'undefined') {
+      RetencionesIvaView.load(mainContent);
+    } else if (key === 'retenciones-isr' && typeof RetencionesIsrView !== 'undefined') {
+      RetencionesIsrView.load(mainContent);
+    } else if (key === 'nomenclatura-contable' && typeof NomenclaturaContableView !== 'undefined') {
+      NomenclaturaContableView.load(mainContent);
+    } else if (key === 'formatos-contables' && typeof FormatosContablesView !== 'undefined') {
+      FormatosContablesView.load(mainContent);
+    } else if (
+      key === 'configuraciones-contabilidad' &&
+      typeof ConfiguracionesContabilidadView !== 'undefined'
+    ) {
+      ConfiguracionesContabilidadView.load(mainContent);
+    } else if (key === 'movimientos-banco' && typeof MovimientosBancoView !== 'undefined') {
+      MovimientosBancoView.load(mainContent);
+    } else if (key === 'bancos' && typeof BancosView !== 'undefined') {
+      BancosView.load(mainContent);
+    } else if (key === 'cuentas-bancarias' && typeof CuentasBancariasView !== 'undefined') {
+      CuentasBancariasView.load(mainContent);
+    } else if (
+      (key === 'productos-precios' || key === 'productos') &&
+      typeof ProductosView !== 'undefined'
+    ) {
+      ProductosView.load(mainContent);
+    } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
+      DeveloperView.load(mainContent);
+    } else if (key === 'updater' && typeof UpdaterView !== 'undefined') {
+      UpdaterView.load(mainContent);
+    } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {
+      EmpresasView.load(mainContent);
+    } else if (key === 'marcas' && typeof MarcasView !== 'undefined') {
+      MarcasView.load(mainContent);
+    } else if (key === 'medidas' && typeof MedidasView !== 'undefined') {
+      MedidasView.load(mainContent);
+    } else if (key === 'rutas' && typeof RutasView !== 'undefined') {
+      RutasView.load(mainContent);
+    } else if (key === 'fabricantes' && typeof FabricantesView !== 'undefined') {
+      FabricantesView.load(mainContent);
+    } else if (key === 'ubicaciones' && typeof UbicacionesView !== 'undefined') {
+      UbicacionesView.load(mainContent);
+    } else if (key === 'mesas-restaurante' && typeof MesasRestauranteView !== 'undefined') {
+      MesasRestauranteView.load(mainContent);
+    } else if (key === 'clientes' && typeof ClientesView !== 'undefined') {
+      ClientesView.load(mainContent);
+    } else if (key === 'tipo-negocios' && typeof TipoNegociosView !== 'undefined') {
+      TipoNegociosView.load(mainContent);
+    } else if (key === 'proveedores' && typeof ProveedoresView !== 'undefined') {
+      ProveedoresView.load(mainContent);
+    } else if (key === 'municipios' && typeof MunicipiosView !== 'undefined') {
+      MunicipiosView.load(mainContent);
+    } else if (key === 'departamentos' && typeof DepartamentosView !== 'undefined') {
+      DepartamentosView.load(mainContent);
+    } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
+      EmpleadosView.load(mainContent);
+    } else if (key === 'nomina-config' && typeof NominaConfigView !== 'undefined') {
+      NominaConfigView.load(mainContent);
+    } else if (key === 'nomina-conceptos' && typeof NominaConceptosView !== 'undefined') {
+      NominaConceptosView.load(mainContent);
+    } else if (key === 'nomina-empleados' && typeof NominaEmpleadosView !== 'undefined') {
+      NominaEmpleadosView.load(mainContent);
+    } else if (key === 'nomina-vales' && typeof NominaValesView !== 'undefined') {
+      NominaValesView.load(mainContent);
+    } else if (key === 'nomina-interna' && typeof NominaInternaView !== 'undefined') {
+      NominaInternaView.load(mainContent);
+    } else if (key === 'nomina-igss' && typeof NominaIgssView !== 'undefined') {
+      NominaIgssView.load(mainContent);
+    } else if (key === 'tipo-documentos' && typeof TipoDocumentosView !== 'undefined') {
+      TipoDocumentosView.load(mainContent);
+    } else if (key === 'formatos-impresion' && typeof FormatosImpresionView !== 'undefined') {
+      FormatosImpresionView.load(mainContent);
+    } else if (key === 'cajas' && typeof CajasView !== 'undefined') {
+      CajasView.load(mainContent);
+    } else if (key === 'vehiculos' && typeof VehiculosView !== 'undefined') {
+      VehiculosView.load(mainContent);
+    } else if (key === 'plataformas' && typeof PlataformasView !== 'undefined') {
+      PlataformasView.load(mainContent);
+    } else if (key === 'mantenimiento-llantas' && typeof MantenimientoLlantasView !== 'undefined') {
+      MantenimientoLlantasView.load(mainContent);
+    } else if (key === 'registro-kilometrajes' && typeof KilometrajesView !== 'undefined') {
+      KilometrajesView.load(mainContent);
+    } else if (key === 'servicio-mecanica' && typeof ServicioMecanicaView !== 'undefined') {
+      ServicioMecanicaView.load(mainContent);
+    } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
+      ConfigGeneralView.load(mainContent);
+    } else if (key === 'roles-usuarios' && typeof RolesUsuariosView !== 'undefined') {
+      RolesUsuariosView.load(mainContent);
+    } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {
+      CredencialesFelView.load(mainContent);
+    } else {
+      mainContent.classList.add('align-items-center', 'justify-content-center');
+      mainContent.classList.remove('align-items-stretch', 'justify-content-start');
+      mainContent.innerHTML = `<p class="text-muted mb-0">${label} — contenido pendiente</p>`;
+    }
+
+    closeSidebar();
+    setTimeout(() => {
+      if (typeof Pace !== 'undefined' && Pace.running) Pace.stop();
+    }, 600);
   });
 
+  /* legacy per-link binding removed — uses sidebar delegation above */
   async function handleLogoutClick() {
     if (currentView !== 'main') return;
 
