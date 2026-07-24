@@ -47,6 +47,9 @@ const TipoEmpleadoAccess = {
     'salidas-inventario',
     'inventario-retroactivo',
     'actualizacion-inventario',
+    'crear-traslado',
+    'recibir-traslado',
+    'enviar-traslado',
     'documentos',
     'resumen-del-dia',
     'autorizaciones',
@@ -81,6 +84,7 @@ const TipoEmpleadoAccess = {
     'formatos-impresion',
     'credenciales-fel',
     'updater',
+    'licencia',
     'developer',
   ],
 
@@ -122,6 +126,9 @@ const TipoEmpleadoAccess = {
       'salidas-inventario',
       'inventario-retroactivo',
       'actualizacion-inventario',
+      'crear-traslado',
+      'recibir-traslado',
+      'enviar-traslado',
       'documentos',
       'resumen-del-dia',
       'autorizaciones',
@@ -153,6 +160,9 @@ const TipoEmpleadoAccess = {
       'entradas-inventario',
       'salidas-inventario',
       'actualizacion-inventario',
+      'crear-traslado',
+      'recibir-traslado',
+      'enviar-traslado',
     ],
     6: [
       'inicio',
@@ -260,8 +270,13 @@ const TipoEmpleadoAccess = {
   canAccessMenu(menuKey, sessionUser) {
     const key = String(menuKey || '').trim();
     if (!key) return false;
+    if (key === 'licencia') return true;
     const allowed = this.allowedMenus(this.getCodTipo(sessionUser));
-    return allowed.has(key);
+    if (!allowed.has(key)) return false;
+    if (typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
+      return false;
+    }
+    return true;
   },
 
   tipoLabel(codtipo) {
@@ -286,7 +301,13 @@ const TipoEmpleadoAccess = {
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((link) => {
       const key = link.dataset.menu;
       const li = link.closest('li');
-      if (li) li.hidden = !allowed.has(key);
+      if (!li) return;
+      let visible = allowed.has(key);
+      if (visible && typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
+        visible = false;
+      }
+      if (key === 'licencia' || key === 'inicio') visible = true;
+      li.hidden = !visible;
     });
     document.querySelectorAll('.sidebar-accordion .accordion-item').forEach((item) => {
       if (item.classList.contains('sidebar-favoritos-item')) {

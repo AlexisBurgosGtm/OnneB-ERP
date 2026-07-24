@@ -1,0 +1,18 @@
+/**
+ * Scroll de página (main-content usa overflow:hidden + align-items-stretch).
+ */
+.licencia-wrap {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 5.5rem;
+}
+
+.licencia-panel {
+  width: 100%;
+  max-width: none;
+}

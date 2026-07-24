@@ -424,6 +424,9 @@
       updateHeaderSessionInfo();
       if (typeof TipoEmpleadoAccess !== 'undefined') {
         await TipoEmpleadoAccess.refreshMenuAccess();
+        if (typeof LicenseAccess !== 'undefined') {
+          await LicenseAccess.refresh();
+        }
         TipoEmpleadoAccess.applySidebarVisibility();
       }
       if (typeof MenuFavoritos !== 'undefined') {
@@ -596,6 +599,9 @@
     'salidas-inventario': 'Salidas de inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
     'actualizacion-inventario': 'Actualización de inventario',
+    'crear-traslado': 'Crear Traslado',
+    'recibir-traslado': 'Recibir Traslado',
+    'enviar-traslado': 'Enviar Traslado',
     documentos: 'Documentos',
     'resumen-del-dia': 'Resumen del día',
     autorizaciones: 'Autorizaciones',
@@ -629,6 +635,7 @@
     'registro-kilometrajes': 'Registro de Kilometrajes',
     vehiculos: 'VEHICULOS',
     plataformas: 'Plataformas',
+    licencia: 'Licencia',
   };
 
   if (btnMenuToggle) btnMenuToggle.addEventListener('click', toggleSidebar);
@@ -652,6 +659,11 @@
       !TipoEmpleadoAccess.canAccessMenu(key)
     ) {
       F.toast('No tiene permiso para acceder a esta opción', 'warning');
+      closeSidebar();
+      return;
+    }
+    if (typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
+      F.toast('Este módulo no está incluido en la licencia', 'warning');
       closeSidebar();
       return;
     }
@@ -807,6 +819,8 @@
       ConfigGeneralView.load(mainContent);
     } else if (key === 'roles-usuarios' && typeof RolesUsuariosView !== 'undefined') {
       RolesUsuariosView.load(mainContent);
+    } else if (key === 'licencia' && typeof LicenciaView !== 'undefined') {
+      LicenciaView.load(mainContent);
     } else if (key === 'credenciales-fel' && typeof CredencialesFelView !== 'undefined') {
       CredencialesFelView.load(mainContent);
     } else {
@@ -878,6 +892,17 @@
     initSocket();
     if (F.isLoggedIn()) {
       registerSocketSession();
+      if (typeof TipoEmpleadoAccess !== 'undefined') {
+        try {
+          await TipoEmpleadoAccess.refreshMenuAccess();
+          if (typeof LicenseAccess !== 'undefined') {
+            await LicenseAccess.refresh();
+          }
+          TipoEmpleadoAccess.applySidebarVisibility();
+        } catch (err) {
+          console.warn('[App] acceso menú/licencia:', err?.message || err);
+        }
+      }
     }
   }
 

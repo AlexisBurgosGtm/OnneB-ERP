@@ -146,11 +146,16 @@ const nominaValesRouter = require('./routes/nomina-vales');
 const bancosRouter = require('./routes/bancos');
 const cuentasBancariasRouter = require('./routes/cuentas-bancarias');
 const movimientosBancoRouter = require('./routes/movimientos-banco');
+const licenseRouter = require('./routes/license');
+const { licenseMiddleware, getLicenseStatus } = require('./lib/license');
 
 /** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
 app.use(express.json({ limit: '3mb' }));
 app.locals.getDbPool = getDbPool;
 app.locals.io = io;
+
+/** Licencia de instalación: limita APIs por módulo comprado. */
+app.use(licenseMiddleware);
 
 const publicDir = path.join(__dirname, 'public');
 const dataDir = path.join(__dirname, 'data');
@@ -256,6 +261,7 @@ app.use('/api/kilometrajes', kilometrajesRouter);
 app.use('/api/servicio-mecanica', servicioMecanicaRouter);
 app.use('/api/plataformas', plataformasRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/license', licenseRouter);
 app.use('/api/config', configRouter);
 app.use('/api/roles-usuarios', rolesUsuariosRouter);
 app.use('/api/developer', developerRouter);
@@ -323,6 +329,14 @@ registerSocketHandlers(io);
 
 server.listen(PORT, () => {
   console.log(`OnneB_pos en http://localhost:${PORT}`);
+    try {
+      const lic = getLicenseStatus({ refresh: true });
+      console.log(`[Licencia] ${lic.status} · modo ${lic.mode}${lic.customer ? ` · ${lic.customer}` : ''}`);
+      const { assertLicenseCatalogIntegrity } = require('./lib/license-modules');
+      assertLicenseCatalogIntegrity({ log: console.warn });
+    } catch (err) {
+      console.warn('[Licencia]', err.message);
+    }
   if (process.env.BUMP_WATCH !== 'false') {
     require('./scripts/watch-build').start();
     watchBuildMetaBroadcast();

@@ -469,12 +469,22 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     const coddoc = String(req.params.coddoc || '').trim();
     const correlativo = parseCorrelativo(req.params.correlativo);
     const codprod = String(req.body?.CODPROD || '').trim();
-    const codmedida = String(req.body?.CODMEDIDA || '').trim();
+    const forceUnidad = Boolean(
+      req.body?.forceUnidad || req.body?.FORCE_UNIDAD || req.body?.ajusteCero || req.body?.AJUSTE_CERO
+    );
+    const codmedida = forceUnidad
+      ? 'UNIDAD'
+      : String(req.body?.CODMEDIDA || '').trim();
     const cantidad = Number(req.body?.CANTIDAD ?? 1);
     if (!coddoc || correlativo === null || !codprod || !codmedida) {
       return res.status(400).json({ error: 'CODPROD y CODMEDIDA son obligatorios' });
     }
-    if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
+    if (!Number.isFinite(cantidad) || cantidad === 0) {
+      return res.status(400).json({ error: 'Cantidad inválida' });
+    }
+    if (!forceUnidad && cantidad <= 0) {
+      return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
+    }
 
     try {
       const pool = await req.app.locals.getDbPool();
@@ -492,18 +502,68 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         return res.status(400).json({ error: 'El documento ya no está en edición' });
       }
 
-      const found = await fetchProductoPrecioForLinea(pool, sql, {
-        empnit,
-        codprod,
-        codmedida,
-      });
-      if (!found) return res.status(404).json({ error: 'Producto o medida no encontrado' });
-      const prod = found.row;
-      const medidaLinea = found.codmedida;
-      const { tipoprod, tipoprecio } = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
-      const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-      const precio = getPrecioFromPreciosRow(prod, DEFAULT_PRECIOS_FIELD);
-      const equivale = Number(prod.EQUIVALE) || 1;
+      let medidaLinea = codmedida;
+      let desprod;
+      let tipoprod;
+      let tipoprecio;
+      let costo;
+      let precio;
+      let equivale;
+      let exento;
+      let peso;
+
+      if (forceUnidad) {
+        const prodRes = await pool
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODPROD', sql.VarChar, codprod)
+          .query(`
+            SELECT TOP 1
+              LTRIM(RTRIM(CODPROD)) AS CODPROD,
+              DESPROD,
+              ISNULL(COSTO, 0) AS COSTO,
+              ISNULL(TIPOPROD, 'P') AS TIPOPROD,
+              ISNULL(EXENTO, 0) AS EXENTO
+            FROM dbo.PRODUCTOS
+            WHERE EMPNIT = @EMPNIT
+              AND LTRIM(RTRIM(CODPROD)) = LTRIM(RTRIM(@CODPROD))
+          `);
+        if (!prodRes.recordset.length) {
+          return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+        const prod = prodRes.recordset[0];
+        if (String(prod.TIPOPROD || '').trim().toUpperCase() === 'S') {
+          return res.status(400).json({ error: 'Producto de servicio: no afecta inventario' });
+        }
+        medidaLinea = 'UNIDAD';
+        desprod = prod.DESPROD;
+        tipoprod = String(prod.TIPOPROD || 'P').trim() || 'P';
+        tipoprecio = 'P';
+        costo = Number(prod.COSTO) || 0;
+        precio = costo;
+        equivale = 1;
+        exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+        peso = 0;
+      } else {
+        const found = await fetchProductoPrecioForLinea(pool, sql, {
+          empnit,
+          codprod,
+          codmedida,
+        });
+        if (!found) return res.status(404).json({ error: 'Producto o medida no encontrado' });
+        const prod = found.row;
+        medidaLinea = found.codmedida;
+        const meta = lineProductMeta(prod, DEFAULT_PRECIOS_FIELD);
+        tipoprod = meta.tipoprod;
+        tipoprecio = meta.tipoprecio;
+        desprod = prod.DESPROD;
+        costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+        precio = getPrecioFromPreciosRow(prod, DEFAULT_PRECIOS_FIELD);
+        equivale = Number(prod.EQUIVALE) || 1;
+        exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+        peso = pesoFromPreciosRow(prod);
+      }
+
       const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
         cantidad,
         costo,
@@ -511,8 +571,6 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         equivale
       );
       const parts = nowParts();
-      const exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
-      const peso = pesoFromPreciosRow(prod);
       const totalPeso = calcLinePeso(cantidad, peso);
 
       const transaction = new sql.Transaction(pool);
@@ -528,7 +586,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           .input('CODDOC', sql.VarChar, coddoc)
           .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
           .input('CODPROD', sql.VarChar, codprod)
-          .input('DESPROD', sql.VarChar, prod.DESPROD)
+          .input('DESPROD', sql.VarChar, desprod)
           .input('CODMEDIDA', sql.VarChar, medidaLinea)
           .input('CANTIDAD', sql.Float, cantidad)
           .input('EQUIVALE', sql.Int, equivale)
@@ -569,7 +627,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
           coddoc,
           correlativo,
           codprod,
-          desprod: prod.DESPROD,
+          desprod,
           totalUnidades,
           tipoprod,
           tipom,

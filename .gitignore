@@ -1,2 +1,5 @@
 node_modules/
 .env
+data/license.json
+GENERADOR LICENCIAS/keys/*.pem
+GENERADOR LICENCIAS/.licence.pid

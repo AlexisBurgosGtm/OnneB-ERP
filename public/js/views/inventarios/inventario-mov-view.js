@@ -19,6 +19,7 @@ function createInventarioMovView(cfg) {
     _loadingProducts: false,
     _searchTimer: null,
     _cartBusy: false,
+    _batchCancel: false,
 
     escapeHtml(value) {
       if (value === null || value === undefined) return '';
@@ -340,7 +341,155 @@ function createInventarioMovView(cfg) {
       }
     },
 
-    async agregarLinea(codprod, codmedida, cantidad = 1) {
+    async agregarLinea(codprod, codmedida, cantidad = 1, opts = {}) {
+      const key = this.docKey();
+      if (!key) {
+        F.toast('No hay documento activo', 'warning');
+        return null;
+      }
+      if (!this.docEditable(this._documento?.header)) {
+        F.toast('El documento no está en edición', 'warning');
+        return null;
+      }
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`
+      );
+      const body = {
+        CODPROD: codprod,
+        CODMEDIDA: opts.forceUnidad ? 'UNIDAD' : codmedida,
+        CANTIDAD: cantidad,
+      };
+      if (opts.forceUnidad) {
+        body.forceUnidad = true;
+        body.ajusteCero = true;
+      }
+      const res = await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      this._documento = res.documento;
+      if (!opts.skipRender) {
+        this.renderCart();
+        this.renderOrderSummary();
+      }
+      if (!opts.silent) F.toast('Producto agregado', 'success');
+      return res;
+    },
+
+    async eliminarLinea(lineId, opts = {}) {
+      const key = this.docKey();
+      if (!key) return null;
+      const url = this.apiUrl(
+        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+      );
+      const res = await F.fetchJson(url, { method: 'DELETE' });
+      this._documento = res.documento;
+      if (!opts.skipRender) {
+        this.renderCart();
+        this.renderOrderSummary();
+      }
+      return res;
+    },
+
+    /**
+     * Modal de progreso con botón Cancelar que detiene el lote (tras la operación en curso).
+     * onRun(ctx) recibe { setStatus, setProgress, appendLog, isCancelled, markCancelUi }.
+     */
+    async runBatchWithProgress({ title, countLabel, onRun }) {
+      this._batchCancel = false;
+      const progressId = `${NS}-batch-progress`;
+      const cancelBtnId = `${progressId}-cancel`;
+
+      Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title,
+        html: `
+          <div class="text-start small" id="${progressId}">
+            <div class="d-flex align-items-center gap-2 mb-2" id="${progressId}-status">
+              <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+              <span>Preparando…</span>
+            </div>
+            <div class="progress mb-2" style="height: 8px;">
+              <div class="progress-bar" id="${progressId}-bar" role="progressbar"
+                style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <div class="text-muted mb-2" id="${progressId}-count">0 / 0 ${this.escapeHtml(countLabel || 'filas')}</div>
+            <div class="border rounded p-2 bg-light overflow-auto" id="${progressId}-log"
+              style="max-height: 220px; font-size: 0.8rem;"></div>
+            <div class="mt-3 text-center">
+              <button type="button" class="btn btn-sm btn-outline-danger" id="${cancelBtnId}">
+                <i class="fa-solid fa-ban me-1"></i>Cancelar proceso
+              </button>
+            </div>
+          </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+          const btn = document.getElementById(cancelBtnId);
+          btn?.addEventListener('click', () => {
+            this._batchCancel = true;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Cancelando…';
+            const status = document.getElementById(`${progressId}-status`);
+            if (status) {
+              status.innerHTML =
+                '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>Cancelando… (se detiene tras la fila en curso)</span>';
+            }
+          });
+        },
+      });
+
+      const statusEl = () => document.getElementById(`${progressId}-status`);
+      const barEl = () => document.getElementById(`${progressId}-bar`);
+      const countEl = () => document.getElementById(`${progressId}-count`);
+      const logEl = () => document.getElementById(`${progressId}-log`);
+
+      const setStatus = (msg, spinning = true) => {
+        if (this._batchCancel && spinning) return;
+        const el = statusEl();
+        if (!el) return;
+        el.innerHTML = spinning
+          ? `<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>${this.escapeHtml(msg)}</span>`
+          : `<i class="fa-solid fa-circle-check text-success" aria-hidden="true"></i><span>${this.escapeHtml(msg)}</span>`;
+      };
+      const setProgress = (done, total) => {
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const bar = barEl();
+        if (bar) {
+          bar.style.width = `${pct}%`;
+          bar.setAttribute('aria-valuenow', String(pct));
+        }
+        const count = countEl();
+        if (count) {
+          count.textContent = `${done} / ${total} ${countLabel || 'filas'}`;
+        }
+      };
+      const appendLog = (html) => {
+        const log = logEl();
+        if (!log) return;
+        log.insertAdjacentHTML('beforeend', html);
+        log.scrollTop = log.scrollHeight;
+      };
+      const isCancelled = () => Boolean(this._batchCancel);
+
+      this.setCartBusy(true);
+      try {
+        const result = await onRun({ setStatus, setProgress, appendLog, isCancelled });
+        return { ...(result || {}), cancelled: isCancelled() };
+      } finally {
+        this._batchCancel = false;
+        this.setCartBusy(false);
+        this.renderCart();
+        this.renderOrderSummary();
+      }
+    },
+
+    async dejarInventarioACero() {
+      if (String(cfg.tipodoc || '').toUpperCase() !== 'ENT') return;
       const key = this.docKey();
       if (!key) {
         F.toast('No hay documento activo', 'warning');
@@ -350,18 +499,305 @@ function createInventarioMovView(cfg) {
         F.toast('El documento no está en edición', 'warning');
         return;
       }
-      const url = this.apiUrl(
-        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`
-      );
-      const res = await F.fetchJson(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ CODPROD: codprod, CODMEDIDA: codmedida, CANTIDAD: cantidad }),
+
+      const confirm = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        icon: 'warning',
+        title: 'Dejar Inventario a Cero',
+        html: `
+          <p class="mb-2 text-start small">
+            Se recorrerá el inventario y se agregará <strong>una línea por producto</strong> con medida
+            <strong>UNIDAD</strong> (equivale 1) para anular el saldo actual:
+          </p>
+          <ul class="text-start small mb-0">
+            <li>Existencia positiva → cantidad negativa</li>
+            <li>Existencia negativa → cantidad positiva</li>
+          </ul>
+          <p class="mt-2 mb-0 text-start small text-muted">
+            El documento quedará listo para que usted lo revise y finalice.
+          </p>
+        `,
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Continuar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       });
-      this._documento = res.documento;
-      this.renderCart();
-      this.renderOrderSummary();
-      F.toast('Producto agregado', 'success');
+      if (!confirm.isConfirmed) return;
+
+      let agregadas = 0;
+      let omitidas = 0;
+      let errores = 0;
+      let totalRows = 0;
+      let emptyStock = false;
+
+      try {
+        const batch = await this.runBatchWithProgress({
+          title: 'Dejando inventario a cero',
+          countLabel: 'filas agregadas',
+          onRun: async ({ setStatus, setProgress, appendLog, isCancelled }) => {
+            setStatus('Cargando saldos de inventario…');
+            const emp = F.getEmpNit();
+            const saldoUrl = `/api/inventario/saldo?${new URLSearchParams({
+              empnit: emp,
+              limit: '0',
+              _: String(Date.now()),
+            })}`;
+            const data = await F.fetchJson(saldoUrl);
+            if (isCancelled()) return { cancelledEarly: true };
+
+            const rows = (data.rows || []).filter((row) => {
+              const tipo = String(row.TIPOPROD || '').trim().toUpperCase();
+              if (tipo === 'S') return false;
+              const saldo = Number(row.SALDO ?? row.EXISTENCIA) || 0;
+              return saldo !== 0;
+            });
+            totalRows = rows.length;
+
+            if (!rows.length) {
+              emptyStock = true;
+              setStatus('No hay productos con saldo distinto de cero', false);
+              setProgress(0, 0);
+              return {};
+            }
+
+            setStatus(`Procesando ${rows.length} producto(s)…`);
+            setProgress(0, rows.length);
+
+            for (let i = 0; i < rows.length; i++) {
+              if (isCancelled()) {
+                appendLog(
+                  `<div class="text-warning"><i class="fa-solid fa-ban me-1"></i>Proceso cancelado por el usuario</div>`
+                );
+                setStatus(`Cancelado · ${agregadas} fila(s) agregada(s)`, false);
+                break;
+              }
+
+              const row = rows[i];
+              const codprod = String(row.CODPROD || '').trim();
+              const saldo = Number(row.SALDO ?? row.EXISTENCIA) || 0;
+              const cantidad = -saldo;
+              const desprod = String(row.DESPROD || codprod).trim();
+              try {
+                if (!codprod || cantidad === 0) {
+                  omitidas += 1;
+                  appendLog(
+                    `<div class="text-muted"><i class="fa-solid fa-minus me-1"></i>${this.escapeHtml(codprod || '—')} omitido</div>`
+                  );
+                } else {
+                  await this.agregarLinea(codprod, 'UNIDAD', cantidad, {
+                    forceUnidad: true,
+                    silent: true,
+                    skipRender: true,
+                  });
+                  agregadas += 1;
+                  appendLog(
+                    `<div><i class="fa-solid fa-check text-success me-1"></i>` +
+                      `<strong>${this.escapeHtml(codprod)}</strong> ${this.escapeHtml(desprod)}` +
+                      ` · cant. ${this.escapeHtml(this.formatQty(cantidad))}` +
+                      ` (saldo ${this.escapeHtml(this.formatQty(saldo))})</div>`
+                  );
+                }
+              } catch (err) {
+                errores += 1;
+                appendLog(
+                  `<div class="text-danger"><i class="fa-solid fa-xmark me-1"></i>` +
+                    `<strong>${this.escapeHtml(codprod)}</strong>: ${this.escapeHtml(err.message || 'Error')}</div>`
+                );
+              }
+              setProgress(i + 1, rows.length);
+              if (!isCancelled()) setStatus(`Agregadas ${agregadas} de ${rows.length}…`);
+              if (i % 5 === 0 || i === rows.length - 1) {
+                this.renderCart();
+                this.renderOrderSummary();
+              }
+            }
+
+            if (!isCancelled()) {
+              setStatus(`Listo: ${agregadas} fila(s) agregada(s)`, false);
+            }
+            return {};
+          },
+        });
+
+        if (emptyStock) {
+          await Swal.fire({
+            ...CatalogosUI.modalBase(),
+            icon: 'info',
+            title: 'Inventario ya en cero',
+            text: 'No se encontraron productos con existencias distintas de cero.',
+            confirmButtonText: CatalogosUI.guardarButtonHtml('Entendido'),
+          });
+          return;
+        }
+
+        if (batch?.cancelled) {
+          await Swal.fire({
+            ...CatalogosUI.modalBase(),
+            icon: 'warning',
+            title: 'Proceso cancelado',
+            html: `
+              <p class="mb-1 small">Se detuvo el ajuste.</p>
+              <p class="mb-0 small">Quedaron <strong>${agregadas}</strong> línea(s) agregada(s) de ${totalRows}.</p>
+            `,
+            confirmButtonText: CatalogosUI.guardarButtonHtml('Entendido'),
+          });
+          return;
+        }
+
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: errores ? 'warning' : 'success',
+          title: 'Ajuste generado',
+          html: `
+            <p class="mb-1 small">Se agregaron <strong>${agregadas}</strong> línea(s) al documento.</p>
+            ${omitidas ? `<p class="mb-1 small text-muted">Omitidas: ${omitidas}</p>` : ''}
+            ${errores ? `<p class="mb-1 small text-danger">Con error: ${errores}</p>` : ''}
+            <p class="mb-0 small text-muted">Revise el documento y finalícelo cuando corresponda.</p>
+          `,
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Entendido'),
+        });
+      } catch (err) {
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: 'error',
+          title: 'No se pudo ajustar',
+          text: err.message || 'Error al dejar inventario a cero',
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        });
+      }
+    },
+
+    async vaciarDocumento() {
+      if (String(cfg.tipodoc || '').toUpperCase() !== 'ENT') return;
+      const key = this.docKey();
+      if (!key) {
+        F.toast('No hay documento activo', 'warning');
+        return;
+      }
+      if (!this.docEditable(this._documento?.header)) {
+        F.toast('El documento no está en edición', 'warning');
+        return;
+      }
+
+      const linesSnap = [...(this._documento?.lines || [])];
+      if (!linesSnap.length) {
+        F.toast('El documento no tiene líneas', 'info');
+        return;
+      }
+
+      const confirm = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        icon: 'warning',
+        title: 'Vaciar documento',
+        html: `
+          <p class="mb-0 text-start small">
+            Se eliminarán <strong>${linesSnap.length}</strong> línea(s) una por una.
+            Cada eliminación revierte el movimiento de inventario (stock) de esa línea.
+          </p>
+        `,
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Vaciar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      });
+      if (!confirm.isConfirmed) return;
+
+      let eliminadas = 0;
+      let errores = 0;
+      const total = linesSnap.length;
+
+      try {
+        const batch = await this.runBatchWithProgress({
+          title: 'Vaciando documento',
+          countLabel: 'líneas eliminadas',
+          onRun: async ({ setStatus, setProgress, appendLog, isCancelled }) => {
+            setStatus(`Eliminando ${total} línea(s)…`);
+            setProgress(0, total);
+
+            for (let i = 0; i < linesSnap.length; i++) {
+              if (isCancelled()) {
+                appendLog(
+                  `<div class="text-warning"><i class="fa-solid fa-ban me-1"></i>Proceso cancelado por el usuario</div>`
+                );
+                setStatus(`Cancelado · ${eliminadas} línea(s) eliminada(s)`, false);
+                break;
+              }
+
+              const ln = linesSnap[i];
+              const lineId = this.lineId(ln);
+              const codprod = String(ln.CODPROD || '').trim();
+              const desprod = String(ln.DESPROD || codprod).trim();
+              const qty = Number(ln.CANTIDAD) || 0;
+
+              try {
+                if (!lineId) {
+                  errores += 1;
+                  appendLog(
+                    `<div class="text-danger"><i class="fa-solid fa-xmark me-1"></i>${this.escapeHtml(codprod || '—')}: sin id de línea</div>`
+                  );
+                } else {
+                  await this.eliminarLinea(lineId, { skipRender: true });
+                  eliminadas += 1;
+                  appendLog(
+                    `<div><i class="fa-solid fa-trash text-danger me-1"></i>` +
+                      `<strong>${this.escapeHtml(codprod)}</strong> ${this.escapeHtml(desprod)}` +
+                      ` · cant. ${this.escapeHtml(this.formatQty(qty))}</div>`
+                  );
+                }
+              } catch (err) {
+                errores += 1;
+                appendLog(
+                  `<div class="text-danger"><i class="fa-solid fa-xmark me-1"></i>` +
+                    `<strong>${this.escapeHtml(codprod)}</strong>: ${this.escapeHtml(err.message || 'Error')}</div>`
+                );
+              }
+
+              setProgress(i + 1, total);
+              if (!isCancelled()) setStatus(`Eliminadas ${eliminadas} de ${total}…`);
+              if (i % 5 === 0 || i === linesSnap.length - 1) {
+                this.renderCart();
+                this.renderOrderSummary();
+              }
+            }
+
+            if (!isCancelled()) {
+              setStatus(`Listo: ${eliminadas} línea(s) eliminada(s)`, false);
+            }
+            return {};
+          },
+        });
+
+        if (batch?.cancelled) {
+          await Swal.fire({
+            ...CatalogosUI.modalBase(),
+            icon: 'warning',
+            title: 'Proceso cancelado',
+            html: `
+              <p class="mb-1 small">Se detuvo el vaciado.</p>
+              <p class="mb-0 small">Se eliminaron <strong>${eliminadas}</strong> de ${total} línea(s). El stock de esas líneas ya fue revertido.</p>
+            `,
+            confirmButtonText: CatalogosUI.guardarButtonHtml('Entendido'),
+          });
+          return;
+        }
+
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: errores ? 'warning' : 'success',
+          title: 'Documento vaciado',
+          html: `
+            <p class="mb-1 small">Se eliminaron <strong>${eliminadas}</strong> línea(s).</p>
+            ${errores ? `<p class="mb-0 small text-danger">Con error: ${errores}</p>` : '<p class="mb-0 small text-muted">El inventario de cada línea fue revertido.</p>'}
+          `,
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Entendido'),
+        });
+      } catch (err) {
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: 'error',
+          title: 'No se pudo vaciar',
+          text: err.message || 'Error al vaciar el documento',
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        });
+      }
     },
 
     setCartBusy(busy) {
@@ -370,6 +806,10 @@ function createInventarioMovView(cfg) {
       tbody?.classList.toggle('pos-cart-busy', busy);
       const fab = this._container?.querySelector(`#${NS}-btn-finalizar`);
       if (fab) fab.disabled = busy;
+      const ceroBtn = this._container?.querySelector(`#${NS}-btn-cero`);
+      if (ceroBtn) ceroBtn.disabled = busy;
+      const vaciarBtn = this._container?.querySelector(`#${NS}-btn-vaciar`);
+      if (vaciarBtn) vaciarBtn.disabled = busy;
     },
 
     async actualizarCantidad(lineId, cantidad) {
@@ -383,18 +823,6 @@ function createInventarioMovView(cfg) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ CANTIDAD: cantidad }),
       });
-      this._documento = res.documento;
-      this.renderCart();
-      this.renderOrderSummary();
-    },
-
-    async eliminarLinea(lineId) {
-      const key = this.docKey();
-      if (!key) return;
-      const url = this.apiUrl(
-        `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
-      );
-      const res = await F.fetchJson(url, { method: 'DELETE' });
       this._documento = res.documento;
       this.renderCart();
       this.renderOrderSummary();
@@ -501,13 +929,14 @@ function createInventarioMovView(cfg) {
         .map((ln) => {
           const lineId = this.lineId(ln);
           const qty = Number(ln.CANTIDAD) || 0;
-          const qtyControls = editable
+          const qtyEditable = editable && qty > 0;
+          const qtyControls = qtyEditable
             ? `<div class="d-flex align-items-center gap-1 justify-content-center">
               <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-minus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>−</button>
-              <span class="px-1">${qty}</span>
+              <span class="px-1">${this.escapeHtml(this.formatQty(qty))}</span>
               <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>
             </div>`
-            : `<span>${qty}</span>`;
+            : `<span class="${qty < 0 ? 'text-danger fw-semibold' : ''}">${this.escapeHtml(this.formatQty(qty))}</span>`;
           const delBtn = editable
             ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
             : '';
@@ -529,7 +958,7 @@ function createInventarioMovView(cfg) {
       const h = this._documento?.header;
       const lines = this._documento?.lines || [];
       const totalUnidades = lines.reduce((sum, ln) => sum + (Number(ln.TOTALUNIDADES) || 0), 0);
-      const itemCount = lines.reduce((sum, ln) => sum + (Number(ln.CANTIDAD) || 0), 0);
+      const itemCount = lines.length;
       if (totalEl) {
         totalEl.textContent = totalUnidades === 1 ? '1 u.' : `${totalUnidades} u.`;
       }
@@ -696,6 +1125,20 @@ function createInventarioMovView(cfg) {
                 <i class="fa-solid fa-receipt"></i>
                 <span class="fw-semibold">Documento actual</span>
               </div>
+              ${
+                editable && String(cfg.tipodoc || '').toUpperCase() === 'ENT'
+                  ? `<div class="ms-auto d-flex flex-wrap gap-1">
+                      <button type="button" class="btn btn-sm btn-outline-danger" id="${NS}-btn-vaciar"
+                        title="Eliminar todas las líneas una por una (revierte stock)">
+                        <i class="fa-solid fa-trash-can me-1"></i>Vaciar documento
+                      </button>
+                      <button type="button" class="btn btn-sm btn-outline-warning" id="${NS}-btn-cero"
+                        title="Agregar líneas para dejar existencias en cero">
+                        <i class="fa-solid fa-scale-balanced me-1"></i>Dejar Inventario a Cero
+                      </button>
+                    </div>`
+                  : ''
+              }
             </div>
             <div class="card-body">
               <div class="pos-cart-table flex-grow-1 d-flex flex-column">
@@ -832,6 +1275,12 @@ function createInventarioMovView(cfg) {
       this._container?.querySelector(`#${NS}-btn-atras`)?.addEventListener('click', () => this.showList());
       this._container?.querySelector(`#${NS}-btn-finalizar`)?.addEventListener('click', () => {
         this.finalizarDocumento().catch((err) => F.toast(err.message, 'error'));
+      });
+      this._container?.querySelector(`#${NS}-btn-cero`)?.addEventListener('click', () => {
+        this.dejarInventarioACero().catch((err) => F.toast(err.message || 'Error', 'error'));
+      });
+      this._container?.querySelector(`#${NS}-btn-vaciar`)?.addEventListener('click', () => {
+        this.vaciarDocumento().catch((err) => F.toast(err.message || 'Error', 'error'));
       });
 
       const fechaInp = this._container?.querySelector(`#${NS}-doc-fecha`);
