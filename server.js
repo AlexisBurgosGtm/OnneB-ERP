@@ -117,7 +117,7 @@ const notasAbonoRouter = require('./routes/notas-abono');
 const notasDebitoRouter = require('./routes/notas-debito');
 const corteCajaRouter = require('./routes/corte-caja');
 const comprasRouter = require('./routes/compras');
-const { entradasRouter, salidasRouter } = require('./routes/inventario-docs');
+const { entradasRouter, salidasRouter, trasladosCrearRouter, trasladosRecibirRouter } = require('./routes/inventario-docs');
 const inventarioSaldoRouter = require('./routes/inventario-saldo');
 const documentosRouter = require('./routes/documentos');
 const autorizacionesRouter = require('./routes/autorizaciones');
@@ -147,7 +147,9 @@ const bancosRouter = require('./routes/bancos');
 const cuentasBancariasRouter = require('./routes/cuentas-bancarias');
 const movimientosBancoRouter = require('./routes/movimientos-banco');
 const licenseRouter = require('./routes/license');
+const communityRouter = require('./routes/community');
 const { licenseMiddleware, getLicenseStatus } = require('./lib/license');
+const { getAppToken } = require('./lib/app-token');
 
 /** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
 app.use(express.json({ limit: '3mb' }));
@@ -262,6 +264,7 @@ app.use('/api/servicio-mecanica', servicioMecanicaRouter);
 app.use('/api/plataformas', plataformasRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/license', licenseRouter);
+app.use('/api/community', communityRouter);
 app.use('/api/config', configRouter);
 app.use('/api/roles-usuarios', rolesUsuariosRouter);
 app.use('/api/developer', developerRouter);
@@ -278,6 +281,8 @@ app.use('/api/corte-caja', corteCajaRouter);
 app.use('/api/compras', comprasRouter);
 app.use('/api/inventario/ent', entradasRouter);
 app.use('/api/inventario/sal', salidasRouter);
+app.use('/api/traslados/crear', trasladosCrearRouter);
+app.use('/api/traslados/recibir', trasladosRecibirRouter);
 app.use('/api/inventario', inventarioSaldoRouter);
 app.use('/api/documentos', documentosRouter);
 app.use('/api/autorizaciones', autorizacionesRouter);
@@ -328,15 +333,37 @@ app.get('/api/health', async (_req, res) => {
 registerSocketHandlers(io);
 
 server.listen(PORT, () => {
-  console.log(`OnneB_pos en http://localhost:${PORT}`);
+  const pidPath = path.join(__dirname, '.server.pid');
+  try {
+    fs.writeFileSync(pidPath, String(process.pid), 'utf8');
+  } catch (err) {
+    console.warn('[OnneB] no se pudo escribir PID:', err.message);
+  }
+  const clearPid = () => {
     try {
-      const lic = getLicenseStatus({ refresh: true });
-      console.log(`[Licencia] ${lic.status} · modo ${lic.mode}${lic.customer ? ` · ${lic.customer}` : ''}`);
-      const { assertLicenseCatalogIntegrity } = require('./lib/license-modules');
-      assertLicenseCatalogIntegrity({ log: console.warn });
-    } catch (err) {
-      console.warn('[Licencia]', err.message);
+      if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+    } catch {
+      /* ignore */
     }
+  };
+  process.once('exit', clearPid);
+
+  console.log(`OnneB_pos en http://localhost:${PORT}`);
+  console.log('Detener: npm stop');
+  const appToken = getAppToken();
+  if (appToken) {
+    console.log(`[TOKEN] instalación: ${appToken}`);
+  } else {
+    console.warn('[TOKEN] no configurado en .env');
+  }
+  try {
+    const lic = getLicenseStatus({ refresh: true });
+    console.log(`[Licencia] ${lic.status} · modo ${lic.mode}${lic.customer ? ` · ${lic.customer}` : ''}`);
+    const { assertLicenseCatalogIntegrity } = require('./lib/license-modules');
+    assertLicenseCatalogIntegrity({ log: console.warn });
+  } catch (err) {
+    console.warn('[Licencia]', err.message);
+  }
   if (process.env.BUMP_WATCH !== 'false') {
     require('./scripts/watch-build').start();
     watchBuildMetaBroadcast();
@@ -344,6 +371,12 @@ server.listen(PORT, () => {
 });
 
 process.on('SIGINT', async () => {
+  try {
+    const pidPath = path.join(__dirname, '.server.pid');
+    if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+  } catch {
+    /* ignore */
+  }
   if (dbPool) {
     await dbPool.close();
   }

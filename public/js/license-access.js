@@ -72,6 +72,10 @@ const LicenseAccess = {
         item.hidden = false;
         return;
       }
+      if (item.classList.contains('sidebar-spacer-item')) {
+        item.hidden = false;
+        return;
+      }
       const links = item.querySelectorAll('.sidebar-link[data-menu]');
       const anyVisible = Array.from(links).some((link) => {
         const li = link.closest('li');

@@ -26,6 +26,12 @@ const {
 } = require('../lib/producto-precio-linea');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
+const { getAppToken } = require('../lib/app-token');
+const { isUpdateDbConfigured } = require('../config/update-database');
+const { getUpdateDbPool } = require('../lib/update-db-pool');
+const { copyDocumentoToCommunity, getDocumentosMarcaMaxChars, marcaEnviadoValue } = require('../lib/community-documento-copy');
+const { checkTokenActivo, TOKEN_NO_NUBE_MSG } = require('../lib/community-token');
+const { downloadTrasladoFromCommunity } = require('../lib/community-traslado-download');
 
 const SEARCH_LIMIT = 80;
 const DEFAULT_BODEGA = 0;
@@ -73,31 +79,36 @@ function calcLineTotals(cantidad, costo, precio, equivale) {
   return { totalUnidades, totalCosto, totalPrecio };
 }
 
-function createInventarioDocsRouter(tipodoc, logPrefix) {
+function createInventarioDocsRouter(tipodocOrList, logPrefix) {
   const router = express.Router();
-  const TIPODOC = String(tipodoc || '').trim().toUpperCase();
+  const TIPODOCS = (Array.isArray(tipodocOrList) ? tipodocOrList : [tipodocOrList])
+    .map((t) => String(t || '').trim().toUpperCase())
+    .filter(Boolean);
+  if (!TIPODOCS.length) {
+    throw new Error(`createInventarioDocsRouter(${logPrefix}): tipodoc requerido`);
+  }
+  const TIPODOC = TIPODOCS[0];
+  const tipodocSqlIn = TIPODOCS.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(', ');
+  const tipodocLabel = TIPODOCS.join(' / ');
 
   async function getTipoDoc(pool, empnit, coddocPreferred) {
-    const reqDb = pool.request().input('EMPNIT', sql.VarChar, empnit).input('TIPODOC', sql.VarChar, TIPODOC);
+    const reqDb = pool.request().input('EMPNIT', sql.VarChar, empnit);
     if (coddocPreferred) {
       reqDb.input('CODDOC', sql.VarChar, coddocPreferred);
       const one = await reqDb.query(`
         SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, TIPOM
         FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC = @TIPODOC AND ACTIVO = 'SI'
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC
+          AND TIPODOC IN (${tipodocSqlIn}) AND ACTIVO = 'SI'
       `);
       if (one.recordset.length) return one.recordset[0];
     }
-    const all = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('TIPODOC', sql.VarChar, TIPODOC)
-      .query(`
-        SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, TIPOM
-        FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND TIPODOC = @TIPODOC AND ACTIVO = 'SI'
-        ORDER BY CODDOC
-      `);
+    const all = await pool.request().input('EMPNIT', sql.VarChar, empnit).query(`
+      SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, TIPOM
+      FROM dbo.TIPODOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocSqlIn}) AND ACTIVO = 'SI'
+      ORDER BY TIPODOC, CODDOC
+    `);
     return all.recordset[0] || null;
   }
 
@@ -188,7 +199,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         FROM dbo.DOCUMENTOS d
         JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
         WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
-          AND t.TIPODOC = '${TIPODOC}'
+          AND t.TIPODOC IN (${tipodocSqlIn})
       `);
     if (!headerRes.recordset.length) return null;
     const linesRes = await pool
@@ -215,20 +226,18 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     if (!empnit) return;
     try {
       const pool = await req.app.locals.getDbPool();
-      const tipos = await pool
-        .request()
-        .input('EMPNIT', sql.VarChar, empnit)
-        .input('TIPODOC', sql.VarChar, TIPODOC)
-        .query(`
-          SELECT CODDOC, DESDOC, CORRELATIVO, TIPOM
+      const tipos = await pool.request().input('EMPNIT', sql.VarChar, empnit).query(`
+          SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, TIPOM
           FROM dbo.TIPODOCUMENTOS
-          WHERE EMPNIT = @EMPNIT AND TIPODOC = @TIPODOC AND ACTIVO = 'SI'
-          ORDER BY CODDOC
+          WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocSqlIn}) AND ACTIVO = 'SI'
+          ORDER BY TIPODOC, CODDOC
         `);
       const def = tipos.recordset[0] || null;
       res.json({
         empnit,
         tipodoc: TIPODOC,
+        tipodocs: TIPODOCS,
+        tipodocLabel,
         statusOperado: STATUS_OPERADO,
         statusBloqueado: STATUS_BLOQUEADO,
         statusAnulado: STATUS_ANULADO,
@@ -280,8 +289,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('MES', sql.Int, mes)
-        .input('ANIO', sql.Int, anio)
-        .input('TIPODOC', sql.VarChar, TIPODOC);
+        .input('ANIO', sql.Int, anio);
       let coddocFilter = '';
       if (coddoc) {
         request.input('CODDOC', sql.VarChar, coddoc);
@@ -291,12 +299,13 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
         SELECT TOP 200
           d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
           d.TOTALCOSTO, d.OBS, d.MES, d.ANIO, d.USUARIO,
+          d.CODEMBARQUE, d.OBSMARCA, d.MARCA,
           (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
            WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
         FROM dbo.DOCUMENTOS d
         JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
         WHERE d.EMPNIT = @EMPNIT
-          AND t.TIPODOC = @TIPODOC
+          AND t.TIPODOC IN (${tipodocSqlIn})
           AND d.MES = @MES AND d.ANIO = @ANIO
           AND d.STATUS = '${status}'
           ${coddocFilter}
@@ -341,7 +350,7 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
       const tipo = await getTipoDoc(pool, empnit, coddocBody);
       if (!tipo) {
         return res.status(400).json({
-          error: `No hay tipo de documento ${TIPODOC} activo para la empresa`,
+          error: `No hay tipo de documento ${tipodocLabel} activo para la empresa`,
         });
       }
       const coddoc = tipo.CODDOC;
@@ -843,21 +852,37 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     const correlativo = parseCorrelativo(req.params.correlativo);
     if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
     const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
+    const codembarque =
+      req.body?.CODEMBARQUE !== undefined ? String(req.body.CODEMBARQUE || '').trim() : null;
+    const obmarca =
+      req.body?.OBSMARCA !== undefined ? String(req.body.OBSMARCA || '').trim() : null;
 
     try {
       const pool = await req.app.locals.getDbPool();
       const transaction = new sql.Transaction(pool);
       await transaction.begin();
       try {
+        const headerSets = [];
+        const headerReq = transaction
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddoc)
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo);
         if (obs !== null) {
-          await transaction
-            .request()
-            .input('EMPNIT', sql.VarChar, empnit)
-            .input('CODDOC', sql.VarChar, coddoc)
-            .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-            .input('OBS', sql.VarChar, obs)
-            .query(`
-              UPDATE dbo.DOCUMENTOS SET OBS = @OBS
+          headerReq.input('OBS', sql.VarChar, obs);
+          headerSets.push('OBS = @OBS');
+        }
+        if (codembarque !== null) {
+          headerReq.input('CODEMBARQUE', sql.VarChar, codembarque || 'SN');
+          headerSets.push('CODEMBARQUE = @CODEMBARQUE');
+        }
+        if (obmarca !== null) {
+          headerReq.input('OBSMARCA', sql.VarChar, obmarca || 'SN');
+          headerSets.push('OBSMARCA = @OBSMARCA');
+        }
+        if (headerSets.length) {
+          await headerReq.query(`
+              UPDATE dbo.DOCUMENTOS SET ${headerSets.join(', ')}
               WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
                 AND ${SQL_STATUS_EDITABLE}
             `);
@@ -933,6 +958,242 @@ function createInventarioDocsRouter(tipodoc, logPrefix) {
     }
   });
 
+  /**
+   * Envía traslado al host: actualiza destino local y copia a
+   * COMMUNITY_DOCUMENTOS / COMMUNITY_DOCPRODUCTOS (TOKEN de instalación).
+   */
+  router.post('/documentos/:coddoc/:correlativo/enviar', async (req, res) => {
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = requireEmpNit(req, res);
+    if (!empnit) return;
+    const coddoc = String(req.params.coddoc || '').trim();
+    const correlativo = parseCorrelativo(req.params.correlativo);
+    if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+
+    const token = getAppToken();
+    if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+    if (!isUpdateDbConfigured()) {
+      return res.status(503).json({
+        error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+      });
+    }
+
+    const codembarque = String(req.body?.CODEMBARQUE ?? '').trim();
+    const obmarca = String(req.body?.OBSMARCA ?? '').trim();
+    if (!codembarque) {
+      return res.status(400).json({ error: 'Seleccione una empresa destino' });
+    }
+
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const hostPool = await getUpdateDbPool();
+      if (!hostPool) {
+        return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+      }
+
+      const tokenCheck = await checkTokenActivo(hostPool, token);
+      if (!tokenCheck.ok) {
+        const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+        return res.status(status).json({
+          error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+          code: tokenCheck.code,
+        });
+      }
+
+      const exists = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .query(`
+          SELECT d.CODDOC
+          FROM dbo.DOCUMENTOS d
+          JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+          WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+            AND t.TIPODOC IN (${tipodocSqlIn})
+        `);
+      if (!exists.recordset.length) return res.status(404).json({ error: 'Documento no encontrado' });
+
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .input('CODEMBARQUE', sql.VarChar, codembarque)
+        .input('OBSMARCA', sql.VarChar, obmarca || 'SN')
+        .query(`
+          UPDATE dbo.DOCUMENTOS
+          SET CODEMBARQUE = @CODEMBARQUE, OBSMARCA = @OBSMARCA
+          WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        `);
+
+      // Elimina en nube (TOKEN+EMPNIT+CODDOC+CORRELATIVO) y vuelve a insertar.
+      const copy = await copyDocumentoToCommunity({
+        localPool: pool,
+        hostPool,
+        token,
+        empnit,
+        coddoc,
+        correlativo,
+      });
+
+      const marcaMax = await getDocumentosMarcaMaxChars(pool);
+      const marcaVal = marcaEnviadoValue(marcaMax);
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .input('MARCA', sql.VarChar, marcaVal)
+        .query(`
+          UPDATE dbo.DOCUMENTOS
+          SET MARCA = @MARCA
+          WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        `);
+
+      const doc = await loadDocumento(pool, empnit, coddoc, correlativo);
+      res.json({ ok: true, lineas: copy.lineas, documento: doc, marca: marcaVal });
+    } catch (err) {
+      console.warn(`[API POST /${logPrefix}/documentos/enviar]`, err.message);
+      res.status(500).json({ error: err.message || 'Error al enviar traslado' });
+    }
+  });
+
+  /**
+   * Descarga traslado de la nube → DOCUMENTOS/DOCPRODUCTOS locales (suma stock),
+   * finaliza y elimina la copia en COMMUNITY_*.
+   * Solo routers de recepción (TIN/TES).
+   */
+  if (TIPODOCS.some((t) => t === 'TIN' || t === 'TES')) {
+    router.post('/community/descargar', async (req, res) => {
+      if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+      const empnit = requireEmpNit(req, res);
+      if (!empnit) return;
+
+      const origenEmpnit = String(req.body?.origenEmpnit || req.body?.EMPNIT_ORIGEN || '').trim();
+      const origenCoddoc = String(req.body?.origenCoddoc || req.body?.CODDOC_ORIGEN || '').trim();
+      const origenCorrelativo = parseCorrelativo(
+        req.body?.origenCorrelativo ?? req.body?.CORRELATIVO_ORIGEN
+      );
+      const coddocLocal = String(req.body?.CODDOC || req.body?.coddoc || '').trim();
+      const usuario = String(req.body?.USUARIO || req.body?.usuario || 'INV').trim();
+
+      if (!origenEmpnit || !origenCoddoc || origenCorrelativo === null) {
+        return res.status(400).json({ error: 'Identificación del traslado en la nube incompleta' });
+      }
+      if (!coddocLocal) {
+        return res.status(400).json({ error: 'Seleccione una serie local (TIN/TES)' });
+      }
+
+      const token = getAppToken();
+      if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+      if (!isUpdateDbConfigured()) {
+        return res.status(503).json({
+          error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+        });
+      }
+
+      try {
+        const pool = await req.app.locals.getDbPool();
+        const hostPool = await getUpdateDbPool();
+        if (!hostPool) {
+          return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+        }
+
+        const tokenCheck = await checkTokenActivo(hostPool, token);
+        if (!tokenCheck.ok) {
+          const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+          return res.status(status).json({
+            error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+            code: tokenCheck.code,
+          });
+        }
+
+        const tipoRes = await pool
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddocLocal)
+          .query(`
+            SELECT CODDOC, TIPOM
+            FROM dbo.TIPODOCUMENTOS
+            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC
+              AND TIPODOC IN (${tipodocSqlIn}) AND ACTIVO = 'SI'
+          `);
+        if (!tipoRes.recordset.length) {
+          return res.status(400).json({
+            error: `Serie ${coddocLocal} no válida o inactiva para recepción (TIN/TES)`,
+          });
+        }
+
+        const result = await downloadTrasladoFromCommunity({
+          localPool: pool,
+          hostPool,
+          empnitLocal: empnit,
+          coddocLocal,
+          usuario,
+          origenEmpnit,
+          origenCoddoc,
+          origenCorrelativo,
+        });
+        res.json(result);
+      } catch (err) {
+        if (err instanceof InventarioError) {
+          return res.status(err.statusCode).json({ error: err.message, code: err.code });
+        }
+        console.warn(`[API POST /${logPrefix}/community/descargar]`, err.message);
+        res.status(500).json({ error: err.message || 'Error al descargar traslado' });
+      }
+    });
+  }
+
+  /** Destino remoto (CODEMBARQUE = EMPNIT sync, OBSMARCA = EMPNOMBRE). */
+  router.patch('/documentos/:coddoc/:correlativo/destino', async (req, res) => {
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = requireEmpNit(req, res);
+    if (!empnit) return;
+    const coddoc = String(req.params.coddoc || '').trim();
+    const correlativo = parseCorrelativo(req.params.correlativo);
+    if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+    const codembarque = String(req.body?.CODEMBARQUE ?? '').trim();
+    const obmarca = String(req.body?.OBSMARCA ?? '').trim();
+    if (!codembarque) {
+      return res.status(400).json({ error: 'Seleccione una empresa destino' });
+    }
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const exists = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .query(`
+          SELECT d.CODDOC
+          FROM dbo.DOCUMENTOS d
+          JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+          WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+            AND t.TIPODOC IN (${tipodocSqlIn})
+        `);
+      if (!exists.recordset.length) return res.status(404).json({ error: 'Documento no encontrado' });
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODDOC', sql.VarChar, coddoc)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+        .input('CODEMBARQUE', sql.VarChar, codembarque)
+        .input('OBSMARCA', sql.VarChar, obmarca || 'SN')
+        .query(`
+          UPDATE dbo.DOCUMENTOS
+          SET CODEMBARQUE = @CODEMBARQUE, OBSMARCA = @OBSMARCA
+          WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        `);
+      const doc = await loadDocumento(pool, empnit, coddoc, correlativo);
+      res.json({ ok: true, documento: doc });
+    } catch (err) {
+      console.warn(`[API PATCH /${logPrefix}/documentos/destino]`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/documentos/:coddoc/:correlativo/bloquear', async (req, res) => {
     if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
     const empnit = requireEmpNit(req, res);
@@ -1000,4 +1261,6 @@ module.exports = {
   createInventarioDocsRouter,
   entradasRouter: createInventarioDocsRouter('ENT', 'inventario-ent'),
   salidasRouter: createInventarioDocsRouter('SAL', 'inventario-sal'),
+  trasladosCrearRouter: createInventarioDocsRouter(['TSL', 'TSS'], 'traslados-crear'),
+  trasladosRecibirRouter: createInventarioDocsRouter(['TIN', 'TES'], 'traslados-recibir'),
 };

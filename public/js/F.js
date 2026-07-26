@@ -141,6 +141,25 @@ let F = {
     return user?.empNombre ?? window.OnnebContext?.empNombre ?? '';
   },
 
+  /**
+   * CODTIPOEMPRESA: 1 PRINCIPAL, 2 SUCURSAL.
+   * @returns {number|null}
+   */
+  getCodTipoEmpresa() {
+    const raw =
+      this.session('user')?.codTipoEmpresa ?? window.OnnebContext?.codTipoEmpresa ?? null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
+
+  isEmpresaPrincipal() {
+    return this.getCodTipoEmpresa() === 1;
+  },
+
+  isEmpresaSucursal() {
+    return this.getCodTipoEmpresa() === 2;
+  },
+
   /** CODEMPLEADO de la sesión (null si superusuario o no definido). */
   sessionCodEmpleado() {
     const n = parseInt(this.session('user')?.codempleado, 10);
@@ -158,14 +177,41 @@ let F = {
     return ok ? cod : null;
   },
 
-  setEmpresaGlobal(empNit, empNombre = '') {
+  setEmpresaGlobal(empNit, empNombre = '', codTipoEmpresa = undefined) {
+    const prev = this.session('user') || {};
+    let tip = prev.codTipoEmpresa ?? null;
+    if (codTipoEmpresa !== undefined && codTipoEmpresa !== null && codTipoEmpresa !== '') {
+      const n = parseInt(codTipoEmpresa, 10);
+      tip = Number.isFinite(n) && n > 0 ? n : null;
+    }
     window.OnnebContext = {
       ...(window.OnnebContext || {}),
       empNit,
       empNombre,
+      codTipoEmpresa: tip,
     };
-    const user = this.session('user') || {};
-    this.session('user', { ...user, empNit, empNombre });
+    this.session('user', { ...prev, empNit, empNombre, codTipoEmpresa: tip });
+  },
+
+  async ensureCodTipoEmpresa() {
+    let tip = this.getCodTipoEmpresa();
+    if (tip != null) return tip;
+    const empnit = this.getEmpNit();
+    if (!empnit) return null;
+    try {
+      const data = await this.fetchJson(
+        `/api/empresas/tipo?empnit=${encodeURIComponent(empnit)}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      tip = data.CODTIPOEMPRESA == null ? null : Number(data.CODTIPOEMPRESA);
+      if (Number.isFinite(tip) && tip > 0) {
+        this.setEmpresaGlobal(empnit, this.getEmpNitNombre(), tip);
+        return tip;
+      }
+    } catch (err) {
+      console.warn('[F] ensureCodTipoEmpresa:', err?.message || err);
+    }
+    return null;
   },
 
   /** Socket.IO compartido (misma conexión / rooms de sesión). */
@@ -245,6 +291,45 @@ let F = {
       return res.json();
     } finally {
       if (isMutation) this.endMutation();
+    }
+  },
+
+  /** TOKEN de instalación (host de actualizaciones / comunidad). */
+  _token: null,
+  _runtimeLoaded: false,
+
+  getToken() {
+    if (this._token != null && this._token !== '') return this._token;
+    return window.OnnebContext?.token || '';
+  },
+
+  setToken(token) {
+    const value = String(token ?? '').trim();
+    this._token = value;
+    window.OnnebContext = {
+      ...(window.OnnebContext || {}),
+      token: value,
+    };
+    window.OnnebToken = value;
+    return value;
+  },
+
+  async loadRuntime() {
+    if (this._runtimeLoaded && this._token != null) {
+      return { token: this.getToken() };
+    }
+    try {
+      const data = await this.fetchJson(`/api/community/runtime?_=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      this.setToken(data.token || '');
+      this._runtimeLoaded = true;
+      return data;
+    } catch (err) {
+      console.warn('[F.loadRuntime]', err?.message || err);
+      this.setToken('');
+      this._runtimeLoaded = true;
+      return { token: '' };
     }
   },
 };

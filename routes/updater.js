@@ -2,27 +2,17 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { getUpdateDbConfig, isUpdateDbConfigured } = require('../config/update-database');
+const { getUpdateDbPool } = require('../lib/update-db-pool');
 
 const router = express.Router();
 
 const ANIO_MIN = 2024;
 const ANIO_MAX = 2030;
 
-let updatePool = null;
-
 function parseAnio(raw) {
   const n = parseInt(raw, 10);
   if (Number.isNaN(n) || n < ANIO_MIN || n > ANIO_MAX) return null;
   return n;
-}
-
-async function getUpdateDbPool() {
-  const cfg = getUpdateDbConfig();
-  if (!cfg) return null;
-  if (updatePool && updatePool.connected) return updatePool;
-  updatePool = new sql.ConnectionPool(cfg);
-  await updatePool.connect();
-  return updatePool;
 }
 
 router.get('/queries', async (req, res) => {

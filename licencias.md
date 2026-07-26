@@ -4,6 +4,8 @@ npm run licence
 Abre http://localhost:6501 → eliges módulos y/o vistas individuales (ej. Operaciones sin Compras) → descargas el .json firmado.
 Detener: npm run stop-licence   o   npm stop -- licence
 
+Detener el POS: npm stop
+
 La clave privada queda en GENERADOR LICENCIAS/keys/ (gitignored). La pública se sincroniza a config/license-public.pem.
 
 En el POS (cliente)

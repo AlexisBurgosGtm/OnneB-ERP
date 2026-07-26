@@ -116,7 +116,7 @@ function emptyLogoResponse(empNit) {
   return { EMPNIT: empNit, hex: null, hasLogo: false };
 }
 
-/** Login: solo EMPNIT y EMPNOMBRE */
+/** Login: EMPNIT, EMPNOMBRE y tipo (1 PRINCIPAL / 2 SUCURSAL) */
 router.get('/combo', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {
@@ -127,7 +127,10 @@ router.get('/combo', async (req, res) => {
     const result = await pool
       .request()
       .query(`
-        SELECT EMPNIT, EMPNOMBRE
+        SELECT
+          EMPNIT,
+          EMPNOMBRE,
+          CODTIPOEMPRESA
         FROM dbo.Empresas
         WHERE EMPNIT IS NOT NULL AND LTRIM(RTRIM(EMPNIT)) <> ''
         ORDER BY EMPNOMBRE
@@ -135,6 +138,39 @@ router.get('/combo', async (req, res) => {
     res.json({ rows: result.recordset, total: result.recordset.length });
   } catch (err) {
     console.warn('[API GET /empresas/combo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Tipo de empresa de la sesión (CODTIPOEMPRESA). */
+router.get('/tipo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
+  if (!empnit) return res.status(400).json({ error: 'EMPNIT requerido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .query(`
+        SELECT TOP 1 CODTIPOEMPRESA
+        FROM dbo.Empresas
+        WHERE EMPNIT = @EMPNIT
+      `);
+    if (!result.recordset.length) {
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    const raw = result.recordset[0].CODTIPOEMPRESA;
+    const codTipoEmpresa = raw == null || raw === '' ? null : Number(raw);
+    res.json({
+      EMPNIT: empnit,
+      CODTIPOEMPRESA: Number.isFinite(codTipoEmpresa) ? codTipoEmpresa : null,
+    });
+  } catch (err) {
+    console.warn('[API GET /empresas/tipo]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

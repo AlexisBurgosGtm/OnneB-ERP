@@ -15,7 +15,7 @@
     "license:gen": "node \"GENERADOR LICENCIAS/server.js\"",
     "licence": "node \"GENERADOR LICENCIAS/server.js\"",
     "stop-licence": "node scripts/stop-licence.js",
-    "stop": "node scripts/stop-licence.js",
+    "stop": "node scripts/npm-stop.js",
     "license:check": "node scripts/check-license-catalog.js",
     "test": "nodemon server.js"
   },

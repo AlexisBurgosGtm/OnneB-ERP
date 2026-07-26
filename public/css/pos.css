@@ -1140,6 +1140,30 @@ body.pos-product-sheet-open {
   margin-left: auto;
 }
 
+.inv-docs-table-wrap {
+  width: 100%;
+  background: var(--app-surface, #fff);
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-radius: var(--app-radius, 0.75rem);
+  overflow: auto;
+}
+
+.inv-docs-table {
+  margin: 0;
+  min-width: 42rem;
+}
+
+.inv-docs-table .inv-card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+
+.inv-list-as-table .pos-list-fab-nuevo {
+  z-index: 5;
+}
+
 .inv-list-period {
   display: flex;
   flex-direction: column;

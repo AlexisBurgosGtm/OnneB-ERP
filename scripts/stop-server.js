@@ -1,14 +1,14 @@
 /**
- * Detiene el generador de licencias (puerto LICENSE_GEN_PORT / 6501).
- * Uso: npm run stop-licence   |   npm stop -- licence
+ * Detiene el servidor principal OnneB POS (PORT / 6500).
+ * Uso: npm stop
  */
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const PID_PATH = path.join(ROOT, 'GENERADOR LICENCIAS', '.licence.pid');
-const PORT = Number(process.env.LICENSE_GEN_PORT || 6501);
+const PID_PATH = path.join(ROOT, '.server.pid');
+const PORT = Number(process.env.PORT || 6500);
 
 function readPidFile() {
   if (!fs.existsSync(PID_PATH)) return null;
@@ -82,18 +82,11 @@ function pidsOnPort(port) {
 }
 
 function main() {
-  const arg = String(process.argv[2] || '').trim().toLowerCase();
-  // npm stop -- licence  |  npm run stop-licence
-  if (arg && arg !== 'licence' && arg !== 'license' && arg !== 'licencias') {
-    console.error(`Uso: npm run stop-licence   o   npm stop -- licence`);
-    process.exit(1);
-  }
-
   let stopped = false;
   const filePid = readPidFile();
   if (filePid) {
     if (killPid(filePid)) {
-      console.log(`[Licencias] Detenido PID ${filePid}`);
+      console.log(`[OnneB] Detenido PID ${filePid}`);
       stopped = true;
     }
   }
@@ -101,7 +94,7 @@ function main() {
   for (const pid of pidsOnPort(PORT)) {
     if (filePid && pid === filePid) continue;
     if (killPid(pid)) {
-      console.log(`[Licencias] Detenido proceso en puerto ${PORT} (PID ${pid})`);
+      console.log(`[OnneB] Detenido proceso en puerto ${PORT} (PID ${pid})`);
       stopped = true;
     }
   }
@@ -109,7 +102,7 @@ function main() {
   clearPidFile();
 
   if (!stopped) {
-    console.log(`[Licencias] No había servicio activo (puerto ${PORT}).`);
+    console.log(`[OnneB] No había servicio activo (puerto ${PORT}).`);
   }
 }
 

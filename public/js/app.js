@@ -342,6 +342,10 @@
         .map((e) => ({
           EMPNIT: normEmpNit(e.EMPNIT),
           EMPNOMBRE: String(e.EMPNOMBRE ?? '').trim() || normEmpNit(e.EMPNIT),
+          CODTIPOEMPRESA:
+            e.CODTIPOEMPRESA == null || e.CODTIPOEMPRESA === ''
+              ? ''
+              : String(parseInt(e.CODTIPOEMPRESA, 10) || ''),
         }))
         .filter((e) => e.EMPNIT);
       if (!rows.length) {
@@ -354,7 +358,8 @@
         .map((e) => {
           const nit = escapeOptionText(e.EMPNIT);
           const nombre = escapeOptionText(e.EMPNOMBRE);
-          return `<option value="${nit}">${nombre}</option>`;
+          const tip = escapeOptionText(e.CODTIPOEMPRESA);
+          return `<option value="${nit}" data-codtipoempresa="${tip}">${nombre}</option>`;
         })
         .join('');
       const existe = nitGuardado && rows.some((r) => r.EMPNIT === nitGuardado);
@@ -397,9 +402,14 @@
       { passive: true }
     );
 
-    async function completeLoginSession(auth, empNit, empNombre, fallbackUsername) {
+    async function completeLoginSession(auth, empNit, empNombre, fallbackUsername, codTipoEmpresa) {
       const authUser = auth.user;
       const displayName = authUser?.nomempleado || authUser?.usuario || fallbackUsername;
+      let tip =
+        codTipoEmpresa == null || codTipoEmpresa === ''
+          ? null
+          : parseInt(codTipoEmpresa, 10);
+      if (!Number.isFinite(tip) || tip <= 0) tip = null;
       const sessionData = {
         username: displayName,
         usuario: authUser?.usuario || fallbackUsername,
@@ -410,10 +420,11 @@
         hasPasskey: Boolean(auth.hasPasskey || authUser?.hasPasskey),
         empNit,
         empNombre,
+        codTipoEmpresa: tip,
         at: new Date().toISOString(),
       };
       F.session('user', sessionData);
-      F.setEmpresaGlobal(empNit, empNombre);
+      F.setEmpresaGlobal(empNit, empNombre, tip);
       registerSocketSession();
       if (typeof AutorizacionesUI !== 'undefined') {
         AutorizacionesUI.bindSocket();
@@ -427,6 +438,7 @@
         if (typeof LicenseAccess !== 'undefined') {
           await LicenseAccess.refresh();
         }
+        await F.ensureCodTipoEmpresa();
         TipoEmpleadoAccess.applySidebarVisibility();
       }
       if (typeof MenuFavoritos !== 'undefined') {
@@ -458,6 +470,7 @@
         return;
       }
       const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
+      const codTipoEmpresa = empresaSelect.selectedOptions[0]?.dataset?.codtipoempresa || '';
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       if (!username || !password) {
@@ -471,7 +484,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ usuario: username, password, empnit: empNit }),
         });
-        await completeLoginSession(auth, empNit, empNombre, username);
+        await completeLoginSession(auth, empNit, empNombre, username, codTipoEmpresa);
       } catch (err) {
         stopLoadingOverlays();
         F.toast(err.message || 'Error al iniciar sesión', 'error');
@@ -489,6 +502,7 @@
           return;
         }
         const empNombre = empresaSelect.selectedOptions[0]?.textContent?.trim() || empNit;
+        const codTipoEmpresa = empresaSelect.selectedOptions[0]?.dataset?.codtipoempresa || '';
         const username = document.getElementById('username').value.trim();
         if (window.OnnebPace) OnnebPace.start();
         try {
@@ -497,7 +511,7 @@
             ...(username ? { usuario: username } : {}),
           });
           const loginUser = auth.user?.usuario || username || 'passkey';
-          await completeLoginSession(auth, empNit, empNombre, loginUser);
+          await completeLoginSession(auth, empNit, empNombre, loginUser, codTipoEmpresa);
         } catch (err) {
           stopLoadingOverlays();
           if (err?.name === 'NotAllowedError') {
@@ -601,10 +615,11 @@
     'actualizacion-inventario': 'Actualización de inventario',
     'crear-traslado': 'Crear Traslado',
     'recibir-traslado': 'Recibir Traslado',
-    'enviar-traslado': 'Enviar Traslado',
     documentos: 'Documentos',
     'resumen-del-dia': 'Resumen del día',
     autorizaciones: 'Autorizaciones',
+    'subir-catalogo': 'Subir catálogo',
+    'descargar-catalogo': 'Descargar Catálogo',
     empleados: 'Empleados',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
@@ -710,6 +725,10 @@
       EntradasInventarioView.load(mainContent);
     } else if (key === 'salidas-inventario' && typeof SalidasInventarioView !== 'undefined') {
       SalidasInventarioView.load(mainContent);
+    } else if (key === 'crear-traslado' && typeof CrearTrasladoView !== 'undefined') {
+      CrearTrasladoView.load(mainContent);
+    } else if (key === 'recibir-traslado' && typeof RecibirTrasladoView !== 'undefined') {
+      RecibirTrasladoView.load(mainContent);
     } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
       InventarioView.load(mainContent);
     } else if (
@@ -723,6 +742,10 @@
       ResumenDelDiaView.load(mainContent);
     } else if (key === 'autorizaciones' && typeof AutorizacionesView !== 'undefined') {
       AutorizacionesView.load(mainContent);
+    } else if (key === 'subir-catalogo' && typeof SubirCatalogoView !== 'undefined') {
+      SubirCatalogoView.load(mainContent);
+    } else if (key === 'descargar-catalogo' && typeof DescargarCatalogoView !== 'undefined') {
+      DescargarCatalogoView.load(mainContent);
     } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
       LibroVentasView.load(mainContent);
     } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
@@ -865,6 +888,12 @@
   async function bootApp() {
     if (typeof OnnebThemes !== 'undefined') OnnebThemes.init();
 
+    try {
+      await F.loadRuntime();
+    } catch (err) {
+      console.warn('[App] runtime/TOKEN:', err?.message || err);
+    }
+
     ensureLoginView();
     await loadLoginEmpresas();
 
@@ -898,6 +927,7 @@
           if (typeof LicenseAccess !== 'undefined') {
             await LicenseAccess.refresh();
           }
+          await F.ensureCodTipoEmpresa();
           TipoEmpleadoAccess.applySidebarVisibility();
         } catch (err) {
           console.warn('[App] acceso menú/licencia:', err?.message || err);

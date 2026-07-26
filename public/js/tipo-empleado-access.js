@@ -49,10 +49,11 @@ const TipoEmpleadoAccess = {
     'actualizacion-inventario',
     'crear-traslado',
     'recibir-traslado',
-    'enviar-traslado',
     'documentos',
     'resumen-del-dia',
     'autorizaciones',
+    'subir-catalogo',
+    'descargar-catalogo',
     'empleados',
     'nomina-config',
     'nomina-conceptos',
@@ -128,10 +129,11 @@ const TipoEmpleadoAccess = {
       'actualizacion-inventario',
       'crear-traslado',
       'recibir-traslado',
-      'enviar-traslado',
       'documentos',
       'resumen-del-dia',
       'autorizaciones',
+      'subir-catalogo',
+      'descargar-catalogo',
       'empleados',
       'nomina-config',
       'nomina-conceptos',
@@ -162,7 +164,6 @@ const TipoEmpleadoAccess = {
       'actualizacion-inventario',
       'crear-traslado',
       'recibir-traslado',
-      'enviar-traslado',
     ],
     6: [
       'inicio',
@@ -276,6 +277,14 @@ const TipoEmpleadoAccess = {
     if (typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
       return false;
     }
+    if (key === 'subir-catalogo' || key === 'descargar-catalogo') {
+      const tip =
+        typeof F !== 'undefined' && typeof F.getCodTipoEmpresa === 'function'
+          ? F.getCodTipoEmpresa()
+          : null;
+      if (key === 'subir-catalogo' && tip !== 1) return false;
+      if (key === 'descargar-catalogo' && tip !== 2) return false;
+    }
     return true;
   },
 
@@ -298,6 +307,10 @@ const TipoEmpleadoAccess = {
 
   applySidebarVisibility() {
     const allowed = this.allowedMenus(this.getCodTipo());
+    const tipEmpresa =
+      typeof F !== 'undefined' && typeof F.getCodTipoEmpresa === 'function'
+        ? F.getCodTipoEmpresa()
+        : null;
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((link) => {
       const key = link.dataset.menu;
       const li = link.closest('li');
@@ -307,10 +320,16 @@ const TipoEmpleadoAccess = {
         visible = false;
       }
       if (key === 'licencia' || key === 'inicio') visible = true;
+      if (key === 'subir-catalogo') visible = visible && tipEmpresa === 1;
+      if (key === 'descargar-catalogo') visible = visible && tipEmpresa === 2;
       li.hidden = !visible;
     });
     document.querySelectorAll('.sidebar-accordion .accordion-item').forEach((item) => {
       if (item.classList.contains('sidebar-favoritos-item')) {
+        item.hidden = false;
+        return;
+      }
+      if (item.classList.contains('sidebar-spacer-item')) {
         item.hidden = false;
         return;
       }

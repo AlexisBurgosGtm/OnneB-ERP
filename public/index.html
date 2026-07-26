@@ -226,7 +226,6 @@
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="crear-traslado"><i class="fa-solid fa-plus" aria-hidden="true"></i> Crear Traslado</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="recibir-traslado"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Recibir Traslado</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="enviar-traslado"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Enviar Traslado</a></li>
                 </ul>
               </div>
             </div>
@@ -242,6 +241,20 @@
                   <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="resumen-del-dia"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Resumen del día</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="autorizaciones"><i class="fa-solid fa-lock" aria-hidden="true"></i> Autorizaciones</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOnlineServices" aria-expanded="false" aria-controls="collapseOnlineServices">
+                  <i class="fa-solid fa-cloud sidebar-icon" aria-hidden="true"></i>
+                  <span>ONLINE SERVICES</span>
+                </button>
+              </h2>
+              <div id="collapseOnlineServices" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="subir-catalogo"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i> Subir catálogo</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="descargar-catalogo"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i> Descargar Catálogo</a></li>
                 </ul>
               </div>
             </div>
@@ -362,6 +375,10 @@
                   <li><a href="#" class="sidebar-link" data-menu="licencia"><i class="fa-solid fa-certificate" aria-hidden="true"></i> Licencia</a></li>
                 </ul>
               </div>
+            </div>
+            <!-- Espacio final: el último ítem real queda por encima del FAB Menu -->
+            <div class="accordion-item sidebar-spacer-item" aria-hidden="true">
+              <div class="sidebar-end-spacer"></div>
             </div>
           </div>
         </nav>
@@ -485,6 +502,8 @@
   <script src="/js/views/archivo/documentos.js"></script>
   <script src="/js/views/archivo/resumen-del-dia.js"></script>
   <script src="/js/views/archivo/autorizaciones.js"></script>
+  <script src="/js/views/online-services/subir-catalogo.js"></script>
+  <script src="/js/views/online-services/descargar-catalogo.js"></script>
   <script src="/js/libro-contable-common.js"></script>
   <script src="/js/views/contabilidad/libro-ventas.js"></script>
   <script src="/js/views/contabilidad/libro-compras.js"></script>

@@ -182,13 +182,150 @@ function createInventarioMovView(cfg) {
 
     filteredDocsList() {
       const q = this._listFilter.trim().toLowerCase();
-      if (!q) return this._docsList;
-      return this._docsList.filter((r) => {
-        const hay = [r.CODDOC, r.CORRELATIVO, r.OBS, r.USUARIO]
+      return (this._docsList || []).filter((r) => {
+        if (!q) return true;
+        const hay = [r.CODDOC, r.CORRELATIVO, r.OBS, r.USUARIO, r.OBSMARCA, r.CODEMBARQUE]
           .map((v) => String(v ?? '').toLowerCase())
           .join(' ');
         return hay.includes(q);
       });
+    },
+
+    docDestinoLabel(r) {
+      if (cfg.destinoAsOrigen) {
+        const code = String(r?.CODEMBARQUE || '').trim();
+        if (code && code.toUpperCase() !== 'SN' && code.toUpperCase() !== 'INVENTARIO') return code;
+        const marca = String(r?.OBSMARCA || '').trim();
+        if (marca && marca.toUpperCase() !== 'SN') return marca;
+        return '—';
+      }
+      const marca = String(r?.OBSMARCA || '').trim();
+      if (marca && marca.toUpperCase() !== 'SN') return marca;
+      const code = String(r?.CODEMBARQUE || '').trim();
+      if (code && code.toUpperCase() !== 'SN' && code.toUpperCase() !== 'INVENTARIO') return code;
+      return '—';
+    },
+
+    destinoColTitle() {
+      return cfg.destinoColLabel || (cfg.destinoAsOrigen ? 'Origen' : 'Destino');
+    },
+
+    docYaEnviado(r) {
+      const m = String(r?.MARCA || '').trim().toUpperCase();
+      if (!m || m === 'SN') return false;
+      // MARCA puede ser ENVIADO completo o recortado al tamaño de la columna (EN, ENV, …).
+      return m === 'ENVIADO' || (m.length >= 2 && 'ENVIADO'.startsWith(m));
+    },
+
+    enviarTrasladoBtnHtml(r, { compact = false } = {}) {
+      if (!cfg.showEnviarTraslado) return '';
+      const enviado = this.docYaEnviado(r);
+      const btnClass = enviado ? 'btn-danger' : 'btn-outline-success';
+      const title = enviado ? 'Reenviar traslado (ya enviado)' : 'Enviar traslado';
+      if (compact) {
+        return `<button type="button" class="btn btn-sm ${btnClass} inv-card-btn" data-action="enviar" title="${title}">
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>`;
+      }
+      return `<button type="button" class="btn btn-sm ${btnClass} inv-card-btn" data-action="enviar" title="${title}">
+                <i class="fa-solid fa-paper-plane me-1"></i>${enviado ? 'Reenviar' : 'Enviar traslado'}
+              </button>`;
+    },
+
+    renderListRowsHtml() {
+      const rows = this.filteredDocsList();
+      if (!rows.length) {
+        const colSpan = cfg.showDestinoCol ? 7 : 6;
+        return `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">No hay documentos en ${this._listMes}/${this._listAnio}</td></tr>`;
+      }
+      return rows
+        .map((r) => {
+          return `
+          <tr class="inv-doc-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
+            <td class="small fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+            <td class="small text-nowrap">${this.escapeHtml(this.formatFecha(r))}</td>
+            <td class="small">${this.escapeHtml(r.USUARIO || '—')}</td>
+            ${
+              cfg.showDestinoCol
+                ? `<td class="small">${this.escapeHtml(this.docDestinoLabel(r))}</td>`
+                : ''
+            }
+            <td class="small text-end">${Number(r.LINEAS) || 0}</td>
+            <td class="small text-truncate" style="max-width:12rem" title="${this.escapeHtml(r.OBS || '')}">${this.escapeHtml(r.OBS || '—')}</td>
+            <td class="text-end text-nowrap inv-card-actions">
+              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar" title="Editar">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir" title="Imprimir">
+                <i class="fa-solid fa-print"></i>
+              </button>
+              ${this.enviarTrasladoBtnHtml(r, { compact: true })}
+              ${
+                cfg.showBloquear !== false
+                  ? `<button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear" title="Bloquear">
+                <i class="fa-solid fa-lock"></i>
+              </button>`
+                  : ''
+              }
+              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar" title="Eliminar">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </td>
+          </tr>`;
+        })
+        .join('');
+    },
+
+    renderListCardsHtml() {
+      if (cfg.listAsTable) {
+        return this.renderListRowsHtml();
+      }
+      const rows = this.filteredDocsList();
+      if (!rows.length) {
+        return `<div class="pos-list-empty text-muted text-center py-5">No hay documentos en ${this._listMes}/${this._listAnio}</div>`;
+      }
+      return rows
+        .map((r) => {
+          const label = `${r.CODDOC} #${r.CORRELATIVO}`;
+          const destino = cfg.showDestinoCol ? this.docDestinoLabel(r) : '';
+          return `
+          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
+            data-correlativo="${r.CORRELATIVO}">
+            <div class="pos-pedido-card-top">
+              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
+            </div>
+            <div class="pos-pedido-card-meta">${this.escapeHtml(r.USUARIO || '—')} · ${this.escapeHtml(this.formatFecha(r))}</div>
+            ${
+              cfg.showDestinoCol
+                ? `<div class="pos-pedido-card-meta small"><span class="text-muted">${this.escapeHtml(this.destinoColTitle())}:</span> ${this.escapeHtml(destino)}</div>`
+                : ''
+            }
+            <div class="pos-pedido-card-footer">
+              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
+              ${r.OBS ? `<span class="text-truncate ms-2" title="${this.escapeHtml(r.OBS)}">${this.escapeHtml(r.OBS)}</span>` : ''}
+            </div>
+            <div class="inv-card-actions">
+              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
+                <i class="fa-solid fa-pen me-1"></i>Editar
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
+                <i class="fa-solid fa-print me-1"></i>Imprimir
+              </button>
+              ${this.enviarTrasladoBtnHtml(r)}
+              ${
+                cfg.showBloquear !== false
+                  ? `<button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
+                <i class="fa-solid fa-lock me-1"></i>Bloquear
+              </button>`
+                  : ''
+              }
+              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
+                <i class="fa-solid fa-trash me-1"></i>Eliminar
+              </button>
+            </div>
+          </div>`;
+        })
+        .join('');
     },
 
     async loadDocumento(coddoc, correlativo, opts = {}) {
@@ -214,6 +351,52 @@ function createInventarioMovView(cfg) {
       F.toast('Nuevo documento creado', 'success');
     },
 
+    async fetchEmpresasSync() {
+      const exclude = encodeURIComponent(F.getEmpNit() || '');
+      const data = await F.fetchJson(
+        `/api/community/empresas-sync?excludeEmpnit=${exclude}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      return data.rows || [];
+    },
+
+    /**
+     * Carga empresas de la nube bloqueando botones y mostrando aviso.
+     * @param {HTMLElement[]} buttons
+     */
+    async fetchEmpresasSyncConAviso(buttons = []) {
+      const list = [...new Set((buttons || []).filter(Boolean))];
+      const prevDisabled = list.map((b) => b.disabled);
+      list.forEach((b) => {
+        b.disabled = true;
+        b.setAttribute('aria-busy', 'true');
+      });
+      F.toast('Cargando empresas de la nube…', 'info');
+      try {
+        return await this.fetchEmpresasSync();
+      } finally {
+        list.forEach((b, i) => {
+          b.disabled = prevDisabled[i];
+          b.removeAttribute('aria-busy');
+        });
+      }
+    },
+
+    destinoOptionsHtml(rows, selectedEmpnit) {
+      const sel = String(selectedEmpnit || '').trim().toUpperCase();
+      const blank = `<option value="">— Seleccione destino —</option>`;
+      const opts = (rows || [])
+        .map((r) => {
+          const empnit = String(r.EMPNIT || '').trim();
+          const nombre = String(r.EMPNOMBRE || '').trim();
+          const label = nombre ? `${empnit} — ${nombre}` : empnit || '—';
+          const selected = empnit.toUpperCase() === sel ? ' selected' : '';
+          return `<option value="${this.escapeHtml(empnit)}" data-nombre="${this.escapeHtml(nombre)}"${selected}>${this.escapeHtml(label)}</option>`;
+        })
+        .join('');
+      return blank + opts;
+    },
+
     async finalizarDocumento() {
       const key = this.docKey();
       if (!key) return;
@@ -227,7 +410,32 @@ function createInventarioMovView(cfg) {
         return;
       }
 
+      const needDestino = Boolean(cfg.requireDestinoOnFinalizar);
+      let destinos = [];
+      if (needDestino) {
+        const btnFinalizar = this._container?.querySelector(`#${NS}-btn-finalizar`);
+        try {
+          destinos = await this.fetchEmpresasSyncConAviso([btnFinalizar]);
+        } catch (err) {
+          F.toast(err.message || 'No se pudieron cargar empresas destino', 'error');
+          return;
+        }
+        if (!destinos.length) {
+          F.toast('No hay empresas destino para este TOKEN', 'warning');
+          return;
+        }
+      }
+
       const obsVal = this.escapeHtml(h.OBS || '');
+      const destinoHtml = needDestino
+        ? `
+          <label class="form-label small mb-0 mt-2" for="${NS}-finalizar-destino">Destino</label>
+          <select id="${NS}-finalizar-destino" class="form-select form-select-sm">
+            ${this.destinoOptionsHtml(destinos, h.CODEMBARQUE)}
+          </select>
+        `
+        : '';
+
       const { isConfirmed, value } = await Swal.fire({
         ...CatalogosUI.modalBase(),
         title: cfg.finalizarTitle || 'Finalizar documento',
@@ -237,6 +445,7 @@ function createInventarioMovView(cfg) {
             <label class="form-label small mb-0" for="${NS}-finalizar-obs">Observaciones</label>
             <textarea id="${NS}-finalizar-obs" class="form-control form-control-sm" rows="3"
               placeholder="Observaciones…">${obsVal}</textarea>
+            ${destinoHtml}
           </div>
         `,
         icon: 'question',
@@ -244,11 +453,26 @@ function createInventarioMovView(cfg) {
         confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
         cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
         focusConfirm: false,
-        didOpen: () => document.getElementById(`${NS}-finalizar-obs`)?.focus(),
-        preConfirm: () => document.getElementById(`${NS}-finalizar-obs`)?.value?.trim() || '',
+        didOpen: () => {
+          if (needDestino) document.getElementById(`${NS}-finalizar-destino`)?.focus();
+          else document.getElementById(`${NS}-finalizar-obs`)?.focus();
+        },
+        preConfirm: () => {
+          const obs = document.getElementById(`${NS}-finalizar-obs`)?.value?.trim() || '';
+          if (!needDestino) return { OBS: obs };
+          const sel = document.getElementById(`${NS}-finalizar-destino`);
+          const CODEMBARQUE = String(sel?.value || '').trim();
+          if (!CODEMBARQUE) {
+            Swal.showValidationMessage('Seleccione la empresa destino');
+            return false;
+          }
+          const opt = sel?.selectedOptions?.[0];
+          const OBSMARCA = String(opt?.getAttribute('data-nombre') || '').trim();
+          return { OBS: obs, CODEMBARQUE, OBSMARCA };
+        },
       });
 
-      if (!isConfirmed) return;
+      if (!isConfirmed || !value) return;
 
       const url = this.apiUrl(
         `/documentos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/finalizar`
@@ -256,11 +480,454 @@ function createInventarioMovView(cfg) {
       await F.fetchJson(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ OBS: value }),
+        body: JSON.stringify(value),
       });
       F.toast('Documento finalizado', 'success');
       this._documento = null;
       await this.showList();
+    },
+
+    async abrirEnviarTraslado(coddoc, correlativo, triggerBtn = null) {
+      const row =
+        (this._docsList || []).find(
+          (r) =>
+            String(r.CODDOC) === String(coddoc) && Number(r.CORRELATIVO) === Number(correlativo)
+        ) || {};
+
+      if (this.docYaEnviado(row)) {
+        const okReenviar = await CatalogosUI.fireConfirm({
+          title: '¿Volver a enviar el traslado?',
+          html: `<p class="mb-0 text-start">El documento <strong>${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</strong>
+            ya fue enviado. Se eliminará la copia previa en la nube (si existe) y se volverá a subir.</p>`,
+          icon: 'warning',
+          confirmText: 'Reenviar',
+          confirmClass: 'btn-catalogo-bloquear',
+        });
+        if (!okReenviar) return;
+      }
+
+      const enviarBtns = [
+        triggerBtn,
+        ...Array.from(this._container?.querySelectorAll('.inv-card-btn[data-action="enviar"]') || []),
+      ];
+
+      let destinos = [];
+      try {
+        destinos = await this.fetchEmpresasSyncConAviso(enviarBtns);
+      } catch (err) {
+        F.toast(err.message || 'No se pudieron cargar empresas destino', 'error');
+        return;
+      }
+      if (!destinos.length) {
+        F.toast('No hay empresas destino para este TOKEN', 'warning');
+        return;
+      }
+
+      const current = String(row.CODEMBARQUE || '').trim();
+      const yaEnviado = this.docYaEnviado(row);
+
+      const { isConfirmed, value } = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: yaEnviado ? 'Reenviar traslado' : 'Enviar traslado',
+        html: `
+          <p class="small text-muted mb-2 text-start">${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</p>
+          <div class="text-start">
+            <label class="form-label small mb-0" for="${NS}-enviar-destino">Destino</label>
+            <select id="${NS}-enviar-destino" class="form-select form-select-sm">
+              ${this.destinoOptionsHtml(destinos, current)}
+            </select>
+            <p class="small text-muted mt-2 mb-0" id="${NS}-enviar-status">Se enviará una copia del documento al host comunitario${
+              yaEnviado ? ' (reemplazando la copia anterior)' : ''
+            }.</p>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml(yaEnviado ? 'Reenviar' : 'Confirmar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+        focusConfirm: false,
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        allowEscapeKey: () => !Swal.isLoading(),
+        didOpen: () => document.getElementById(`${NS}-enviar-destino`)?.focus(),
+        preConfirm: async () => {
+          const sel = document.getElementById(`${NS}-enviar-destino`);
+          const CODEMBARQUE = String(sel?.value || '').trim();
+          if (!CODEMBARQUE) {
+            Swal.showValidationMessage('Seleccione la empresa destino');
+            return false;
+          }
+          const opt = sel?.selectedOptions?.[0];
+          const OBSMARCA = String(opt?.getAttribute('data-nombre') || '').trim();
+
+          const confirmBtn = Swal.getConfirmButton();
+          const cancelBtn = Swal.getCancelButton();
+          const statusEl = document.getElementById(`${NS}-enviar-status`);
+          if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.setAttribute('aria-busy', 'true');
+          }
+          if (cancelBtn) cancelBtn.disabled = true;
+          if (sel) sel.disabled = true;
+          if (statusEl) {
+            statusEl.className = 'small text-primary mt-2 mb-0';
+            statusEl.textContent = 'Enviando traslado a la nube…';
+          }
+          // No usar F.toast aquí: también es Swal y cierra este modal.
+          Swal.showLoading();
+
+          try {
+            const url = this.apiUrl(
+              `/documentos/${encodeURIComponent(coddoc)}/${correlativo}/enviar`
+            );
+            await F.fetchJson(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ CODEMBARQUE, OBSMARCA }),
+            });
+            return { CODEMBARQUE, OBSMARCA };
+          } catch (err) {
+            if (confirmBtn) {
+              confirmBtn.disabled = false;
+              confirmBtn.removeAttribute('aria-busy');
+            }
+            if (cancelBtn) cancelBtn.disabled = false;
+            if (sel) sel.disabled = false;
+            if (statusEl) {
+              statusEl.className = 'small text-muted mt-2 mb-0';
+              statusEl.textContent = yaEnviado
+                ? 'Se enviará una copia del documento al host comunitario (reemplazando la copia anterior).'
+                : 'Se enviará una copia del documento al host comunitario.';
+            }
+            Swal.hideLoading();
+            Swal.showValidationMessage(err.message || 'Error al enviar traslado');
+            return false;
+          }
+        },
+      });
+
+      if (!isConfirmed || !value) return;
+
+      await this.fetchDocsList();
+      this.refreshListDom();
+      F.toast(yaEnviado ? 'Traslado reenviado al host' : 'Traslado enviado al host', 'success');
+    },
+
+    formatCommunityFecha(row) {
+      try {
+        if (typeof DocFecha !== 'undefined' && DocFecha.formatDisplay) {
+          const anio = Number(row?.ANIO);
+          const mes = Number(row?.MES);
+          const dia = Number(row?.DIA);
+          if (
+            Number.isFinite(anio) &&
+            Number.isFinite(mes) &&
+            Number.isFinite(dia) &&
+            mes >= 1 &&
+            mes <= 12 &&
+            dia >= 1
+          ) {
+            return DocFecha.formatDisplay(row);
+          }
+          if (row?.FECHA) return DocFecha.formatDisplay(row.FECHA);
+        }
+      } catch {
+        /* ignore */
+      }
+      const f = row?.FECHA;
+      if (!f) return '—';
+      const s = String(f);
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        const [y, m, d] = s.slice(0, 10).split('-');
+        return `${d}/${m}/${y}`;
+      }
+      const dt = new Date(f);
+      if (Number.isNaN(dt.getTime())) return '—';
+      const day = String(dt.getUTCDate()).padStart(2, '0');
+      const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+      return `${day}/${month}/${dt.getUTCFullYear()}`;
+    },
+
+    communityTrasladoRowKey(r) {
+      return `${String(r?.EMPNIT || '').trim()}|${String(r?.CODDOC || '').trim()}|${Number(r?.CORRELATIVO)}`;
+    },
+
+    renderDescargarTrasladoTableHtml(rows) {
+      if (!rows.length) {
+        return `<p class="text-muted mb-0 text-center py-3">No hay traslados en la nube con destino a esta empresa.</p>`;
+      }
+      return `<div class="table-responsive" style="max-height:22rem">
+            <table class="table table-sm table-hover align-middle mb-0 text-start">
+              <thead class="table-light">
+                <tr>
+                  <th>Origen</th>
+                  <th>Documento</th>
+                  <th>Fecha</th>
+                  <th>Usuario</th>
+                  <th>Obs.</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .map((r) => {
+                    const origen = this.escapeHtml(r.EMPNIT || '—');
+                    const coddoc = this.escapeHtml(r.CODDOC || '');
+                    const corr = this.escapeHtml(r.CORRELATIVO);
+                    const key = this.escapeHtml(this.communityTrasladoRowKey(r));
+                    return `<tr data-cloud-key="${key}"
+                      data-origen="${origen}"
+                      data-coddoc="${coddoc}"
+                      data-correlativo="${corr}">
+                  <td class="small">${origen}</td>
+                  <td class="small text-nowrap fw-semibold">${coddoc} #${corr}</td>
+                  <td class="small text-nowrap">${this.escapeHtml(this.formatCommunityFecha(r))}</td>
+                  <td class="small">${this.escapeHtml(r.USUARIO || '—')}</td>
+                  <td class="small text-truncate" style="max-width:8rem" title="${this.escapeHtml(r.OBS || '')}">${this.escapeHtml(r.OBS || '—')}</td>
+                  <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary me-1" data-cloud-action="detalle">
+                      <i class="fa-solid fa-list me-1"></i>Ver Detalles
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" data-cloud-action="descargar">
+                      <i class="fa-solid fa-download me-1"></i>Descargar
+                    </button>
+                  </td>
+                </tr>`;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>`;
+    },
+
+    async verDetalleTrasladoNube(origenEmpnit, coddoc, correlativo) {
+      const label = `${coddoc} #${correlativo}`;
+      Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: 'Detalle del traslado',
+        html: `<p class="small text-muted mb-2 text-start">Cargando productos de <strong>${this.escapeHtml(label)}</strong>…</p>
+          <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>`,
+        width: '40rem',
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: 'Cerrar',
+        allowOutsideClick: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      let lines = [];
+      try {
+        const q = new URLSearchParams({
+          empnit: F.getEmpNit() || '',
+          origenEmpnit: String(origenEmpnit || ''),
+          coddoc: String(coddoc || ''),
+          correlativo: String(correlativo),
+          _: String(Date.now()),
+        });
+        const data = await F.fetchJson(`/api/community/traslados-destino/detalle?${q}`, {
+          cache: 'no-store',
+          headers: { 'x-emp-nit': F.getEmpNit() || '' },
+        });
+        lines = data.lines || [];
+      } catch (err) {
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: 'error',
+          title: 'Detalle del traslado',
+          text: err.message || 'No se pudo cargar el detalle',
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        });
+        return;
+      }
+
+      const tableHtml = !lines.length
+        ? `<p class="text-muted mb-0 text-center py-3">Sin productos en este traslado.</p>`
+        : `<div class="table-responsive" style="max-height:22rem">
+            <table class="table table-sm table-hover align-middle mb-0 text-start">
+              <thead class="table-light">
+                <tr>
+                  <th>Código</th>
+                  <th>Producto</th>
+                  <th>Medida</th>
+                  <th class="text-end">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lines
+                  .map(
+                    (ln) => `<tr>
+                  <td class="small text-nowrap">${this.escapeHtml(ln.CODPROD || '')}</td>
+                  <td class="small">${this.escapeHtml(ln.DESPROD || '')}</td>
+                  <td class="small">${this.escapeHtml(ln.CODMEDIDA || '')}</td>
+                  <td class="small text-end">${Number(ln.CANTIDAD) || 0}</td>
+                </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>`;
+
+      await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: 'Detalle del traslado',
+        html: `
+          <p class="small text-muted mb-2 text-start">
+            Origen <strong>${this.escapeHtml(origenEmpnit)}</strong> ·
+            <strong>${this.escapeHtml(label)}</strong> · ${lines.length} producto(s)
+          </p>
+          ${tableHtml}
+        `,
+        width: '42rem',
+        showCancelButton: false,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+      });
+    },
+
+    async descargarTrasladoNube(origenEmpnit, coddoc, correlativo) {
+      const label = `${coddoc} #${correlativo}`;
+      const coddocLocal = this.activeCoddoc();
+      if (!coddocLocal) {
+        F.toast('Seleccione una serie TIN/TES activa para recibir el traslado', 'warning');
+        return false;
+      }
+
+      const confirm = await CatalogosUI.fireConfirm({
+        title: '¿Descargar traslado?',
+        html: `<p class="mb-2">Se creará un documento local <strong>${this.escapeHtml(coddocLocal)}</strong> desde el traslado de la nube <strong>${this.escapeHtml(label)}</strong> (origen <strong>${this.escapeHtml(origenEmpnit)}</strong>).</p>
+          <p class="mb-0 small text-muted">Se sumará al stock, se finalizará el documento y se eliminará de la nube.</p>`,
+        icon: 'question',
+        confirmText: 'DESCARGAR',
+        confirmClass: 'btn-success',
+      });
+      if (!confirm) return false;
+
+      Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: 'Descargando traslado…',
+        html: `<p class="small text-muted mb-2">Generando documento local, actualizando inventario y eliminando copia en la nube.</p>
+          <div class="text-center py-3"><div class="spinner-border text-success" role="status"></div></div>
+          <p id="${NS}-dl-status" class="small text-muted mb-0">Procesando…</p>`,
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      try {
+        const result = await F.fetchJson(this.apiUrl('/community/descargar'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-emp-nit': F.getEmpNit() || '',
+          },
+          body: JSON.stringify({
+            origenEmpnit,
+            origenCoddoc: coddoc,
+            origenCorrelativo: correlativo,
+            CODDOC: coddocLocal,
+            USUARIO: this.usuario(),
+            empnit: F.getEmpNit() || '',
+          }),
+        });
+        Swal.close();
+        const doc = result?.documento;
+        F.toast(
+          doc
+            ? `Traslado descargado: ${doc.CODDOC} #${doc.CORRELATIVO} (origen ${doc.CODEMBARQUE || origenEmpnit})`
+            : 'Traslado descargado',
+          'success'
+        );
+        await this.fetchDocsList();
+        this.refreshListDom();
+        return true;
+      } catch (err) {
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: 'error',
+          title: 'Error al descargar',
+          text: err.message || 'No se pudo descargar el traslado',
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+        });
+        return false;
+      }
+    },
+
+    async abrirDescargarTraslado(triggerBtn = null) {
+      const btn = triggerBtn || this._container?.querySelector(`#${NS}-btn-descargar-traslado`);
+      if (btn) {
+        btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
+      }
+      F.toast('Consultando traslados en la nube…', 'info');
+
+      let rows = [];
+      try {
+        const empnit = encodeURIComponent(F.getEmpNit() || '');
+        const data = await F.fetchJson(
+          `/api/community/traslados-destino?empnit=${empnit}&_=${Date.now()}`,
+          { cache: 'no-store', headers: { 'x-emp-nit': F.getEmpNit() || '' } }
+        );
+        rows = data.rows || [];
+      } catch (err) {
+        F.toast(err.message || 'No se pudieron cargar traslados de la nube', 'error');
+        return;
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+      }
+
+      const self = this;
+      let cloudRows = rows.slice();
+
+      const openListModal = async () => {
+        const bodyHtml = self.renderDescargarTrasladoTableHtml(cloudRows);
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          title: 'Descargar Traslado',
+          html: `
+            <p class="small text-muted mb-2 text-start">Traslados en la nube con destino <strong>${self.escapeHtml(F.getEmpNit() || '')}</strong> (${cloudRows.length}).</p>
+            <div id="${NS}-cloud-list">${bodyHtml}</div>
+            <p id="${NS}-cloud-status" class="small text-muted mt-2 mb-0" style="display:none"></p>
+          `,
+          width: cloudRows.length ? '52rem' : undefined,
+          showCancelButton: false,
+          confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
+          didOpen: (popup) => {
+            popup.addEventListener('click', async (ev) => {
+              const actionBtn = ev.target.closest('[data-cloud-action]');
+              if (!actionBtn) return;
+              const tr = actionBtn.closest('tr[data-origen]');
+              if (!tr) return;
+              const action = actionBtn.getAttribute('data-cloud-action');
+              const origen = tr.getAttribute('data-origen') || '';
+              const coddoc = tr.getAttribute('data-coddoc') || '';
+              const correlativo = Number(tr.getAttribute('data-correlativo'));
+              if (!origen || !coddoc || !Number.isFinite(correlativo)) return;
+
+              if (action === 'detalle') {
+                Swal.close();
+                await self.verDetalleTrasladoNube(origen, coddoc, correlativo);
+                await openListModal();
+                return;
+              }
+
+              if (action === 'descargar') {
+                Swal.close();
+                const ok = await self.descargarTrasladoNube(origen, coddoc, correlativo);
+                if (ok) return;
+                await openListModal();
+              }
+            });
+          },
+        });
+      };
+
+      await openListModal();
     },
 
     async bloquearDocumento(coddoc, correlativo) {
@@ -984,44 +1651,6 @@ function createInventarioMovView(cfg) {
       if (fab) fab.style.display = editable ? '' : 'none';
     },
 
-    renderListCardsHtml() {
-      const rows = this.filteredDocsList();
-      if (!rows.length) {
-        return `<div class="pos-list-empty text-muted text-center py-5">No hay documentos en ${this._listMes}/${this._listAnio}</div>`;
-      }
-      return rows
-        .map((r) => {
-          const label = `${r.CODDOC} #${r.CORRELATIVO}`;
-          return `
-          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
-            data-correlativo="${r.CORRELATIVO}">
-            <div class="pos-pedido-card-top">
-              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
-            </div>
-            <div class="pos-pedido-card-meta">${this.escapeHtml(r.USUARIO || '—')} · ${this.escapeHtml(this.formatFecha(r))}</div>
-            <div class="pos-pedido-card-footer">
-              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
-              ${r.OBS ? `<span class="text-truncate ms-2" title="${this.escapeHtml(r.OBS)}">${this.escapeHtml(r.OBS)}</span>` : ''}
-            </div>
-            <div class="inv-card-actions">
-              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
-                <i class="fa-solid fa-pen me-1"></i>Editar
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
-                <i class="fa-solid fa-print me-1"></i>Imprimir
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
-                <i class="fa-solid fa-lock me-1"></i>Bloquear
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
-                <i class="fa-solid fa-trash me-1"></i>Eliminar
-              </button>
-            </div>
-          </div>`;
-        })
-        .join('');
-    },
-
     renderListToolbar() {
       const mesOpts = this.mesOptions()
         .map(
@@ -1053,6 +1682,16 @@ function createInventarioMovView(cfg) {
               label: 'Serie',
               className: 'doc-tipo-select-wrap inv-list-period',
             })}
+            ${
+              cfg.showDescargarTraslado
+                ? `<div class="inv-list-period inv-list-descargar">
+              <label class="small text-muted mb-0 d-block">&nbsp;</label>
+              <button type="button" class="btn btn-sm btn-outline-primary" id="${NS}-btn-descargar-traslado">
+                <i class="fa-solid fa-cloud-arrow-down me-1"></i>Descargar Traslado
+              </button>
+            </div>`
+                : ''
+            }
           </div>
           <div class="input-group inv-list-search">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -1065,14 +1704,32 @@ function createInventarioMovView(cfg) {
 
     renderListScreen() {
       const count = this.filteredDocsList().length;
+      const listBody = cfg.listAsTable
+        ? `<div class="table-responsive inv-docs-table-wrap">
+            <table class="table table-sm table-hover align-middle mb-0 inv-docs-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Documento</th>
+                  <th>Fecha</th>
+                  <th>Usuario</th>
+                  ${cfg.showDestinoCol ? `<th>${this.escapeHtml(this.destinoColTitle())}</th>` : ''}
+                  <th class="text-end">Líneas</th>
+                  <th>Obs.</th>
+                  <th class="text-end">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="${NS}-doc-cards">${this.renderListCardsHtml()}</tbody>
+            </table>
+          </div>`
+        : `<div class="pos-pedido-cards" id="${NS}-doc-cards">${this.renderListCardsHtml()}</div>`;
       return `
-      <div class="pos-list-wrap">
+      <div class="pos-list-wrap${cfg.listAsTable ? ' inv-list-as-table' : ''}">
         <div class="pos-list-header">
           <h2 class="pos-list-title">${this.escapeHtml(cfg.listTitle || 'Movimientos de inventario')}</h2>
           <p class="pos-list-sub text-muted mb-0">${count} documento(s) operados · ${this._listMes}/${this._listAnio}</p>
         </div>
         ${this.renderListToolbar()}
-        <div class="pos-pedido-cards" id="${NS}-doc-cards">${this.renderListCardsHtml()}</div>
+        ${listBody}
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="${NS}-btn-nuevo"
           aria-label="Nuevo documento" title="Nuevo documento"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -1198,19 +1855,27 @@ function createInventarioMovView(cfg) {
 
       DocTipoSelect.bind(this._container, `${NS}-list-coddoc`, this);
 
+      this._container
+        ?.querySelector(`#${NS}-btn-descargar-traslado`)
+        ?.addEventListener('click', (e) => {
+          const btn = e.currentTarget;
+          this.abrirDescargarTraslado(btn).catch((err) => F.toast(err.message || 'Error', 'error'));
+        });
+
       this._container?.querySelector(`#${NS}-doc-cards`)?.addEventListener('click', async (e) => {
         const btn = e.target.closest('.inv-card-btn');
         if (!btn) return;
         e.preventDefault();
         e.stopPropagation();
-        const card = btn.closest('.inv-doc-card');
-        if (!card) return;
-        const coddoc = card.getAttribute('data-coddoc');
-        const correlativo = card.getAttribute('data-correlativo');
+        const row = btn.closest('.inv-doc-card, .inv-doc-row');
+        if (!row) return;
+        const coddoc = row.getAttribute('data-coddoc');
+        const correlativo = row.getAttribute('data-correlativo');
         const action = btn.getAttribute('data-action');
         try {
           if (action === 'editar') await this.showEditor(coddoc, correlativo);
           else if (action === 'imprimir') await this.imprimirDocumento(coddoc, correlativo);
+          else if (action === 'enviar') await this.abrirEnviarTraslado(coddoc, correlativo, btn);
           else if (action === 'bloquear') await this.bloquearDocumento(coddoc, correlativo);
           else if (action === 'eliminar') await this.eliminarDocumento(coddoc, correlativo);
         } catch (err) {
@@ -1386,7 +2051,7 @@ function createInventarioMovView(cfg) {
         if (!this._config.coddocDefault) {
           container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
-            Configure un tipo de documento <strong>${this.escapeHtml(cfg.tipodoc || '')}</strong> activo para esta empresa.
+            Configure un tipo de documento <strong>${this.escapeHtml(cfg.tipodocLabel || cfg.tipodoc || '')}</strong> activo para esta empresa.
           </div>`;
           return;
         }
@@ -1417,4 +2082,39 @@ const SalidasInventarioView = createInventarioMovView({
   listTitle: 'Salidas de inventario',
   finalizarTitle: 'Finalizar salida de inventario',
   printTitle: 'Salida de inventario',
+});
+
+/** Crear traslado — series TSL / TSS. */
+const CrearTrasladoView = createInventarioMovView({
+  slug: 'tsl-crear',
+  apiBase: '/api/traslados/crear',
+  tipodoc: 'TSL',
+  tipodocLabel: 'TSL / TSS',
+  listTitle: 'Crear traslado',
+  finalizarTitle: 'Finalizar traslado',
+  printTitle: 'Traslado de mercadería',
+  requireDestinoOnFinalizar: true,
+  showDestinoCol: true,
+  showEnviarTraslado: true,
+  showBloquear: false,
+  listAsTable: true,
+});
+
+/** Recibir traslado — series TIN / TES (sin destino host ni enviar). */
+const RecibirTrasladoView = createInventarioMovView({
+  slug: 'tsl-recibir',
+  apiBase: '/api/traslados/recibir',
+  tipodoc: 'TIN',
+  tipodocLabel: 'TIN / TES',
+  listTitle: 'Recibir traslado',
+  finalizarTitle: 'Finalizar recepción de traslado',
+  printTitle: 'Recepción de traslado',
+  requireDestinoOnFinalizar: false,
+  showDestinoCol: true,
+  destinoAsOrigen: true,
+  destinoColLabel: 'Origen',
+  showEnviarTraslado: false,
+  showBloquear: false,
+  showDescargarTraslado: true,
+  listAsTable: true,
 });
