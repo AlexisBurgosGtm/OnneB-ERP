@@ -38,6 +38,7 @@ const LicenciaView = {
     this._status = await F.fetchJson(`/api/license/status?_=${Date.now()}`, { cache: 'no-store' });
     if (typeof LicenseAccess !== 'undefined') {
       LicenseAccess._status = this._status;
+      LicenseAccess.updateExpiryBadge();
     }
     return this._status;
   },
@@ -204,7 +205,10 @@ const LicenciaView = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'No se pudo activar');
         this._status = data;
-        if (typeof LicenseAccess !== 'undefined') LicenseAccess._status = data;
+        if (typeof LicenseAccess !== 'undefined') {
+          LicenseAccess._status = data;
+          LicenseAccess.updateExpiryBadge();
+        }
         this.render();
         if (typeof TipoEmpleadoAccess !== 'undefined') {
           TipoEmpleadoAccess.applySidebarVisibility();
@@ -227,7 +231,10 @@ const LicenciaView = {
       try {
         const data = await F.fetchJson('/api/license?confirm=QUITAR', { method: 'DELETE' });
         this._status = data;
-        if (typeof LicenseAccess !== 'undefined') LicenseAccess._status = data;
+        if (typeof LicenseAccess !== 'undefined') {
+          LicenseAccess._status = data;
+          LicenseAccess.updateExpiryBadge();
+        }
         this.render();
         if (typeof TipoEmpleadoAccess !== 'undefined') {
           TipoEmpleadoAccess.applySidebarVisibility();

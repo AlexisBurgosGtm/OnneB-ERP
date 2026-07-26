@@ -6,6 +6,10 @@ const AutorizacionesView = {
   _rows: [],
   _unsubLista: null,
   _busyId: null,
+  _filterMes: null,
+  _filterAnio: null,
+  _filterAutorizado: 'NO',
+  _filterQ: '',
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -32,8 +36,104 @@ const AutorizacionesView = {
     return String(value);
   },
 
+  fechaParts(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return { anio: value.getFullYear(), mes: value.getMonth() + 1, dia: value.getDate() };
+    }
+    const s = String(value).trim();
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      return { anio: Number(m[1]), mes: Number(m[2]), dia: Number(m[3]) };
+    }
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return null;
+    return { anio: d.getFullYear(), mes: d.getMonth() + 1, dia: d.getDate() };
+  },
+
   isAutorizado(row) {
     return String(row?.AUTORIZADO || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  ensureDefaultFilters() {
+    const now = new Date();
+    if (!Number.isFinite(this._filterMes) || this._filterMes < 1 || this._filterMes > 12) {
+      this._filterMes = now.getMonth() + 1;
+    }
+    if (!Number.isFinite(this._filterAnio) || this._filterAnio < 2000) {
+      this._filterAnio = now.getFullYear();
+    }
+  },
+
+  mesOptionsHtml() {
+    const names = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+    return names
+      .map((label, i) => {
+        const mes = i + 1;
+        const sel = mes === Number(this._filterMes) ? ' selected' : '';
+        return `<option value="${mes}"${sel}>${label}</option>`;
+      })
+      .join('');
+  },
+
+  anioOptionsHtml() {
+    const nowY = new Date().getFullYear();
+    const years = [];
+    for (let y = nowY + 1; y >= nowY - 8; y -= 1) years.push(y);
+    if (!years.includes(Number(this._filterAnio))) years.push(Number(this._filterAnio));
+    years.sort((a, b) => b - a);
+    return years
+      .map((y) => {
+        const sel = y === Number(this._filterAnio) ? ' selected' : '';
+        return `<option value="${y}"${sel}>${y}</option>`;
+      })
+      .join('');
+  },
+
+  readFiltersFromDom() {
+    const mesEl = this._container?.querySelector('#authz-mes');
+    const anioEl = this._container?.querySelector('#authz-anio');
+    const autEl = this._container?.querySelector('#authz-autorizado');
+    const qEl = this._container?.querySelector('#authz-search');
+    if (mesEl) this._filterMes = Number(mesEl.value) || this._filterMes;
+    if (anioEl) this._filterAnio = Number(anioEl.value) || this._filterAnio;
+    if (autEl) this._filterAutorizado = String(autEl.value || '').trim().toUpperCase();
+    if (qEl) this._filterQ = String(qEl.value || '').trim();
+  },
+
+  filteredRows() {
+    this.ensureDefaultFilters();
+    const mes = Number(this._filterMes);
+    const anio = Number(this._filterAnio);
+    const aut = String(this._filterAutorizado || '').trim().toUpperCase();
+    const q = String(this._filterQ || '').trim().toLowerCase();
+
+    return (this._rows || []).filter((r) => {
+      const parts = this.fechaParts(r.FECHA);
+      if (!parts || parts.mes !== mes || parts.anio !== anio) return false;
+
+      const isSi = this.isAutorizado(r);
+      if (aut === 'SI' && !isSi) return false;
+      if (aut === 'NO' && isSi) return false;
+
+      if (!q) return true;
+      const hay = [
+        r.ID,
+        this.formatFecha(r.FECHA),
+        r.HORA,
+        r.TIPO,
+        r.DESCRIPCION,
+        r.USUARIO,
+        isSi ? 'SI' : 'NO',
+        r.USUARIOAUTORIZA,
+      ]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ');
+      return hay.includes(q);
+    });
   },
 
   async fetchData() {
@@ -51,10 +151,14 @@ const AutorizacionesView = {
   },
 
   renderTableBody() {
+    const rows = this.filteredRows();
     if (!this._rows.length) {
       return `<tr><td colspan="8" class="text-center text-muted py-4">Sin autorizaciones</td></tr>`;
     }
-    return this._rows
+    if (!rows.length) {
+      return `<tr><td colspan="8" class="text-center text-muted py-4">No hay registros con los filtros aplicados</td></tr>`;
+    }
+    return rows
       .map((r) => {
         const busy = String(this._busyId) === String(r.ID);
         return `
@@ -72,19 +176,59 @@ const AutorizacionesView = {
       .join('');
   },
 
+  badgeText() {
+    const filtered = this.filteredRows().length;
+    const total = this._rows.length;
+    if (filtered === total) return `${total} registro(s)`;
+    return `${filtered} de ${total} registro(s)`;
+  },
+
   renderHtml() {
+    this.ensureDefaultFilters();
+    const aut = String(this._filterAutorizado || '').toUpperCase();
+    const qVal = this.escapeHtml(this._filterQ || '');
     return `
       <div class="pos-list-wrap w-100">
         <div class="pos-list-header d-flex flex-wrap align-items-center justify-content-between gap-2">
           <div>
             <h2 class="pos-list-title mb-0">Autorizaciones</h2>
-            <p class="pos-list-sub text-muted mb-0">${this._rows.length} registro(s)</p>
+            <p class="pos-list-sub text-muted mb-0">${this.escapeHtml(this.badgeText())}</p>
           </div>
           <button type="button" class="btn btn-sm btn-outline-secondary" id="authz-reload">
             <i class="fa-solid fa-rotate me-1"></i>Actualizar
           </button>
         </div>
-        <div class="card fac-list-table-card shadow-sm mt-3">
+        <div class="authz-toolbar d-flex flex-wrap align-items-end gap-2 mt-3 mb-2">
+          <div class="authz-filter-mes">
+            <label for="authz-mes" class="form-label small mb-1">Mes</label>
+            <select id="authz-mes" class="form-select form-select-sm">
+              ${this.mesOptionsHtml()}
+            </select>
+          </div>
+          <div class="authz-filter-anio">
+            <label for="authz-anio" class="form-label small mb-1">Año</label>
+            <select id="authz-anio" class="form-select form-select-sm">
+              ${this.anioOptionsHtml()}
+            </select>
+          </div>
+          <div class="authz-filter-autorizado">
+            <label for="authz-autorizado" class="form-label small mb-1">Autorizada</label>
+            <select id="authz-autorizado" class="form-select form-select-sm">
+              <option value=""${aut === '' ? ' selected' : ''}>Todos</option>
+              <option value="NO"${aut === 'NO' ? ' selected' : ''}>NO</option>
+              <option value="SI"${aut === 'SI' ? ' selected' : ''}>SI</option>
+            </select>
+          </div>
+          <div class="authz-filter-search flex-grow-1">
+            <label for="authz-search" class="form-label small mb-1">Buscar</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>
+              <input type="search" id="authz-search" class="form-control"
+                placeholder="Tipo, descripción, usuario…" value="${qVal}" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="card fac-list-table-card shadow-sm">
           <div class="table-responsive fac-list-table-scroll">
             <table class="table table-sm table-hover table-striped mb-0 align-middle">
               <thead class="table-light sticky-top">
@@ -110,10 +254,11 @@ const AutorizacionesView = {
     const tbody = this._container?.querySelector('#authz-tbody');
     if (tbody) tbody.innerHTML = this.renderTableBody();
     const sub = this._container?.querySelector('.pos-list-sub');
-    if (sub) sub.textContent = `${this._rows.length} registro(s)`;
+    if (sub) sub.textContent = this.badgeText();
   },
 
   async reload() {
+    this.readFiltersFromDom();
     await this.fetchData();
     this.refreshTable();
   },
@@ -150,6 +295,23 @@ const AutorizacionesView = {
     this._container?.querySelector('#authz-reload')?.addEventListener('click', () => {
       this.reload().catch((err) => F.toast(err.message, 'error'));
     });
+
+    const applyFilters = () => {
+      this.readFiltersFromDom();
+      this.refreshTable();
+    };
+
+    this._container?.querySelector('#authz-mes')?.addEventListener('change', applyFilters);
+    this._container?.querySelector('#authz-anio')?.addEventListener('change', applyFilters);
+    this._container?.querySelector('#authz-autorizado')?.addEventListener('change', applyFilters);
+
+    const search = this._container?.querySelector('#authz-search');
+    if (search) {
+      const onSearch = F.debounce ? F.debounce(applyFilters, 200) : applyFilters;
+      search.addEventListener('input', onSearch);
+      search.addEventListener('search', applyFilters);
+    }
+
     this._container?.querySelector('#authz-tbody')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.authz-badge-btn');
       if (!btn) return;
@@ -164,6 +326,11 @@ const AutorizacionesView = {
       this._unsubLista = null;
     }
     this._container = container;
+    this._filterAutorizado = 'NO';
+    this._filterQ = '';
+    this._filterMes = null;
+    this._filterAnio = null;
+    this.ensureDefaultFilters();
     container.className = 'main-content flex-grow-1 d-flex p-3 align-items-stretch justify-content-start';
     if (!F.getEmpNit()) {
       container.innerHTML = `

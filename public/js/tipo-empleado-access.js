@@ -54,6 +54,7 @@ const TipoEmpleadoAccess = {
     'autorizaciones',
     'subir-catalogo',
     'descargar-catalogo',
+    'traslados-en-transito',
     'empleados',
     'nomina-config',
     'nomina-conceptos',
@@ -86,7 +87,6 @@ const TipoEmpleadoAccess = {
     'credenciales-fel',
     'updater',
     'licencia',
-    'developer',
   ],
 
   MENU_BY_TIPO: {
@@ -134,6 +134,7 @@ const TipoEmpleadoAccess = {
       'autorizaciones',
       'subir-catalogo',
       'descargar-catalogo',
+      'traslados-en-transito',
       'empleados',
       'nomina-config',
       'nomina-conceptos',
@@ -210,7 +211,7 @@ const TipoEmpleadoAccess = {
       if (!menus.includes('inicio')) menus.unshift('inicio');
       // Admin con lista casi completa → acceso total (incluye menús nuevos)
       if (cod === this.TIPO_ADMIN) {
-        const meaningful = this.ALL_MENUS.filter((m) => m !== 'developer');
+        const meaningful = this.ALL_MENUS;
         const missing = meaningful.filter((m) => !menus.includes(m));
         if (missing.length <= 5 && menus.length >= meaningful.length - 5) {
           next[cod] = null;

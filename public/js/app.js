@@ -174,6 +174,9 @@
     const userNameEl = document.getElementById('header-user-name');
     if (empNameEl) empNameEl.textContent = '—';
     if (userNameEl) userNameEl.textContent = '—';
+    if (typeof LicenseAccess !== 'undefined' && LicenseAccess.clearExpiryBadge) {
+      LicenseAccess.clearExpiryBadge();
+    }
     updateHeaderEmpresaLogo();
   }
 
@@ -605,7 +608,6 @@
     'movimientos-banco': 'Movimientos',
     bancos: 'Bancos',
     'cuentas-bancarias': 'Cuentas Bancarias',
-    developer: 'Developer',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
     inventario: 'Inventario',
@@ -620,6 +622,7 @@
     autorizaciones: 'Autorizaciones',
     'subir-catalogo': 'Subir catálogo',
     'descargar-catalogo': 'Descargar Catálogo',
+    'traslados-en-transito': 'Traslados en tránsito',
     empleados: 'Empleados',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
@@ -746,6 +749,8 @@
       SubirCatalogoView.load(mainContent);
     } else if (key === 'descargar-catalogo' && typeof DescargarCatalogoView !== 'undefined') {
       DescargarCatalogoView.load(mainContent);
+    } else if (key === 'traslados-en-transito' && typeof TrasladosEnTransitoView !== 'undefined') {
+      TrasladosEnTransitoView.load(mainContent);
     } else if (key === 'libro-ventas' && typeof LibroVentasView !== 'undefined') {
       LibroVentasView.load(mainContent);
     } else if (key === 'libro-compras' && typeof LibroComprasView !== 'undefined') {
@@ -780,8 +785,6 @@
       typeof ProductosView !== 'undefined'
     ) {
       ProductosView.load(mainContent);
-    } else if (key === 'developer' && typeof DeveloperView !== 'undefined') {
-      DeveloperView.load(mainContent);
     } else if (key === 'updater' && typeof UpdaterView !== 'undefined') {
       UpdaterView.load(mainContent);
     } else if (key === 'empresas' && typeof EmpresasView !== 'undefined') {

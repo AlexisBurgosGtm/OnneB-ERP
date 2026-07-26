@@ -13,6 +13,8 @@ const AutorizacionesUI = {
   _listaListeners: new Set(),
   /** Grant solo válido mientras el modal de precio sigue abierto. */
   _precioAuthGranted: null,
+  /** Modal de espera activo: no disparar toasts Swal (cierran el modal). */
+  _waitModalActive: false,
 
   usuario() {
     const u = typeof F !== 'undefined' ? F.session('user') : null;
@@ -117,7 +119,8 @@ const AutorizacionesUI = {
 
   _onAutorizacionNueva(data) {
     if (!this._sameEmpnit(data)) return;
-    if (this._isAdminViewer()) {
+    // F.toast usa Swal y reemplaza cualquier modal abierto (p. ej. espera de autorización).
+    if (this._isAdminViewer() && !this._waitModalActive && !Swal.isVisible()) {
       const msg = String(data?.mensaje || '').trim() || 'Nueva solicitud de autorización';
       F.toast(msg, 'warning');
     }
@@ -477,5 +480,138 @@ const AutorizacionesUI = {
       },
       syncGate,
     };
+  },
+
+  /**
+   * Crea una solicitud y muestra un modal de espera hasta que un administrador autorice.
+   * Si el usuario cierra/cancela el modal, se deja de escuchar: la autorización ya no surte efecto.
+   * @returns {Promise<{ ok: boolean, cancelled?: boolean, row?: object, data?: object, error?: string }>}
+   */
+  async solicitarYEsperar({
+    tipo,
+    descripcion,
+    title = 'Autorización requerida',
+    waitingMessage = 'Se está solicitando autorización a un administrador…',
+  } = {}) {
+    this.bindSocket();
+    const tipoVal = String(tipo || '').trim();
+    if (!tipoVal) throw new Error('TIPO requerido');
+
+    let unsub = null;
+    let settled = false;
+    let cancelled = false;
+    let authId = null;
+    this._waitModalActive = true;
+
+    const clearWaiter = () => {
+      if (typeof unsub === 'function') {
+        unsub();
+        unsub = null;
+      }
+    };
+
+    try {
+      const result = await new Promise((resolve) => {
+        const finish = (payload) => {
+          if (settled) return;
+          settled = true;
+          clearWaiter();
+          resolve(payload);
+        };
+
+        const cancelWaiting = () => {
+          cancelled = true;
+          clearWaiter();
+          finish({ ok: false, cancelled: true, authId });
+        };
+
+        Swal.fire({
+          ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+          title,
+          html: `
+          <p class="mb-2 text-start">${String(waitingMessage)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')}</p>
+          <div class="text-center py-3">
+            <div class="spinner-border text-warning" role="status" aria-label="Esperando"></div>
+          </div>
+          <p id="authz-wait-status" class="small text-muted mb-0">Enviando solicitud…</p>
+        `,
+          icon: 'info',
+          showConfirmButton: false,
+          showCancelButton: true,
+          cancelButtonText:
+            typeof CatalogosUI !== 'undefined'
+              ? CatalogosUI.cancelButtonHtml('Cerrar')
+              : 'Cerrar',
+          allowOutsideClick: false,
+          allowEscapeKey: true,
+          didOpen: async () => {
+            const statusEl = document.getElementById('authz-wait-status');
+            const setStatus = (text, cls = 'text-muted') => {
+              if (!statusEl) return;
+              statusEl.className = `small mb-0 ${cls}`;
+              statusEl.textContent = text || '';
+            };
+
+            try {
+              const row = await this.crear({
+                TIPO: tipoVal,
+                DESCRIPCION: String(descripcion || '').trim(),
+              });
+              if (cancelled || settled) {
+                clearWaiter();
+                return;
+              }
+              authId = row?.ID;
+              if (authId == null || authId === '') {
+                setStatus('No se pudo crear la solicitud', 'text-danger');
+                finish({ ok: false, error: 'No se pudo crear la solicitud' });
+                setTimeout(() => {
+                  if (Swal.isVisible()) Swal.close();
+                }, 900);
+                return;
+              }
+              setStatus(`Esperando autorización (#${authId})…`, 'text-warning');
+              unsub = this.onAutorizada(authId, (data) => {
+                if (cancelled || settled) return;
+                const quien = String(
+                  data?.usuarioAutoriza || data?.USUARIOAUTORIZA || 'administrador'
+                ).trim();
+                setStatus(`Autorizado por ${quien}`, 'text-success');
+                finish({ ok: true, row, data, authId });
+                if (Swal.isVisible()) Swal.close();
+              });
+              if (cancelled || settled) {
+                clearWaiter();
+              }
+            } catch (err) {
+              if (cancelled || settled) return;
+              setStatus(err.message || 'Error al solicitar autorización', 'text-danger');
+              finish({
+                ok: false,
+                error: err.message || 'Error al solicitar autorización',
+              });
+              setTimeout(() => {
+                if (Swal.isVisible()) Swal.close();
+              }, 1200);
+            }
+          },
+          willClose: () => {
+            if (!settled) cancelWaiting();
+          },
+        }).then((swalResult) => {
+          if (settled) return;
+          if (swalResult.isDismissed || swalResult.isDenied) {
+            cancelWaiting();
+          }
+        });
+      });
+
+      return result;
+    } finally {
+      this._waitModalActive = false;
+    }
   },
 };

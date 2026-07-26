@@ -382,19 +382,34 @@ function createInventarioMovView(cfg) {
       }
     },
 
-    destinoOptionsHtml(rows, selectedEmpnit) {
-      const sel = String(selectedEmpnit || '').trim().toUpperCase();
-      const blank = `<option value="">— Seleccione destino —</option>`;
-      const opts = (rows || [])
+    destinoOptionsHtml(rows, selectedEmpnit, opts = {}) {
+      const blankLabel = opts.blankLabel || '— Seleccione destino —';
+      const selectedNombre = String(opts.selectedNombre || '').trim();
+      const selRaw = String(selectedEmpnit || '').trim();
+      const sel = selRaw.toUpperCase();
+      const invalidSel = !sel || sel === 'SN' || sel === 'INVENTARIO';
+      const list = [...(rows || [])];
+      if (
+        !invalidSel &&
+        !list.some((r) => String(r.EMPNIT || '').trim().toUpperCase() === sel)
+      ) {
+        list.unshift({
+          EMPNIT: selRaw,
+          EMPNOMBRE:
+            selectedNombre && selectedNombre.toUpperCase() !== 'SN' ? selectedNombre : '',
+        });
+      }
+      const blank = `<option value="">${this.escapeHtml(blankLabel)}</option>`;
+      const optsHtml = list
         .map((r) => {
           const empnit = String(r.EMPNIT || '').trim();
           const nombre = String(r.EMPNOMBRE || '').trim();
           const label = nombre ? `${empnit} — ${nombre}` : empnit || '—';
-          const selected = empnit.toUpperCase() === sel ? ' selected' : '';
+          const selected = !invalidSel && empnit.toUpperCase() === sel ? ' selected' : '';
           return `<option value="${this.escapeHtml(empnit)}" data-nombre="${this.escapeHtml(nombre)}"${selected}>${this.escapeHtml(label)}</option>`;
         })
         .join('');
-      return blank + opts;
+      return blank + optsHtml;
     },
 
     async finalizarDocumento() {
@@ -411,27 +426,45 @@ function createInventarioMovView(cfg) {
       }
 
       const needDestino = Boolean(cfg.requireDestinoOnFinalizar);
+      const needOrigen = Boolean(cfg.requireOrigenOnFinalizar);
+      const needEmbarque = needDestino || needOrigen;
+      const embarqueLabel = needOrigen ? 'Origen' : 'Destino';
       let destinos = [];
-      if (needDestino) {
+      if (needEmbarque) {
         const btnFinalizar = this._container?.querySelector(`#${NS}-btn-finalizar`);
         try {
           destinos = await this.fetchEmpresasSyncConAviso([btnFinalizar]);
         } catch (err) {
-          F.toast(err.message || 'No se pudieron cargar empresas destino', 'error');
+          F.toast(
+            err.message ||
+              (needOrigen
+                ? 'No se pudieron cargar empresas origen'
+                : 'No se pudieron cargar empresas destino'),
+            'error'
+          );
           return;
         }
         if (!destinos.length) {
-          F.toast('No hay empresas destino para este TOKEN', 'warning');
+          F.toast(
+            needOrigen
+              ? 'No hay empresas origen para este TOKEN'
+              : 'No hay empresas destino para este TOKEN',
+            'warning'
+          );
           return;
         }
       }
 
       const obsVal = this.escapeHtml(h.OBS || '');
-      const destinoHtml = needDestino
+      const origenActual = String(h.CODEMBARQUE || '').trim();
+      const destinoHtml = needEmbarque
         ? `
-          <label class="form-label small mb-0 mt-2" for="${NS}-finalizar-destino">Destino</label>
+          <label class="form-label small mb-0 mt-2" for="${NS}-finalizar-destino">${this.escapeHtml(embarqueLabel)}</label>
           <select id="${NS}-finalizar-destino" class="form-select form-select-sm">
-            ${this.destinoOptionsHtml(destinos, h.CODEMBARQUE)}
+            ${this.destinoOptionsHtml(destinos, origenActual, {
+              blankLabel: needOrigen ? '— Seleccione origen —' : '— Seleccione destino —',
+              selectedNombre: h.OBSMARCA,
+            })}
           </select>
         `
         : '';
@@ -454,16 +487,18 @@ function createInventarioMovView(cfg) {
         cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
         focusConfirm: false,
         didOpen: () => {
-          if (needDestino) document.getElementById(`${NS}-finalizar-destino`)?.focus();
+          if (needEmbarque) document.getElementById(`${NS}-finalizar-destino`)?.focus();
           else document.getElementById(`${NS}-finalizar-obs`)?.focus();
         },
         preConfirm: () => {
           const obs = document.getElementById(`${NS}-finalizar-obs`)?.value?.trim() || '';
-          if (!needDestino) return { OBS: obs };
+          if (!needEmbarque) return { OBS: obs };
           const sel = document.getElementById(`${NS}-finalizar-destino`);
           const CODEMBARQUE = String(sel?.value || '').trim();
           if (!CODEMBARQUE) {
-            Swal.showValidationMessage('Seleccione la empresa destino');
+            Swal.showValidationMessage(
+              needOrigen ? 'Seleccione la empresa origen' : 'Seleccione la empresa destino'
+            );
             return false;
           }
           const opt = sel?.selectedOptions?.[0];
@@ -1873,8 +1908,11 @@ function createInventarioMovView(cfg) {
         const correlativo = row.getAttribute('data-correlativo');
         const action = btn.getAttribute('data-action');
         try {
-          if (action === 'editar') await this.showEditor(coddoc, correlativo);
-          else if (action === 'imprimir') await this.imprimirDocumento(coddoc, correlativo);
+          if (action === 'editar') {
+            const ok = await this.requestEditAuthorization(coddoc, correlativo);
+            if (!ok) return;
+            await this.showEditor(coddoc, correlativo);
+          } else if (action === 'imprimir') await this.imprimirDocumento(coddoc, correlativo);
           else if (action === 'enviar') await this.abrirEnviarTraslado(coddoc, correlativo, btn);
           else if (action === 'bloquear') await this.bloquearDocumento(coddoc, correlativo);
           else if (action === 'eliminar') await this.eliminarDocumento(coddoc, correlativo);
@@ -2015,6 +2053,29 @@ function createInventarioMovView(cfg) {
       }
     },
 
+    /**
+     * En recibir traslado: modal de espera de autorización admin.
+     * Solo abre el editor si autorizan con el modal aún abierto.
+     */
+    async requestEditAuthorization(coddoc, correlativo) {
+      if (!cfg.requireAuthOnEdit) return true;
+      if (typeof AutorizacionesUI === 'undefined') {
+        return false;
+      }
+      AutorizacionesUI.bindSocket();
+      const label = `${coddoc} #${correlativo}`;
+      const result = await AutorizacionesUI.solicitarYEsperar({
+        tipo: 'EDITAR TRASLADO RECIBIDO',
+        descripcion: `${AutorizacionesUI.usuario()} solicita editar el traslado recibido ${label}`,
+        title: 'Esperando autorización',
+        waitingMessage:
+          'Se está solicitando autorización a un administrador para editar este traslado recibido. Mantenga este aviso abierto hasta que le autoricen.',
+      });
+      if (result.cancelled) return false;
+      if (!result.ok) return false;
+      return true;
+    },
+
     async onNuevo() {
       try {
         if (this._container?.querySelector(`#${NS}-list-coddoc`)) {
@@ -2110,6 +2171,8 @@ const RecibirTrasladoView = createInventarioMovView({
   finalizarTitle: 'Finalizar recepción de traslado',
   printTitle: 'Recepción de traslado',
   requireDestinoOnFinalizar: false,
+  requireOrigenOnFinalizar: true,
+  requireAuthOnEdit: true,
   showDestinoCol: true,
   destinoAsOrigen: true,
   destinoColLabel: 'Origen',

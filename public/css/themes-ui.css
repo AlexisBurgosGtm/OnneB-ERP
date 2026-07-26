@@ -122,6 +122,36 @@
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 }
 
+/* Aviso de vencimiento de licencia: rojo fijo, no depende del tema. */
+.header-license-expiry-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: min(11rem, 40vw);
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ffffff !important;
+  background: #dc2626 !important;
+  border: 1px solid #b91c1c !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  filter: none;
+}
+
+.header-license-expiry-badge[hidden] {
+  display: none !important;
+}
+
+.header-user-badge:has(.header-license-expiry-badge:not([hidden])) {
+  max-width: min(340px, 52vw);
+}
+
 #view-main .main-header .btn-icon {
   border-color: rgba(255, 255, 255, 0.32);
   color: var(--header-fg, #fff);
@@ -366,6 +396,17 @@
   .header-empresa-badge span,
   .header-user-badge span {
     display: none;
+  }
+
+  .header-user-badge .header-license-expiry-badge:not([hidden]) {
+    display: inline-flex !important;
+    max-width: min(7.5rem, 28vw);
+    font-size: 0.62rem;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .header-user-badge:has(.header-license-expiry-badge:not([hidden])) {
+    max-width: min(160px, 42vw);
   }
 
   .header-empresa-badge i,

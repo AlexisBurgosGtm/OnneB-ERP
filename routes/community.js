@@ -6,7 +6,12 @@ const { isUpdateDbConfigured } = require('../config/update-database');
 const { getUpdateDbPool } = require('../lib/update-db-pool');
 const { checkTokenActivo, TOKEN_NO_NUBE_MSG } = require('../lib/community-token');
 const { uploadCatalogToCommunity } = require('../lib/community-catalog-upload');
-const { listCommunityTrasladoLineas } = require('../lib/community-traslado-download');
+const {
+  listCommunityTrasladoLineas,
+  loadCommunityTraslado,
+  deleteCommunityTraslado,
+} = require('../lib/community-traslado-download');
+const { assertAdminPass } = require('../lib/config-auth');
 
 const router = express.Router();
 
@@ -330,6 +335,250 @@ router.get('/traslados-destino/detalle', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /community/traslados-destino/detalle]', err.message);
     res.status(500).json({ error: err.message || 'Error al consultar detalle del traslado' });
+  }
+});
+
+/**
+ * Lista general de traslados en la nube (TOKEN de instalación).
+ */
+router.get('/traslados-transito', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const result = await hostPool
+      .request()
+      .input('TOKEN', sql.VarChar, token)
+      .query(`
+        SELECT TOP 500
+          LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) AS EMPNIT,
+          LTRIM(RTRIM(CAST(CODDOC AS VARCHAR(50)))) AS CODDOC,
+          CORRELATIVO,
+          FECHA,
+          ANIO,
+          MES,
+          DIA,
+          LTRIM(RTRIM(ISNULL(CAST(USUARIO AS VARCHAR(100)), ''))) AS USUARIO,
+          LTRIM(RTRIM(ISNULL(CAST(OBS AS VARCHAR(500)), ''))) AS OBS,
+          LTRIM(RTRIM(ISNULL(CAST(CODEMBARQUE AS VARCHAR(50)), ''))) AS CODEMBARQUE,
+          LTRIM(RTRIM(ISNULL(CAST(OBSMARCA AS VARCHAR(200)), ''))) AS OBSMARCA,
+          LTRIM(RTRIM(ISNULL(CAST(TIPOVENTA AS VARCHAR(20)), ''))) AS TIPOVENTA,
+          LTRIM(RTRIM(ISNULL(CAST(STATUS AS VARCHAR(20)), ''))) AS STATUS,
+          TOTALPRECIO,
+          TOTALCOSTO
+        FROM dbo.COMMUNITY_DOCUMENTOS
+        WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
+        ORDER BY FECHA DESC, CODDOC, CORRELATIVO DESC
+      `);
+
+    let canDelete = false;
+    if (isDbConfigured()) {
+      try {
+        const localPool = await req.app.locals.getDbPool();
+        const tip = await getCodTipoEmpresa(localPool, empnit);
+        canDelete = tip === TIPO_EMPRESA_PRINCIPAL;
+      } catch {
+        canDelete = false;
+      }
+    }
+
+    res.json({
+      ok: true,
+      empnit,
+      canDelete,
+      rows: result.recordset || [],
+    });
+  } catch (err) {
+    console.warn('[API GET /community/traslados-transito]', err.message);
+    res.status(500).json({ error: err.message || 'Error al consultar traslados en tránsito' });
+  }
+});
+
+/**
+ * Detalle de un traslado en tránsito (origen, destino, obs, líneas).
+ */
+router.get('/traslados-transito/detalle', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const origenEmpnit = String(req.query.origenEmpnit || req.query.empnitOrigen || '').trim();
+  const coddoc = String(req.query.coddoc || '').trim();
+  const correlativo = Number(req.query.correlativo);
+  if (!origenEmpnit || !coddoc || !Number.isFinite(correlativo)) {
+    return res.status(400).json({ error: 'origenEmpnit, coddoc y correlativo son requeridos' });
+  }
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const cloud = await loadCommunityTraslado(
+      hostPool,
+      token,
+      origenEmpnit,
+      coddoc,
+      correlativo
+    );
+    if (!cloud) {
+      return res.status(404).json({ error: 'Traslado no encontrado en la nube' });
+    }
+
+    const h = cloud.header;
+    const origenVal = String(h.EMPNIT || origenEmpnit || '').trim();
+    let origenNombre = '';
+    if (origenVal) {
+      const nombreRes = await hostPool
+        .request()
+        .input('TOKEN', sql.VarChar, token)
+        .input('EMPNIT', sql.VarChar, origenVal)
+        .query(`
+          SELECT TOP 1 LTRIM(RTRIM(ISNULL(EMPNOMBRE, ''))) AS EMPNOMBRE
+          FROM dbo.COMMUNITY_EMPRESAS_SYNC
+          WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
+            AND LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) = LTRIM(RTRIM(@EMPNIT))
+        `);
+      origenNombre = String(nombreRes.recordset?.[0]?.EMPNOMBRE || '').trim();
+    }
+
+    const lines = (cloud.lines || []).map((ln) => ({
+      CODPROD: String(ln.CODPROD || '').trim(),
+      DESPROD: String(ln.DESPROD || '').trim(),
+      CODMEDIDA: String(ln.CODMEDIDA || '').trim(),
+      CANTIDAD: ln.CANTIDAD,
+    }));
+
+    res.json({
+      ok: true,
+      header: {
+        EMPNIT: origenVal,
+        EMPNOMBRE: origenNombre,
+        CODDOC: String(h.CODDOC || '').trim(),
+        CORRELATIVO: h.CORRELATIVO,
+        FECHA: h.FECHA,
+        ANIO: h.ANIO,
+        MES: h.MES,
+        DIA: h.DIA,
+        USUARIO: String(h.USUARIO || '').trim(),
+        OBS: String(h.OBS || '').trim(),
+        CODEMBARQUE: String(h.CODEMBARQUE || '').trim(),
+        OBSMARCA: String(h.OBSMARCA || '').trim(),
+      },
+      lines,
+    });
+  } catch (err) {
+    console.warn('[API GET /community/traslados-transito/detalle]', err.message);
+    res.status(500).json({ error: err.message || 'Error al consultar detalle' });
+  }
+});
+
+/**
+ * Elimina un traslado en tránsito (solo empresa PRINCIPAL + clave admin).
+ */
+router.delete('/traslados-transito', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const origenEmpnit = String(req.body?.origenEmpnit || req.body?.EMPNIT || '').trim();
+  const coddoc = String(req.body?.coddoc || req.body?.CODDOC || '').trim();
+  const correlativo = Number(req.body?.correlativo ?? req.body?.CORRELATIVO);
+  const pass = String(req.body?.pass ?? req.body?.adminPass ?? '').trim();
+
+  if (!origenEmpnit || !coddoc || !Number.isFinite(correlativo)) {
+    return res.status(400).json({ error: 'origenEmpnit, coddoc y correlativo son requeridos' });
+  }
+  if (!pass) return res.status(400).json({ error: 'Clave de administrador requerida' });
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const localPool = await req.app.locals.getDbPool();
+    const tip = await getCodTipoEmpresa(localPool, empnit);
+    if (tip !== TIPO_EMPRESA_PRINCIPAL) {
+      return res.status(403).json({
+        error: 'Solo la empresa PRINCIPAL puede eliminar traslados en tránsito',
+      });
+    }
+    await assertAdminPass(localPool, pass);
+
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const cloud = await loadCommunityTraslado(
+      hostPool,
+      token,
+      origenEmpnit,
+      coddoc,
+      correlativo
+    );
+    if (!cloud) {
+      return res.status(404).json({ error: 'Traslado no encontrado en la nube' });
+    }
+
+    await deleteCommunityTraslado(hostPool, token, origenEmpnit, coddoc, correlativo);
+    res.json({ ok: true, deleted: { origenEmpnit, CODDOC: coddoc, CORRELATIVO: correlativo } });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    console.warn('[API DELETE /community/traslados-transito]', err.message);
+    res.status(status).json({ error: err.message || 'Error al eliminar traslado en tránsito' });
   }
 });
 

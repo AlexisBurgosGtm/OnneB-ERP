@@ -409,7 +409,7 @@
   background-color: color-mix(in srgb, var(--btn-base-eliminar-dark) 88%, transparent) !important;
 }
 
-/* Config / Developer */
+/* Config */
 .config-general-panel .btn-actualizar-pass {
   color: var(--btn-fg-guardar) !important;
   border: 1.5px solid var(--onneb-btn-glass-border) !important;
@@ -444,14 +444,6 @@
     color-mix(in srgb, var(--btn-base-nuevo) 88%, transparent),
     color-mix(in srgb, var(--btn-base-nuevo-dark) 92%, transparent)
   ) !important;
-}
-
-.btn-developer-con,
-.btn-developer-cre {
-  border: 1.5px solid var(--onneb-btn-glass-border) !important;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: var(--onneb-btn-glass-shadow);
 }
 
 [data-theme='carbon'] .btn-modal-cancelar {

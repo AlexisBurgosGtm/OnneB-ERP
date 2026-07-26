@@ -31,7 +31,6 @@
   <link rel="stylesheet" href="/css/licencia.css">
   <link rel="stylesheet" href="/css/formatos-impresion.css">
   <link rel="stylesheet" href="/css/nomina.css">
-  <link rel="stylesheet" href="/css/developer.css">
   <link rel="stylesheet" href="/css/updater.css">
   <link rel="stylesheet" href="/css/pos.css">
   <link rel="stylesheet" href="/css/corte-caja.css">
@@ -255,6 +254,7 @@
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="subir-catalogo"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i> Subir catálogo</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="descargar-catalogo"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i> Descargar Catálogo</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="traslados-en-transito"><i class="fa-solid fa-truck-ramp-box" aria-hidden="true"></i> Traslados en tránsito</a></li>
                 </ul>
               </div>
             </div>
@@ -399,6 +399,7 @@
           <span class="main-title fw-semibold flex-grow-1 text-center text-md-start" id="main-title">OnneB PLUS</span>
           <div class="main-header-end">
             <div class="header-user-badge" id="header-user" title="Usuario activo">
+              <span id="header-license-expiry-badge" class="header-license-expiry-badge" hidden></span>
               <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
               <span id="header-user-name">—</span>
             </div>
@@ -469,7 +470,6 @@
   <script src="/js/views/configuraciones/config-general.js"></script>
   <script src="/js/views/configuraciones/roles-usuarios.js"></script>
   <script src="/js/views/configuraciones/licencia.js"></script>
-  <script src="/js/views/configuraciones/developer.js"></script>
   <script src="/js/views/configuraciones/updater.js"></script>
   <script src="/js/doc-fecha.js"></script>
   <script src="/js/doc-entrega.js"></script>
@@ -504,6 +504,7 @@
   <script src="/js/views/archivo/autorizaciones.js"></script>
   <script src="/js/views/online-services/subir-catalogo.js"></script>
   <script src="/js/views/online-services/descargar-catalogo.js"></script>
+  <script src="/js/views/online-services/traslados-en-transito.js"></script>
   <script src="/js/libro-contable-common.js"></script>
   <script src="/js/views/contabilidad/libro-ventas.js"></script>
   <script src="/js/views/contabilidad/libro-compras.js"></script>
