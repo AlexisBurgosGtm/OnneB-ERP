@@ -1,0 +1,13 @@
+.inventario-fiscal-wrap {
+  max-width: 100%;
+}
+
+.inventario-fiscal-filters-card .form-select,
+.inventario-fiscal-filters-card .form-control {
+  min-width: 7rem;
+}
+
+.inventario-fiscal-table-wrap {
+  max-height: calc(100vh - 18rem);
+  overflow: auto;
+}

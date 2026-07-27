@@ -87,7 +87,7 @@
     setViewImmediate(true);
   }
 
-  /** Cerrar sesión y volver al login (botón Salir). */
+  /** Cerrar sesión y volver al login (botón Salir). Expuesto para flujos críticos (ej. eliminar empresa). */
   function goToLogin() {
     dismissBlockingLayers();
 
@@ -181,6 +181,7 @@
   }
 
   window.updateHeaderEmpresaLogo = updateHeaderEmpresaLogo;
+  window.goToLogin = goToLogin;
 
   function navigateTo(target) {
     if (target === currentView) return;
@@ -584,6 +585,7 @@
     'comandas-restaurante': 'Comandas Restaurante',
     facturacion: 'Facturas normales',
     'facturas-electronicas': 'Facturas Electrónicas',
+    'facturacion-completa': 'Facturación',
     'notas-credito': 'Notas de Credito (clientes)',
     'notas-abono': 'Notas de Abono',
     compras: 'Compras',
@@ -593,6 +595,7 @@
     cotizaciones: 'Cotizaciones',
     'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
+    'pendientes-entrega': 'Pendientes Entrega',
     'cuentas-cobrar': 'Cuentas por Cobrar',
     'cuentas-pagar': 'Cuentas por Pagar',
     'retenciones-isr': 'Retenciones ISR',
@@ -602,6 +605,7 @@
     'libro-diario': 'Libro Diario',
     'libro-mayor': 'Libro Mayor',
     'libro-balance': 'Libro Balance',
+    'inventario-fiscal': 'Inventario Fiscal',
     'nomenclatura-contable': 'Nomenclatura Contable',
     'formatos-contables': 'Formatos Contables',
     'configuraciones-contabilidad': 'Configuraciones Contabilidad',
@@ -706,6 +710,8 @@
       FacturacionView.load(mainContent);
     } else if (key === 'facturas-electronicas' && typeof FacturasElectronicasView !== 'undefined') {
       FacturasElectronicasView.load(mainContent);
+    } else if (key === 'facturacion-completa' && typeof FacturacionCompletaView !== 'undefined') {
+      FacturacionCompletaView.load(mainContent);
     } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
       NotasCreditoView.load(mainContent);
     } else if (key === 'notas-abono' && typeof NotasAbonoView !== 'undefined') {
@@ -734,6 +740,8 @@
       RecibirTrasladoView.load(mainContent);
     } else if (key === 'inventario' && typeof InventarioView !== 'undefined') {
       InventarioView.load(mainContent);
+    } else if (key === 'inventario-retroactivo' && typeof InventarioRetroactivoView !== 'undefined') {
+      InventarioRetroactivoView.load(mainContent);
     } else if (
       key === 'actualizacion-inventario' &&
       typeof InventarioActualizacionView !== 'undefined'
@@ -761,6 +769,8 @@
       LibroMayorView.load(mainContent);
     } else if (key === 'libro-balance' && typeof LibroBalanceView !== 'undefined') {
       LibroBalanceView.load(mainContent);
+    } else if (key === 'inventario-fiscal' && typeof InventarioFiscalView !== 'undefined') {
+      InventarioFiscalView.load(mainContent);
     } else if (key === 'retenciones-iva' && typeof RetencionesIvaView !== 'undefined') {
       RetencionesIvaView.load(mainContent);
     } else if (key === 'retenciones-isr' && typeof RetencionesIsrView !== 'undefined') {

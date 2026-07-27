@@ -36,7 +36,8 @@
     "entradas-inventario",
     "salidas-inventario",
     "inventario-retroactivo",
-    "actualizacion-inventario"
+    "actualizacion-inventario",
+    "pendientes-entrega"
   ],
   "6": [
     "inicio",
@@ -70,6 +71,7 @@
     "libro-diario",
     "libro-mayor",
     "libro-balance",
+    "inventario-fiscal",
     "nomenclatura-contable",
     "formatos-contables",
     "configuraciones-contabilidad",
@@ -92,6 +94,7 @@
     "fraccionamiento-fac",
     "facturacion",
     "facturas-electronicas",
+    "facturacion-completa",
     "corte-caja",
     "cuentas-cobrar",
     "nomina-vales"

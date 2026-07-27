@@ -255,12 +255,14 @@ const AutorizacionesUI = {
   },
 
   /**
-   * Validación dura: precio modificado requiere autorización vigente en este modal.
+   * Validación dura: baja de precio (menor al de lista) requiere autorización vigente.
+   * Precio igual o mayor al de lista se permite sin autorización.
    */
   precioChangeAllowed(precio, catalogo) {
     const p = Number(precio);
     const c = Number(catalogo);
-    if (!Number.isFinite(p) || Math.abs(p - c) <= 0.0005) return true;
+    if (!Number.isFinite(p)) return true;
+    if (p >= c - 0.0005) return true;
     const g = this._precioAuthGranted;
     if (!g) return false;
     return Math.abs(Number(g.precio) - p) < 0.0005;
@@ -274,6 +276,7 @@ const AutorizacionesUI = {
 
   /**
    * Gate de precio en modales Swal.
+   * Solo solicita autorización si el precio es menor al de lista.
    * Bloquea Agregar solo mientras este modal está abierto y el precio fue modificado
    * esperando autorización. Al cerrar, se libera el bloqueo (puede agregar otros productos).
    */
@@ -302,10 +305,10 @@ const AutorizacionesUI = {
     }
 
     let disposed = false;
-    let debounceTimer = null;
     let requestSeq = 0;
     let unsub = null;
     let precioAutorizado = null;
+    let lastRequestedPrecio = null;
 
     const statusEl =
       (statusElId && popup?.querySelector(`#${statusElId}`)) ||
@@ -345,7 +348,12 @@ const AutorizacionesUI = {
 
     const currentMedida = () => String(medidaSelect?.value || '').trim() || '—';
 
-    const precioChanged = () => Math.abs(currentPrecio() - catalogPrecio()) > 0.0005;
+    /** Solo precios menores al de lista requieren autorización. */
+    const precioRequiereAuth = () => {
+      const p = currentPrecio();
+      const c = catalogPrecio();
+      return Number.isFinite(p) && p < c - 0.0005;
+    };
 
     const clearWaiter = () => {
       if (typeof unsub === 'function') {
@@ -364,13 +372,14 @@ const AutorizacionesUI = {
       return name || 'administrador';
     };
 
-    const syncGate = () => {
+    /** Solo actualiza UI; no envía solicitud (esperar blur/Enter). */
+    const syncGateUi = () => {
       if (disposed) return;
-      clearTimeout(debounceTimer);
 
-      if (!precioChanged()) {
+      if (!precioRequiereAuth()) {
         clearWaiter();
         precioAutorizado = null;
+        lastRequestedPrecio = null;
         this._precioAuthGranted = null;
         setConfirmEnabled(true);
         setStatus('');
@@ -378,7 +387,6 @@ const AutorizacionesUI = {
       }
 
       const precioSnap = currentPrecio();
-
       setConfirmEnabled(false);
 
       if (precioAutorizado != null && Math.abs(precioAutorizado - precioSnap) < 0.0005) {
@@ -394,91 +402,148 @@ const AutorizacionesUI = {
         return;
       }
 
-      setStatus('Solicitando autorización…', 'text-warning');
+      if (lastRequestedPrecio != null && Math.abs(lastRequestedPrecio - precioSnap) < 0.0005) {
+        setStatus('Esperando autorización…', 'text-warning');
+        return;
+      }
 
-      debounceTimer = setTimeout(async () => {
-        if (disposed) return;
-        if (!precioChanged()) {
-          setConfirmEnabled(true);
-          setStatus('');
-          return;
-        }
-        const precioNow = currentPrecio();
-        const catalogNow = catalogPrecio();
-        const cantidadNow = currentCantidad();
-        const medidaNow = currentMedida();
-        if (precioAutorizado != null && Math.abs(precioAutorizado - precioNow) < 0.0005) {
-          setConfirmEnabled(true);
-          setStatus('Cambio de precio autorizado', 'text-success');
-          return;
-        }
-
-        const seq = ++requestSeq;
-        try {
-          const desc =
-            typeof buildDescripcion === 'function'
-              ? buildDescripcion({
-                  precio: precioNow,
-                  catalogo: catalogNow,
-                  cantidad: cantidadNow,
-                  medida: medidaNow,
-                })
-              : `${this.usuario()} quiere agregar el producto ${cantidadNow} ${medidaNow} al precio ${this.formatPrecioDesc(precioNow)}`;
-          const row = await this.crear({
-            TIPO: this.TIPO_CAMBIO_PRECIO,
-            DESCRIPCION: desc,
-          });
-          if (disposed || seq !== requestSeq) return;
-          const authId = row?.ID;
-          if (authId == null || authId === '') {
-            setConfirmEnabled(false);
-            setStatus('No se pudo solicitar autorización', 'text-danger');
-            return;
-          }
-          setStatus(`Esperando autorización (#${authId})…`, 'text-warning');
-          setConfirmEnabled(false);
-          clearWaiter();
-          unsub = this.onAutorizada(authId, (data) => {
-            if (disposed) return;
-            if (Math.abs(currentPrecio() - precioNow) > 0.0005) return;
-            precioAutorizado = precioNow;
-            const quien = nombreQuienAutorizo(data);
-            this.markPrecioAuthorized(precioNow, authId, quien);
-            setConfirmEnabled(true);
-            setStatus(`Autorizado por ${quien}`, 'text-success');
-          });
-        } catch (err) {
-          if (disposed || seq !== requestSeq) return;
-          setConfirmEnabled(false);
-          setStatus(err.message || 'Error al solicitar autorización', 'text-danger');
-        }
-      }, 350);
+      setStatus('Confirme el precio (Enter o salga del campo) para solicitar autorización', 'text-muted');
     };
 
-    precioInput?.addEventListener('input', syncGate);
-    medidaSelect?.addEventListener('change', syncGate);
-    cantidadInput?.addEventListener('input', () => {
-      // Si ya hay solicitud pendiente y cambia cantidad, regenerar descripción con nueva auth.
-      if (precioChanged()) syncGate();
+    const requestAuth = async () => {
+      if (disposed) return;
+      if (!precioRequiereAuth()) {
+        syncGateUi();
+        return;
+      }
+
+      const precioNow = currentPrecio();
+      const catalogNow = catalogPrecio();
+      const cantidadNow = currentCantidad();
+      const medidaNow = currentMedida();
+
+      if (precioAutorizado != null && Math.abs(precioAutorizado - precioNow) < 0.0005) {
+        setConfirmEnabled(true);
+        setStatus('Cambio de precio autorizado', 'text-success');
+        return;
+      }
+      if (this.precioChangeAllowed(precioNow, catalogNow)) {
+        precioAutorizado = precioNow;
+        setConfirmEnabled(true);
+        setStatus('Cambio de precio autorizado', 'text-success');
+        return;
+      }
+      if (lastRequestedPrecio != null && Math.abs(lastRequestedPrecio - precioNow) < 0.0005) {
+        setConfirmEnabled(false);
+        setStatus('Esperando autorización…', 'text-warning');
+        return;
+      }
+
+      setConfirmEnabled(false);
+      setStatus('Solicitando autorización…', 'text-warning');
+      lastRequestedPrecio = precioNow;
+      const seq = ++requestSeq;
+
+      try {
+        const desc =
+          typeof buildDescripcion === 'function'
+            ? buildDescripcion({
+                precio: precioNow,
+                catalogo: catalogNow,
+                cantidad: cantidadNow,
+                medida: medidaNow,
+              })
+            : `${this.usuario()} quiere agregar el producto ${cantidadNow} ${medidaNow} al precio ${this.formatPrecioDesc(precioNow)}`;
+        const row = await this.crear({
+          TIPO: this.TIPO_CAMBIO_PRECIO,
+          DESCRIPCION: desc,
+        });
+        if (disposed || seq !== requestSeq) return;
+        const authId = row?.ID;
+        if (authId == null || authId === '') {
+          lastRequestedPrecio = null;
+          setConfirmEnabled(false);
+          setStatus('No se pudo solicitar autorización', 'text-danger');
+          return;
+        }
+        setStatus(`Esperando autorización (#${authId})…`, 'text-warning');
+        setConfirmEnabled(false);
+        clearWaiter();
+        unsub = this.onAutorizada(authId, (data) => {
+          if (disposed) return;
+          if (Math.abs(currentPrecio() - precioNow) > 0.0005) return;
+          precioAutorizado = precioNow;
+          const quien = nombreQuienAutorizo(data);
+          this.markPrecioAuthorized(precioNow, authId, quien);
+          setConfirmEnabled(true);
+          setStatus(`Autorizado por ${quien}`, 'text-success');
+        });
+      } catch (err) {
+        if (disposed || seq !== requestSeq) return;
+        lastRequestedPrecio = null;
+        setConfirmEnabled(false);
+        setStatus(err.message || 'Error al solicitar autorización', 'text-danger');
+      }
+    };
+
+    const onPrecioInput = () => {
+      // Al tipear, invalidar solicitud previa si el precio ya no coincide.
+      if (
+        lastRequestedPrecio != null &&
+        Math.abs(lastRequestedPrecio - currentPrecio()) > 0.0005
+      ) {
+        clearWaiter();
+        lastRequestedPrecio = null;
+        requestSeq += 1;
+      }
+      if (
+        precioAutorizado != null &&
+        Math.abs(precioAutorizado - currentPrecio()) > 0.0005
+      ) {
+        precioAutorizado = null;
+        this._precioAuthGranted = null;
+      }
+      syncGateUi();
+    };
+
+    const onPrecioCommit = (e) => {
+      if (e?.type === 'keydown' && e.key !== 'Enter') return;
+      if (e?.type === 'keydown') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      requestAuth();
+    };
+
+    precioInput?.addEventListener('input', onPrecioInput);
+    precioInput?.addEventListener('blur', onPrecioCommit);
+    precioInput?.addEventListener('keydown', onPrecioCommit);
+    medidaSelect?.addEventListener('change', () => {
+      clearWaiter();
+      lastRequestedPrecio = null;
+      precioAutorizado = null;
+      this._precioAuthGranted = null;
+      syncGateUi();
     });
 
     return {
       dispose() {
         disposed = true;
-        clearTimeout(debounceTimer);
         clearWaiter();
         precioAutorizado = null;
+        lastRequestedPrecio = null;
         AutorizacionesUI._precioAuthGranted = null;
       },
       isReady() {
-        if (!precioChanged()) return true;
+        if (!precioRequiereAuth()) return true;
         return (
           (precioAutorizado != null &&
             Math.abs(precioAutorizado - currentPrecio()) < 0.0005) ||
           AutorizacionesUI.precioChangeAllowed(currentPrecio(), catalogPrecio())
         );
       },
-      syncGate,
+      syncGate: syncGateUi,
+      requestAuth,
     };
   },
 

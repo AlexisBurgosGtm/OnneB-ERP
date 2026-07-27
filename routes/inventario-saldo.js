@@ -8,6 +8,10 @@ const {
   ejecutarRecalcInventario,
   corregirTipomNulos,
 } = require('../lib/inventario-recalc');
+const {
+  listInventarioRetroactivo,
+  listInventarioRetroactivoExport,
+} = require('../lib/inventario-retroactivo');
 
 const router = express.Router();
 
@@ -338,6 +342,113 @@ router.get('/saldo/export', async (req, res) => {
   } catch (err) {
     console.error('[API GET /inventario/saldo/export]', err.message);
     res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.get('/retroactivo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  const { q, codmarca, habilitado, limit } = parseListQuery(req);
+  const mes = parseInt(req.query.mes, 10);
+  const anio = parseInt(req.query.anio, 10);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listInventarioRetroactivo(pool, {
+      empnit,
+      mes,
+      anio,
+      q,
+      codmarca,
+      habilitado,
+      limit,
+    });
+    res.json(data);
+  } catch (err) {
+    console.error('[API GET /inventario/retroactivo]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.get('/retroactivo/export', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  const { q, codmarca, habilitado } = parseListQuery(req);
+  const mes = parseInt(req.query.mes, 10);
+  const anio = parseInt(req.query.anio, 10);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listInventarioRetroactivoExport(pool, {
+      empnit,
+      mes,
+      anio,
+      q,
+      codmarca,
+      habilitado,
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Inventario Retroactivo');
+    sheet.columns = [
+      { header: 'Código', key: 'CODPROD', width: 14 },
+      { header: 'Descripción', key: 'DESPROD', width: 32 },
+      { header: 'Marca', key: 'DESMARCA', width: 18 },
+      { header: 'Tipo', key: 'TIPOPROD', width: 10 },
+      { header: 'Saldo', key: 'SALDO', width: 12 },
+      { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
+      { header: 'Costo', key: 'COSTO', width: 12 },
+      { header: 'Total costo', key: 'TOTALCOSTO', width: 14 },
+      { header: 'Habilitado', key: 'HABILITADO', width: 12 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    for (const row of data.rows) {
+      sheet.addRow(row);
+    }
+
+    if (data.rows.length) {
+      const totalRow = sheet.addRow({
+        CODPROD: '',
+        DESPROD: '',
+        DESMARCA: '',
+        TIPOPROD: 'Totales',
+        SALDO: data.totals.SUM_SALDO ?? 0,
+        EXISTENCIA: '',
+        COSTO: '',
+        TOTALCOSTO: data.totals.SUM_TOTALCOSTO ?? 0,
+        HABILITADO: '',
+      });
+      totalRow.font = { bold: true };
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeEmp = empnit.replace(/[^\w-]+/g, '_');
+    const stamp = `${data.anio}-${String(data.mes).padStart(2, '0')}`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="inventario_retroactivo_${safeEmp}_${stamp}.xlsx"`,
+    );
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('[API GET /inventario/retroactivo/export]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
   return undefined;
 });

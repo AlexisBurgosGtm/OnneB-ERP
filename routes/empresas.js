@@ -3,6 +3,7 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { verifySettingPass, SETTING_OPCION } = require('../lib/settings');
 const { cambiarEmpnitEnTodasLasTablas } = require('../lib/cambiar-empnit');
+const { scanEmpnitDataSummary, deleteEmpnitData } = require('../lib/eliminar-empnit');
 
 const router = express.Router();
 
@@ -251,6 +252,118 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /empresas]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+function wantsNdjsonStream(req) {
+  return (
+    String(req.headers.accept || '').includes('application/x-ndjson') ||
+    String(req.query.stream || '') === '1'
+  );
+}
+
+function setupNdjsonResponse(res) {
+  res.status(200);
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+  return (evt) => {
+    res.write(`${JSON.stringify(evt)}\n`);
+    if (typeof res.flush === 'function') res.flush();
+  };
+}
+
+async function verifyAdminPass(pool, pass, res) {
+  const key = String(pass ?? '');
+  if (!key) {
+    res.status(401).json({ error: 'Clave de administrador requerida' });
+    return false;
+  }
+  const okPass = await verifySettingPass(pool, key, SETTING_OPCION.CLAVE_ADMIN);
+  if (!okPass) {
+    res.status(401).json({ error: 'Clave incorrecta' });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Resumen de registros por tabla con EMPNIT (NDJSON para no bloquear UI).
+ */
+router.post('/:empnit/eliminacion-resumen', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = String(req.params.empnit || '').trim();
+  const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
+  if (!empnit) return res.status(400).json({ error: 'EMPNIT inválido' });
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    if (!(await verifyAdminPass(pool, pass, res))) return;
+
+    if (wantsNdjsonStream(req)) {
+      const writeEvent = setupNdjsonResponse(res);
+      try {
+        await scanEmpnitDataSummary(pool, empnit, writeEvent);
+      } catch (err) {
+        writeEvent({
+          type: 'fatal',
+          error: err.message || String(err),
+          statusCode: err.statusCode || 500,
+        });
+      }
+      return res.end();
+    }
+
+    const summary = await scanEmpnitDataSummary(pool, empnit);
+    res.json(summary);
+  } catch (err) {
+    console.warn('[API POST /empresas/:empnit/eliminacion-resumen]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+/**
+ * Elimina registros de una tabla o de todas las tablas con EMPNIT.
+ */
+router.post('/:empnit/eliminar-datos', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = String(req.params.empnit || '').trim();
+  const pass = String(req.body?.pass ?? req.body?.PASS ?? '');
+  const all = Boolean(req.body?.all);
+  const schema = String(req.body?.schema || '').trim();
+  const name = String(req.body?.name || req.body?.tableName || '').trim();
+  if (!empnit) return res.status(400).json({ error: 'EMPNIT inválido' });
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    if (!(await verifyAdminPass(pool, pass, res))) return;
+
+    const options = all ? { all: true } : { schema, name };
+
+    if (wantsNdjsonStream(req)) {
+      const writeEvent = setupNdjsonResponse(res);
+      try {
+        await deleteEmpnitData(pool, empnit, options, writeEvent);
+      } catch (err) {
+        writeEvent({
+          type: 'fatal',
+          error: err.message || String(err),
+          statusCode: err.statusCode || 500,
+        });
+      }
+      return res.end();
+    }
+
+    const summary = await deleteEmpnitData(pool, empnit, options);
+    res.json(summary);
+  } catch (err) {
+    console.warn('[API POST /empresas/:empnit/eliminar-datos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

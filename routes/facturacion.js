@@ -29,6 +29,12 @@ const {
 const { findVendedorByClave } = require('../lib/vendedor-clave');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
+  normalizeTipofac,
+  normalizePrioridad,
+  tipodocsForTipofac,
+  TIPOFAC_DEFAULT,
+} = require('../lib/documento-tipofac-prioridad');
+const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
   STATUS_ANULADO,
@@ -63,11 +69,14 @@ function tipodocSqlIn(tipodocs) {
   return tipodocs.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(', ');
 }
 
-/** grupo=fac → FAC; grupo=fel → FEF/FES/FEC */
+/** grupo=fac → FAC; grupo=fel → FEF/FES/FEC; grupo=mixto → FAC+FEL */
 function resolveFacturacionGrupo(req) {
   const raw = String(req.query?.grupo || req.body?.grupo || 'fac').trim().toLowerCase();
   if (raw === 'fel' || raw === 'electronicas' || raw === 'electronica') {
     return { id: 'fel', tipodocs: TIPODOC_GRUPO_FEL };
+  }
+  if (raw === 'mixto' || raw === 'completa' || raw === 'all' || raw === 'facturacion') {
+    return { id: 'mixto', tipodocs: TIPODOC_FACTURACION_ALL };
   }
   return { id: 'fac', tipodocs: TIPODOC_GRUPO_FAC };
 }
@@ -205,15 +214,22 @@ function calcLineTotals(cantidad, costo, precio, equivale) {
   return { totalUnidades, totalCosto, totalPrecio };
 }
 
-async function getTipoDocFacturacion(pool, empnit, coddocPreferred, tipodocs = TIPODOC_FACTURACION_ALL) {
+async function getTipoDocFacturacion(
+  pool,
+  empnit,
+  coddocPreferred,
+  tipodocs = TIPODOC_FACTURACION_ALL,
+  { requireStockMovement = false } = {}
+) {
   const tipodocIn = tipodocSqlIn(tipodocs);
+  const tipomFilter = requireStockMovement ? ' AND ISNULL(TIPOM, 0) <> 0' : '';
   const req = pool.request().input('EMPNIT', sql.VarChar, empnit);
   if (coddocPreferred) {
     req.input('CODDOC', sql.VarChar, coddocPreferred);
     const one = await req.query(`
-      SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
+      SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, ISNULL(TIPOM, 0) AS TIPOM
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'${tipomFilter}
     `);
     if (one.recordset.length) return one.recordset[0];
   }
@@ -221,9 +237,9 @@ async function getTipoDocFacturacion(pool, empnit, coddocPreferred, tipodocs = T
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .query(`
-      SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
+      SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO, ISNULL(TIPOM, 0) AS TIPOM
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'${tipomFilter}
       ORDER BY CODDOC
     `);
   return all.recordset[0] || null;
@@ -528,15 +544,17 @@ router.get('/config', async (req, res) => {
   if (!empnit) return;
   const { id: grupoId, tipodocs } = resolveFacturacionGrupo(req);
   const tipodocIn = tipodocSqlIn(tipodocs);
+  // Vista Facturación (mixto): solo tipos que mueven inventario (TIPOM ≠ 0).
+  const tipomFilter = grupoId === 'mixto' ? ' AND ISNULL(TIPOM, 0) <> 0' : '';
   try {
     const pool = await req.app.locals.getDbPool();
     const tipos = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .query(`
-        SELECT CODDOC, DESDOC, CORRELATIVO, TIPODOC
+        SELECT CODDOC, DESDOC, CORRELATIVO, TIPODOC, ISNULL(TIPOM, 0) AS TIPOM
         FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'
+        WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'${tipomFilter}
         ORDER BY CODDOC
       `);
     const def = tipos.recordset[0] || null;
@@ -606,8 +624,11 @@ router.get('/pedidos', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
-  const { tipodocs } = resolveFacturacionGrupo(req);
+  const grupo = resolveFacturacionGrupo(req);
+  const { tipodocs } = grupo;
   const tipodocIn = tipodocSqlIn(tipodocs);
+  const tipomFilter =
+    grupo.id === 'mixto' ? ' AND ISNULL(t.TIPOM, 0) <> 0' : '';
   const coddoc = String(req.query.coddoc || '').trim();
   const statusFilter = sqlPedidosListStatusFilter(req.query.status, { defaultAll: true });
   const statusLabel = resolvePedidosListStatusLabel(req.query.status, { defaultAll: true });
@@ -635,7 +656,7 @@ router.get('/pedidos', async (req, res) => {
         d.F_ENTREGA, d.DIRENTREGA,
         d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
         d.ID_COLA_TRABAJO,
-        t.TIPODOC,
+        t.TIPODOC, ISNULL(t.TIPOM, 0) AS TIPOM,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
         ISNULL(cj.DESCAJA, '') AS DESCAJA,
@@ -648,6 +669,7 @@ router.get('/pedidos', async (req, res) => {
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = d.EMPNIT AND cj.CODCAJA = d.CODCAJA
       WHERE d.EMPNIT = @EMPNIT
         AND t.TIPODOC IN (${tipodocIn})
+        ${tipomFilter}
         ${statusFilter}
         AND ${sqlDocumentoFechaDiaWhere('d')}
         ${coddocFilter}
@@ -683,6 +705,8 @@ router.get('/pedidos-env', async (req, res) => {
         d.CODDOC,
         d.CORRELATIVO,
         t.TIPODOC,
+        ISNULL(NULLIF(LTRIM(RTRIM(d.TIPOFAC)), ''), '${TIPOFAC_DEFAULT}') AS TIPOFAC,
+        ISNULL(NULLIF(LTRIM(RTRIM(d.PRIORIDAD)), ''), '') AS PRIORIDAD,
         d.FECHA,
         d.HORA,
         d.MINUTO,
@@ -729,7 +753,8 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
-  const { tipodocs } = resolveFacturacionGrupo(req);
+  const grupo = req.facturacionGrupo || resolveFacturacionGrupo(req);
+  const { tipodocs } = grupo;
   const tipodocIn = tipodocSqlIn(tipodocs);
   const pedCoddoc = String(req.body?.CODDOC_PEDIDO || req.body?.CODDOC || '').trim();
   const pedCorrelativo = parseCorrelativo(req.body?.CORRELATIVO_PEDIDO ?? req.body?.CORRELATIVO);
@@ -744,6 +769,24 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
     const pedido = await loadPedidoEnvOperado(pool, empnit, pedCoddoc, pedCorrelativo);
     if (!pedido) {
       return res.status(404).json({ error: 'Pedido, cotización o comanda no encontrado o no está operado' });
+    }
+
+    let tipofac = TIPOFAC_DEFAULT;
+    try {
+      tipofac = normalizeTipofac(req.body?.TIPOFAC ?? pedido.TIPOFAC);
+    } catch (parseErr) {
+      return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
+    }
+
+    // En vista mixta, el tipodoc destino se deriva de TIPOFAC del origen.
+    let tipodocsCreate = tipodocs;
+    if (grupo.id === 'mixto') {
+      tipodocsCreate = tipodocsForTipofac(tipofac).filter((t) => tipodocs.includes(t));
+      if (!tipodocsCreate.length) {
+        return res.status(400).json({
+          error: `TIPOFAC ${tipofac} no está permitido en este módulo de facturación`,
+        });
+      }
     }
 
     const dupCheck = await pool
@@ -768,10 +811,12 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
       });
     }
 
-    const tipo = await getTipoDocFacturacion(pool, empnit, coddocFacPref, tipodocs);
+    const tipo = await getTipoDocFacturacion(pool, empnit, coddocFacPref, tipodocsCreate, {
+      requireStockMovement: grupo.id === 'mixto',
+    });
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento de facturación (${tipodocs.join(', ')}) activo`,
+        error: `No hay tipo de documento de facturación (${tipodocsCreate.join(', ')}) activo`,
       });
     }
     const coddocFac = tipo.CODDOC;
@@ -819,6 +864,18 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
           sql.Int,
           pedido.CODCAJA != null && Number(pedido.CODCAJA) > 0 ? Number(pedido.CODCAJA) : null
         )
+        .input('TIPOFAC', sql.VarChar, tipofac)
+        .input(
+          'PRIORIDAD',
+          sql.VarChar,
+          (() => {
+            try {
+              return normalizePrioridad(pedido.PRIORIDAD, { required: false }) || 'BAJA';
+            } catch (_) {
+              return 'BAJA';
+            }
+          })()
+        )
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
@@ -827,7 +884,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO,
-            SERIEFAC, NOFAC, F_ENTREGA
+            SERIEFAC, NOFAC, F_ENTREGA, TIPOFAC, PRIORIDAD
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
@@ -836,7 +893,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             @DIRENTREGA, 'SN', 0, 0,
             CASE WHEN @CONCRE = 'CRE' THEN 'CREDITO' ELSE 'CONTADO' END, 'SN',
             @FECHA, 0, 0, 0, 0, 0,
-            @SERIEFAC, @NOFAC, @F_ENTREGA
+            @SERIEFAC, @NOFAC, @F_ENTREGA, @TIPOFAC, @PRIORIDAD
           )
         `);
       const tipom = await copyDocProductosFromPedido(
@@ -931,7 +988,8 @@ router.post('/pedidos', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
-  const { tipodocs } = resolveFacturacionGrupo(req);
+  const grupo = resolveFacturacionGrupo(req);
+  const { tipodocs } = grupo;
   const coddocBody = String(req.body?.CODDOC || '').trim();
   const codcliente = parseInt(req.body?.CODCLIENTE, 10);
   const usuario = String(req.body?.USUARIO || req.body?.usuario || 'FAC').trim();
@@ -940,7 +998,9 @@ router.post('/pedidos', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const tipo = await getTipoDocFacturacion(pool, empnit, coddocBody, tipodocs);
+    const tipo = await getTipoDocFacturacion(pool, empnit, coddocBody, tipodocs, {
+      requireStockMovement: grupo.id === 'mixto',
+    });
     if (!tipo) {
       return res.status(400).json({
         error: `No hay tipo de documento de facturación (${tipodocs.join(', ')}) activo para la empresa`,
@@ -1554,6 +1614,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
     }
     codcaja = parsed;
   }
+  let prioridad;
+  try {
+    prioridad = normalizePrioridad(req.body?.PRIORIDAD ?? req.body?.prioridad);
+  } catch (parseErr) {
+    return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
+  }
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -1568,7 +1634,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         .input('CONCRE', sql.VarChar, concre)
         .input('TIPOPAGO', sql.VarChar, concre === 'CRE' ? 'CREDITO' : 'CONTADO')
         .input('F_ENTREGA', sql.VarChar, entregaFinalize.fEntrega)
-        .input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega);
+        .input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega)
+        .input('PRIORIDAD', sql.VarChar, prioridad);
       let vencSql = '';
       if (concre === 'CRE') {
         txnUpd.input('VENCIMIENTO', sql.Date, vencParts.fecha);
@@ -1592,7 +1659,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       await txnUpd.query(`
         UPDATE dbo.DOCUMENTOS
         SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO,
-            F_ENTREGA = @F_ENTREGA, DIRENTREGA = @DIRENTREGA${vencSql}${obsSql}${clienteSql}${cajaSql}
+            F_ENTREGA = @F_ENTREGA, DIRENTREGA = @DIRENTREGA,
+            PRIORIDAD = @PRIORIDAD${vencSql}${obsSql}${clienteSql}${cajaSql}
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
           AND ${SQL_DOCUMENTO_EDITABLE}
       `);

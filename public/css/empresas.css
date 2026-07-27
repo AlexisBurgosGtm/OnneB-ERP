@@ -99,3 +99,13 @@
 .empresas-cambiar-empnit-log-err {
   color: #b42318;
 }
+
+.empresas-eliminar-tablas-wrap {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.empresas-eliminar-tablas th,
+.empresas-eliminar-tablas td {
+  vertical-align: middle;
+}

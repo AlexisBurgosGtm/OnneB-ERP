@@ -241,6 +241,20 @@ const CotizacionesView = {
     const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
     const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
+    const tipofacHtml =
+      typeof DocTipofacPrioridad !== 'undefined'
+        ? DocTipofacPrioridad.tipofacSelectHtml({
+            id: 'pos-finalizar-tipofac',
+            selected: h.TIPOFAC || 'FEF',
+          })
+        : '';
+    const prioridadHtml =
+      typeof DocTipofacPrioridad !== 'undefined'
+        ? DocTipofacPrioridad.prioridadSelectHtml({
+            id: 'pos-finalizar-prioridad',
+            selected: h.PRIORIDAD || 'BAJA',
+          })
+        : '';
     const entregaHtml =
       typeof DocEntrega !== 'undefined'
         ? DocEntrega.fieldsHtml({
@@ -270,6 +284,8 @@ const CotizacionesView = {
             <input type="text" id="pos-finalizar-dirclie" class="form-control form-control-sm"
               value="${this.escapeHtml(dirRaw)}" autocomplete="off">
           </div>
+          ${tipofacHtml}
+          ${prioridadHtml}
           ${entregaHtml}
           <div class="mb-0">
             <label class="form-label small mb-0" for="pos-finalizar-obs">Observaciones</label>
@@ -278,7 +294,6 @@ const CotizacionesView = {
           </div>
         </div>
       `,
-      icon: 'question',
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
@@ -307,6 +322,14 @@ const CotizacionesView = {
           DOC_DIRCLIE: document.getElementById('pos-finalizar-dirclie')?.value?.trim() || '',
           F_ENTREGA: entrega.F_ENTREGA,
           DIRENTREGA: entrega.DIRENTREGA,
+          TIPOFAC:
+            typeof DocTipofacPrioridad !== 'undefined'
+              ? DocTipofacPrioridad.readTipofacFromDom('pos-finalizar-tipofac')
+              : 'FEF',
+          PRIORIDAD:
+            typeof DocTipofacPrioridad !== 'undefined'
+              ? DocTipofacPrioridad.readPrioridadFromDom('pos-finalizar-prioridad')
+              : 'BAJA',
         };
       },
     });
@@ -635,6 +658,14 @@ const CotizacionesView = {
       const codven = h.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
       vendedorSel.value = codven;
     }
+    const tipofacSel = this._container?.querySelector('#pos-doc-tipofac');
+    if (tipofacSel && h && document.activeElement !== tipofacSel) {
+      tipofacSel.value = String(h.TIPOFAC || 'FEF').trim().toUpperCase() || 'FEF';
+    }
+    const prioridadSel = this._container?.querySelector('#pos-doc-prioridad');
+    if (prioridadSel && h && document.activeElement !== prioridadSel) {
+      prioridadSel.value = String(h.PRIORIDAD || 'BAJA').trim().toUpperCase() || 'BAJA';
+    }
   },
 
   renderPrecioCampoSelector(editable) {
@@ -676,10 +707,31 @@ const CotizacionesView = {
       </div>`;
   },
 
+  renderTipofacPrioridadFields() {
+    if (typeof DocTipofacPrioridad === 'undefined') return '';
+    const h = this._pedido?.header;
+    return DocTipofacPrioridad.editorFieldsHtml({
+      tipofacId: 'pos-doc-tipofac',
+      prioridadId: 'pos-doc-prioridad',
+      tipofac: h?.TIPOFAC || 'FEF',
+      prioridad: h?.PRIORIDAD || 'BAJA',
+      disabled: !this.docEditable(h),
+    });
+  },
+
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
     PosDocSearchUI.syncControls(this._container, 'pos', editable);
-    ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo', '.btn-refresh-vendedores'].forEach((sel) => {
+    [
+      '#pos-cliente-search',
+      '#pos-doc-fecha',
+      '#pos-doc-vendedor',
+      '#pos-doc-tipofac',
+      '#pos-doc-prioridad',
+      '#pos-precio-campo',
+      '#pos-cliente-nuevo',
+      '.btn-refresh-vendedores',
+    ].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
@@ -854,6 +906,7 @@ const CotizacionesView = {
               <div class="pos-doc-meta-fields d-flex flex-wrap align-items-end gap-2">
                 ${DocFecha.renderField('pos-doc-fecha', this._pedido?.header)}
                 ${this.renderVendedorField()}
+                ${this.renderTipofacPrioridadFields()}
               </div>
               <div class="pos-header-summary ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="pos-header-total">Q 0.00</h3>
@@ -1045,6 +1098,22 @@ const CotizacionesView = {
       });
     }
 
+    const tipofacSel = this._container?.querySelector('#pos-doc-tipofac');
+    if (tipofacSel) {
+      tipofacSel.addEventListener('change', () => {
+        if (tipofacSel.disabled) return;
+        this.guardarTipofacDocumento(tipofacSel.value).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
+
+    const prioridadSel = this._container?.querySelector('#pos-doc-prioridad');
+    if (prioridadSel) {
+      prioridadSel.addEventListener('change', () => {
+        if (prioridadSel.disabled) return;
+        this.guardarPrioridadDocumento(prioridadSel.value).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
+
     const refreshVenBtn = this._container?.querySelector('.btn-refresh-vendedores');
     if (refreshVenBtn) {
       refreshVenBtn.addEventListener('click', () => {
@@ -1202,6 +1271,38 @@ const CotizacionesView = {
     this.renderHeaderInfo();
     this.syncVendedorEmphasis();
     F.toast('Vendedor actualizado', 'success');
+  },
+
+  async guardarTipofacDocumento(tipofac) {
+    const key = this.docKey();
+    if (!key || !this.docEditable(this._pedido?.header)) return;
+    const next = String(tipofac || 'FEF').trim().toUpperCase() || 'FEF';
+    const actual = String(this._pedido.header?.TIPOFAC || 'FEF').trim().toUpperCase() || 'FEF';
+    if (next === actual) return;
+    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    this._pedido = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ TIPOFAC: next }),
+    });
+    this.renderHeaderInfo();
+    F.toast('Tipo documento actualizado', 'success');
+  },
+
+  async guardarPrioridadDocumento(prioridad) {
+    const key = this.docKey();
+    if (!key || !this.docEditable(this._pedido?.header)) return;
+    const next = String(prioridad || 'BAJA').trim().toUpperCase() || 'BAJA';
+    const actual = String(this._pedido.header?.PRIORIDAD || 'BAJA').trim().toUpperCase() || 'BAJA';
+    if (next === actual) return;
+    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    this._pedido = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ PRIORIDAD: next }),
+    });
+    this.renderHeaderInfo();
+    F.toast('Prioridad actualizada', 'success');
   },
 
   async aplicarCliente(codcliente) {

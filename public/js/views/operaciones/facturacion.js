@@ -56,12 +56,18 @@ const FacturacionView = {
   },
 
   tipodocsLabelHtml() {
+    if (this._grupo === 'mixto') {
+      return '<strong>FAC</strong>, <strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
+    }
     if (this._grupo === 'fel') {
       return '<strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
     }
     return '<strong>FAC</strong>';
   },
 
+  showsTipofacEnTomarDatos() {
+    return this._grupo === 'mixto';
+  },
   formatMoney(value) {
     const n = Number(value);
     if (Number.isNaN(n)) return 'Q 0.00';
@@ -194,7 +200,14 @@ const FacturacionView = {
   },
 
   puedeFraccionar(row) {
-    if (this._grupo !== 'fac') return false;
+    // Facturas normales (FAC): vista FAC o vista mixta Facturación.
+    if (this._grupo === 'fel') return false;
+    if (this._grupo === 'mixto') {
+      const tipodoc = String(row?.TIPODOC || '').trim().toUpperCase();
+      if (tipodoc !== 'FAC') return false;
+    } else if (this._grupo !== 'fac') {
+      return false;
+    }
     const idCola = Number(row?.ID_COLA_TRABAJO);
     return !(Number.isFinite(idCola) && idCola > 0);
   },
@@ -585,6 +598,13 @@ const FacturacionView = {
             dirEntrega: DocEntrega.dirDefault(h),
           })
         : '';
+    const prioridadHtml =
+      typeof DocTipofacPrioridad !== 'undefined'
+        ? DocTipofacPrioridad.prioridadSelectHtml({
+            id: 'fac-finalizar-prioridad',
+            selected: h.PRIORIDAD || 'BAJA',
+          })
+        : '';
 
     const fpagoColHidden = concreVal === 'CRE' ? ' d-none' : '';
 
@@ -614,6 +634,7 @@ const FacturacionView = {
                   value="${this.escapeHtml(dirRaw)}" autocomplete="off">
               </div>
               ${entregaHtml}
+              ${prioridadHtml}
               <div class="row g-2 mb-2 align-items-end" id="fac-finalizar-pago-row">
                 <div class="col-${concreVal === 'CRE' ? '6' : '12'}" id="fac-finalizar-concre-wrap">
                   <label class="form-label small mb-0" for="fac-finalizar-concre">Forma de pago</label>
@@ -639,7 +660,6 @@ const FacturacionView = {
           </div>
         </div>
       `,
-      icon: 'question',
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Finalizar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
@@ -697,6 +717,10 @@ const FacturacionView = {
           vencimiento: concre === 'CRE' ? venc : null,
           F_ENTREGA: entrega.F_ENTREGA,
           DIRENTREGA: entrega.DIRENTREGA,
+          PRIORIDAD:
+            typeof DocTipofacPrioridad !== 'undefined'
+              ? DocTipofacPrioridad.readPrioridadFromDom('fac-finalizar-prioridad')
+              : 'BAJA',
           ...fpago,
         };
       },
@@ -721,6 +745,7 @@ const FacturacionView = {
         CODCAJA: this.readCodcajaForFinalizar(),
         F_ENTREGA: value.F_ENTREGA,
         DIRENTREGA: value.DIRENTREGA,
+        PRIORIDAD: value.PRIORIDAD,
         FPAGO_EFECTIVO: value.FPAGO_EFECTIVO,
         FPAGO_TARJETA: value.FPAGO_TARJETA,
         FPAGO_DEPOSITO: value.FPAGO_DEPOSITO,
@@ -1334,6 +1359,7 @@ const FacturacionView = {
   renderPedidoEnvModalHtml() {
     if (!this._pedidoEnvModalOpen) return '';
     const rows = this.filteredPedidosEnvList();
+    const showTipofac = this.showsTipofacEnTomarDatos();
     const body =
       rows.length === 0
         ? `<div class="fac-env-modal-empty text-muted text-center py-4">
@@ -1347,6 +1373,7 @@ const FacturacionView = {
                   <th>Tipo</th>
                   <th>CODDOC</th>
                   <th>CORRELATIVO</th>
+                  ${showTipofac ? '<th>TIPOFAC</th>' : ''}
                   <th>FECHA</th>
                   <th>CLIENTE</th>
                   <th class="text-end">IMPORTE</th>
@@ -1354,18 +1381,29 @@ const FacturacionView = {
               </thead>
               <tbody>
                 ${rows
-                  .map(
-                    (r) => `
+                  .map((r) => {
+                    const tipofac = String(r.TIPOFAC || 'FEF').trim().toUpperCase() || 'FEF';
+                    const tipofacLabel =
+                      typeof DocTipofacPrioridad !== 'undefined'
+                        ? DocTipofacPrioridad.tipofacLabel(tipofac)
+                        : tipofac;
+                    return `
                   <tr class="fac-env-pedido-row" role="button" tabindex="0"
-                    data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}">
+                    data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}"
+                    data-tipofac="${this.escapeHtml(tipofac)}">
                     <td><span class="badge text-bg-secondary">${this.escapeHtml(r.TIPODOC || '—')}</span></td>
                     <td class="fw-semibold">${this.escapeHtml(r.CODDOC)}</td>
                     <td>${this.escapeHtml(r.CORRELATIVO)}</td>
+                    ${
+                      showTipofac
+                        ? `<td><span class="badge text-bg-info" title="${this.escapeHtml(tipofacLabel)}">${this.escapeHtml(tipofac)}</span></td>`
+                        : ''
+                    }
                     <td class="text-nowrap">${this.escapeHtml(this.formatFechaPedido(r))}</td>
                     <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || '—')}</td>
                     <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
-                  </tr>`
-                  )
+                  </tr>`;
+                  })
                   .join('')}
               </tbody>
             </table>
@@ -1380,7 +1418,11 @@ const FacturacionView = {
                 <h5 class="fac-env-modal-title mb-1" id="fac-pedido-env-title">
                   <i class="fa-solid fa-file-import me-2 text-primary"></i>Tomar datos
                 </h5>
-                <p class="small text-muted mb-0">Seleccione un pedido (ENV), cotización (COT) o comanda (CRS) operado para cargarlo en facturación.</p>
+                <p class="small text-muted mb-0">Seleccione un pedido (ENV), cotización (COT) o comanda (CRS) operado para cargarlo en facturación.${
+                  showTipofac
+                    ? ' El <strong>TIPOFAC</strong> del documento define si se crea FAC, FEF o FEC.'
+                    : ''
+                }</p>
               </div>
               <button type="button" class="btn btn-sm btn-light fac-env-modal-close" id="btn-fac-pedido-env-cerrar" aria-label="Cerrar">
                 <i class="fa-solid fa-xmark"></i>
@@ -1415,6 +1457,7 @@ const FacturacionView = {
     return (this._pedidosEnvList || []).filter((r) => {
       const hay = [
         r.TIPODOC,
+        r.TIPOFAC,
         r.CODDOC,
         r.CORRELATIVO,
         r.DOC_NOMCLIE,
@@ -1512,23 +1555,48 @@ const FacturacionView = {
     const cliente = this.escapeHtml(row?.DOC_NOMCLIE || row?.NEGOCIO || '—');
     const importe = this.escapeHtml(this.formatMoney(row?.TOTALPRECIO));
     const tipo = this.escapeHtml(row?.TIPODOC || '');
+    const tipofac = String(row?.TIPOFAC || 'FEF').trim().toUpperCase() || 'FEF';
+    const tipofacLabel =
+      typeof DocTipofacPrioridad !== 'undefined'
+        ? DocTipofacPrioridad.tipofacLabel(tipofac)
+        : tipofac;
+    const tipofacHtml = this.showsTipofacEnTomarDatos()
+      ? `<br><span class="small">TIPOFAC: <strong>${this.escapeHtml(tipofac)}</strong> (${this.escapeHtml(tipofacLabel)}) → documento <strong>${this.escapeHtml(tipofac)}</strong></span>`
+      : '';
     const ok = await CatalogosUI.fireConfirm({
       title: '¿Agregar a facturación?',
       html: `<p class="mb-2">Se creará una nueva factura con el cliente y productos del documento:</p>
         <p class="mb-0">${tipo ? `<span class="badge text-bg-secondary me-1">${tipo}</span>` : ''}
         <strong>${this.escapeHtml(coddoc)}-${this.escapeHtml(correlativo)}</strong> · ${cliente}<br>
-        <span class="text-muted">${importe}</span></p>`,
+        <span class="text-muted">${importe}</span>${tipofacHtml}</p>`,
       icon: 'question',
       confirmText: 'Sí, cargar',
     });
     if (!ok) return;
-    await this.crearFacturaDesdePedido(coddoc, correlativo);
+    await this.crearFacturaDesdePedido(coddoc, correlativo, tipofac);
   },
 
-  async crearFacturaDesdePedido(coddocPedido, correlativoPedido) {
+  coddocPreferidoParaTipofac(tipofac) {
+    const want = String(tipofac || 'FEF').trim().toUpperCase() || 'FEF';
+    const tipos = this._config?.tiposDocumento || [];
+    const match = tipos.find((t) => String(t.TIPODOC || '').trim().toUpperCase() === want);
+    return match?.CODDOC || '';
+  },
+
+  async crearFacturaDesdePedido(coddocPedido, correlativoPedido, tipofacOverride) {
     if (this._container?.querySelector('#fac-list-coddoc')) {
       DocTipoSelect.syncFromDom(this._container, 'fac-list-coddoc', this);
     }
+    const row = (this._pedidosEnvList || []).find(
+      (r) =>
+        String(r.CODDOC) === String(coddocPedido) &&
+        String(r.CORRELATIVO) === String(correlativoPedido)
+    );
+    const tipofac =
+      String(tipofacOverride || row?.TIPOFAC || 'FEF').trim().toUpperCase() || 'FEF';
+    const coddocFac = this.showsTipofacEnTomarDatos()
+      ? this.coddocPreferidoParaTipofac(tipofac)
+      : this.activeCoddoc();
     const url = this.apiUrl('/pedidos/desde-pedido');
     const res = await F.fetchJson(url, {
       method: 'POST',
@@ -1536,7 +1604,8 @@ const FacturacionView = {
       body: JSON.stringify({
         CODDOC_PEDIDO: coddocPedido,
         CORRELATIVO_PEDIDO: correlativoPedido,
-        CODDOC_FAC: this.activeCoddoc(),
+        CODDOC_FAC: coddocFac,
+        TIPOFAC: tipofac,
         USUARIO: this.usuario(),
       }),
     });
@@ -2147,4 +2216,10 @@ function createFacturacionViewClone(overrides = {}) {
 const FacturasElectronicasView = createFacturacionViewClone({
   _grupo: 'fel',
   _tituloModulo: 'Facturas Electrónicas',
+});
+
+/** Vista Facturación: FAC + FEL (FEF/FEC/FES); al tomar datos usa TIPOFAC del origen. */
+const FacturacionCompletaView = createFacturacionViewClone({
+  _grupo: 'mixto',
+  _tituloModulo: 'Facturación',
 });

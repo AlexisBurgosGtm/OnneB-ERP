@@ -17,6 +17,12 @@
   max-width: 16rem;
 }
 
+.inventario-filter-mes,
+.inventario-filter-anio {
+  min-width: 7.5rem;
+  max-width: 10rem;
+}
+
 .inventario-filter-habilitado {
   max-width: 9rem;
 }

@@ -22,6 +22,7 @@ const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../l
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
+const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -547,6 +548,26 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
         updates.push('CODVEN = @CODVEN');
       }
     }
+    if (req.body?.TIPOFAC !== undefined || req.body?.tipofac !== undefined) {
+      let tipofac;
+      try {
+        tipofac = normalizeTipofac(req.body?.TIPOFAC ?? req.body?.tipofac);
+      } catch (parseErr) {
+        return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
+      }
+      request.input('TIPOFAC', sql.VarChar, tipofac);
+      updates.push('TIPOFAC = @TIPOFAC');
+    }
+    if (req.body?.PRIORIDAD !== undefined || req.body?.prioridad !== undefined) {
+      let prioridad;
+      try {
+        prioridad = normalizePrioridad(req.body?.PRIORIDAD ?? req.body?.prioridad);
+      } catch (parseErr) {
+        return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
+      }
+      request.input('PRIORIDAD', sql.VarChar, prioridad);
+      updates.push('PRIORIDAD = @PRIORIDAD');
+    }
 
     const fechaParts = req.body?.FECHA !== undefined ? parseFechaInput(req.body.FECHA) : null;
     if (req.body?.FECHA !== undefined && !fechaParts) {
@@ -588,6 +609,20 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
             const vendedor = await getVendedorActivo(pool, empnit, codven);
             txnReq.input('CODVEN', sql.Int, vendedor.CODEMPLEADO);
           }
+        }
+        if (req.body?.TIPOFAC !== undefined || req.body?.tipofac !== undefined) {
+          txnReq.input(
+            'TIPOFAC',
+            sql.VarChar,
+            normalizeTipofac(req.body?.TIPOFAC ?? req.body?.tipofac)
+          );
+        }
+        if (req.body?.PRIORIDAD !== undefined || req.body?.prioridad !== undefined) {
+          txnReq.input(
+            'PRIORIDAD',
+            sql.VarChar,
+            normalizePrioridad(req.body?.PRIORIDAD ?? req.body?.prioridad)
+          );
         }
         const result = await txnReq.query(`
           UPDATE dbo.DOCUMENTOS SET ${updates.join(', ')}
@@ -966,6 +1001,14 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (entregaFinalize.error) {
     return res.status(400).json({ error: entregaFinalize.error });
   }
+  let tipofac;
+  let prioridad;
+  try {
+    tipofac = normalizeTipofac(req.body?.TIPOFAC ?? req.body?.tipofac);
+    prioridad = normalizePrioridad(req.body?.PRIORIDAD ?? req.body?.prioridad);
+  } catch (parseErr) {
+    return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
+  }
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -978,6 +1021,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         setParts.push('DOC_NOMCLIE = @DOC_NOMCLIE', 'DOC_DIRCLIE = @DOC_DIRCLIE');
       }
       setParts.push('F_ENTREGA = @F_ENTREGA', 'DIRENTREGA = @DIRENTREGA');
+      setParts.push('TIPOFAC = @TIPOFAC', 'PRIORIDAD = @PRIORIDAD');
       if (setParts.length) {
         const updReq = transaction
           .request()
@@ -991,6 +1035,8 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         }
         updReq.input('F_ENTREGA', sql.VarChar, entregaFinalize.fEntrega);
         updReq.input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega);
+        updReq.input('TIPOFAC', sql.VarChar, tipofac);
+        updReq.input('PRIORIDAD', sql.VarChar, prioridad);
         await updReq.query(`
             UPDATE dbo.DOCUMENTOS SET ${setParts.join(', ')}
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
