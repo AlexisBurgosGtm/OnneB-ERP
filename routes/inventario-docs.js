@@ -27,6 +27,7 @@ const {
 } = require('../lib/producto-precio-linea');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const { getAppToken } = require('../lib/app-token');
 const { isUpdateDbConfigured } = require('../config/update-database');
 const { getUpdateDbPool } = require('../lib/update-db-pool');
@@ -259,6 +260,7 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
         coddocDefault: def?.CODDOC || null,
         tiposDocumento: tipos.recordset,
         bodegaDefault: DEFAULT_BODEGA,
+        muestraDesprod2: await getSettingSino(pool, SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS),
       });
     } catch (err) {
       console.warn(`[API GET /${logPrefix}/config]`, err.message);

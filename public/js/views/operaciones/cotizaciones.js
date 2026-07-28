@@ -66,6 +66,17 @@ const CotizacionesView = {
     return `${name} · <strong class="pos-prod-marca">${this.escapeHtml(marca)}</strong>`;
   },
 
+  muestraDesprod2() {
+    return String(this._config?.muestraDesprod2 || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  renderDesprod2Html(p) {
+    if (!this.muestraDesprod2()) return '';
+    const des2 = String(p?.DESPROD2 ?? '').trim();
+    if (!des2) return '';
+    return `<div class="pos-prod-des2 small text-muted">${this.escapeHtml(des2)}</div>`;
+  },
+
   formatFechaPedido(row) {
     return DocFecha.formatDisplay(row);
   },
@@ -572,6 +583,7 @@ const CotizacionesView = {
             <div>
               <div class="pos-prod-code">${this.escapeHtml(p.CODPROD)} · ${this.escapeHtml(p.CODMEDIDA)}</div>
               <div>${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
+              ${this.renderDesprod2Html(p)}
             </div>
             <div class="pos-prod-meta text-end">
               <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>

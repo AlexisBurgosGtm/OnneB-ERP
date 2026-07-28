@@ -68,6 +68,17 @@ const ComandasRestauranteView = {
     return `${name} · <strong class="pos-prod-marca">${this.escapeHtml(marca)}</strong>`;
   },
 
+  muestraDesprod2() {
+    return String(this._config?.muestraDesprod2 || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  renderDesprod2Html(p) {
+    if (!this.muestraDesprod2()) return '';
+    const des2 = String(p?.DESPROD2 ?? '').trim();
+    if (!des2) return '';
+    return `<div class="crs-product-sub small text-muted">${this.escapeHtml(des2)}</div>`;
+  },
+
   formatFechaPedido(row) {
     return DocFecha.formatDisplay(row);
   },
@@ -515,7 +526,6 @@ const ComandasRestauranteView = {
     const fallbackSrc = '/icons/icon-72.png';
     const html = this._productos
       .map((p) => {
-        const des2 = String(p.DESPROD2 ?? '').trim();
         const fotoUrl = `/api/productos/${encodeURIComponent(String(p.CODPROD).trim())}/foto?empnit=${encodeURIComponent(F.getEmpNit())}`;
         return `
           <div class="crs-product-card pos-product-item" tabindex="0" role="button"
@@ -529,7 +539,7 @@ const ComandasRestauranteView = {
             </div>
             <div class="crs-product-body">
               <div class="crs-product-name">${this.renderProdNameHtml(p.DESPROD, p.DESMARCA)}</div>
-              ${des2 ? `<div class="crs-product-sub small text-muted">${this.escapeHtml(des2)}</div>` : ''}
+              ${this.renderDesprod2Html(p)}
               <div class="crs-product-meta">
                 <span class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</span>
                 <span class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</span>

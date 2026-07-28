@@ -295,6 +295,10 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.SOLICITA_AUTORIZACIONES
     );
+    const muestraDesprod2 = await getSettingSino(
+      pool,
+      SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
     res.json({
       empnit,
       tipodoc: TIPODOC_COTIZACION,
@@ -307,6 +311,7 @@ router.get('/config', async (req, res) => {
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
       solicitaAutorizaciones,
+      muestraDesprod2,
     });
   } catch (err) {
     console.warn('[API GET /cotizaciones/config]', err.message);

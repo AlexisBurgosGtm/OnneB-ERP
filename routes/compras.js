@@ -27,6 +27,7 @@ const {
 } = require('../lib/producto-precio-linea');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -456,6 +457,7 @@ router.get('/config', async (req, res) => {
       tiposDocumento: tipos.recordset,
       proveedorDefault: proveedor.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
+      muestraDesprod2: await getSettingSino(pool, SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS),
     });
   } catch (err) {
     console.warn('[API GET /compras/config]', err.message);

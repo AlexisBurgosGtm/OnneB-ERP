@@ -306,6 +306,10 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const muestraDesprod2 = await getSettingSino(
+      pool,
+      SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
     res.json({
       empnit,
       tipodoc: TIPODOC_COMANDA,
@@ -317,6 +321,7 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      muestraDesprod2,
     });
   } catch (err) {
     console.warn('[API GET /comandas-restaurante/config]', err.message);

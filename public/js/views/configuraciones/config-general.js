@@ -18,6 +18,7 @@ const ConfigGeneralView = {
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
     MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
     MAXIMO_FRACCIONAMIENTO_FACTURAS: 'MAXIMO FRACCIONAMIENTO FACTURAS',
+    MUESTRA_DESPROD2_EN_DOCS_Y_PRODS: 'MUESTRA DESPROD2 EN DOCS Y PRODS',
   },
 
   TEXT_CARDS: [
@@ -95,6 +96,13 @@ const ConfigGeneralView = {
       title: 'Certifica al finalizar',
       icon: 'fa-certificate',
       fallbackDesc: 'Al finalizar un documento FEL (FEF/FEC/FNC), certifica automáticamente ante SAT',
+    },
+    {
+      opcion: 'MUESTRA DESPROD2 EN DOCS Y PRODS',
+      title: 'Muestra DESPROD2 en Docs y Prods',
+      icon: 'fa-align-left',
+      fallbackDesc:
+        'En buscadores de documentos y productos, también busca por DESPROD2 y lo muestra en la lista de resultados',
     },
   ],
 

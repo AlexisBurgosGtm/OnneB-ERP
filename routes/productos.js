@@ -17,6 +17,7 @@ const {
   saveProductoFoto,
   removeProductoFotos,
 } = require('../lib/producto-fotos');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 
 const router = express.Router();
 const uploadFoto = multer({
@@ -117,6 +118,7 @@ const LIST_SELECT = `
   p.CODPROD,
   p.CODPROD2,
   p.DESPROD,
+  p.DESPROD2,
   p.COSTO,
   p.HABILITADO,
   p.EXISTENCIA,
@@ -127,7 +129,9 @@ const LIST_SELECT = `
   c3.DESCLATRES
 `;
 
-const LIST_WHERE = `
+function buildListWhere(useDesprod2) {
+  const desprod2 = useDesprod2 ? 'OR p.DESPROD2 LIKE @qLike' : '';
+  return `
   WHERE p.EMPNIT = @EMPNIT
     AND (@habilitado IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.HABILITADO, '')))) = @habilitado)
     AND (@codmarca IS NULL OR p.CODMARCA = @codmarca)
@@ -136,7 +140,7 @@ const LIST_WHERE = `
       OR p.CODPROD LIKE @qLike
       OR p.CODPROD2 LIKE @qLike
       OR p.DESPROD LIKE @qLike
-      OR p.DESPROD2 LIKE @qLike
+      ${desprod2}
       OR p.DESPROD3 LIKE @qLike
       OR m.DESMARCA LIKE @qLike
       OR c1.DESCLAUNO LIKE @qLike
@@ -144,6 +148,7 @@ const LIST_WHERE = `
       OR c3.DESCLATRES LIKE @qLike
     )
 `;
+}
 
 function bindListFilters(request, { empnit, q, habilitado, codmarca }) {
   request.input('EMPNIT', sql.VarChar, empnit);
@@ -359,9 +364,14 @@ router.get('/', async (req, res) => {
   const { q, habilitado, codmarca, limit } = parseListQuery(req);
   try {
     const pool = await req.app.locals.getDbPool();
+    const muestraDesprod2 = await getSettingSino(
+      pool,
+      SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
+    const listWhere = buildListWhere(muestraDesprod2 === 'SI');
     const countReq = pool.request();
     bindListFilters(countReq, { empnit, q, habilitado, codmarca });
-    const total = (await countReq.query(`SELECT COUNT(*) AS total ${LIST_FROM} ${LIST_WHERE}`)).recordset[0]
+    const total = (await countReq.query(`SELECT COUNT(*) AS total ${LIST_FROM} ${listWhere}`)).recordset[0]
       .total;
 
     const listReq = pool.request();
@@ -371,7 +381,7 @@ router.get('/', async (req, res) => {
       await listReq.query(`
         SELECT TOP (@limit) ${LIST_SELECT}
         ${LIST_FROM}
-        ${LIST_WHERE}
+        ${listWhere}
         ORDER BY p.DESPROD, p.CODPROD
       `)
     ).recordset;
@@ -385,6 +395,7 @@ router.get('/', async (req, res) => {
       q: q || null,
       habilitado,
       codmarca,
+      muestraDesprod2,
     });
   } catch (err) {
     console.warn('[API GET /productos]', err.message);

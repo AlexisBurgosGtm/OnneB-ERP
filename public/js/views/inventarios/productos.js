@@ -12,6 +12,7 @@ const ProductosView = {
   _stats: { habilitados: 0, no_habilitados: 0, total: 0 },
   _lookups: null,
   _lookupsEmpNit: '',
+  _muestraDesprod2: false,
   _screen: 'list',
   _formMode: 'new',
   _formRow: {},
@@ -31,10 +32,15 @@ const ProductosView = {
     { key: 'CODPROD', label: 'Código' },
     { key: 'CODPROD2', label: 'Cód. alt.' },
     { key: 'DESPROD', label: 'Descripción', cellClass: 'productos-col-desc' },
+    { key: 'DESPROD2', label: 'Descripción 2', cellClass: 'productos-col-desc', desprod2Only: true },
     { key: 'DESMARCA', label: 'Marca' },
     { key: 'COSTO', label: 'Costo', type: 'money' },
     { key: 'HABILITADO', label: 'Habilitado', toggle: true },
   ],
+
+  getVisibleColumns() {
+    return this.tableColumns.filter((c) => !c.desprod2Only || this._muestraDesprod2);
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -317,7 +323,8 @@ const ProductosView = {
   },
 
   renderTableBodyHtml(rows) {
-    const colSpan = this.tableColumns.length + 2;
+    const cols = this.getVisibleColumns();
+    const colSpan = cols.length + 2;
     if (!rows.length) {
       const msg = this._filterQuery.trim()
         ? 'Ningún producto coincide con la búsqueda'
@@ -327,7 +334,7 @@ const ProductosView = {
     return rows
       .map((row) => {
         const selected = this._selectedCodprod === row.CODPROD ? ' productos-row-selected' : '';
-        const cells = this.tableColumns
+        const cells = cols
           .map((c) => {
             if (c.toggle) {
               return `<td data-stop-row="1">${this.habilitadoButtonHtml(row)}</td>`;
@@ -1507,7 +1514,18 @@ const ProductosView = {
 
   updateTableView() {
     const tbody = this._container?.querySelector('#productos-tbody');
+    const theadRow = this._container?.querySelector('#productos-table thead tr');
     const badge = this._container?.querySelector('#productos-count');
+    if (theadRow) {
+      theadRow.innerHTML = [
+        '<th scope="col" class="productos-th-menu" aria-label="Opciones"></th>',
+        ...this.getVisibleColumns().map((c) => {
+          const align = c.type === 'money' || c.type === 'num' ? ' text-end' : '';
+          return `<th scope="col" class="${align.trim()}">${this.escapeHtml(c.label)}</th>`;
+        }),
+        '<th scope="col" class="text-end">Acciones</th>',
+      ].join('');
+    }
     if (tbody) {
       tbody.innerHTML = this.renderTableBodyHtml(this._rows);
       this.bindRowActions();
@@ -1522,6 +1540,7 @@ const ProductosView = {
     this._rows = data.rows || [];
     this._totalCount = data.total ?? this._rows.length;
     this._listTruncated = Boolean(data.truncated);
+    this._muestraDesprod2 = String(data.muestraDesprod2 || 'NO').trim().toUpperCase() === 'SI';
     return data;
   },
 
@@ -1530,7 +1549,7 @@ const ProductosView = {
     this._loadingList = true;
     const tbody = this._container?.querySelector('#productos-tbody');
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="${this.tableColumns.length + 2}" class="text-center text-muted py-4">
+      tbody.innerHTML = `<tr><td colspan="${this.getVisibleColumns().length + 2}" class="text-center text-muted py-4">
         <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</td></tr>`;
     }
     try {
@@ -1887,7 +1906,7 @@ const ProductosView = {
       .join('');
     const headers = [
       '<th scope="col" class="productos-th-menu" aria-label="Opciones"></th>',
-      ...this.tableColumns.map((c) => {
+      ...this.getVisibleColumns().map((c) => {
         const align = c.type === 'money' || c.type === 'num' ? ' text-end' : '';
         return `<th scope="col" class="${align.trim()}">${this.escapeHtml(c.label)}</th>`;
       }),
@@ -1929,7 +1948,7 @@ const ProductosView = {
                   </div>
                 </div>
                 <div class="productos-table-wrap">
-                  <table class="table table-sm table-hover table-striped">
+                  <table id="productos-table" class="table table-sm table-hover table-striped">
                     <thead><tr>${headers}</tr></thead>
                     <tbody id="productos-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
                   </table>
