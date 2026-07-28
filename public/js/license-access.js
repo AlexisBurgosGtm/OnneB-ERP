@@ -20,10 +20,11 @@ const LicenseAccess = {
         return data;
       } catch (err) {
         console.warn('[LicenseAccess]', err?.message || err);
+        // Sin poder leer licencia → restringir a solo Licencia (no abrir todo el menú).
         this._status = {
-          mode: 'open',
-          status: 'open',
-          menus: null,
+          mode: 'restricted',
+          status: 'missing',
+          menus: ['licencia'],
           modules: [],
           message: err?.message || 'No se pudo leer la licencia',
         };
@@ -40,17 +41,26 @@ const LicenseAccess = {
     return this._status;
   },
 
+  /** true si hay licencia válida o modo abierto explícito. */
+  hasActiveLicense() {
+    const st = this._status;
+    if (!st) return false;
+    if (st.mode === 'open' || st.status === 'open') return true;
+    return st.mode === 'licensed' && st.status === 'valid';
+  },
+
   /** null = todos los menús (modo abierto). */
   allowedMenus() {
     const st = this._status;
-    if (!st || st.menus === null || st.mode === 'open') return null;
-    return new Set(st.menus || ['inicio', 'licencia']);
+    if (!st) return new Set(['licencia']);
+    if (st.menus === null || st.mode === 'open') return null;
+    return new Set(st.menus || ['licencia']);
   },
 
   canAccessMenu(menuKey) {
     const key = String(menuKey || '').trim();
     if (!key) return false;
-    if (key === 'inicio' || key === 'licencia') return true;
+    if (key === 'licencia') return true;
     const allowed = this.allowedMenus();
     if (!allowed) return true;
     if (allowed.has(key)) return true;
@@ -166,7 +176,7 @@ const LicenseAccess = {
     if (!licensed) return;
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((link) => {
       const key = link.dataset.menu;
-      if (key === 'licencia' || key === 'inicio') {
+      if (key === 'licencia') {
         const li = link.closest('li');
         if (li) li.hidden = false;
         return;
@@ -178,11 +188,11 @@ const LicenseAccess = {
     });
     document.querySelectorAll('.sidebar-accordion .accordion-item').forEach((item) => {
       if (item.classList.contains('sidebar-favoritos-item')) {
-        item.hidden = false;
+        item.hidden = !this.hasActiveLicense();
         return;
       }
       if (item.classList.contains('sidebar-spacer-item')) {
-        item.hidden = false;
+        item.hidden = !this.hasActiveLicense();
         return;
       }
       const links = item.querySelectorAll('.sidebar-link[data-menu]');

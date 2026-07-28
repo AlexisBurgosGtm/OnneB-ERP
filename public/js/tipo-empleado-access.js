@@ -283,11 +283,11 @@ const TipoEmpleadoAccess = {
     const key = String(menuKey || '').trim();
     if (!key) return false;
     if (key === 'licencia') return true;
-    const allowed = this.allowedMenus(this.getCodTipo(sessionUser));
-    if (!allowed.has(key)) return false;
     if (typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
       return false;
     }
+    const allowed = this.allowedMenus(this.getCodTipo(sessionUser));
+    if (!allowed.has(key)) return false;
     if (key === 'subir-catalogo' || key === 'descargar-catalogo') {
       const tip =
         typeof F !== 'undefined' && typeof F.getCodTipoEmpresa === 'function'
@@ -322,26 +322,35 @@ const TipoEmpleadoAccess = {
       typeof F !== 'undefined' && typeof F.getCodTipoEmpresa === 'function'
         ? F.getCodTipoEmpresa()
         : null;
+    const licenseOk =
+      typeof LicenseAccess === 'undefined' ? true : LicenseAccess.hasActiveLicense();
+
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((link) => {
       const key = link.dataset.menu;
       const li = link.closest('li');
       if (!li) return;
-      let visible = allowed.has(key);
-      if (visible && typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
-        visible = false;
+      let visible = false;
+      if (key === 'licencia') {
+        visible = true;
+      } else if (!licenseOk && typeof LicenseAccess !== 'undefined') {
+        visible = LicenseAccess.canAccessMenu(key);
+      } else {
+        visible = allowed.has(key);
+        if (visible && typeof LicenseAccess !== 'undefined' && !LicenseAccess.canAccessMenu(key)) {
+          visible = false;
+        }
       }
-      if (key === 'licencia' || key === 'inicio') visible = true;
       if (key === 'subir-catalogo') visible = visible && tipEmpresa === 1;
       if (key === 'descargar-catalogo') visible = visible && tipEmpresa === 2;
       li.hidden = !visible;
     });
     document.querySelectorAll('.sidebar-accordion .accordion-item').forEach((item) => {
       if (item.classList.contains('sidebar-favoritos-item')) {
-        item.hidden = false;
+        item.hidden = !licenseOk;
         return;
       }
       if (item.classList.contains('sidebar-spacer-item')) {
-        item.hidden = false;
+        item.hidden = !licenseOk;
         return;
       }
       const links = item.querySelectorAll('.sidebar-link[data-menu]');

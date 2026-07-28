@@ -558,6 +558,19 @@
 
   function loadInicioDefault() {
     if (!mainContent) return;
+    // Sin licencia activa: solo la vista Licencia.
+    if (
+      typeof LicenseAccess !== 'undefined' &&
+      !LicenseAccess.canAccessMenu('inicio') &&
+      typeof LicenciaView !== 'undefined'
+    ) {
+      if (mainTitle) mainTitle.textContent = menuLabels.licencia || 'Licencia';
+      document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
+      document.querySelector('.sidebar-link[data-menu="licencia"]')?.classList.add('is-active');
+      mainContent.className = 'main-content flex-grow-1 d-flex p-3';
+      LicenciaView.load(mainContent);
+      return;
+    }
     if (mainTitle) mainTitle.textContent = menuLabels.inicio || 'Inicio';
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
     document.querySelector('.sidebar-link[data-menu="inicio"]')?.classList.add('is-active');

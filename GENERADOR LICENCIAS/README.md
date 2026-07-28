@@ -17,6 +17,11 @@ Verificar alineación:
 npm run license:check
 ```
 
+Hay **dos UIs** con el mismo catálogo:
+
+1. Esta carpeta (`npm run licence`) — http://localhost:6501
+2. **Mariandre** → sección **Generador Licencias** (lee `MENU_GROUPS` de este repo)
+
 ## Importante
 
 - **No copie** esta carpeta a instalaciones de clientes.

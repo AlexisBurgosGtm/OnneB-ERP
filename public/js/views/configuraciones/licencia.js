@@ -111,11 +111,14 @@ const LicenciaView = {
             <div class="card shadow-sm h-100">
               <div class="card-body">
                 <h3 class="h6">Activar licencia</h3>
-                <p class="small text-muted">Cargue el archivo <code>.json</code> emitido por el generador interno.</p>
+                <p class="small text-muted">Cargue el archivo <code>.json</code> o descárguelo desde la nube (TOKENS.LICENCIA).</p>
                 <input type="file" class="form-control form-control-sm mb-2" id="licencia-file" accept=".json,application/json">
                 <div class="d-flex flex-wrap gap-2">
                   <button type="button" class="btn btn-sm btn-primary" id="licencia-btn-activar">
                     <i class="fa-solid fa-key me-1"></i>Activar archivo
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="licencia-btn-from-host">
+                    <i class="fa-solid fa-cloud-arrow-down me-1"></i>Descargar desde la nube
                   </button>
                   <button type="button" class="btn btn-sm btn-outline-secondary" id="licencia-btn-reload">
                     <i class="fa-solid fa-rotate me-1"></i>Recargar
@@ -164,8 +167,10 @@ const LicenciaView = {
               .join('')}
             ${
               st.mode === 'open'
-                ? `<p class="small text-muted mb-0">Modo abierto: sin archivo de licencia todas las vistas están habilitadas.</p>`
-                : ''
+                ? `<p class="small text-muted mb-0">Modo abierto (LICENSE_OPEN=1): sin archivo de licencia todas las vistas están habilitadas.</p>`
+                : st.status === 'missing' || st.status === 'expired' || st.status === 'invalid'
+                  ? `<p class="small text-warning mb-0">Sin licencia activa solo está disponible esta pantalla. Active una licencia válida para usar el resto del sistema.</p>`
+                  : ''
             }
           </div>
         </div>
@@ -189,6 +194,10 @@ const LicenciaView = {
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
       }
+    });
+
+    this._container?.querySelector('#licencia-btn-from-host')?.addEventListener('click', () => {
+      this.onDownloadFromHost().catch(() => {});
     });
 
     this._container?.querySelector('#licencia-btn-activar')?.addEventListener('click', async () => {
@@ -225,7 +234,7 @@ const LicenciaView = {
     this._container?.querySelector('#licencia-btn-quitar')?.addEventListener('click', async () => {
       const ok = await CatalogosUI.fireConfirm({
         title: '¿Quitar licencia?',
-        text: 'La instalación volverá a modo abierto (todos los módulos), salvo que tenga LICENSE_ENFORCE=1.',
+        text: 'Al quitar la licencia solo quedará disponible la opción Licencia hasta activar una nueva.',
       });
       if (!ok) return;
       try {
@@ -247,5 +256,64 @@ const LicenciaView = {
         F.toast(err.message || 'Error', 'error');
       }
     });
+  },
+
+  async onDownloadFromHost() {
+    const btn = this._container?.querySelector('#licencia-btn-from-host');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Descargando…';
+    }
+    try {
+      const data = await F.fetchJson(`/api/license/from-host?_=${Date.now()}`, { cache: 'no-store' });
+      const doc = data.license;
+      if (!doc) throw new Error('La nube no devolvió licencia');
+
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = data.filename || 'onneb-license.json';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      const activate = await CatalogosUI.fireConfirm({
+        title: 'Licencia descargada',
+        text: '¿Desea activarla ahora en esta instalación?',
+        confirmText: 'Sí, activar',
+        cancelText: 'Solo descargar',
+      });
+      if (activate) {
+        const res = await fetch('/api/license/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ license: doc }),
+        });
+        const activated = await res.json();
+        if (!res.ok) throw new Error(activated.error || 'No se pudo activar');
+        this._status = activated;
+        if (typeof LicenseAccess !== 'undefined') {
+          LicenseAccess._status = activated;
+          LicenseAccess.updateExpiryBadge();
+        }
+        this.render();
+        if (typeof TipoEmpleadoAccess !== 'undefined') {
+          TipoEmpleadoAccess.applySidebarVisibility();
+        }
+        if (typeof LicenseAccess !== 'undefined') {
+          LicenseAccess.applyAfterRoleFilter();
+        }
+        F.toast('Licencia descargada y activada', 'success');
+      } else {
+        F.toast('Licencia descargada. Puede activarla con el archivo.', 'success');
+        this.render();
+      }
+    } catch (err) {
+      F.toast(err.message || 'Error al descargar desde la nube', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down me-1"></i>Descargar desde la nube';
+      }
+    }
   },
 };
