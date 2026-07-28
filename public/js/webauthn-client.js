@@ -84,6 +84,7 @@ const WebAuthnClient = {
   async offerRegisterAfterLogin(auth) {
     if (!this.isSupported()) return;
     if (auth?.user?.superUser) return;
+    if (String(auth?.permiteBiometrico || 'NO').trim().toUpperCase() !== 'SI') return;
     if (!auth?.webauthnRegToken || !auth?.user?.codempleado) return;
     // Si ya tiene passkey, no insistir en cada login
     if (auth.hasPasskey) return;

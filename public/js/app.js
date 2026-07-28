@@ -19,6 +19,7 @@
 
   let socket = null;
   let currentView = 'login';
+  let permiteBiometricoLogin = false;
 
   const VIEW_CLASSES = [
     'view-active',
@@ -336,12 +337,36 @@
     return F.fetchJson(`/api/empresas/combo?_=${Date.now()}`, { cache: 'no-store' });
   }
 
+  async function fetchBiometricConfig() {
+    try {
+      const data = await F.fetchJson(`/api/auth/biometric-config?_=${Date.now()}`, { cache: 'no-store' });
+      return String(data?.permiteBiometrico || 'NO').trim().toUpperCase() === 'SI';
+    } catch {
+      return false;
+    }
+  }
+
+  function updateLoginPasskeyButton() {
+    const passkeyBtn = document.getElementById('login-passkey-btn');
+    if (!passkeyBtn) return;
+    const show =
+      permiteBiometricoLogin &&
+      typeof WebAuthnClient !== 'undefined' &&
+      WebAuthnClient.isSupported();
+    passkeyBtn.style.display = show ? '' : 'none';
+  }
+
   async function loadLoginEmpresas(selectedNit = '') {
     const select = document.getElementById('login-empresa');
     if (!select) return;
     const nitGuardado = normEmpNit(selectedNit);
     try {
-      const data = await fetchEmpresasForLogin();
+      const [data, biometricOk] = await Promise.all([
+        fetchEmpresasForLogin(),
+        fetchBiometricConfig(),
+      ]);
+      permiteBiometricoLogin = biometricOk;
+      updateLoginPasskeyButton();
       const rows = (data.rows || [])
         .map((e) => ({
           EMPNIT: normEmpNit(e.EMPNIT),
@@ -372,6 +397,8 @@
       console.warn('[Login] Empresas:', err);
       select.innerHTML = '<option value="">Error al cargar empresas</option>';
       select.disabled = true;
+      permiteBiometricoLogin = false;
+      updateLoginPasskeyButton();
     }
   }
 
@@ -460,6 +487,7 @@
         WebAuthnClient.offerRegisterAfterLogin({
           ...auth,
           empnit: empNit,
+          permiteBiometrico: auth.permiteBiometrico || (permiteBiometricoLogin ? 'SI' : 'NO'),
         }).catch(() => {});
       }
       resetLoginCredentials();
@@ -496,9 +524,13 @@
     });
 
     const passkeyBtn = document.getElementById('login-passkey-btn');
-    if (passkeyBtn && typeof WebAuthnClient !== 'undefined' && WebAuthnClient.isSupported()) {
-      passkeyBtn.style.display = '';
+    if (passkeyBtn && typeof WebAuthnClient !== 'undefined') {
+      updateLoginPasskeyButton();
       passkeyBtn.addEventListener('click', async () => {
+        if (!permiteBiometricoLogin) {
+          F.toast('El acceso biométrico está deshabilitado', 'warning');
+          return;
+        }
         const empresaSelect = document.getElementById('login-empresa');
         const empNit = empresaSelect?.value?.trim();
         if (!empNit || empresaSelect?.disabled) {

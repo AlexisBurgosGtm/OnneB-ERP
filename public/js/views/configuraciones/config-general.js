@@ -19,6 +19,7 @@ const ConfigGeneralView = {
     MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
     MAXIMO_FRACCIONAMIENTO_FACTURAS: 'MAXIMO FRACCIONAMIENTO FACTURAS',
     MUESTRA_DESPROD2_EN_DOCS_Y_PRODS: 'MUESTRA DESPROD2 EN DOCS Y PRODS',
+    PERMITE_BIOMETRICO_EN_LOGIN: 'PERMITE BIOMETRICO EN LOGIN',
   },
 
   TEXT_CARDS: [
@@ -103,6 +104,13 @@ const ConfigGeneralView = {
       icon: 'fa-align-left',
       fallbackDesc:
         'En buscadores de documentos y productos, también busca por DESPROD2 y lo muestra en la lista de resultados',
+    },
+    {
+      opcion: 'PERMITE BIOMETRICO EN LOGIN',
+      title: 'Permite biométrico en login',
+      icon: 'fa-fingerprint',
+      fallbackDesc:
+        'Si está en SI, permite iniciar sesión y registrar huella / passkeys. Si está en NO, no se solicita aunque el dispositivo lo soporte.',
     },
   ],
 

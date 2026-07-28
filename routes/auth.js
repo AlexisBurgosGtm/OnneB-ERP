@@ -10,6 +10,7 @@ const {
   beginAuthentication,
   finishAuthentication,
 } = require('../lib/webauthn');
+const { getSettingSino, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
 
 const router = express.Router();
 
@@ -23,6 +24,37 @@ async function ensurePasskeyColumn(pool) {
   `);
   passkeyColumnEnsured = true;
 }
+
+async function getPermiteBiometrico(pool) {
+  await ensureSettingDefault(pool, SETTING_OPCION.PERMITE_BIOMETRICO_EN_LOGIN);
+  return getSettingSino(pool, SETTING_OPCION.PERMITE_BIOMETRICO_EN_LOGIN);
+}
+
+async function assertBiometricoPermitido(pool) {
+  const permite = await getPermiteBiometrico(pool);
+  if (permite !== 'SI') {
+    const err = new Error('El acceso biométrico / passkey está deshabilitado en la configuración');
+    err.statusCode = 403;
+    throw err;
+  }
+  return permite;
+}
+
+/** Público: indica si el login debe ofrecer huella / passkey. */
+router.get('/biometric-config', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.json({ permiteBiometrico: 'NO' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const permiteBiometrico = await getPermiteBiometrico(pool);
+    res.json({ permiteBiometrico });
+  } catch (err) {
+    console.warn('[API GET /auth/biometric-config]', err.message);
+    res.json({ permiteBiometrico: 'NO' });
+  }
+});
 
 router.post('/login', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -47,6 +79,7 @@ router.post('/login', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     await ensurePasskeyColumn(pool);
+    const permiteBiometrico = await getPermiteBiometrico(pool);
 
     const empCheck = await pool
       .request()
@@ -61,7 +94,12 @@ router.post('/login', async (req, res) => {
     }
 
     if (isSuperUser(usuario, password)) {
-      return res.json({ ok: true, user: buildSuperUserSession(), hasPasskey: false });
+      return res.json({
+        ok: true,
+        user: buildSuperUserSession(),
+        hasPasskey: false,
+        permiteBiometrico,
+      });
     }
 
     const result = await pool
@@ -103,13 +141,17 @@ router.post('/login', async (req, res) => {
     }
 
     const employeeHasPasskey = hasPasskey(row.PASSKEY);
-    const webauthnRegToken = createRegToken(empnit, row.CODEMPLEADO, row.USUARIO);
+    const biometricOk = permiteBiometrico === 'SI';
+    const webauthnRegToken = biometricOk
+      ? createRegToken(empnit, row.CODEMPLEADO, row.USUARIO)
+      : null;
 
     res.json({
       ok: true,
       empnit,
+      permiteBiometrico,
       hasPasskey: employeeHasPasskey,
-      webauthnRegToken,
+      ...(webauthnRegToken ? { webauthnRegToken } : {}),
       user: {
         codempleado: row.CODEMPLEADO,
         usuario: row.USUARIO,
@@ -138,6 +180,7 @@ router.post('/webauthn/register-options', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertBiometricoPermitido(pool);
     await ensurePasskeyColumn(pool);
     const result = await beginRegistration(pool, req, {
       empnit,
@@ -157,6 +200,7 @@ router.post('/webauthn/register-verify', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertBiometricoPermitido(pool);
     await ensurePasskeyColumn(pool);
     const result = await finishRegistration(pool, req, {
       challengeId: req.body?.challengeId,
@@ -180,6 +224,7 @@ router.post('/webauthn/login-options', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertBiometricoPermitido(pool);
     await ensurePasskeyColumn(pool);
     const result = await beginAuthentication(pool, req, { empnit, usuario });
     res.json(result);
@@ -194,6 +239,7 @@ router.post('/webauthn/login-verify', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertBiometricoPermitido(pool);
     await ensurePasskeyColumn(pool);
     const result = await finishAuthentication(pool, req, {
       challengeId: req.body?.challengeId,
