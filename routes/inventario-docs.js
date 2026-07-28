@@ -1,5 +1,6 @@
 const express = require('express');
 const sql = require('mssql');
+const multer = require('multer');
 const { isDbConfigured } = require('../config/database');
 const {
   InventarioError,
@@ -32,9 +33,23 @@ const { getUpdateDbPool } = require('../lib/update-db-pool');
 const { copyDocumentoToCommunity, getDocumentosMarcaMaxChars, marcaEnviadoValue } = require('../lib/community-documento-copy');
 const { checkTokenActivo, TOKEN_NO_NUBE_MSG } = require('../lib/community-token');
 const { downloadTrasladoFromCommunity } = require('../lib/community-traslado-download');
+const { parseEntradaInventarioExcel } = require('../lib/inventario-entrada-excel');
 
 const SEARCH_LIMIT = 80;
 const DEFAULT_BODEGA = 0;
+
+const excelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const name = String(file.originalname || '').toLowerCase();
+    if (name.endsWith('.xls') || name.endsWith('.xlsx')) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Solo se permiten archivos .xls o .xlsx'));
+  },
+});
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -1253,6 +1268,219 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
       res.status(500).json({ error: err.message });
     }
   });
+
+  /** Solo entradas: crear documento + líneas desde Excel (CODPROD, DESPROD, TOTALUNIDADES). */
+  if (TIPODOC === 'ENT' && TIPODOCS.length === 1) {
+    router.post('/import-excel', (req, res) => {
+      excelUpload.single('archivo')(req, res, async (uploadErr) => {
+        if (uploadErr) {
+          return res.status(400).json({ error: uploadErr.message || 'Error al subir el archivo' });
+        }
+        if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+        const empnit = requireEmpNit(req, res);
+        if (!empnit) return;
+        if (!req.file?.buffer?.length) {
+          return res.status(400).json({ error: 'Debe seleccionar un archivo Excel (.xls o .xlsx)' });
+        }
+
+        const coddocBody = String(req.body?.CODDOC || req.query?.CODDOC || '').trim();
+        const usuario = String(req.body?.USUARIO || req.body?.usuario || 'INV').trim();
+
+        try {
+          const parsed = parseEntradaInventarioExcel(req.file.buffer);
+          const pool = await req.app.locals.getDbPool();
+          const tipo = await getTipoDoc(pool, empnit, coddocBody);
+          if (!tipo) {
+            return res.status(400).json({
+              error: `No hay tipo de documento ${tipodocLabel} activo para la empresa`,
+            });
+          }
+          const coddoc = tipo.CODDOC;
+
+          const missing = [];
+          const resolved = [];
+          for (const row of parsed.rows) {
+            const prodRes = await pool
+              .request()
+              .input('EMPNIT', sql.VarChar, empnit)
+              .input('CODPROD', sql.VarChar, row.CODPROD)
+              .query(`
+                SELECT TOP 1
+                  LTRIM(RTRIM(CODPROD)) AS CODPROD,
+                  DESPROD,
+                  ISNULL(COSTO, 0) AS COSTO,
+                  ISNULL(TIPOPROD, 'P') AS TIPOPROD,
+                  ISNULL(EXENTO, 0) AS EXENTO
+                FROM dbo.PRODUCTOS
+                WHERE EMPNIT = @EMPNIT
+                  AND LTRIM(RTRIM(CODPROD)) = LTRIM(RTRIM(@CODPROD))
+              `);
+            if (!prodRes.recordset.length) {
+              missing.push(`Fila ${row.excelRow}: producto ${row.CODPROD} no existe`);
+              continue;
+            }
+            const prod = prodRes.recordset[0];
+            if (String(prod.TIPOPROD || '').trim().toUpperCase() === 'S') {
+              missing.push(`Fila ${row.excelRow}: ${row.CODPROD} es servicio (no afecta inventario)`);
+              continue;
+            }
+            resolved.push({
+              excelRow: row.excelRow,
+              CODPROD: prod.CODPROD,
+              DESPROD: prod.DESPROD || row.DESPROD || row.CODPROD,
+              CANTIDAD: row.TOTALUNIDADES,
+              COSTO: Number(prod.COSTO) || 0,
+              TIPOPROD: String(prod.TIPOPROD || 'P').trim() || 'P',
+              EXENTO: Number(prod.EXENTO) ? Number(prod.EXENTO) : 0,
+            });
+          }
+
+          if (missing.length) {
+            return res.status(400).json({
+              error:
+                missing.slice(0, 8).join('\n') +
+                (missing.length > 8 ? `\n…y ${missing.length - 8} error(es) más` : ''),
+              details: missing,
+            });
+          }
+          if (!resolved.length) {
+            return res.status(400).json({ error: 'No hay productos válidos para importar' });
+          }
+
+          const parts = nowParts();
+          const transaction = new sql.Transaction(pool);
+          await transaction.begin();
+          try {
+            const correlativo = await allocateCorrelativo(transaction, empnit, coddoc);
+            await transaction
+              .request()
+              .input('EMPNIT', sql.VarChar, empnit)
+              .input('ANIO', sql.Int, parts.anio)
+              .input('MES', sql.Int, parts.mes)
+              .input('DIA', sql.Int, parts.dia)
+              .input('FECHA', sql.Date, parts.fecha)
+              .input('HORA', sql.Int, parts.hora)
+              .input('MINUTO', sql.Int, parts.minuto)
+              .input('CODDOC', sql.VarChar, coddoc)
+              .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+              .input('USUARIO', sql.VarChar, usuario)
+              .input('OBS', sql.VarChar, `Importado desde Excel: ${req.file.originalname || 'archivo'}`)
+              .query(`
+                INSERT INTO dbo.DOCUMENTOS (
+                  EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
+                  CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+                  TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
+                  MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
+                  DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
+                  VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO
+                ) VALUES (
+                  @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
+                  0, 'CF', 'INVENTARIO', 'SN',
+                  0, 0, 'INVENTARIO', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
+                  'SN', @OBS, 0, 0, 'SN', 0, 1,
+                  'SN', 'SN', 0, 0, 'CONTADO', 'SN',
+                  @FECHA, 0, 0, 0, 0, 0
+                )
+              `);
+
+            const tipom = await getTipomDocumento(transaction, empnit, coddoc);
+            for (const line of resolved) {
+              const cantidad = Number(line.CANTIDAD);
+              const equivale = 1;
+              const costo = Number(line.COSTO) || 0;
+              const precio = costo;
+              const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
+                cantidad,
+                costo,
+                precio,
+                equivale
+              );
+              const peso = 0;
+              const totalPeso = calcLinePeso(cantidad, peso);
+
+              await transaction
+                .request()
+                .input('EMPNIT', sql.VarChar, empnit)
+                .input('ANIO', sql.Int, parts.anio)
+                .input('MES', sql.Int, parts.mes)
+                .input('DIA', sql.Int, parts.dia)
+                .input('CODDOC', sql.VarChar, coddoc)
+                .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+                .input('CODPROD', sql.VarChar, line.CODPROD)
+                .input('DESPROD', sql.VarChar, line.DESPROD)
+                .input('CODMEDIDA', sql.VarChar, 'UNIDAD')
+                .input('CANTIDAD', sql.Float, cantidad)
+                .input('EQUIVALE', sql.Int, equivale)
+                .input('TOTALUNIDADES', sql.Float, totalUnidades)
+                .input('COSTO', sql.Decimal(18, 3), costo)
+                .input('PRECIO', sql.Decimal(18, 3), precio)
+                .input('TOTALCOSTO', sql.Decimal(18, 3), totalCosto)
+                .input('TOTALPRECIO', sql.Decimal(18, 3), totalPrecio)
+                .input('EXENTO', sql.Decimal(18, 3), line.EXENTO)
+                .input('TIPOPROD', sql.VarChar, line.TIPOPROD)
+                .input('TIPOPRECIO', sql.VarChar, 'P')
+                .input('PESO', sql.Decimal(18, 3), peso)
+                .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
+                .input('TIPOM', sql.Int, tipom)
+                .query(`
+                  INSERT INTO dbo.DOCPRODUCTOS (
+                    EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
+                    CANTIDAD, CANTIDADBONIF, EQUIVALE, TOTALUNIDADES, TOTALBONIF,
+                    COSTO, PRECIO, TOTALCOSTO, TOTALPRECIO,
+                    ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
+                    COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
+                    DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
+                    TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+                  ) VALUES (
+                    @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
+                    @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
+                    @COSTO, @PRECIO, @TOTALCOSTO, @TOTALPRECIO,
+                    @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
+                    0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
+                    0, 0, 'SN', @EXENTO, 'SN',
+                    @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
+                  )
+                `);
+
+              await aplicarMovimientoInventarioLineaInsert(transaction, {
+                empnit,
+                coddoc,
+                correlativo,
+                codprod: line.CODPROD,
+                desprod: line.DESPROD,
+                totalUnidades,
+                tipoprod: line.TIPOPROD,
+                tipom,
+                codbodegaEntrada: DEFAULT_BODEGA,
+                codbodegaSalida: DEFAULT_BODEGA,
+              });
+            }
+
+            await recalcDocumentTotals(transaction, empnit, coddoc, correlativo);
+            await transaction.commit();
+
+            const doc = await loadDocumento(pool, empnit, coddoc, correlativo);
+            res.status(201).json({
+              ok: true,
+              lineas: resolved.length,
+              archivo: req.file.originalname,
+              documento: doc,
+            });
+          } catch (inner) {
+            await transaction.rollback();
+            throw inner;
+          }
+        } catch (err) {
+          if (err instanceof InventarioError) {
+            return res.status(err.statusCode).json({ error: err.message, code: err.code });
+          }
+          const code = err.statusCode || 500;
+          if (code >= 500) console.warn(`[API POST /${logPrefix}/import-excel]`, err.message);
+          res.status(code).json({ error: err.message });
+        }
+      });
+    });
+  }
 
   return router;
 }

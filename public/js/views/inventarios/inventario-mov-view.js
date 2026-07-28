@@ -1727,6 +1727,16 @@ function createInventarioMovView(cfg) {
             </div>`
                 : ''
             }
+            ${
+              cfg.enableExcelImport
+                ? `<div class="inv-list-period inv-list-excel">
+              <label class="small text-muted mb-0 d-block">&nbsp;</label>
+              <button type="button" class="btn btn-sm btn-outline-success" id="${NS}-btn-excel-import">
+                <i class="fa-solid fa-file-excel me-1"></i>Tomar datos de Excel
+              </button>
+            </div>`
+                : ''
+            }
           </div>
           <div class="input-group inv-list-search">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -1922,13 +1932,15 @@ function createInventarioMovView(cfg) {
       });
 
       this._container?.querySelector(`#${NS}-btn-nuevo`)?.addEventListener('click', () => this.onNuevo());
+      this._container?.querySelector(`#${NS}-btn-excel-import`)?.addEventListener('click', () => {
+        this.onTomarDatosExcel().catch(() => {});
+      });
 
       PosDocSearchUI.bindDocKeyboard(this, {
         isDetail: () => false,
         onNuevo: () => this.onNuevo(),
       });
     },
-
     bindEditorEvents() {
       PosDocSearchUI.bind(this, NS, {
         getEditable: () => this.docEditable(this._documento?.header),
@@ -2089,6 +2101,108 @@ function createInventarioMovView(cfg) {
       }
     },
 
+    async onTomarDatosExcel() {
+      if (!cfg.enableExcelImport) return;
+      if (!this.activeCoddoc()) {
+        F.toast('Seleccione una serie de documento', 'warning');
+        return;
+      }
+      if (this._container?.querySelector(`#${NS}-list-coddoc`)) {
+        DocTipoSelect.syncFromDom(this._container, `${NS}-list-coddoc`, this);
+      }
+
+      const fileInputId = `${NS}-excel-file`;
+      const { isConfirmed, value: file } = await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: 'Tomar datos de Excel',
+        width: '32rem',
+        html: `
+          <div class="text-start">
+            <p class="small text-muted mb-2">
+              El archivo debe tener encabezado en la primera fila (se ignora) y 3 columnas:
+              <strong>CODPROD</strong>, <strong>DESPROD</strong>, <strong>TOTALUNIDADES</strong>.
+            </p>
+            <p class="small text-muted mb-3">
+              Se creará una <strong>nueva entrada</strong> con medida <code>UNIDAD</code> (equivale=1)
+              y cantidad = TOTALUNIDADES. Luego podrá revisarla y finalizarla manualmente.
+            </p>
+            <label class="form-label small mb-1" for="${fileInputId}">Archivo Excel (.xls / .xlsx)</label>
+            <input type="file" class="form-control form-control-sm" id="${fileInputId}"
+              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: CatalogosUI.guardarButtonHtml('Cargar'),
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+        focusConfirm: false,
+        preConfirm: () => {
+          const input = document.getElementById(fileInputId);
+          const f = input?.files?.[0];
+          if (!f) {
+            Swal.showValidationMessage('Seleccione un archivo Excel');
+            return false;
+          }
+          const name = String(f.name || '').toLowerCase();
+          if (!name.endsWith('.xls') && !name.endsWith('.xlsx')) {
+            Swal.showValidationMessage('El archivo debe ser .xls o .xlsx');
+            return false;
+          }
+          return f;
+        },
+      });
+
+      if (!isConfirmed || !file) return;
+
+      Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: 'Importando Excel…',
+        html: '<p class="small text-muted mb-0">Creando entrada y cargando líneas. Espere…</p>',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      try {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        fd.append('CODDOC', this.activeCoddoc());
+        fd.append('USUARIO', this.usuario());
+
+        const res = await fetch(this.apiUrl('/import-excel'), {
+          method: 'POST',
+          body: fd,
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || res.statusText || 'Error al importar Excel');
+        }
+
+        const doc = data.documento;
+        const header = doc?.header || doc;
+        const coddoc = header?.CODDOC;
+        const correlativo = header?.CORRELATIVO;
+        if (!coddoc || correlativo == null) {
+          throw new Error('La importación no devolvió el documento creado');
+        }
+
+        this._documento = doc.header ? doc : { header: doc, lines: doc.lines || [] };
+        Swal.close();
+        F.toast(`Entrada creada con ${data.lineas || 0} línea(s)`, 'success');
+        await this.showEditor(coddoc, correlativo, { focusProductSearch: true });
+      } catch (err) {
+        Swal.close();
+        await Swal.fire({
+          ...CatalogosUI.modalBase(),
+          icon: 'error',
+          title: 'No se pudo importar',
+          html: `<pre class="small text-start mb-0" style="white-space:pre-wrap">${this.escapeHtml(err.message || 'Error')}</pre>`,
+          confirmButtonText: 'Entendido',
+        });
+      }
+    },
+
     async load(container) {
       PosDocSearchUI.clearActiveDocKeyboard();
       this._container = container;
@@ -2134,6 +2248,7 @@ const EntradasInventarioView = createInventarioMovView({
   listTitle: 'Entradas de inventario',
   finalizarTitle: 'Finalizar entrada de inventario',
   printTitle: 'Entrada de inventario',
+  enableExcelImport: true,
 });
 
 const SalidasInventarioView = createInventarioMovView({
