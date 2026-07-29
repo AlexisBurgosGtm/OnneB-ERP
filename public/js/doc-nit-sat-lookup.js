@@ -12,10 +12,10 @@ const DocNitSatLookup = {
     return `/api/fel/contribuyente?${params}`;
   },
 
-  /** Quita solo comas y puntos del nombre consultado en SAT. */
+  /** Convierte signos típicos del certificador en espacios (nombres/apellidos). */
   cleanNombreSat(nombre) {
     return String(nombre || '')
-      .replace(/[.,]/g, '')
+      .replace(/[.,;|/]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },

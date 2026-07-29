@@ -313,6 +313,7 @@ router.get('/variables', (_req, res) => {
           'CODMEDIDA',
           'CANTIDAD',
           'PRECIO_FMT',
+          'PRECIO_LETRAS',
           'TOTALPRECIO_FMT',
         ],
       },

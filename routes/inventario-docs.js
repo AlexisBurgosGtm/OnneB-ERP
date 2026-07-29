@@ -1337,16 +1337,12 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
             });
           }
 
-          if (missing.length) {
-            return res.status(400).json({
-              error:
-                missing.slice(0, 8).join('\n') +
-                (missing.length > 8 ? `\n…y ${missing.length - 8} error(es) más` : ''),
-              details: missing,
-            });
-          }
+          const skipped = [...(parsed.skipped || []), ...missing];
           if (!resolved.length) {
-            return res.status(400).json({ error: 'No hay productos válidos para importar' });
+            return res.status(400).json({
+              error: 'No hay productos válidos para importar',
+              skipped,
+            });
           }
 
           const parts = nowParts();
@@ -1465,6 +1461,8 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
             res.status(201).json({
               ok: true,
               lineas: resolved.length,
+              omitidas: skipped.length,
+              skipped,
               archivo: req.file.originalname,
               documento: doc,
             });

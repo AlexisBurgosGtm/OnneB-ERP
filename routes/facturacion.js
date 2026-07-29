@@ -35,6 +35,10 @@ const {
   TIPOFAC_DEFAULT,
 } = require('../lib/documento-tipofac-prioridad');
 const {
+  resolveEmpleadoCoddocPreferido,
+  pickCoddocDefault,
+} = require('../lib/empleado-coddoc-preferido');
+const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
   STATUS_ANULADO,
@@ -91,6 +95,7 @@ const SQL_FACTURA_VINCULADA_PEDIDO = `
 
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
+const CODTIPO_EMPLEADO_ADMIN = 1;
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -343,10 +348,12 @@ async function loadPedido(pool, empnit, coddoc, correlativo, tipodocs = null) {
     .query(`
       SELECT d.*, t.DESDOC, t.TIPODOC,
         c.NEGOCIO AS CLI_NEGOCIO, c.TIPONEGOCIO AS CLI_TIPONEGOCIO,
-        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR
+        c.NOMBRECLIENTE AS CLI_NOMBRE, c.DIRCLIENTE AS CLI_DIR,
+        ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR
       FROM dbo.DOCUMENTOS d
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
+      LEFT JOIN dbo.Empleados emp ON emp.EMPNIT = d.EMPNIT AND emp.CODEMPLEADO = d.CODVEN
       WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   if (!headerRes.recordset.length) return null;
@@ -461,12 +468,11 @@ async function getVendedorActivo(pool, empnit, codempleado) {
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('CODEMPLEADO', sql.Int, cod)
-    .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
     .query(`
       SELECT CODEMPLEADO, NOMEMPLEADO
       FROM dbo.Empleados
       WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-        AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
+        AND ACTIVO = 'SI'
     `);
   return result.recordset[0] || null;
 }
@@ -481,12 +487,15 @@ router.get('/vendedores', async (req, res) => {
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
+      .input('CODTIPO_V', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
+      .input('CODTIPO_A', sql.Int, CODTIPO_EMPLEADO_ADMIN)
       .query(`
         SELECT CODEMPLEADO, NOMEMPLEADO
         FROM dbo.Empleados
-        WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
-        ORDER BY NOMEMPLEADO ASC
+        WHERE EMPNIT = @EMPNIT
+          AND CODTIPOEMPLEADO IN (@CODTIPO_V, @CODTIPO_A)
+          AND ACTIVO = 'SI'
+        ORDER BY CASE WHEN CODTIPOEMPLEADO = @CODTIPO_V THEN 0 ELSE 1 END, NOMEMPLEADO ASC
       `);
     res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {
@@ -544,8 +553,9 @@ router.get('/config', async (req, res) => {
   if (!empnit) return;
   const { id: grupoId, tipodocs } = resolveFacturacionGrupo(req);
   const tipodocIn = tipodocSqlIn(tipodocs);
-  // Vista Facturación (mixto): solo tipos que mueven inventario (TIPOM ≠ 0).
-  const tipomFilter = grupoId === 'mixto' ? ' AND ISNULL(TIPOM, 0) <> 0' : '';
+  // Mixto y FEL: ocultar series con TIPOM = 0 (no mueven inventario / no certificar).
+  const tipomFilter =
+    grupoId === 'mixto' || grupoId === 'fel' ? ' AND ISNULL(TIPOM, 0) <> 0' : '';
   try {
     const pool = await req.app.locals.getDbPool();
     const tipos = await pool
@@ -557,7 +567,13 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'${tipomFilter}
         ORDER BY CODDOC
       `);
-    const def = tipos.recordset[0] || null;
+    const preferred = await resolveEmpleadoCoddocPreferido(
+      pool,
+      sql,
+      empnit,
+      req.query.codempleado
+    );
+    const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
     const cliente = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -586,7 +602,7 @@ router.get('/config', async (req, res) => {
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
-      coddocDefault: def?.CODDOC || null,
+      coddocDefault,
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
@@ -633,7 +649,7 @@ router.get('/pedidos', async (req, res) => {
   const { tipodocs } = grupo;
   const tipodocIn = tipodocSqlIn(tipodocs);
   const tipomFilter =
-    grupo.id === 'mixto' ? ' AND ISNULL(t.TIPOM, 0) <> 0' : '';
+    grupo.id === 'mixto' || grupo.id === 'fel' ? ' AND ISNULL(t.TIPOM, 0) <> 0' : '';
   const coddoc = String(req.query.coddoc || '').trim();
   const statusFilter = sqlPedidosListStatusFilter(req.query.status, { defaultAll: true });
   const statusLabel = resolvePedidosListStatusLabel(req.query.status, { defaultAll: true });
@@ -826,6 +842,9 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
     }
     const coddocFac = tipo.CODDOC;
     const parts = nowParts();
+    const codvenPedidoRaw = Number(pedido.CODVEN);
+    const codvenPedido =
+      Number.isFinite(codvenPedidoRaw) && codvenPedidoRaw > 0 ? Math.trunc(codvenPedidoRaw) : null;
     const fEntrega = normalizeFEntrega(pedido.F_ENTREGA);
     let dirEntrega = 'SN';
     if (fEntrega === F_ENTREGA_DOMICILIO) {
@@ -856,7 +875,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
         .input('DOC_NIT', sql.VarChar, String(pedido.DOC_NIT || 'CF'))
         .input('DOC_NOMCLIE', sql.VarChar, String(pedido.DOC_NOMCLIE || ''))
         .input('DOC_DIRCLIE', sql.VarChar, String(pedido.DOC_DIRCLIE || 'SN'))
-        .input('CODVEN', sql.Int, pedido.CODVEN ?? null)
+        .input('CODVEN', sql.Int, codvenPedido)
         .input('CONCRE', sql.VarChar, String(pedido.CONCRE || 'CON').trim().toUpperCase() || 'CON')
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, String(pedido.OBS || ''))

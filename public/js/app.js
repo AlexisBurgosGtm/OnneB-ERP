@@ -307,11 +307,9 @@
         typeof TipoEmpleadoAccess !== 'undefined'
           ? TipoEmpleadoAccess.getCodTipo(user)
           : Number(user?.codtipoempleado);
-      const tipos = [
-        TipoEmpleadoAccess?.TIPO_CAJERO ?? 8,
-        TipoEmpleadoAccess?.TIPO_BODEGA ?? 5,
-      ];
-      if (!tipos.includes(Number(codtipo))) return;
+      // Solo bodega: en caja el toast de Swal puede interferir con el documento abierto.
+      const tipoBodega = TipoEmpleadoAccess?.TIPO_BODEGA ?? 5;
+      if (Number(codtipo) !== Number(tipoBodega)) return;
       if (data?.empnit && user?.empNit && String(data.empnit) !== String(user.empNit)) return;
       const msg = String(data?.mensaje || '').trim() || 'Nuevo pedido de mostrador';
       F.toast(msg, 'info');
@@ -664,6 +662,7 @@
     'salidas-inventario': 'Salidas de inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
     'actualizacion-inventario': 'Actualización de inventario',
+    'actualizacion-costos': 'Actualización de costos',
     'crear-traslado': 'Crear Traslado',
     'recibir-traslado': 'Recibir Traslado',
     documentos: 'Documentos',
@@ -792,6 +791,8 @@
       typeof InventarioActualizacionView !== 'undefined'
     ) {
       InventarioActualizacionView.load(mainContent);
+    } else if (key === 'actualizacion-costos' && typeof ActualizacionCostosView !== 'undefined') {
+      ActualizacionCostosView.load(mainContent);
     } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
       DocumentosView.load(mainContent);
     } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {

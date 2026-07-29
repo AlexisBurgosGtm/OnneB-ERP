@@ -48,6 +48,7 @@ const TIPODOC_NOTAS = [...TIPODOC_NOTAS_CREDITO];
 const TIPODOC_SQL_IN = TIPODOC_NOTAS.map((t) => `'${t}'`).join(', ');
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
+const CODTIPO_EMPLEADO_ADMIN = 1;
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -516,12 +517,15 @@ router.get('/vendedores', async (req, res) => {
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
+      .input('CODTIPO_V', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
+      .input('CODTIPO_A', sql.Int, CODTIPO_EMPLEADO_ADMIN)
       .query(`
         SELECT CODEMPLEADO, NOMEMPLEADO
         FROM dbo.Empleados
-        WHERE EMPNIT = @EMPNIT AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
-        ORDER BY NOMEMPLEADO ASC
+        WHERE EMPNIT = @EMPNIT
+          AND CODTIPOEMPLEADO IN (@CODTIPO_V, @CODTIPO_A)
+          AND ACTIVO = 'SI'
+        ORDER BY CASE WHEN CODTIPOEMPLEADO = @CODTIPO_V THEN 0 ELSE 1 END, NOMEMPLEADO ASC
       `);
     res.json({ rows: normalizeDocumentoRows(result.recordset) });
   } catch (err) {

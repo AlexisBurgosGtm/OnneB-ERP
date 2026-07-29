@@ -10,7 +10,7 @@ const BarcodeScannerUI = {
     if (this._scriptPromise) return this._scriptPromise;
     this._scriptPromise = new Promise((resolve, reject) => {
       const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+      s.src = '/vendor/html5-qrcode/html5-qrcode.min.js';
       s.async = true;
       s.onload = () => resolve();
       s.onerror = () => reject(new Error('No se pudo cargar el lector de códigos'));

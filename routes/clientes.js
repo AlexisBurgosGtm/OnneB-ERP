@@ -52,6 +52,7 @@ const LIST_SELECT = `
   c.DIAVISITA,
   c.CODCLIENTE,
   c.NIT,
+  c.TIPONEGOCIO,
   c.NEGOCIO,
   c.NOMBRECLIENTE,
   c.CODRUTA,
@@ -94,8 +95,11 @@ const LIST_WHERE = `
       @q IS NULL OR @q = ''
       OR CAST(c.CODCLIENTE AS varchar(20)) LIKE @qLike
       OR c.NIT LIKE @qLike
-      OR c.NOMBRECLIENTE LIKE @qLike
-      OR c.NEGOCIO LIKE @qLike
+      OR (
+        LTRIM(RTRIM(ISNULL(c.TIPONEGOCIO, ''))) + ' ' +
+        LTRIM(RTRIM(ISNULL(c.NEGOCIO, ''))) + ' ' +
+        LTRIM(RTRIM(ISNULL(c.NOMBRECLIENTE, '')))
+      ) LIKE @qLike
       OR c.DIAVISITA LIKE @qLike
       OR r.DESRUTA LIKE @qLike
     )
@@ -518,6 +522,51 @@ router.delete('/:codcliente', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const { assertAdminPass } = require('../lib/config-auth');
+    await assertAdminPass(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
+
+    const exists = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCLIENTE', sql.Int, codcliente)
+      .query(`
+        SELECT TOP 1 CODCLIENTE
+        FROM dbo.CLIENTES
+        WHERE EMPNIT = @EMPNIT AND CODCLIENTE = @CODCLIENTE
+      `);
+    if (!exists.recordset.length) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const docs = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCLIENTE', sql.Int, codcliente)
+      .query(`
+        SELECT TOP 1 1 AS X
+        FROM dbo.DOCUMENTOS
+        WHERE EMPNIT = @EMPNIT AND CODCLIENTE = @CODCLIENTE
+      `);
+
+    if (docs.recordset.length) {
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODCLIENTE', sql.Int, codcliente)
+        .query(`
+          UPDATE dbo.CLIENTES SET HABILITADO = 'NO'
+          WHERE EMPNIT = @EMPNIT AND CODCLIENTE = @CODCLIENTE
+        `);
+      return res.json({
+        ok: true,
+        action: 'disabled',
+        CODCLIENTE: codcliente,
+        HABILITADO: 'NO',
+        message:
+          'El cliente tiene documentos asociados; no se eliminó y quedó deshabilitado (HABILITADO = NO).',
+      });
+    }
+
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -526,8 +575,11 @@ router.delete('/:codcliente', async (req, res) => {
     if (result.rowsAffected[0] === 0) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
-    res.json({ ok: true });
+    res.json({ ok: true, action: 'deleted', CODCLIENTE: codcliente });
   } catch (err) {
+    if (err.statusCode === 401) {
+      return res.status(401).json({ error: err.message });
+    }
     console.warn('[API DELETE /clientes]', err.message);
     res.status(500).json({ error: err.message });
   }

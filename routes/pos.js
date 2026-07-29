@@ -25,6 +25,10 @@ const { findVendedorByClave } = require('../lib/vendedor-clave');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
+  resolveEmpleadoCoddocPreferido,
+  pickCoddocDefault,
+} = require('../lib/empleado-coddoc-preferido');
+const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
   STATUS_ANULADO,
@@ -37,8 +41,10 @@ const router = express.Router();
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
 const TIPODOC_MOSTRADOR = 'ENV';
+const TIPODOC_HISTORIAL_FACTURAS = ['FAC', 'FEF', 'FEC', 'FES'];
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
+const HISTORIAL_FACTURAS_LIMIT = 10;
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -225,12 +231,11 @@ async function getVendedorActivo(pool, empnit, codempleado) {
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('CODEMPLEADO', sql.Int, cod)
-    .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
     .query(`
       SELECT CODEMPLEADO, NOMEMPLEADO
       FROM dbo.Empleados
       WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-        AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
+        AND ACTIVO = 'SI'
     `);
   return result.recordset[0] || null;
 }
@@ -294,7 +299,13 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_MOSTRADOR}' AND ACTIVO = 'SI'
         ORDER BY CODDOC
       `);
-    const def = tipos.recordset[0] || null;
+    const preferred = await resolveEmpleadoCoddocPreferido(
+      pool,
+      sql,
+      empnit,
+      req.query.codempleado
+    );
+    const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
     const cliente = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -322,7 +333,7 @@ router.get('/config', async (req, res) => {
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
-      coddocDefault: def?.CODDOC || null,
+      coddocDefault,
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
@@ -356,6 +367,120 @@ router.get('/productos', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.warn('[API GET /pos/productos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Últimas facturas FAC/FEL del cliente (para historial de precios en POS). */
+router.get('/clientes/:codcliente/historial-facturas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codcliente = parseInt(req.params.codcliente, 10);
+  if (!Number.isFinite(codcliente) || codcliente <= 0) {
+    return res.status(400).json({ error: 'CODCLIENTE inválido' });
+  }
+  const limit = Math.min(
+    Math.max(parseInt(req.query.limit, 10) || HISTORIAL_FACTURAS_LIMIT, 1),
+    HISTORIAL_FACTURAS_LIMIT
+  );
+  const tipodocIn = TIPODOC_HISTORIAL_FACTURAS.map((t) => `'${t}'`).join(', ');
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const docsResult = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODCLIENTE', sql.Int, codcliente)
+      .input('limit', sql.Int, limit)
+      .query(`
+        SELECT TOP (@limit)
+          d.ID,
+          d.CODDOC,
+          d.CORRELATIVO,
+          d.FECHA,
+          d.HORA,
+          d.MINUTO,
+          ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
+          d.DOC_NOMCLIE,
+          t.TIPODOC,
+          t.DESDOC
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT
+          AND d.CODCLIENTE = @CODCLIENTE
+          AND t.TIPODOC IN (${tipodocIn})
+          AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
+        ORDER BY d.ID DESC
+      `);
+    const docs = normalizeDocumentoRows(docsResult.recordset || []);
+    if (!docs.length) {
+      return res.json({ rows: [], codcliente, limit });
+    }
+
+    const pairs = docs.map((d, i) => ({
+      i,
+      coddoc: String(d.CODDOC || '').trim(),
+      correlativo: Number(d.CORRELATIVO),
+    }));
+    const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
+    const orParts = pairs.map((p) => {
+      request.input(`CODDOC${p.i}`, sql.VarChar, p.coddoc);
+      request.input(`CORR${p.i}`, sql.Int, p.correlativo);
+      return `(l.CODDOC = @CODDOC${p.i} AND l.CORRELATIVO = @CORR${p.i})`;
+    });
+    const linesResult = await request.query(`
+      SELECT
+        l.CODDOC,
+        l.CORRELATIVO,
+        l.Id AS ID,
+        l.CODPROD,
+        l.DESPROD,
+        l.CODMEDIDA,
+        l.CANTIDAD,
+        l.PRECIO,
+        ISNULL(l.TOTALPRECIO, 0) AS TOTALPRECIO
+      FROM dbo.DOCPRODUCTOS l
+      WHERE l.EMPNIT = @EMPNIT
+        AND (${orParts.join(' OR ')})
+      ORDER BY l.CODDOC, l.CORRELATIVO, l.Id
+    `);
+
+    const linesByKey = new Map();
+    for (const ln of linesResult.recordset || []) {
+      const key = `${String(ln.CODDOC || '').trim()}|${Number(ln.CORRELATIVO)}`;
+      if (!linesByKey.has(key)) linesByKey.set(key, []);
+      linesByKey.get(key).push({
+        ID: ln.ID,
+        CODPROD: ln.CODPROD,
+        DESPROD: ln.DESPROD,
+        CODMEDIDA: ln.CODMEDIDA,
+        CANTIDAD: ln.CANTIDAD,
+        PRECIO: ln.PRECIO,
+        TOTALPRECIO: ln.TOTALPRECIO,
+      });
+    }
+
+    const rows = docs.map((d) => {
+      const key = `${String(d.CODDOC || '').trim()}|${Number(d.CORRELATIVO)}`;
+      return {
+        ID: d.ID,
+        CODDOC: d.CODDOC,
+        CORRELATIVO: d.CORRELATIVO,
+        FECHA: d.FECHA,
+        HORA: d.HORA,
+        MINUTO: d.MINUTO,
+        TOTALPRECIO: d.TOTALPRECIO,
+        DOC_NOMCLIE: d.DOC_NOMCLIE,
+        TIPODOC: d.TIPODOC,
+        DESDOC: d.DESDOC,
+        lines: linesByKey.get(key) || [],
+      };
+    });
+
+    res.json({ rows, codcliente, limit });
+  } catch (err) {
+    console.warn('[API GET /pos/clientes/:codcliente/historial-facturas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

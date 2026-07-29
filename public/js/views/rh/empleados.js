@@ -86,6 +86,7 @@ const EmpleadosViewBase = createCatalogoEmpresaView({
     { key: 'CODCATALOGO', label: 'Catálogo' },
     { key: 'ACTIVO', label: 'Activo' },
     { key: 'TELEFONOS', label: 'Teléfono' },
+    { key: 'WHATSAPP', label: 'Doc. Venta' },
     { key: 'CODRUTA', label: 'Ruta' },
   ],
   getRowLabel(row) {
@@ -197,6 +198,7 @@ const EmpleadosView = {
       { key: 'CODCATALOGO', label: 'Catálogo' },
       { key: 'ACTIVO', label: 'Activo' },
       { key: 'TELEFONOS', label: 'Teléfono' },
+      { key: 'WHATSAPP', label: 'Doc. Venta' },
       { key: 'CODRUTA', label: 'Ruta' },
     ];
     if (!rows.length) {
@@ -241,6 +243,7 @@ const EmpleadosView = {
         r.USUARIO,
         r.CODCATALOGO,
         this.catalogoLabel(r.CODCATALOGO),
+        r.WHATSAPP,
       ].map((v) => String(v ?? '').toLowerCase());
       return parts.some((p) => p.includes(q));
     });
@@ -255,6 +258,7 @@ const EmpleadosView = {
       { key: 'CODCATALOGO', label: 'Catálogo' },
       { key: 'ACTIVO', label: 'Activo' },
       { key: 'TELEFONOS', label: 'Teléfono' },
+      { key: 'WHATSAPP', label: 'Doc. Venta' },
       { key: 'CODRUTA', label: 'Ruta' },
     ]
       .map((c) => `<th scope="col">${this.escapeHtml(c.label)}</th>`)
@@ -615,6 +619,41 @@ const EmpleadosView = {
         body: JSON.stringify(data),
       });
       F.toast('Empleado actualizado', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
+  async onEliminar(id) {
+    const row = this.findRow(id);
+    const nombre = this.rowLabel(row, id);
+    const confirm = await CatalogosUI.fireConfirm({
+      title: '¿Eliminar empleado?',
+      html: `<p class="mb-0">Se intentará eliminar a <strong>${this.escapeHtml(nombre)}</strong>.</p>
+        <p class="small text-muted mb-0 mt-2">Si tiene movimientos asociados, solo se deshabilitará.</p>`,
+      icon: 'warning',
+      confirmText: 'Continuar',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!confirm) return;
+    const pass = await CatalogosUI.solicitarClaveAdmin({
+      title: 'Autorizar eliminación',
+      text: 'Ingrese la clave de administrador para eliminar o deshabilitar al empleado.',
+      confirmText: 'Autorizar',
+    });
+    if (!pass) return;
+    try {
+      const res = await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass: String(pass) }),
+      });
+      if (res?.action === 'disabled') {
+        F.toast(res.message || 'Empleado deshabilitado (tiene movimientos)', 'warning');
+      } else {
+        F.toast('Empleado eliminado', 'success');
+      }
       await this.load(this._container);
     } catch (err) {
       F.alert('Error', err.message, 'error');

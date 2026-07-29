@@ -2201,7 +2201,29 @@ function createInventarioMovView(cfg) {
 
         this._documento = doc.header ? doc : { header: doc, lines: doc.lines || [] };
         Swal.close();
-        F.toast(`Entrada creada con ${data.lineas || 0} línea(s)`, 'success');
+        const omitidas = Number(data.omitidas) || (data.skipped || []).length || 0;
+        if (omitidas > 0) {
+          const detalle = (data.skipped || [])
+            .slice(0, 8)
+            .join('\n')
+            .concat((data.skipped || []).length > 8 ? `\n…y ${(data.skipped || []).length - 8} más` : '');
+          F.toast(
+            `Entrada creada con ${data.lineas || 0} línea(s). Se omitieron ${omitidas} fila(s).`,
+            'warning'
+          );
+          if (detalle) {
+            await Swal.fire({
+              ...CatalogosUI.modalBase(),
+              icon: 'warning',
+              title: 'Importación parcial',
+              html: `<p class="small mb-2">Se importaron <strong>${data.lineas || 0}</strong> línea(s) válidas. Filas omitidas:</p>
+                <pre class="small text-start mb-0" style="white-space:pre-wrap;max-height:240px;overflow:auto">${this.escapeHtml(detalle)}</pre>`,
+              confirmButtonText: 'Continuar',
+            });
+          }
+        } else {
+          F.toast(`Entrada creada con ${data.lineas || 0} línea(s)`, 'success');
+        }
         await this.showEditor(coddoc, correlativo, { focusProductSearch: true });
       } catch (err) {
         Swal.close();

@@ -242,12 +242,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.85rem 1.35rem;
-  font-size: 1rem;
+  width: 3.35rem;
+  height: 3.35rem;
+  padding: 0;
+  font-size: 1.25rem;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
   border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
+  border-radius: 50%;
   color: var(--btn-fg-success, #fff);
   background: rgba(22, 163, 74, 0.88);
   box-shadow: 0 6px 24px rgba(22, 163, 74, 0.28);
@@ -421,7 +423,8 @@
     width: auto;
     transform: none;
     justify-content: space-between;
-    padding: 0 1rem;
+    /* Deja espacio al FAB Menú (esquina inferior izquierda) */
+    padding: 0 1rem 0 5.85rem;
     pointer-events: none;
   }
 

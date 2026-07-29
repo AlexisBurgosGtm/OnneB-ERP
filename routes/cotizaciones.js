@@ -24,6 +24,10 @@ const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize'
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
+  resolveEmpleadoCoddocPreferido,
+  pickCoddocDefault,
+} = require('../lib/empleado-coddoc-preferido');
+const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
   STATUS_ANULADO,
@@ -227,12 +231,11 @@ async function getVendedorActivo(pool, empnit, codempleado) {
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('CODEMPLEADO', sql.Int, cod)
-    .input('CODTIPO', sql.Int, CODTIPO_EMPLEADO_VENDEDOR)
     .query(`
       SELECT CODEMPLEADO, NOMEMPLEADO
       FROM dbo.Empleados
       WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-        AND CODTIPOEMPLEADO = @CODTIPO AND ACTIVO = 'SI'
+        AND ACTIVO = 'SI'
     `);
   return result.recordset[0] || null;
 }
@@ -277,7 +280,13 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_COTIZACION}' AND ACTIVO = 'SI'
         ORDER BY CODDOC
       `);
-    const def = tipos.recordset[0] || null;
+    const preferred = await resolveEmpleadoCoddocPreferido(
+      pool,
+      sql,
+      empnit,
+      req.query.codempleado
+    );
+    const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
     const cliente = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -305,7 +314,7 @@ router.get('/config', async (req, res) => {
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
-      coddocDefault: def?.CODDOC || null,
+      coddocDefault,
       tiposDocumento: tipos.recordset,
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,

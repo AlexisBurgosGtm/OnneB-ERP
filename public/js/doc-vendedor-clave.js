@@ -1,9 +1,15 @@
 /**
  * Solicitud de clave de vendedor al finalizar (config SOLICITA CLAVE VENDEDOR = SI).
+ * El perfil Cajero no solicita clave: selecciona el vendedor manualmente en el selector.
  */
 const DocVendedorClave = {
   SETTING_OPCION: 'SOLICITA CLAVE VENDEDOR',
   INPUT_ID: 'doc-vendedor-clave-input',
+
+  isCajeroSession() {
+    if (typeof TipoEmpleadoAccess === 'undefined') return false;
+    return Number(TipoEmpleadoAccess.getCodTipo()) === TipoEmpleadoAccess.TIPO_CAJERO;
+  },
 
   async fetchSolicitaClave() {
     const params = new URLSearchParams({
@@ -12,6 +18,12 @@ const DocVendedorClave = {
     });
     const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
     return String(data.sino || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  /** true si la config pide clave y el usuario no es cajero. */
+  async shouldSolicitarClave() {
+    if (this.isCajeroSession()) return false;
+    return this.fetchSolicitaClave();
   },
 
   readClaveInput() {
@@ -23,7 +35,7 @@ const DocVendedorClave = {
    * @returns {Promise<boolean>} false si el usuario canceló o la clave no es válida
    */
   async promptAndApply({ apiLookupUrl, vendedorSelectId, view }) {
-    const solicita = await this.fetchSolicitaClave();
+    const solicita = await this.shouldSolicitarClave();
     if (!solicita) return true;
 
     const { isConfirmed, value: clave } = await Swal.fire({

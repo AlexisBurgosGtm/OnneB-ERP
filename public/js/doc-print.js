@@ -104,21 +104,27 @@ const DocPrint = {
     return `<div class="doc-meta-item"><strong>${this.escapeHtml(label)}:</strong> ${this.escapeHtml(value)}</div>`;
   },
 
-  buildLinesTableHtml(lines, { ticket = false } = {}) {
+  buildLinesTableHtml(lines, { ticket = false, includePrecio = false } = {}) {
     const rows = (lines || [])
       .map((ln) => {
         const desc = ticket
           ? `<span class="col-desc">${this.escapeHtml(ln.DESPROD || '')}</span>`
           : this.escapeHtml(ln.DESPROD || '');
+        const precioCell = includePrecio
+          ? `<td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>`
+          : '';
         return `<tr>
           <td>${this.escapeHtml(ln.CODPROD)}</td>
           <td>${desc}</td>
           <td class="text-end">${this.escapeHtml(ln.CODMEDIDA || '')}</td>
           <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
+          ${precioCell}
           <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
         </tr>`;
       })
       .join('');
+    const colCount = includePrecio ? 6 : 5;
+    const precioHead = includePrecio ? '<th class="text-end">Precio</th>' : '';
     return `
       <table class="doc-lines-table">
         <thead>
@@ -127,16 +133,19 @@ const DocPrint = {
             <th>Descripción</th>
             <th class="text-end">Med.</th>
             <th class="text-end">Cant.</th>
+            ${precioHead}
             <th class="text-end">Total</th>
           </tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="5" class="text-center text-muted">Sin líneas</td></tr>'}</tbody>
+        <tbody>${rows || `<tr><td colspan="${colCount}" class="text-center text-muted">Sin líneas</td></tr>`}</tbody>
       </table>`;
   },
 
   buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '' }, formato = 'CARTA') {
     const h = header || {};
     const ticket = this.isTicket(formato);
+    const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
+    const isCotizacion = tipodoc === 'COT' || /cotizaci/i.test(String(title || ''));
     const meta = [
       this.metaItem('Documento', `${h.CODDOC || ''} #${h.CORRELATIVO ?? ''}`),
       this.metaItem('Fecha', this.formatFecha(h.FECHA)),
@@ -163,7 +172,7 @@ const DocPrint = {
         })}
         <div class="doc-meta-grid">${meta}</div>
         ${obs}
-        ${this.buildLinesTableHtml(lines, { ticket })}
+        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: isCotizacion })}
         <div class="doc-totals">
           <div class="doc-totals-row grand">
             <span>Total</span>

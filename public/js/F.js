@@ -166,8 +166,34 @@ let F = {
     return Number.isFinite(n) && n > 0 ? n : null;
   },
 
+  isAdminOrSuperUser() {
+    const user = this.session('user') || {};
+    if (user.superUser) return true;
+    if (typeof TipoEmpleadoAccess !== 'undefined') {
+      return Number(TipoEmpleadoAccess.getCodTipo(user)) === TipoEmpleadoAccess.TIPO_ADMIN;
+    }
+    return Number(user.codtipoempleado) === 1;
+  },
+
+  /**
+   * Si el usuario es admin, asegura que su CODEMPLEADO aparezca en el selector de vendedores.
+   * Para no-admin no altera la lista.
+   */
+  ensureVendedoresForSession(vendedores) {
+    const list = Array.isArray(vendedores) ? [...vendedores] : [];
+    if (!this.isAdminOrSuperUser()) return list;
+    const cod = this.sessionCodEmpleado();
+    if (cod == null) return list;
+    if (list.some((v) => String(v.CODEMPLEADO) === String(cod))) return list;
+    const user = this.session('user') || {};
+    const nombre = String(user.nomempleado || user.usuario || `Empleado ${cod}`).trim();
+    list.unshift({ CODEMPLEADO: cod, NOMEMPLEADO: nombre });
+    return list;
+  },
+
   /**
    * CODVEN por defecto: empleado de sesión si aparece en la lista de vendedores.
+   * Admin: se usa su CODEMPLEADO (tras ensureVendedoresForSession).
    * @param {Array<{CODEMPLEADO:number|string}>} vendedores
    */
   defaultCodvenFromSession(vendedores) {

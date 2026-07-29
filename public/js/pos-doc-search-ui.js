@@ -72,8 +72,8 @@ const PosDocSearchUI = {
   mobileFabHtml(prefix) {
     return `
       <button type="button" class="pos-fab-agregar" id="${prefix}-fab-add-product"
-        aria-label="Agregar producto" title="Agregar producto">
-        <i class="fa-solid fa-plus me-1"></i>Agregar
+        aria-label="Buscar producto" title="Buscar producto">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
       </button>`;
   },
 

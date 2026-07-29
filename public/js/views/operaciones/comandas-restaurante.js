@@ -252,7 +252,7 @@ const ComandasRestauranteView = {
       return;
     }
 
-    const solicitaClave = await DocVendedorClave.fetchSolicitaClave();
+    const solicitaClave = await DocVendedorClave.shouldSolicitarClave();
     if (solicitaClave) {
       const ok = await DocVendedorClave.promptAndApply({
         apiLookupUrl: `/api/comandas-restaurante/vendedores/por-clave?empnit=${encodeURIComponent(F.getEmpNit())}`,
@@ -1164,8 +1164,8 @@ const ComandasRestauranteView = {
                 (c) =>
                   `<button type="button" class="list-group-item list-group-item-action small"
                     data-codcliente="${c.CODCLIENTE}">
-                    <strong>${this.escapeHtml(c.NEGOCIO || c.NOMBRECLIENTE)}</strong>
-                    <span class="text-muted d-block">${this.escapeHtml(c.NOMBRECLIENTE || '')} · ${this.escapeHtml(c.NIT || '')}</span>
+                    <strong>${this.escapeHtml([c.TIPONEGOCIO, c.NEGOCIO, c.NOMBRECLIENTE].map((v) => String(v || '').trim()).filter(Boolean).join(' · ') || String(c.CODCLIENTE))}</strong>
+                    <span class="text-muted d-block">${this.escapeHtml(c.NIT || '')}</span>
                   </button>`
               )
               .join('');

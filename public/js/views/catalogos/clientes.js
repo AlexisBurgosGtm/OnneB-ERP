@@ -727,15 +727,30 @@ const ClientesView = {
     const nombre = row ? row.NOMBRECLIENTE || codcliente : codcliente;
     const confirm = await CatalogosUI.fireConfirm({
       title: '¿Eliminar cliente?',
-      html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong> (código ${this.escapeHtml(codcliente)})</p>`,
+      html: `<p class="mb-0">Se intentará eliminar a <strong>${this.escapeHtml(nombre)}</strong> (código ${this.escapeHtml(codcliente)}).</p>
+        <p class="small text-muted mb-0 mt-2">Si tiene documentos asociados, solo se deshabilitará.</p>`,
       icon: 'warning',
-      confirmText: 'Eliminar',
+      confirmText: 'Continuar',
       confirmClass: 'btn-catalogo-eliminar',
     });
     if (!confirm) return;
+    const pass = await CatalogosUI.solicitarClaveAdmin({
+      title: 'Autorizar eliminación',
+      text: 'Ingrese la clave de administrador para eliminar o deshabilitar al cliente.',
+      confirmText: 'Autorizar',
+    });
+    if (!pass) return;
     try {
-      await F.fetchJson(this.apiBase(`/${encodeURIComponent(codcliente)}`), { method: 'DELETE' });
-      F.toast('Cliente eliminado', 'success');
+      const res = await F.fetchJson(this.apiBase(`/${encodeURIComponent(codcliente)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass: String(pass) }),
+      });
+      if (res?.action === 'disabled') {
+        F.toast(res.message || 'Cliente deshabilitado (tiene documentos)', 'warning');
+      } else {
+        F.toast('Cliente eliminado', 'success');
+      }
       await this.load(this._container);
     } catch (err) {
       F.alert('Error', err.message, 'error');

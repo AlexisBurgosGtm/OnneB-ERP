@@ -145,7 +145,13 @@ const CotizacionesView = {
   },
 
   async fetchConfig() {
-    return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
+    const codempleado = F.sessionCodEmpleado();
+    return F.fetchJson(
+      this.apiUrl('/config', {
+        _: Date.now(),
+        ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
+      })
+    );
   },
 
   async fetchProductos(q) {
@@ -168,9 +174,14 @@ const CotizacionesView = {
   },
 
   filteredPedidosList() {
+    const cod = String(this.activeCoddoc() || '').trim();
+    let rows = this._pedidosList;
+    if (cod) {
+      rows = rows.filter((r) => String(r.CODDOC ?? '').trim() === cod);
+    }
     const q = this._listFilter.trim().toLowerCase();
-    if (!q) return this._pedidosList;
-    return this._pedidosList.filter((r) => {
+    if (!q) return rows;
+    return rows.filter((r) => {
       const hay = [
         r.CODDOC,
         r.CORRELATIVO,
@@ -213,6 +224,13 @@ const CotizacionesView = {
 
   docEditable(header) {
     return DocFecha.editableStatus(header?.STATUS);
+  },
+
+  isAdminOrSuperUser() {
+    const user = F.session('user') || {};
+    if (user.superUser) return true;
+    if (typeof TipoEmpleadoAccess === 'undefined') return false;
+    return Number(TipoEmpleadoAccess.getCodTipo(user)) === TipoEmpleadoAccess.TIPO_ADMIN;
   },
 
   permiteCambiarPrecioPedido() {
@@ -437,9 +455,14 @@ const CotizacionesView = {
     const priceByMedida = Object.fromEntries(
       precios.map((p) => [String(p.CODMEDIDA), Number(p.PRECIO) || 0])
     );
+    const costByMedida = Object.fromEntries(
+      precios.map((p) => [String(p.CODMEDIDA), Number(p.COSTO ?? p.COSTO_PROD) || 0])
+    );
     const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
+    const defaultCosto = costByMedida[String(defaultMedida)] ?? 0;
     const permiteCambiarPrecio = this.permiteCambiarPrecioPedido();
     const solicitaAuth = this.solicitaAutorizaciones();
+    const showCosto = this.isAdminOrSuperUser();
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
@@ -453,7 +476,7 @@ const CotizacionesView = {
       html: `
         <label class="form-label small mb-0">Medida</label>
         <select id="pos-swal-medida" class="form-select form-select-sm">${options}</select>
-        <div class="row g-2 mt-2 align-items-end">
+        <div class="row g-2 mt-2 align-items-start">
           <div class="col-6">
             <label class="form-label small mb-0" for="pos-swal-cant">Cantidad</label>
             <input type="number" id="pos-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
@@ -467,6 +490,11 @@ const CotizacionesView = {
             }
           </div>
         </div>
+        ${
+          showCosto
+            ? `<p class="small text-danger fw-semibold mb-0 mt-2 text-end" id="pos-swal-costo">Costo: ${this.escapeHtml(this.formatMoney(defaultCosto))}</p>`
+            : ''
+        }
         <p class="small text-muted mb-0 mt-2 text-end" id="pos-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultPrecio))}</p>
         <p class="small mb-0 mt-2 text-center" id="authz-precio-status"></p>
       `,
@@ -478,6 +506,7 @@ const CotizacionesView = {
         const medSel = document.getElementById('pos-swal-medida');
         const cantInp = document.getElementById('pos-swal-cant');
         const precioInp = document.getElementById('pos-swal-precio');
+        const costoEl = document.getElementById('pos-swal-costo');
         const totalEl = document.getElementById('pos-swal-total');
         const readPrecio = () => {
           if (permiteCambiarPrecio) {
@@ -496,6 +525,10 @@ const CotizacionesView = {
           const precio = priceByMedida[med] ?? 0;
           if (precioInp) {
             precioInp.value = permiteCambiarPrecio ? String(precio) : this.formatMoney(precio);
+          }
+          if (costoEl) {
+            const costo = costByMedida[String(med)] ?? 0;
+            costoEl.textContent = `Costo: ${this.formatMoney(costo)}`;
           }
           updateTotal();
         };
@@ -811,61 +844,78 @@ const CotizacionesView = {
   },
 
   refreshListDom() {
-    const grid = this._container?.querySelector('#pos-pedido-cards');
-    if (grid) grid.innerHTML = this.renderListCardsHtml();
+    const tbody = this._container?.querySelector('#pos-list-tbody');
+    if (tbody) tbody.innerHTML = this.renderListTableBodyHtml();
     const sub = this._container?.querySelector('.pos-list-sub');
     if (sub) {
       sub.textContent = `${this.filteredPedidosList().length} cotización(es) operadas`;
     }
   },
 
-  renderListCardsHtml() {
+  renderListActionsHtml(r) {
+    return `
+      <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar" title="Editar">
+        <i class="fa-solid fa-pen"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir" title="Imprimir">
+        <i class="fa-solid fa-print"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear" title="Bloquear">
+        <i class="fa-solid fa-lock"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar" title="Eliminar">
+        <i class="fa-solid fa-trash"></i>
+      </button>`;
+  },
+
+  renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return '<div class="pos-list-empty text-muted text-center py-5">No hay cotizaciones operadas</div>';
+      return `<tr><td colspan="8" class="text-center text-muted py-4">No hay cotizaciones operadas</td></tr>`;
     }
     return rows
       .map((r) => {
         const label = `${r.CODDOC} #${r.CORRELATIVO}`;
         const cliente = r.DOC_NOMCLIE || r.NEGOCIO || 'Sin cliente';
-        const tipo = [r.TIPONEGOCIO, r.NEGOCIO].filter(Boolean).join(' · ');
+        const negocio = [r.TIPONEGOCIO, r.NEGOCIO].filter(Boolean).join(' · ') || '—';
+        const entrega =
+          typeof DocEntrega !== 'undefined' ? DocEntrega.formatListLabel(r) : String(r.F_ENTREGA || '').trim();
         return `
-          <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
-            data-correlativo="${r.CORRELATIVO}">
-            <div class="pos-pedido-card-top">
-              <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
-              <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</span>
-            </div>
-            <div class="pos-pedido-card-cliente">${this.escapeHtml(cliente)}</div>
-            ${tipo ? `<div class="pos-pedido-card-meta">${this.escapeHtml(tipo)}</div>` : ''}
-            ${
-              typeof DocEntrega !== 'undefined' && DocEntrega.formatListLabel(r)
-                ? `<div class="pos-pedido-card-meta"><i class="fa-solid fa-truck me-1"></i>${this.escapeHtml(
-                    DocEntrega.formatListLabel(r)
-                  )}</div>`
-                : ''
-            }
-            <div class="pos-pedido-card-footer">
-              <span><i class="fa-solid fa-box-open me-1"></i>${Number(r.LINEAS) || 0} líneas</span>
-              <span><i class="fa-regular fa-calendar me-1"></i>${this.escapeHtml(this.formatFechaPedido(r))}</span>
-            </div>
-            <div class="inv-card-actions">
-              <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
-                <i class="fa-solid fa-pen me-1"></i>Editar
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
-                <i class="fa-solid fa-print me-1"></i>Imprimir
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear">
-                <i class="fa-solid fa-lock me-1"></i>Bloquear
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
-                <i class="fa-solid fa-trash me-1"></i>Eliminar
-              </button>
-            </div>
-          </div>`;
+          <tr class="pos-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
+            <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
+            <td>${this.escapeHtml(cliente)}</td>
+            <td class="small text-muted">${this.escapeHtml(negocio)}</td>
+            <td class="small">${this.escapeHtml(entrega || '—')}</td>
+            <td class="text-center">${Number(r.LINEAS) || 0}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-nowrap small">${this.escapeHtml(this.formatFechaPedido(r))}</td>
+            <td class="text-end text-nowrap fac-list-actions">${this.renderListActionsHtml(r)}</td>
+          </tr>`;
       })
       .join('');
+  },
+
+  renderListTableHtml() {
+    return `
+      <div class="card fac-list-table-card shadow-sm">
+        <div class="table-responsive fac-list-table-scroll">
+          <table class="table table-sm table-hover table-striped mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th scope="col">Documento</th>
+                <th scope="col">Cliente</th>
+                <th scope="col">Negocio</th>
+                <th scope="col">Entrega</th>
+                <th scope="col" class="text-center">Líneas</th>
+                <th scope="col" class="text-end">Total</th>
+                <th scope="col">Fecha</th>
+                <th scope="col" class="text-end">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="pos-list-tbody">${this.renderListTableBodyHtml()}</tbody>
+          </table>
+        </div>
+      </div>`;
   },
 
   renderListScreen() {
@@ -892,7 +942,7 @@ const CotizacionesView = {
             </div>
           </div>
         </div>
-        <div class="pos-pedido-cards" id="pos-pedido-cards">${this.renderListCardsHtml()}</div>
+        ${this.renderListTableHtml()}
         <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-pos-list-nuevo"
           aria-label="Nueva cotización" title="Nueva cotización"${this.activeCoddoc() ? '' : ' disabled'}>
           <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -955,6 +1005,7 @@ const CotizacionesView = {
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Cliente</label>
                 <div class="input-group input-group-sm">
+                  ${ClienteHistorialPreciosUI.buttonHtml('pos-cliente-historial')}
                   <input type="search" class="form-control pos-search-glow" id="pos-cliente-search"
                     placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
                   <button type="button" class="btn btn-outline-primary text-nowrap" id="pos-cliente-nuevo"
@@ -996,17 +1047,17 @@ const CotizacionesView = {
       this.refreshListDom();
     });
 
-    DocTipoSelect.bind(this._container, 'pos-list-coddoc', this);
+    DocTipoSelect.bind(this._container, 'pos-list-coddoc', this, () => this.refreshListDom());
 
-    this._container?.querySelector('#pos-pedido-cards')?.addEventListener('click', async (e) => {
+    this._container?.querySelector('#pos-list-tbody')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('.inv-card-btn');
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
-      const card = btn.closest('.inv-doc-card');
-      if (!card) return;
-      const coddoc = card.getAttribute('data-coddoc');
-      const correlativo = card.getAttribute('data-correlativo');
+      const row = btn.closest('.pos-list-row');
+      if (!row) return;
+      const coddoc = row.getAttribute('data-coddoc');
+      const correlativo = row.getAttribute('data-correlativo');
       const action = btn.getAttribute('data-action');
       try {
         if (action === 'editar') await this.showEditor(coddoc, correlativo);
@@ -1052,6 +1103,10 @@ const CotizacionesView = {
 
     this._container?.querySelector('#pos-cliente-nuevo')?.addEventListener('click', () => {
       this.onNuevoCliente().catch((err) => F.toast(err.message, 'error'));
+    });
+
+    this._container?.querySelector('#pos-cliente-historial')?.addEventListener('click', () => {
+      this.openHistorialFacturasCliente().catch((err) => F.toast(err.message, 'error'));
     });
 
     this._container?.querySelector('#pos-cart-tbody')?.addEventListener('click', async (e) => {
@@ -1152,8 +1207,8 @@ const CotizacionesView = {
                 (c) =>
                   `<button type="button" class="list-group-item list-group-item-action small"
                     data-codcliente="${c.CODCLIENTE}">
-                    <strong>${this.escapeHtml(c.NEGOCIO || c.NOMBRECLIENTE)}</strong>
-                    <span class="text-muted d-block">${this.escapeHtml(c.NOMBRECLIENTE || '')} · ${this.escapeHtml(c.NIT || '')}</span>
+                    <strong>${this.escapeHtml([c.TIPONEGOCIO, c.NEGOCIO, c.NOMBRECLIENTE].map((v) => String(v || '').trim()).filter(Boolean).join(' · ') || String(c.CODCLIENTE))}</strong>
+                    <span class="text-muted d-block">${this.escapeHtml(c.NIT || '')}</span>
                   </button>`
               )
               .join('');
@@ -1240,8 +1295,18 @@ const CotizacionesView = {
   async fetchVendedores(force = false) {
     if (!force && this._vendedores.length) return this._vendedores;
     const data = await F.fetchJson(this.apiUrl('/vendedores', { _: Date.now() }));
-    this._vendedores = data.rows || [];
+    this._vendedores = F.ensureVendedoresForSession(data.rows || []);
     return this._vendedores;
+  },
+
+  /** Admin sin CODVEN: asigna el CODEMPLEADO de sesión al documento. */
+  async maybeApplyDefaultVendedor() {
+    const h = this._pedido?.header;
+    if (!this.docEditable(h) || this.hasVendedor(h)) return;
+    if (!F.isAdminOrSuperUser()) return;
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven == null) return;
+    await this.guardarVendedorDocumento(String(codven), { silent: true });
   },
 
   async reloadVendedoresOptions() {
@@ -1267,7 +1332,7 @@ const CotizacionesView = {
     }
   },
 
-  async guardarVendedorDocumento(codven) {
+  async guardarVendedorDocumento(codven, opts = {}) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const h = this._pedido.header;
@@ -1282,7 +1347,7 @@ const CotizacionesView = {
     });
     this.renderHeaderInfo();
     this.syncVendedorEmphasis();
-    F.toast('Vendedor actualizado', 'success');
+    if (!opts.silent) F.toast('Vendedor actualizado', 'success');
   },
 
   async guardarTipofacDocumento(tipofac) {
@@ -1354,6 +1419,17 @@ const CotizacionesView = {
     }
   },
 
+  async openHistorialFacturasCliente() {
+    const h = this._pedido?.header;
+    const codcliente = Number(h?.CODCLIENTE);
+    if (!Number.isFinite(codcliente) || codcliente <= 0 || !this.hasCliente(h)) {
+      F.toast('Seleccione un cliente primero', 'warning');
+      return;
+    }
+    const clienteNombre = String(h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
+    await ClienteHistorialPreciosUI.open({ codcliente, clienteNombre });
+  },
+
   async showList() {
     this._screen = 'list';
     this._pedido = null;
@@ -1378,6 +1454,7 @@ const CotizacionesView = {
     this.bindEditorEvents();
     PosDocSearchUI.resetProductSearch(this, 'pos');
     this.renderAll();
+    await this.maybeApplyDefaultVendedor();
     if (opts.focusProductSearch) {
       PosDocSearchUI.focusProductSearch(this._container, 'pos');
     }
@@ -1414,6 +1491,7 @@ const CotizacionesView = {
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando cotizaciones…</div>`;
 
     try {
+      this._selectedCoddoc = '';
       this._config = await this.fetchConfig();
       DocTipoSelect.initView(this);
       if (!this._config.coddocDefault) {

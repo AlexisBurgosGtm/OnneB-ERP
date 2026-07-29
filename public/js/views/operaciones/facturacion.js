@@ -295,6 +295,21 @@ const FacturacionView = {
     return cod != null && cod !== '' && Number(cod) > 0;
   },
 
+  /** CODEMPLEADO numérico del documento (null si vacío). */
+  codvenFromHeader(h) {
+    const n = Number(h?.CODVEN);
+    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+  },
+
+  /** Incluye el CODVEN del documento en la lista del selector si no viene en /vendedores. */
+  ensureDocVendedorInList() {
+    const cod = this.codvenFromHeader(this._pedido?.header);
+    if (cod == null) return;
+    if ((this._vendedores || []).some((v) => Number(v.CODEMPLEADO) === cod)) return;
+    const nombre = String(this._pedido?.header?.VENDEDOR || `Empleado ${cod}`).trim();
+    this._vendedores = [{ CODEMPLEADO: cod, NOMEMPLEADO: nombre }, ...(this._vendedores || [])];
+  },
+
   documentoTieneOrigen(h) {
     const serie = String(h?.SERIEFAC ?? '').trim();
     const nofac = String(h?.NOFAC ?? '').trim();
@@ -340,7 +355,13 @@ const FacturacionView = {
   },
 
   async fetchConfig() {
-    return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
+    const codempleado = F.sessionCodEmpleado();
+    return F.fetchJson(
+      this.apiUrl('/config', {
+        _: Date.now(),
+        ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
+      })
+    );
   },
 
   async fetchProductos(q) {
@@ -365,9 +386,14 @@ const FacturacionView = {
 
   filteredPedidosList() {
     const base = this.pedidosForSelectedDate();
+    const cod = String(this.activeCoddoc() || '').trim();
+    let rows = base;
+    if (cod) {
+      rows = rows.filter((r) => String(r.CODDOC ?? '').trim() === cod);
+    }
     const q = this._listFilter.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((r) => {
+    if (!q) return rows;
+    return rows.filter((r) => {
       const hay = [
         r.CODDOC,
         r.CORRELATIVO,
@@ -579,7 +605,7 @@ const FacturacionView = {
     }
 
     const skipClaveVendedor = this.documentoTieneOrigen(h);
-    const solicitaClave = !skipClaveVendedor && (await DocVendedorClave.fetchSolicitaClave());
+    const solicitaClave = !skipClaveVendedor && (await DocVendedorClave.shouldSolicitarClave());
     if (solicitaClave) {
       const ok = await DocVendedorClave.promptAndApply({
         apiLookupUrl: this.apiUrl('/vendedores/por-clave'),
@@ -1179,7 +1205,8 @@ const FacturacionView = {
 
   renderVendedorField() {
     const h = this._pedido?.header;
-    const codven = h?.CODVEN != null && h.CODVEN !== '' ? String(h.CODVEN) : '';
+    const codvenNum = this.codvenFromHeader(h);
+    const codven = codvenNum != null ? String(codvenNum) : '';
     const disabled = !this.docEditable(h) ? ' disabled' : '';
     const opts = (this._vendedores || [])
       .map(
@@ -1720,6 +1747,7 @@ const FacturacionView = {
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Cliente</label>
                 <div class="input-group input-group-sm">
+                  ${ClienteHistorialPreciosUI.buttonHtml('fac-cliente-historial')}
                   <input type="search" class="form-control pos-search-glow" id="fac-cliente-search"
                     placeholder="Buscar cliente… (requerido)" autocomplete="off"${editable ? '' : ' disabled'}>
                   <button type="button" class="btn btn-outline-primary text-nowrap" id="fac-cliente-nuevo"
@@ -1775,7 +1803,7 @@ const FacturacionView = {
       }
     });
 
-    DocTipoSelect.bind(this._container, 'fac-list-coddoc', this);
+    DocTipoSelect.bind(this._container, 'fac-list-coddoc', this, () => this.refreshListDom());
 
     this._container?.querySelector('#fac-list-tbody')?.addEventListener('click', async (e) => {
       const felLink = e.target.closest('[data-action="fel-open"]');
@@ -1916,6 +1944,10 @@ const FacturacionView = {
       this.onNuevoCliente().catch((err) => F.toast(err.message, 'error'));
     });
 
+    this._container?.querySelector('#fac-cliente-historial')?.addEventListener('click', () => {
+      this.openHistorialFacturasCliente().catch((err) => F.toast(err.message, 'error'));
+    });
+
     const clienteSearch = this._container?.querySelector('#fac-cliente-search');
     const clienteList = this._container?.querySelector('#fac-cliente-results');
     if (clienteSearch && clienteList) {
@@ -1935,8 +1967,8 @@ const FacturacionView = {
                 (c) =>
                   `<button type="button" class="list-group-item list-group-item-action small"
                     data-codcliente="${c.CODCLIENTE}">
-                    <strong>${this.escapeHtml(c.NEGOCIO || c.NOMBRECLIENTE)}</strong>
-                    <span class="text-muted d-block">${this.escapeHtml(c.NOMBRECLIENTE || '')} · ${this.escapeHtml(c.NIT || '')}</span>
+                    <strong>${this.escapeHtml([c.TIPONEGOCIO, c.NEGOCIO, c.NOMBRECLIENTE].map((v) => String(v || '').trim()).filter(Boolean).join(' · ') || String(c.CODCLIENTE))}</strong>
+                    <span class="text-muted d-block">${this.escapeHtml(c.NIT || '')}</span>
                   </button>`
               )
               .join('');
@@ -2023,8 +2055,18 @@ const FacturacionView = {
   async fetchVendedores(force = false) {
     if (!force && this._vendedores.length) return this._vendedores;
     const data = await F.fetchJson(this.apiUrl('/vendedores', { _: Date.now() }));
-    this._vendedores = data.rows || [];
+    this._vendedores = F.ensureVendedoresForSession(data.rows || []);
     return this._vendedores;
+  },
+
+  /** Admin sin CODVEN: asigna el CODEMPLEADO de sesión al documento. */
+  async maybeApplyDefaultVendedor() {
+    const h = this._pedido?.header;
+    if (!this.docEditable(h) || this.hasVendedor(h)) return;
+    if (!F.isAdminOrSuperUser()) return;
+    const codven = F.defaultCodvenFromSession(this._vendedores);
+    if (codven == null) return;
+    await this.guardarVendedorDocumento(String(codven), { silent: true });
   },
 
   async reloadVendedoresOptions() {
@@ -2056,7 +2098,7 @@ const FacturacionView = {
     return this._cajas;
   },
 
-  async guardarVendedorDocumento(codven) {
+  async guardarVendedorDocumento(codven, opts = {}) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const h = this._pedido.header;
@@ -2071,7 +2113,7 @@ const FacturacionView = {
     });
     this.renderHeaderInfo();
     this.syncVendedorEmphasis();
-    F.toast('Vendedor actualizado', 'success');
+    if (!opts.silent) F.toast('Vendedor actualizado', 'success');
   },
 
   async aplicarCliente(codcliente) {
@@ -2111,6 +2153,17 @@ const FacturacionView = {
     }
   },
 
+  async openHistorialFacturasCliente() {
+    const h = this._pedido?.header;
+    const codcliente = Number(h?.CODCLIENTE);
+    if (!Number.isFinite(codcliente) || codcliente <= 0 || !this.hasCliente(h)) {
+      F.toast('Seleccione un cliente primero', 'warning');
+      return;
+    }
+    const clienteNombre = String(h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
+    await ClienteHistorialPreciosUI.open({ codcliente, clienteNombre });
+  },
+
   async showList() {
     this._screen = 'list';
     this._pedido = null;
@@ -2130,11 +2183,13 @@ const FacturacionView = {
     }
     await this.fetchVendedores();
     await this.fetchCajasAbiertas();
+    this.ensureDocVendedorInList();
     this._selectedCodcaja = null;
     this._container.innerHTML = this.renderEditorShell();
     this.bindEditorEvents();
     PosDocSearchUI.resetProductSearch(this, 'fac');
     this.renderAll();
+    await this.maybeApplyDefaultVendedor();
     if (opts.focusProductSearch) {
       PosDocSearchUI.focusProductSearch(this._container, 'fac');
     }
@@ -2172,6 +2227,7 @@ const FacturacionView = {
 
     try {
       const [config] = await Promise.all([this.fetchConfig(), this.fetchUrlFel().catch(() => '')]);
+      this._selectedCoddoc = '';
       this._config = config;
       DocTipoSelect.initView(this);
       if (!this._config.coddocDefault) {

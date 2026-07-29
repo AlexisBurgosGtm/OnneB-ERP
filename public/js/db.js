@@ -27,7 +27,7 @@ const OnnebDb = (function () {
       console.warn('[DB] JsStore no cargado');
       return null;
     }
-    connection = new JsStore.Connection();
+    connection = new JsStore.Connection(new Worker('/vendor/jsstore/jsstore.worker.min.js'));
     const isCreated = await connection.initDb(schema);
     if (isCreated) {
       console.log('[DB] Base IndexedDB creada:', DB_NAME);

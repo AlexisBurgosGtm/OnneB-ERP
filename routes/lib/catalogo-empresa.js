@@ -52,6 +52,7 @@ function parseValue(field, raw) {
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request, idValue: string|number) => Promise<string|null|void>} [cfg.validateUpdate]
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, idValue: string|number, req: import('express').Request) => Promise<string|null|void>} [cfg.validateDelete]
  * @param {boolean} [cfg.requireAdminPassOnDelete] — exige req.body.pass / PASS válida
+ * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, idValue: string|number, req: import('express').Request) => Promise<object>} [cfg.customDelete] — si retorna, sustituye el DELETE por defecto
  */
 function createCatalogoRouter(cfg) {
   const router = express.Router();
@@ -281,6 +282,13 @@ function createCatalogoRouter(cfg) {
       if (cfg.requireAdminPassOnDelete) {
         const { assertAdminPass } = require('../../lib/config-auth');
         await assertAdminPass(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
+      }
+      if (typeof cfg.customDelete === 'function') {
+        const out = await cfg.customDelete(pool, empnit, idValue, req);
+        if (out?.error) {
+          return res.status(out.statusCode || 400).json({ error: out.error });
+        }
+        return res.json(out && typeof out === 'object' ? out : { ok: true });
       }
       const request = pool.request().input('ID_KEY', sqlTypeFor({ type: cfg.idType }), idValue);
       if (scoped) request.input('EMPNIT', sql.VarChar, empnit);

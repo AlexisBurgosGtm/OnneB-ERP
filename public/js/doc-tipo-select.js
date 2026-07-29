@@ -1,5 +1,5 @@
 /**
- * Selector de serie (CODDOC) para crear documentos — no filtra el listado.
+ * Selector de serie (CODDOC) para crear documentos y filtrar el listado.
  */
 const DocTipoSelect = {
   escapeHtml(value) {
@@ -29,7 +29,8 @@ const DocTipoSelect = {
   },
 
   initView(view) {
-    const selected = this.applyToConfig(view._config, view._selectedCoddoc);
+    const preferred = String(view._selectedCoddoc || view._config?.coddocDefault || '').trim();
+    const selected = this.applyToConfig(view._config, preferred);
     view._selectedCoddoc = selected;
     return selected;
   },
