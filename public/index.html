@@ -222,6 +222,7 @@
               <div id="collapseInventarios" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="productos-precios"><i class="fa-solid fa-tags" aria-hidden="true"></i> Productos y precios</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="lista-precios"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Lista Precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="entradas-inventario"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i> Entradas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="salidas-inventario"><i class="fa-solid fa-arrow-up-wide-short" aria-hidden="true"></i> Salidas de inventario</a></li>
@@ -255,6 +256,7 @@
               <div id="collapseArchivo" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="documentos"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Documentos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="lista-facturas"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Lista Facturas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="resumen-del-dia"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Resumen del día</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="autorizaciones"><i class="fa-solid fa-lock" aria-hidden="true"></i> Autorizaciones</a></li>
                 </ul>
@@ -445,6 +447,11 @@
     <span class="btn-menu-fab-label">Menu</span>
   </button>
 
+  <button type="button" id="btn-favoritos-fab" class="btn-favoritos-fab" aria-label="Asistente" aria-hidden="true" title="Asistente (arrastre para mover)">
+    <i class="fa-solid fa-star btn-favoritos-fab-icon" aria-hidden="true"></i>
+    <span class="btn-favoritos-fab-label">Asistente</span>
+  </button>
+
   <script src="/vendor/chart.js/chart.umd.min.js"></script>
   <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   <script src="/vendor/sweetalert2/sweetalert2.all.min.js"></script>
@@ -517,11 +524,13 @@
   <script src="/js/views/inventarios/inventario-retroactivo.js"></script>
   <script src="/js/views/inventarios/inventario-actualizacion.js"></script>
   <script src="/js/views/inventarios/actualizacion-costos.js"></script>
+  <script src="/js/views/inventarios/lista-precios.js"></script>
   <script src="/js/views/cuentas/cuentas-por-cobrar.js"></script>
   <script src="/js/views/cuentas/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
   <script src="/js/autorizaciones-ui.js"></script>
   <script src="/js/views/archivo/documentos.js"></script>
+  <script src="/js/views/archivo/lista-facturas.js"></script>
   <script src="/js/views/archivo/resumen-del-dia.js"></script>
   <script src="/js/views/archivo/autorizaciones.js"></script>
   <script src="/js/views/online-services/subir-catalogo.js"></script>

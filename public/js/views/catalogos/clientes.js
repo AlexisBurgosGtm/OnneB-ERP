@@ -808,6 +808,14 @@ const ClientesView = {
 
   async reloadList() {
     if (!this._container || this._loadingList) return;
+    if (
+      typeof F !== 'undefined' &&
+      typeof F.getActiveMenuKey === 'function' &&
+      F.getActiveMenuKey() &&
+      F.getActiveMenuKey() !== 'clientes'
+    ) {
+      return;
+    }
     this._loadingList = true;
     const tbody = this._container.querySelector('#clientes-tbody');
     if (tbody) {
@@ -816,8 +824,24 @@ const ClientesView = {
     }
     try {
       await this.fetchList();
+      if (
+        typeof F !== 'undefined' &&
+        typeof F.getActiveMenuKey === 'function' &&
+        F.getActiveMenuKey() &&
+        F.getActiveMenuKey() !== 'clientes'
+      ) {
+        return;
+      }
       this.updateTableView();
     } catch (err) {
+      if (
+        typeof F !== 'undefined' &&
+        typeof F.getActiveMenuKey === 'function' &&
+        F.getActiveMenuKey() &&
+        F.getActiveMenuKey() !== 'clientes'
+      ) {
+        return;
+      }
       F.toast('Error al cargar clientes', 'error');
       F.alert('Error', err.message, 'error');
     } finally {
@@ -896,11 +920,16 @@ const ClientesView = {
   },
 
   async load(container) {
+    const navToken =
+      typeof F !== 'undefined' && typeof F.getMenuNavToken === 'function'
+        ? F.getMenuNavToken()
+        : 0;
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
 
     if (!F.getEmpNit()) {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) return;
       container.innerHTML = `
         <div class="alert alert-warning m-3 w-100" role="alert">
           <i class="fa-solid fa-triangle-exclamation me-2"></i>
@@ -918,10 +947,13 @@ const ClientesView = {
 
     try {
       await this.loadLookups();
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) return;
       await this.fetchList();
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) return;
       container.innerHTML = this.renderTable();
       this.bindEvents();
     } catch (err) {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) return;
       container.innerHTML = `
         <div class="alert alert-danger m-3 w-100" role="alert">
           <i class="fa-solid fa-circle-exclamation me-2"></i>

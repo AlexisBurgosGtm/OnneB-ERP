@@ -102,7 +102,8 @@ const CorteCajaView = {
       ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'contado', 'text-primary')}
       ${statOrClick('Tarjeta', this.formatMoney(r.fpTarjeta), 'tarjeta')}
       ${statOrClick('Depósito', this.formatMoney(r.fpDeposito), 'deposito')}
-      ${statOrClick('Cheque', this.formatMoney(r.fpCheque), 'cheque')}`;
+      ${statOrClick('Cheque', this.formatMoney(r.fpCheque), 'cheque')}
+      ${statOrClick('Anuladas (ref.)', this.formatMoney(r.totalAnuladas || 0), 'anuladas', 'text-muted')}`;
 
     return html;
   },
@@ -331,6 +332,7 @@ const CorteCajaView = {
       tarjeta: 'Pagos con tarjeta',
       deposito: 'Pagos con depósito',
       cheque: 'Pagos con cheque',
+      anuladas: 'Facturas anuladas (referencia)',
       vales: 'Vales a empleados (−)',
       'pagos-vales': 'Abonos a vales (+)',
       retiros: 'Retiros de efectivo a banco (−)',

@@ -74,6 +74,14 @@
   border-right: 2px solid #dc3545 !important;
 }
 
+.lista-facturas-row-anulado > td {
+  color: #b91c1c;
+}
+
+.lista-facturas-row-anulado > td .text-danger {
+  color: #dc2626 !important;
+}
+
 .documentos-menu-opciones {
   display: flex;
   flex-direction: column;

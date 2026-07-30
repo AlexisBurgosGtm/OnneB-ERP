@@ -341,11 +341,18 @@ function createCatalogoEmpresaView(cfg) {
     },
 
     async load(container) {
+      const navToken =
+        typeof F !== 'undefined' && typeof F.getMenuNavToken === 'function'
+          ? F.getMenuNavToken()
+          : 0;
       this._container = container;
       container.classList.remove('align-items-center', 'justify-content-center');
       container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
 
       if (cfg.requireEmpresa !== false && !F.getEmpNit()) {
+        if (typeof F !== 'undefined' && typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+          return;
+        }
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100" role="alert">
             <i class="fa-solid fa-triangle-exclamation me-2"></i>
@@ -365,10 +372,16 @@ function createCatalogoEmpresaView(cfg) {
         const baseUrl = this.apiBase();
         const cacheSep = baseUrl.includes('?') ? '&' : '?';
         const data = await F.fetchJson(`${baseUrl}${cacheSep}_=${Date.now()}`, { cache: 'no-store' });
+        if (typeof F !== 'undefined' && typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+          return;
+        }
         this._rows = data.rows || [];
         container.innerHTML = this.renderTable();
         this.bindEvents();
       } catch (err) {
+        if (typeof F !== 'undefined' && typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+          return;
+        }
         container.innerHTML = `
           <div class="alert alert-danger m-3 w-100" role="alert">
             <i class="fa-solid fa-circle-exclamation me-2"></i>

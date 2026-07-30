@@ -797,26 +797,6 @@ const PosView = {
     this.syncEditorControls();
   },
 
-  async bloquearPedido(coddoc, correlativo) {
-    const row = this._pedidosList.find(
-      (r) => String(r.CODDOC) === String(coddoc) && Number(r.CORRELATIVO) === Number(correlativo)
-    );
-    const label = row ? `${coddoc} #${correlativo}` : `${coddoc} #${correlativo}`;
-    const confirm = await CatalogosUI.fireConfirm({
-      title: '¿Bloquear pedido?',
-      html: `<p class="mb-0">El pedido <strong>${this.escapeHtml(label)}</strong> pasará a estado bloqueado (I). No se elimina; solo dejará de mostrarse en el listado de operados.</p>`,
-      icon: 'warning',
-      confirmText: 'BLOQUEAR',
-      confirmClass: 'btn-catalogo-bloquear',
-    });
-    if (!confirm) return;
-    const url = `/api/pos/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/bloquear?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    await F.fetchJson(url, { method: 'POST' });
-    F.toast('Pedido bloqueado', 'success');
-    await this.fetchPedidosList();
-    this.refreshListDom();
-  },
-
   async eliminarPedido(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
     const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'pedido' });
@@ -890,9 +870,6 @@ const PosView = {
       </button>
       <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir" title="Imprimir">
         <i class="fa-solid fa-print"></i>
-      </button>
-      <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="bloquear" title="Bloquear">
-        <i class="fa-solid fa-lock"></i>
       </button>
       <button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar" title="Eliminar">
         <i class="fa-solid fa-trash"></i>
@@ -1093,7 +1070,6 @@ const PosView = {
       try {
         if (action === 'editar') await this.showEditor(coddoc, correlativo);
         else if (action === 'imprimir') await this.imprimirPedido(coddoc, correlativo);
-        else if (action === 'bloquear') await this.bloquearPedido(coddoc, correlativo);
         else if (action === 'eliminar') await this.eliminarPedido(coddoc, correlativo);
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
@@ -1466,7 +1442,12 @@ const PosView = {
     this._pedido = null;
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('pos');
-    if (this._config) DocTipoSelect.initView(this);
+    try {
+      await DocTipoSelect.reloadTiposDocumento(this);
+    } catch (err) {
+      console.warn('[POS] reload tipodocumentos:', err?.message || err);
+      if (this._config) DocTipoSelect.initView(this);
+    }
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();
     await this.fetchPedidosList();

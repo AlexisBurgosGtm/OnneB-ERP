@@ -2,7 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
-const { sessionCorteDocsSql, sessionCorteDocsListSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
+const { sessionCorteDocsSql, sessionCorteDocsListSql, sessionCorteAnuladasSumSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
 const { sumValesSesionCaja, marcarValesCorte, sumPagosValesSesionCaja, marcarPagosValesCorte, listValesSesionCaja, listPagosValesSesionCaja } = require('../lib/nomina-vales');
 const {
   crearMovimientoBanco,
@@ -33,6 +33,20 @@ function parseCodcaja(raw) {
 
 function roundMoney(n) {
   return Math.round(Number(n) * 1000) / 1000;
+}
+
+async function loadAnuladasSesion(pool, empnit, codcaja, apertura) {
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODCAJA', sql.Int, codcaja)
+    .input('APERTURA', sql.DateTime, apertura)
+    .query(sessionCorteAnuladasSumSql());
+  const row = result.recordset?.[0] || {};
+  return {
+    cantidadAnuladas: Number(row.cantidadAnuladas) || 0,
+    totalAnuladas: roundMoney(row.totalAnuladas),
+  };
 }
 
 function parseAmount(raw) {
@@ -287,6 +301,7 @@ router.get('/:codcaja/resumen', async (req, res) => {
     const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
     const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    const anuladasInfo = await loadAnuladasSesion(pool, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docs.recordset,
       caja.EFECTIVOINICIAL,
@@ -297,6 +312,8 @@ router.get('/:codcaja/resumen', async (req, res) => {
     resumen.cantidadVales = valesInfo.cantidadVales;
     resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
+    resumen.totalAnuladas = anuladasInfo.totalAnuladas;
     res.json({ caja, resumen });
   } catch (err) {
     console.warn('[API GET /corte-caja/:codcaja/resumen]', err.message);
@@ -440,6 +457,7 @@ router.post('/:codcaja/retiro-efectivo', async (req, res) => {
     const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
     const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    const anuladasInfo = await loadAnuladasSesion(pool, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docs.recordset,
       caja.EFECTIVOINICIAL,
@@ -450,6 +468,8 @@ router.post('/:codcaja/retiro-efectivo', async (req, res) => {
     resumen.cantidadVales = valesInfo.cantidadVales;
     resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
+    resumen.totalAnuladas = anuladasInfo.totalAnuladas;
 
     res.status(201).json({ ok: true, movimiento, caja, resumen });
   } catch (err) {
@@ -546,6 +566,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
     const valesInfo = await sumValesSesionCaja(transaction, empnit, codcaja, apertura);
     const pagosInfo = await sumPagosValesSesionCaja(transaction, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(transaction, empnit, codcaja, apertura);
+    const anuladasInfo = await loadAnuladasSesion(transaction, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docsResult.recordset,
       caja.EFECTIVOINICIAL,
@@ -556,6 +577,8 @@ router.post('/:codcaja/cerrar', async (req, res) => {
     resumen.cantidadVales = valesInfo.cantidadVales;
     resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
+    resumen.totalAnuladas = anuladasInfo.totalAnuladas;
 
     const diff = roundMoney(totalReportado - resumen.efectivoEsperado);
     const faltante = diff < 0 ? roundMoney(Math.abs(diff)) : 0;

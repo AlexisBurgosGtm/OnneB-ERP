@@ -639,8 +639,36 @@ const TipoDocumentosView = {
   },
 
   async load(container) {
+    const navToken =
+      typeof F !== 'undefined' && typeof F.getMenuNavToken === 'function'
+        ? F.getMenuNavToken()
+        : 0;
+    this._container = container;
+    container.classList.remove('align-items-center', 'justify-content-center');
+    container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
+    container.innerHTML = `
+      <div class="text-center text-muted py-4 w-100">
+        <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando tipo(s) documento…
+      </div>
+    `;
     this._lookups = null;
-    await this.loadLookups(true);
-    return TipoDocumentosViewBase.load.call(this, container);
+    try {
+      await this.loadLookups(true);
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+        return;
+      }
+      return TipoDocumentosViewBase.load.call(this, container);
+    } catch (err) {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+        return;
+      }
+      container.innerHTML = `
+        <div class="alert alert-danger m-3 w-100" role="alert">
+          <i class="fa-solid fa-circle-exclamation me-2"></i>
+          No se pudo cargar tipo documentos: ${this.escapeHtml(err.message || 'Error')}
+        </div>
+      `;
+      F.toast('Error al cargar tipo documentos', 'error');
+    }
   },
 };

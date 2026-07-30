@@ -16,6 +16,7 @@ const ConfigGeneralView = {
     SOLICITA_AUTORIZACIONES: 'SOLICITA AUTORIZACIONES',
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
+    FACTURA_SE_PASA_A_FRACCIONAMIENTO_AUTOM: 'FACTURA SE PASA A FRACCIONAMIENTO AUTOM',
     MUESTRA_FORMATO_FEL_ONLINE: 'MUESTRA FORMATO FEL ONLINE',
     MAXIMO_FRACCIONAMIENTO_FACTURAS: 'MAXIMO FRACCIONAMIENTO FACTURAS',
     MUESTRA_DESPROD2_EN_DOCS_Y_PRODS: 'MUESTRA DESPROD2 EN DOCS Y PRODS',
@@ -97,6 +98,13 @@ const ConfigGeneralView = {
       title: 'Certifica al finalizar',
       icon: 'fa-certificate',
       fallbackDesc: 'Al finalizar un documento FEL (FEF/FEC/FNC), certifica automáticamente ante SAT',
+    },
+    {
+      opcion: 'FACTURA SE PASA A FRACCIONAMIENTO AUTOM',
+      title: 'Factura se pasa a fraccionamiento autom',
+      icon: 'fa-scissors',
+      fallbackDesc:
+        'Al finalizar una factura normal (FAC), la envía automáticamente a la cola de fraccionamiento',
     },
     {
       opcion: 'MUESTRA DESPROD2 EN DOCS Y PRODS',

@@ -198,6 +198,14 @@ const DocumentosView = {
         className: 'documentos-menu-item-secondary',
       });
     }
+    if (DocOpciones.puedeCambiarStatus(row)) {
+      items.push({
+        id: 'cambiar-status',
+        label: 'Cambiar Status',
+        icon: 'fa-toggle-on',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
     if (DocOpciones.puedeCertificarFel(row)) {
       items.push({
         id: 'certificar',
@@ -330,6 +338,10 @@ const DocumentosView = {
       }
       if (action === 'cambiar-caja') {
         await this.cambiarCajaDocumento(row);
+        return;
+      }
+      if (action === 'cambiar-status') {
+        await this.cambiarStatusDocumento(row);
         return;
       }
       if (action === 'certificar') {
@@ -560,6 +572,49 @@ const DocumentosView = {
     });
     if (!result.isConfirmed) return;
     await DocOpciones.cambiarCaja(coddoc, correlativo, result.value);
+    await this.reload();
+  },
+
+  async cambiarStatusDocumento(row) {
+    const coddoc = row.CODDOC;
+    const correlativo = row.CORRELATIVO;
+    const actual = String(row.STATUS || '').trim().toUpperCase();
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cambiar Status',
+      html: `
+        <form class="catalogo-form text-start" autocomplete="off" novalidate onsubmit="return false">
+          <p class="small text-muted mb-2">Status actual: <strong>${this.escapeHtml(actual || '—')}</strong></p>
+          <label for="documentos-status-nuevo" class="form-label small mb-0">Nuevo status</label>
+          <select class="form-select form-select-sm" id="documentos-status-nuevo">
+            <option value="O"${actual === 'O' ? ' selected' : ''}>O — Operado</option>
+            <option value="I"${actual === 'I' ? ' selected' : ''}>I — Bloqueado</option>
+          </select>
+          <p class="small text-muted mt-2 mb-0">La anulación (A) es un proceso aparte.</p>
+        </form>
+      `,
+      width: 400,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Aceptar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      preConfirm: () => {
+        const val = String(document.getElementById('documentos-status-nuevo')?.value || '')
+          .trim()
+          .toUpperCase();
+        if (val !== 'O' && val !== 'I') {
+          Swal.showValidationMessage('Seleccione O o I');
+          return false;
+        }
+        if (val === actual) {
+          Swal.showValidationMessage('Seleccione un status distinto al actual');
+          return false;
+        }
+        return val;
+      },
+    });
+    if (!result.isConfirmed) return;
+    await DocOpciones.cambiarStatus(coddoc, correlativo, result.value);
     await this.reload();
   },
 

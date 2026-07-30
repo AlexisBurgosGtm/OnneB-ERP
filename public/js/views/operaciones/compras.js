@@ -1764,6 +1764,12 @@ const ComprasView = {
     this._compra = null;
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('compras');
+    try {
+      await DocTipoSelect.reloadTiposDocumento(this);
+    } catch (err) {
+      console.warn('[Compras] reload tipodocumentos:', err?.message || err);
+      if (this._config) DocTipoSelect.initView(this);
+    }
     await this.fetchComprasList();
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();

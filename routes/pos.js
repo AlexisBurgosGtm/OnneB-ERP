@@ -494,6 +494,14 @@ router.get('/pedidos', async (req, res) => {
   const statusRaw = String(req.query.status || STATUS_OPERADO).trim().toUpperCase();
   const allowed = [STATUS_OPERADO, STATUS_BLOQUEADO, STATUS_ANULADO];
   const status = allowed.includes(statusRaw) ? statusRaw : STATUS_OPERADO;
+  const requestedLimit = parseInt(req.query.limit, 10);
+  // Pedidos operados: sin tope artificial bajo. Otros estados: límite alto opcional.
+  const useLimit =
+    status !== STATUS_OPERADO
+      ? Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 500, 1), 5000)
+      : Number.isFinite(requestedLimit)
+        ? Math.min(Math.max(requestedLimit, 1), 10000)
+        : null;
   try {
     const pool = await req.app.locals.getDbPool();
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
@@ -502,8 +510,10 @@ router.get('/pedidos', async (req, res) => {
       request.input('CODDOC', sql.VarChar, coddoc);
       coddocFilter = ' AND d.CODDOC = @CODDOC';
     }
+    const topSql = useLimit != null ? 'TOP (@limit)' : '';
+    if (useLimit != null) request.input('limit', sql.Int, useLimit);
     const result = await request.query(`
-      SELECT TOP 100
+      SELECT ${topSql}
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
         d.F_ENTREGA, d.DIRENTREGA,

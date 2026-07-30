@@ -1,6 +1,6 @@
 /**
  * Solicitud de clave de vendedor al finalizar (config SOLICITA CLAVE VENDEDOR = SI).
- * El perfil Cajero no solicita clave: selecciona el vendedor manualmente en el selector.
+ * Cajero y Administrador no solicitan clave: usan el selector de vendedor (o el de sesión).
  */
 const DocVendedorClave = {
   SETTING_OPCION: 'SOLICITA CLAVE VENDEDOR',
@@ -9,6 +9,16 @@ const DocVendedorClave = {
   isCajeroSession() {
     if (typeof TipoEmpleadoAccess === 'undefined') return false;
     return Number(TipoEmpleadoAccess.getCodTipo()) === TipoEmpleadoAccess.TIPO_CAJERO;
+  },
+
+  isAdminSession() {
+    if (typeof F !== 'undefined' && typeof F.isAdminOrSuperUser === 'function') {
+      return F.isAdminOrSuperUser();
+    }
+    if (typeof TipoEmpleadoAccess === 'undefined') return false;
+    const user = typeof F !== 'undefined' ? F.session('user') : null;
+    if (user?.superUser) return true;
+    return Number(TipoEmpleadoAccess.getCodTipo(user)) === TipoEmpleadoAccess.TIPO_ADMIN;
   },
 
   async fetchSolicitaClave() {
@@ -20,9 +30,9 @@ const DocVendedorClave = {
     return String(data.sino || 'NO').trim().toUpperCase() === 'SI';
   },
 
-  /** true si la config pide clave y el usuario no es cajero. */
+  /** true si la config pide clave y el usuario no es cajero ni administrador. */
   async shouldSolicitarClave() {
-    if (this.isCajeroSession()) return false;
+    if (this.isCajeroSession() || this.isAdminSession()) return false;
     return this.fetchSolicitaClave();
   },
 

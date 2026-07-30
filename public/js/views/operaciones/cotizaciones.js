@@ -1435,7 +1435,12 @@ const CotizacionesView = {
     this._pedido = null;
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('pos');
-    if (this._config) DocTipoSelect.initView(this);
+    try {
+      await DocTipoSelect.reloadTiposDocumento(this);
+    } catch (err) {
+      console.warn('[Cotizaciones] reload tipodocumentos:', err?.message || err);
+      if (this._config) DocTipoSelect.initView(this);
+    }
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();
     await this.fetchPedidosList();

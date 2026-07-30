@@ -5,6 +5,7 @@ const DocOpciones = {
   FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
   FEL_URL_OPCION: 'URL FEL',
   CERTIFICA_AL_FINALIZAR_OPCION: 'CERTIFICA AL FINALIZAR',
+  FACTURA_SE_PASA_A_FRACCIONAMIENTO_AUTOM_OPCION: 'FACTURA SE PASA A FRACCIONAMIENTO AUTOM',
   MUESTRA_FORMATO_FEL_ONLINE_OPCION: 'MUESTRA FORMATO FEL ONLINE',
 
   EDITOR_BY_TIPODOC: {
@@ -78,6 +79,31 @@ const DocOpciones = {
     if (!DocFecha.editableStatus(row.STATUS)) return false;
     const corte = String(row.CORTE || 'NO').trim().toUpperCase();
     return corte !== 'SI';
+  },
+
+  /** Solo O ↔ I (anular es proceso aparte). */
+  puedeCambiarStatus(row) {
+    if (!row) return false;
+    const status = String(row.STATUS || '').trim().toUpperCase();
+    return status === 'O' || status === 'I';
+  },
+
+  patchStatusUrl(coddoc, correlativo) {
+    return `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/status?empnit=${encodeURIComponent(F.getEmpNit())}`;
+  },
+
+  async cambiarStatus(coddoc, correlativo, status) {
+    const next = String(status || '').trim().toUpperCase();
+    if (next !== 'O' && next !== 'I') {
+      throw new Error('STATUS inválido (solo O o I)');
+    }
+    await F.fetchJson(this.patchStatusUrl(coddoc, correlativo), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ STATUS: next }),
+    });
+    F.toast(`Status actualizado a ${next}`, 'success');
+    return true;
   },
 
   puedeCertificarFel(row) {
@@ -173,6 +199,15 @@ const DocOpciones = {
   async fetchCertificaAlFinalizar() {
     const params = new URLSearchParams({
       opcion: this.CERTIFICA_AL_FINALIZAR_OPCION,
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+    return String(data.sino ?? 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  async fetchFacturaSePasaAFraccionamientoAutom() {
+    const params = new URLSearchParams({
+      opcion: this.FACTURA_SE_PASA_A_FRACCIONAMIENTO_AUTOM_OPCION,
       _: String(Date.now()),
     });
     const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });

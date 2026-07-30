@@ -794,6 +794,7 @@ const FacturacionView = {
     this._pedido = null;
     await this.showList();
     await this.maybeAutoCertificarTrasFinalizar(coddocFinalizar, correlativoFinalizar, tipodocFinalizar);
+    await this.maybeAutoFraccionarTrasFinalizar(coddocFinalizar, correlativoFinalizar, tipodocFinalizar);
   },
 
   async maybeAutoCertificarTrasFinalizar(coddoc, correlativo, tipodoc) {
@@ -814,6 +815,32 @@ const FacturacionView = {
       this.refreshListDom();
     } catch (err) {
       F.alert('Error FEL', err.message || 'No se pudo certificar automáticamente', 'error');
+      await this.fetchPedidosList().catch(() => {});
+      this.refreshListDom();
+    }
+  },
+
+  async maybeAutoFraccionarTrasFinalizar(coddoc, correlativo, tipodoc) {
+    const tipo = String(tipodoc || '').trim().toUpperCase();
+    if (tipo !== 'FAC') return;
+    if (this._grupo === 'fel') return;
+    let auto = false;
+    try {
+      auto = await DocOpciones.fetchFacturaSePasaAFraccionamientoAutom();
+    } catch (_) {
+      return;
+    }
+    if (!auto) return;
+    try {
+      const res = await F.fetchJson(
+        this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}/fraccionar`),
+        { method: 'POST' }
+      );
+      F.toast(`Factura enviada a fraccionamiento (cola #${res.ID})`, 'success');
+      await this.fetchPedidosList();
+      this.refreshListDom();
+    } catch (err) {
+      F.toast(err.message || 'No se pudo enviar a fraccionamiento automáticamente', 'warning');
       await this.fetchPedidosList().catch(() => {});
       this.refreshListDom();
     }
@@ -2169,6 +2196,12 @@ const FacturacionView = {
     this._pedido = null;
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('fac');
+    try {
+      await DocTipoSelect.reloadTiposDocumento(this);
+    } catch (err) {
+      console.warn('[Facturacion] reload tipodocumentos:', err?.message || err);
+      if (this._config) DocTipoSelect.initView(this);
+    }
     await this.fetchPedidosList();
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();

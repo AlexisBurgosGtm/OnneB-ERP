@@ -5,7 +5,12 @@ const { assertAdminPass } = require('../lib/config-auth');
 const { deleteDocumentoOperado, DocumentoDeleteError } = require('../lib/documento-delete');
 const { InventarioError } = require('../lib/inventario');
 const { parseFechaInput, applyDocumentoFecha } = require('../lib/documento-fecha');
-const { STATUS_OPERADO } = require('../lib/documento-status');
+const {
+  STATUS_OPERADO,
+  STATUS_BLOQUEADO,
+  STATUS_ANULADO,
+  normalizeStatus,
+} = require('../lib/documento-status');
 
 const router = express.Router();
 
@@ -466,6 +471,76 @@ router.patch('/:coddoc/:correlativo/caja', async (req, res) => {
     });
   } catch (err) {
     console.warn('[API PATCH /documentos/caja]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.patch('/:coddoc/:correlativo/status', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const nextStatus = normalizeStatus(req.body?.STATUS ?? req.body?.status);
+  const allowed = [STATUS_OPERADO, STATUS_BLOQUEADO];
+  if (!allowed.includes(nextStatus)) {
+    return res.status(400).json({ error: 'STATUS inválido (solo O o I)' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const meta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
+    if (!meta) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    const current = normalizeStatus(meta.STATUS);
+    if (current === STATUS_ANULADO) {
+      return res.status(400).json({ error: 'No se puede cambiar el status de un documento anulado' });
+    }
+    if (!allowed.includes(current)) {
+      return res.status(400).json({ error: 'Status actual no permite cambio a O/I' });
+    }
+    if (current === nextStatus) {
+      return res.json({
+        ok: true,
+        CODDOC: coddoc,
+        CORRELATIVO: correlativo,
+        STATUS: nextStatus,
+        unchanged: true,
+      });
+    }
+
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .input('STATUS', sql.VarChar, nextStatus)
+      .query(`
+        UPDATE dbo.DOCUMENTOS
+        SET STATUS = @STATUS
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+          AND UPPER(LTRIM(RTRIM(ISNULL(STATUS, '')))) IN ('${STATUS_OPERADO}', '${STATUS_BLOQUEADO}')
+      `);
+
+    if (!result.rowsAffected[0]) {
+      return res.status(404).json({ error: 'Documento no encontrado o status no actualizable' });
+    }
+
+    res.json({
+      ok: true,
+      CODDOC: coddoc,
+      CORRELATIVO: correlativo,
+      STATUS: nextStatus,
+    });
+  } catch (err) {
+    console.warn('[API PATCH /documentos/status]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

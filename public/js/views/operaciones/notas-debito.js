@@ -1371,6 +1371,12 @@ const NotasDebitoView = {
     this._screen = 'list';
     this._pedido = null;
     this._lineasDisponibles = [];
+    try {
+      await DocTipoSelect.reloadTiposDocumento(this);
+    } catch (err) {
+      console.warn('[NotasDebito] reload tipodocumentos:', err?.message || err);
+      if (this._config) DocTipoSelect.initView(this);
+    }
     await this.fetchPedidosList();
     this._container.innerHTML = this.renderListScreen();
     this.bindListEvents();

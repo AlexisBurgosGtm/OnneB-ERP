@@ -175,6 +175,39 @@ let F = {
     return Number(user.codtipoempleado) === 1;
   },
 
+  /** COSTO de productos/precios: Administrador o Contabilidad. */
+  canViewCosto() {
+    if (typeof TipoEmpleadoAccess !== 'undefined' && typeof TipoEmpleadoAccess.canViewCosto === 'function') {
+      return TipoEmpleadoAccess.canViewCosto(this.session('user'));
+    }
+    if (this.isAdminOrSuperUser()) return true;
+    return Number(this.session('user')?.codtipoempleado) === 7;
+  },
+
+  /**
+   * Token de navegación de menú: evita que un load async anterior pise la vista actual.
+   */
+  _menuNavToken: 0,
+  _activeMenuKey: '',
+
+  beginMenuNavigation(key) {
+    this._menuNavToken += 1;
+    this._activeMenuKey = String(key || '');
+    return this._menuNavToken;
+  },
+
+  getMenuNavToken() {
+    return this._menuNavToken;
+  },
+
+  getActiveMenuKey() {
+    return this._activeMenuKey || '';
+  },
+
+  isMenuNavigationCurrent(token) {
+    return Number(token) === Number(this._menuNavToken);
+  },
+
   /**
    * Si el usuario es admin, asegura que su CODEMPLEADO aparezca en el selector de vendedores.
    * Para no-admin no altera la lista.

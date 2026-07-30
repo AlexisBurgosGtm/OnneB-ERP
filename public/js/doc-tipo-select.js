@@ -35,6 +35,19 @@ const DocTipoSelect = {
     return selected;
   },
 
+  /**
+   * Recarga tipos/series desde el API de la vista (evita selector desfasado
+   * cuando otro usuario agregó series). Conserva la serie seleccionada si sigue activa.
+   */
+  async reloadTiposDocumento(view) {
+    if (!view || typeof view.fetchConfig !== 'function') return view?._config || null;
+    const prev = String(view._selectedCoddoc || '').trim();
+    view._config = await view.fetchConfig();
+    if (prev) view._selectedCoddoc = prev;
+    this.initView(view);
+    return view._config;
+  },
+
   active(view) {
     return view._selectedCoddoc || view._config?.coddocDefault || '';
   },

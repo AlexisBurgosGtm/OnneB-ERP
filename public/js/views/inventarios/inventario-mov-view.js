@@ -2056,6 +2056,12 @@ function createInventarioMovView(cfg) {
       this._documento = null;
       PosDocSearchUI.unbindDocKeyboard(this);
       PosDocSearchUI.teardown(NS);
+      try {
+        await DocTipoSelect.reloadTiposDocumento(this);
+      } catch (err) {
+        console.warn(`[${NS}] reload tipodocumentos:`, err?.message || err);
+        if (this._config) DocTipoSelect.initView(this);
+      }
       await this.fetchDocsList();
       this._container.innerHTML = this.renderListScreen();
       this.bindListEvents();

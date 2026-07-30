@@ -9,6 +9,7 @@ const TipoEmpleadoAccess = {
   TIPO_VISITADOR: 4,
   TIPO_BODEGA: 5,
   TIPO_TRANSPORTE: 6,
+  TIPO_CONTABILIDAD: 7,
   TIPO_CAJERO: 8,
 
   ALL_MENUS: [
@@ -45,6 +46,7 @@ const TipoEmpleadoAccess = {
     'bancos',
     'cuentas-bancarias',
     'productos-precios',
+    'lista-precios',
     'inventario',
     'entradas-inventario',
     'salidas-inventario',
@@ -54,6 +56,7 @@ const TipoEmpleadoAccess = {
     'crear-traslado',
     'recibir-traslado',
     'documentos',
+    'lista-facturas',
     'resumen-del-dia',
     'autorizaciones',
     'subir-catalogo',
@@ -129,6 +132,7 @@ const TipoEmpleadoAccess = {
       'bancos',
       'cuentas-bancarias',
       'productos-precios',
+      'lista-precios',
       'inventario',
       'entradas-inventario',
       'salidas-inventario',
@@ -138,6 +142,7 @@ const TipoEmpleadoAccess = {
       'crear-traslado',
       'recibir-traslado',
       'documentos',
+      'lista-facturas',
       'resumen-del-dia',
       'autorizaciones',
       'subir-catalogo',
@@ -163,10 +168,11 @@ const TipoEmpleadoAccess = {
       'tareas',
       'inventario',
     ],
-    4: ['inicio', 'clientes', 'rutas', 'documentos', 'resumen-del-dia'],
+    4: ['inicio', 'clientes', 'rutas', 'documentos', 'lista-facturas', 'resumen-del-dia'],
     5: [
       'inicio',
       'productos-precios',
+      'lista-precios',
       'inventario',
       'entradas-inventario',
       'salidas-inventario',
@@ -258,6 +264,12 @@ const TipoEmpleadoAccess = {
     if (user?.superUser) return this.TIPO_ADMIN;
     const n = Number(user?.codtipoempleado);
     return Number.isFinite(n) && n > 0 ? n : null;
+  },
+
+  /** COSTO visible solo para Administrador y Contabilidad. */
+  canViewCosto(sessionUser) {
+    const cod = this.getCodTipo(sessionUser);
+    return cod === this.TIPO_ADMIN || cod === this.TIPO_CONTABILIDAD;
   },
 
   /**

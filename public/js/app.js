@@ -134,8 +134,13 @@
   }
 
   function updateFabVisibility() {
-    if (!btnMenuFab) return;
-    btnMenuFab.classList.toggle('is-visible', currentView === 'main');
+    const showMain = currentView === 'main';
+    if (btnMenuFab) btnMenuFab.classList.toggle('is-visible', showMain);
+    if (typeof FavoritosFab !== 'undefined') {
+      FavoritosFab.setVisible(showMain);
+    } else {
+      document.getElementById('btn-favoritos-fab')?.classList.toggle('is-visible', showMain);
+    }
   }
 
   function updateHeaderEmpresaLogo() {
@@ -474,6 +479,10 @@
         MenuFavoritos.bind();
         MenuFavoritos.render();
       }
+      if (typeof FavoritosFab !== 'undefined') {
+        FavoritosFab.init();
+        FavoritosFab.setVisible(true);
+      }
       loadInicioDefault();
       F.toast(`Bienvenido — ${empNombre}`, 'success');
       if (typeof EmpresaLogo !== 'undefined') {
@@ -594,12 +603,18 @@
       !LicenseAccess.canAccessMenu('inicio') &&
       typeof LicenciaView !== 'undefined'
     ) {
+      if (typeof F !== 'undefined' && typeof F.beginMenuNavigation === 'function') {
+        F.beginMenuNavigation('licencia');
+      }
       if (mainTitle) mainTitle.textContent = menuLabels.licencia || 'Licencia';
       document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
       document.querySelector('.sidebar-link[data-menu="licencia"]')?.classList.add('is-active');
       mainContent.className = 'main-content flex-grow-1 d-flex p-3';
       LicenciaView.load(mainContent);
       return;
+    }
+    if (typeof F !== 'undefined' && typeof F.beginMenuNavigation === 'function') {
+      F.beginMenuNavigation('inicio');
     }
     if (mainTitle) mainTitle.textContent = menuLabels.inicio || 'Inicio';
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
@@ -657,6 +672,7 @@
     'cuentas-bancarias': 'Cuentas Bancarias',
     updater: 'Actualizador BD',
     'productos-precios': 'Productos y precios',
+    'lista-precios': 'Lista Precios',
     inventario: 'Inventario',
     'entradas-inventario': 'Entradas de inventario',
     'salidas-inventario': 'Salidas de inventario',
@@ -666,6 +682,7 @@
     'crear-traslado': 'Crear Traslado',
     'recibir-traslado': 'Recibir Traslado',
     documentos: 'Documentos',
+    'lista-facturas': 'Lista Facturas',
     'resumen-del-dia': 'Resumen del día',
     autorizaciones: 'Autorizaciones',
     'subir-catalogo': 'Subir catálogo',
@@ -734,6 +751,9 @@
       return;
     }
     const label = menuLabels[key] || key;
+    if (typeof F !== 'undefined' && typeof F.beginMenuNavigation === 'function') {
+      F.beginMenuNavigation(key);
+    }
     document.querySelectorAll('.sidebar-link').forEach((l) => l.classList.remove('is-active'));
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((l) => {
       if (l.dataset.menu === key) l.classList.add('is-active');
@@ -793,8 +813,12 @@
       InventarioActualizacionView.load(mainContent);
     } else if (key === 'actualizacion-costos' && typeof ActualizacionCostosView !== 'undefined') {
       ActualizacionCostosView.load(mainContent);
+    } else if (key === 'lista-precios' && typeof ListaPreciosView !== 'undefined') {
+      ListaPreciosView.load(mainContent);
     } else if (key === 'documentos' && typeof DocumentosView !== 'undefined') {
       DocumentosView.load(mainContent);
+    } else if (key === 'lista-facturas' && typeof ListaFacturasView !== 'undefined') {
+      ListaFacturasView.load(mainContent);
     } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {
       ResumenDelDiaView.load(mainContent);
     } else if (key === 'autorizaciones' && typeof AutorizacionesView !== 'undefined') {
