@@ -2,7 +2,15 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { nowParts } = require('../lib/documento-fecha');
-const { sessionCorteDocsSql, sessionCorteDocsListSql, sessionCorteAnuladasSumSql, SQL_TIPODOC_CORTE_IN, TIPODOC_FACTURA, TIPODOC_DEVOLUCION } = require('../lib/corte-caja-docs');
+const {
+  sessionCorteDocsSql,
+  sessionCorteDocsListSql,
+  sessionCorteAnuladasSumSql,
+  SQL_TIPODOC_CORTE_IN,
+  SQL_EXCLUIR_FACTURAS_TIPOM_NEUTRO,
+  TIPODOC_FACTURA,
+  TIPODOC_DEVOLUCION,
+} = require('../lib/corte-caja-docs');
 const { sumValesSesionCaja, marcarValesCorte, sumPagosValesSesionCaja, marcarPagosValesCorte, listValesSesionCaja, listPagosValesSesionCaja } = require('../lib/nomina-vales');
 const {
   crearMovimientoBanco,
@@ -93,6 +101,7 @@ async function marcarDocumentosCorte(transaction, empnit, codcaja, nocorte, aper
         AND d.STATUS = 'O'
         AND ISNULL(d.CORTE, 'NO') = 'NO'
         AND t.TIPODOC IN (${SQL_TIPODOC_CORTE_IN})
+        ${SQL_EXCLUIR_FACTURAS_TIPOM_NEUTRO}
         AND d.ID > ISNULL((
           SELECT TOP 1 CASE WHEN c.IDFINAL > 0 THEN c.IDFINAL ELSE 0 END
           FROM dbo.CORTES c

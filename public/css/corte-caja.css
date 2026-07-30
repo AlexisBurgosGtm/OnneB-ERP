@@ -70,6 +70,10 @@
   outline: none;
 }
 
+.corte-caja-docs-modal .input-group {
+  max-width: 100%;
+}
+
 .corte-caja-docs-modal-table {
   max-height: 22rem;
   overflow: auto;

@@ -317,9 +317,10 @@ const CorteCajaView = {
 
   formatFecha(value) {
     if (!value) return '—';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('es-GT');
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return '—';
   },
 
   filtroTitulo(filtro) {
@@ -341,10 +342,6 @@ const CorteCajaView = {
   },
 
   formatFechaCorta(value) {
-    if (!value) return '—';
-    const s = String(value).slice(0, 10);
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
     return this.formatFecha(value);
   },
 
@@ -469,13 +466,28 @@ const CorteCajaView = {
       const data = await F.fetchJson(
         this.apiUrl(`/${caja.CODCAJA}/documentos`, { filtro })
       );
+      const rows = data.rows || [];
       await Swal.fire({
         ...CatalogosUI.modalBase(),
         title: this.filtroTitulo(filtro),
         width: '42rem',
-        html: this.renderDocumentosModalHtml(filtro, data.rows || []),
+        html: this.renderDocumentosModalHtml(filtro, rows),
         confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
         showCancelButton: false,
+        didOpen: () => {
+          const input = document.getElementById('corte-docs-search');
+          const body = document.getElementById('corte-docs-modal-body');
+          if (!input || !body) return;
+          input.addEventListener('input', () => {
+            const filtered = this.filterDocumentosRows(rows, input.value);
+            body.innerHTML = this.renderDocumentosTableHtml(filtro, filtered, {
+              emptyMessage: rows.length
+                ? 'Ningún documento coincide con la búsqueda.'
+                : 'Sin documentos en este filtro.',
+            });
+          });
+          input.focus();
+        },
       });
     } catch (err) {
       F.toast(err.message || 'No se pudo cargar el detalle', 'error');
@@ -655,11 +667,30 @@ const CorteCajaView = {
     return filtro === 'devoluciones' ? Math.abs(n) : n;
   },
 
-  renderDocumentosModalHtml(filtro, rows) {
+  filterDocumentosRows(rows, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return rows;
+    return (rows || []).filter((r) => {
+      const hay = [
+        this.formatFecha(r.FECHA),
+        r.CODDOC,
+        r.CORRELATIVO,
+        r.VENDEDOR,
+        r.DOC_NOMCLIE,
+        r.TIPODOC,
+      ]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ');
+      return hay.includes(q);
+    });
+  },
+
+  renderDocumentosTableHtml(filtro, rows, options = {}) {
     const importeLabel = this.importeColumnLabel(filtro);
     const isDevoluciones = filtro === 'devoluciones';
+    const emptyMessage = options.emptyMessage || 'Sin documentos en este filtro.';
     if (!rows.length) {
-      return `<p class="text-muted small mb-0 text-center py-3">Sin documentos en este filtro.</p>`;
+      return `<p class="text-muted small mb-0 text-center py-3">${this.escapeHtml(emptyMessage)}</p>`;
     }
     let total = 0;
     const body = rows
@@ -698,6 +729,21 @@ const CorteCajaView = {
             </tr>
           </tfoot>
         </table>
+      </div>`;
+  },
+
+  renderDocumentosModalHtml(filtro, rows) {
+    return `
+      <div class="corte-caja-docs-modal text-start">
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+          <input type="search" class="form-control" id="corte-docs-search"
+            placeholder="Buscar: CODDOC, correlativo, vendedor, cliente…"
+            autocomplete="off">
+        </div>
+        <div id="corte-docs-modal-body">
+          ${this.renderDocumentosTableHtml(filtro, rows)}
+        </div>
       </div>`;
   },
 
