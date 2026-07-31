@@ -130,7 +130,9 @@ const LIST_SELECT = `
 `;
 
 function buildListWhere(useDesprod2) {
-  const desprod2 = useDesprod2 ? 'OR p.DESPROD2 LIKE @qLike' : '';
+  const desprodFilter = useDesprod2
+    ? `(LTRIM(RTRIM(ISNULL(p.DESPROD, ''))) + ' ' + LTRIM(RTRIM(ISNULL(p.DESPROD2, '')))) LIKE @qLike`
+    : `p.DESPROD LIKE @qLike`;
   return `
   WHERE p.EMPNIT = @EMPNIT
     AND (@habilitado IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.HABILITADO, '')))) = @habilitado)
@@ -139,8 +141,7 @@ function buildListWhere(useDesprod2) {
       @q IS NULL OR @q = ''
       OR p.CODPROD LIKE @qLike
       OR p.CODPROD2 LIKE @qLike
-      OR p.DESPROD LIKE @qLike
-      ${desprod2}
+      OR ${desprodFilter}
       OR p.DESPROD3 LIKE @qLike
       OR m.DESMARCA LIKE @qLike
       OR c1.DESCLAUNO LIKE @qLike

@@ -111,7 +111,7 @@ const ConfigGeneralView = {
       title: 'Muestra DESPROD2 en Docs y Prods',
       icon: 'fa-align-left',
       fallbackDesc:
-        'En buscadores de documentos y productos, también busca por DESPROD2 y lo muestra en la lista de resultados',
+        'En buscadores de documentos y productos, concatena DESPROD + DESPROD2 al buscar por descripción y lo muestra en la lista de resultados',
     },
     {
       opcion: 'PERMITE BIOMETRICO EN LOGIN',
