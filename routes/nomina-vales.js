@@ -12,6 +12,12 @@ const {
   crearPagoVale,
   eliminarPagoVale,
 } = require('../lib/nomina-vales');
+const {
+  resolveEmpleadoCoddocPreferido,
+  pickCajaDefault,
+  OPCION_SERIES,
+} = require('../lib/empleado-coddoc-preferido');
+const sql = require('mssql');
 
 const router = express.Router();
 
@@ -28,6 +34,22 @@ function requireEmpNit(req, res) {
   return empnit;
 }
 
+async function cajasConDefault(pool, empnit, codempleado) {
+  const cajas = await listCajasAbiertas(pool, empnit);
+  const preferred = await resolveEmpleadoCoddocPreferido(
+    pool,
+    sql,
+    empnit,
+    codempleado,
+    OPCION_SERIES.CAJAS
+  );
+  return {
+    cajas,
+    cajaDefault: pickCajaDefault(cajas, preferred),
+    preferredCaja: preferred,
+  };
+}
+
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -36,12 +58,20 @@ router.get('/', async (req, res) => {
   const { mes, anio } = parseMesAnio(req.query.mes, req.query.anio);
   try {
     const pool = await req.app.locals.getDbPool();
-    const [rows, empleados, cajas] = await Promise.all([
+    const [rows, empleados, cajaData] = await Promise.all([
       listVales(pool, empnit, mes, anio),
       listEmpleadosActivosCombo(pool, empnit),
-      listCajasAbiertas(pool, empnit),
+      cajasConDefault(pool, empnit, req.query.codempleado),
     ]);
-    res.json({ mes, anio, rows, empleados, cajas });
+    res.json({
+      mes,
+      anio,
+      rows,
+      empleados,
+      cajas: cajaData.cajas,
+      cajaDefault: cajaData.cajaDefault,
+      preferredCaja: cajaData.preferredCaja,
+    });
   } catch (err) {
     console.warn('[API GET /nomina/vales]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
@@ -55,11 +85,16 @@ router.get('/lookups', async (req, res) => {
   if (!empnit) return;
   try {
     const pool = await req.app.locals.getDbPool();
-    const [empleados, cajas] = await Promise.all([
+    const [empleados, cajaData] = await Promise.all([
       listEmpleadosActivosCombo(pool, empnit),
-      listCajasAbiertas(pool, empnit),
+      cajasConDefault(pool, empnit, req.query.codempleado),
     ]);
-    res.json({ empleados, cajas });
+    res.json({
+      empleados,
+      cajas: cajaData.cajas,
+      cajaDefault: cajaData.cajaDefault,
+      preferredCaja: cajaData.preferredCaja,
+    });
   } catch (err) {
     console.warn('[API GET /nomina/vales/lookups]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });

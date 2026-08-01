@@ -683,6 +683,7 @@
     'recibir-traslado': 'Recibir Traslado',
     documentos: 'Documentos',
     'lista-facturas': 'Lista Facturas',
+    'cuadre-caja': 'Cuadre de Caja',
     'resumen-del-dia': 'Resumen del día',
     autorizaciones: 'Autorizaciones',
     'subir-catalogo': 'Subir catálogo',
@@ -819,6 +820,8 @@
       DocumentosView.load(mainContent);
     } else if (key === 'lista-facturas' && typeof ListaFacturasView !== 'undefined') {
       ListaFacturasView.load(mainContent);
+    } else if (key === 'cuadre-caja' && typeof CuadreCajaView !== 'undefined') {
+      CuadreCajaView.load(mainContent);
     } else if (key === 'resumen-del-dia' && typeof ResumenDelDiaView !== 'undefined') {
       ResumenDelDiaView.load(mainContent);
     } else if (key === 'autorizaciones' && typeof AutorizacionesView !== 'undefined') {

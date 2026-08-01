@@ -70,6 +70,32 @@ const CuentasPorCobrarView = {
     return F.fetchJson(`/api/cuentas-cobrar/rcc/siguiente?${params}`, { cache: 'no-store' });
   },
 
+  async fetchCajasAbiertas() {
+    const emp = F.getEmpNit();
+    const codempleado = F.sessionCodEmpleado();
+    const params = new URLSearchParams({ empnit: emp, _: String(Date.now()) });
+    if (codempleado != null) params.set('codempleado', String(codempleado));
+    return F.fetchJson(`/api/cuentas-cobrar/cajas-abiertas?${params}`, {
+      cache: 'no-store',
+    });
+  },
+
+  renderCajasAbiertasSelectHtml(cajas, cajaDefault = null) {
+    if (!cajas?.length) {
+      return '<p class="small text-danger mb-0">No hay cajas abiertas</p>';
+    }
+    const preferred = F.pickCajaDefault(cajas, cajaDefault);
+    const options = cajas
+      .map((c) => {
+        const id = c.CODCAJA;
+        const label = c.DESCAJA ? `${c.DESCAJA} (${id})` : `Caja ${id}`;
+        const sel = String(id) === String(preferred) ? ' selected' : '';
+        return `<option value="${this.escapeHtml(id)}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `<select id="cxp-abono-caja" class="form-select form-select-sm">${options}</select>`;
+  },
+
   renderRccCoddocSelectHtml(tipos, selectedCoddoc) {
     if (!tipos?.length) {
       return '<p class="small text-danger mb-0">No hay documentos RCC activos</p>';
@@ -269,7 +295,7 @@ const CuentasPorCobrarView = {
 
   filteredRows() {
     return (this._rows || []).filter((r) => {
-      const saldo = Number(r.SALDO_PENDIENTE ?? (Number(r.DOC_SALDO) || 0) - (Number(r.DOC_ABONO) || 0));
+      const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
       return saldo > 0.005;
     });
   },
@@ -295,7 +321,8 @@ const CuentasPorCobrarView = {
       html: `
         <p class="small text-muted mb-0 text-start">
           Se recalcularán <strong>abonos</strong> y <strong>saldo</strong> de todas las facturas al crédito,
-          sumando los pagos de clientes (RCC) y notas de crédito (DEV/FNC) asociados a cada factura.
+          sumando los pagos de clientes (RCC) y notas de crédito (DEV/FNC) asociados a cada factura
+          (según el monto real de cada documento vinculado). No modifica el monto de los RCC existentes.
         </p>
       `,
       icon: 'question',
@@ -1383,13 +1410,14 @@ const CuentasPorCobrarView = {
     const coddoc = row.CODDOC;
     const correlativo = row.CORRELATIVO;
     const fechaHoy = this.todayIsoDate();
-    const saldo = Number(row.DOC_SALDO) || 0;
+    const saldo = Number(row.SALDO_PENDIENTE ?? row.DOC_SALDO) || 0;
     const totalFactura = Number(row.TOTALPRECIO) || 0;
     const abonos = Number(row.DOC_ABONO) || 0;
     const cliente = String(row.DOC_NOMCLIE || row.NEGOCIO || '—');
 
     let rccTipos;
     let rccPreview;
+    let cajasAbiertas;
     try {
       const tiposData = await this.fetchRccTipos();
       rccTipos = tiposData.rows || [];
@@ -1400,12 +1428,19 @@ const CuentasPorCobrarView = {
       const firstCoddoc = rccTipos[0].CODDOC;
       const prevData = await this.fetchSiguienteRcc(firstCoddoc);
       rccPreview = prevData.rcc;
+      const cajasData = await this.fetchCajasAbiertas();
+      cajasAbiertas = cajasData.rows || [];
+      this._cajaDefaultAbono = cajasData.cajaDefault ?? cajasData.preferredCaja ?? null;
     } catch (err) {
       F.alert('Error', err.message || 'No se pudo obtener el documento RCC', 'error');
       return;
     }
     if (!rccPreview?.CODDOC) {
       F.alert('Error', 'No hay tipo de documento RCC activo', 'error');
+      return;
+    }
+    if (!cajasAbiertas.length) {
+      F.alert('Caja requerida', 'Abra una caja antes de registrar un recibo de pago (RCC).', 'warning');
       return;
     }
 
@@ -1432,6 +1467,15 @@ const CuentasPorCobrarView = {
             <div class="col-md-3">
               <label class="form-label small mb-0">Cliente</label>
               <input type="text" class="form-control form-control-sm bg-light" value="${this.escapeHtml(cliente)}" readonly title="${this.escapeHtml(cliente)}">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-md-4">
+              <label class="form-label small mb-0" for="cxp-abono-caja">Caja <span class="text-danger">*</span></label>
+              ${this.renderCajasAbiertasSelectHtml(cajasAbiertas, this._cajaDefaultAbono)}
+            </div>
+            <div class="col-md-8">
+              <p class="small text-muted mb-0 mt-4">El recibo entra al corte de la caja seleccionada.</p>
             </div>
           </div>
           <div class="row g-2 mb-2">
@@ -1467,6 +1511,11 @@ const CuentasPorCobrarView = {
           Swal.showValidationMessage('Seleccione el documento RCC');
           return false;
         }
+        const codcaja = document.getElementById('cxp-abono-caja')?.value?.trim();
+        if (!codcaja) {
+          Swal.showValidationMessage('Seleccione una caja abierta');
+          return false;
+        }
         const monto = Math.round(this.sumFpagoInputs() * 1000) / 1000;
         if (!Number.isFinite(monto) || monto <= 0) {
           Swal.showValidationMessage('Indique el monto del abono en las formas de pago');
@@ -1479,6 +1528,7 @@ const CuentasPorCobrarView = {
         const payload = {
           MONTO: monto,
           CODDOC_RCC: coddocRcc,
+          CODCAJA: Number(codcaja),
           ...this.readFpagoFromDom(),
           USUARIO: this.usuario(),
         };

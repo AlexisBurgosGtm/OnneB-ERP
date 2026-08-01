@@ -144,8 +144,6 @@ const DocPrint = {
   buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '' }, formato = 'CARTA') {
     const h = header || {};
     const ticket = this.isTicket(formato);
-    const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
-    const isCotizacion = tipodoc === 'COT' || /cotizaci/i.test(String(title || ''));
     const meta = [
       this.metaItem('Documento', `${h.CODDOC || ''} #${h.CORRELATIVO ?? ''}`),
       this.metaItem('Fecha', this.formatFecha(h.FECHA)),
@@ -172,7 +170,7 @@ const DocPrint = {
         })}
         <div class="doc-meta-grid">${meta}</div>
         ${obs}
-        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: isCotizacion })}
+        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true })}
         <div class="doc-totals">
           <div class="doc-totals-row grand">
             <span>Total</span>

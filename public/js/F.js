@@ -236,6 +236,17 @@ let F = {
     return ok ? cod : null;
   },
 
+  /** CODCAJA preferido si está en la lista; si no, la primera caja. */
+  pickCajaDefault(cajas, preferred) {
+    const list = Array.isArray(cajas) ? cajas : [];
+    const want = String(preferred ?? '').trim();
+    if (want) {
+      const match = list.find((c) => String(c.CODCAJA ?? '').trim() === want);
+      if (match) return String(match.CODCAJA);
+    }
+    return list[0] != null ? String(list[0].CODCAJA) : '';
+  },
+
   setEmpresaGlobal(empNit, empNombre = '', codTipoEmpresa = undefined) {
     const prev = this.session('user') || {};
     let tip = prev.codTipoEmpresa ?? null;

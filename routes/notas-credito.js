@@ -41,6 +41,7 @@ const {
   sqlPedidosListStatusFilter,
   resolvePedidosListStatusLabel,
 } = require('../lib/documento-status');
+const { listCajasAbiertasConDefault } = require('../lib/empleado-coddoc-preferido');
 
 const router = express.Router();
 
@@ -541,16 +542,12 @@ router.get('/cajas-abiertas', async (req, res) => {
   if (!empnit) return;
   try {
     const pool = await req.app.locals.getDbPool();
-    const result = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .query(`
-        SELECT CODCAJA, DESCAJA
-        FROM dbo.Cajas
-        WHERE EMPNIT = @EMPNIT AND STATUS = 1
-        ORDER BY DESCAJA ASC
-      `);
-    res.json({ rows: normalizeDocumentoRows(result.recordset) });
+    const data = await listCajasAbiertasConDefault(pool, sql, empnit, req.query.codempleado);
+    res.json({
+      rows: normalizeDocumentoRows(data.rows),
+      cajaDefault: data.cajaDefault,
+      preferredCaja: data.preferredCaja,
+    });
   } catch (err) {
     console.warn('[API GET /notas-credito/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });

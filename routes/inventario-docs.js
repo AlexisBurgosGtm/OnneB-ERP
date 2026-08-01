@@ -28,6 +28,11 @@ const {
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
+const {
+  resolveEmpleadoCoddocPreferido,
+  pickCoddocDefault,
+  OPCION_SERIES,
+} = require('../lib/empleado-coddoc-preferido');
 const { getAppToken } = require('../lib/app-token');
 const { isUpdateDbConfigured } = require('../config/update-database');
 const { getUpdateDbPool } = require('../lib/update-db-pool');
@@ -248,7 +253,22 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
           WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocSqlIn}) AND ACTIVO = 'SI'
           ORDER BY TIPODOC, CODDOC
         `);
-      const def = tipos.recordset[0] || null;
+      const preferredOpcion =
+        TIPODOC === 'ENT'
+          ? OPCION_SERIES.ENTRADA_INVENTARIO
+          : TIPODOC === 'SAL'
+            ? OPCION_SERIES.SALIDA_INVENTARIO
+            : null;
+      const preferred = preferredOpcion
+        ? await resolveEmpleadoCoddocPreferido(
+            pool,
+            sql,
+            empnit,
+            req.query.codempleado,
+            preferredOpcion
+          )
+        : null;
+      const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
       res.json({
         empnit,
         tipodoc: TIPODOC,
@@ -257,7 +277,7 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
         statusOperado: STATUS_OPERADO,
         statusBloqueado: STATUS_BLOQUEADO,
         statusAnulado: STATUS_ANULADO,
-        coddocDefault: def?.CODDOC || null,
+        coddocDefault,
         tiposDocumento: tipos.recordset,
         bodegaDefault: DEFAULT_BODEGA,
         muestraDesprod2: await getSettingSino(pool, SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS),

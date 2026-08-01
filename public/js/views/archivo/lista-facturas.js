@@ -28,6 +28,21 @@ const ListaFacturasView = {
     return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
   },
 
+  formatDateDdMmYyyy(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const [y, m, d] = s.slice(0, 10).split('-');
+      return `${d}/${m}/${y}`;
+    }
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return '—';
+    const day = String(dt.getDate()).padStart(2, '0');
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const year = dt.getFullYear();
+    return `${day}/${month}/${year}`;
+  },
+
   todayIsoDate() {
     const d = new Date();
     const y = d.getFullYear();
@@ -198,6 +213,9 @@ const ListaFacturasView = {
           <button type="button" class="btn btn-sm btn-outline-secondary" data-action="imprimir"
             data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
             title="Imprimir"><i class="fa-solid fa-print"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-action="trazabilidad"
+            data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
+            title="Trazabilidad"><i class="fa-solid fa-diagram-project"></i></button>
           ${anularBtn}
         </td>
       </tr>`;
@@ -308,6 +326,7 @@ const ListaFacturasView = {
         const coddoc = btn.getAttribute('data-coddoc');
         const correlativo = btn.getAttribute('data-correlativo');
         if (action === 'imprimir') await this.imprimir(coddoc, correlativo);
+        else if (action === 'trazabilidad') await this.showTrazabilidad(coddoc, correlativo);
         else if (action === 'anular') await this.anular(coddoc, correlativo);
       } catch (err) {
         F.alert('Error', err.message || 'No se pudo completar la acción', 'error');
@@ -345,6 +364,65 @@ const ListaFacturasView = {
       return;
     }
     F.toast('No se pudo imprimir', 'error');
+  },
+
+  async showTrazabilidad(coddoc, correlativo) {
+    const row = this.findRow(coddoc, correlativo);
+    if (!row) {
+      F.toast('Documento no encontrado en la lista', 'warning');
+      return;
+    }
+    const label = `${row.CODDOC} #${row.CORRELATIVO}${row.DOC_NOMCLIE ? ` — ${row.DOC_NOMCLIE}` : ''}`;
+    const url =
+      `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/trazabilidad` +
+      `?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+    const data = await F.fetchJson(url);
+    const rows = data?.rows || [];
+    const bodyHtml = rows.length
+      ? `<div class="table-responsive text-start">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Fecha</th>
+                <th>Doc.</th>
+                <th>Tipo</th>
+                <th>Correlativo</th>
+                <th>Cliente</th>
+                <th class="text-end">Total</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows
+                .map(
+                  (r) => `<tr>
+                    <td>${this.escapeHtml(this.formatDateDdMmYyyy(r.FECHA))}</td>
+                    <td>${this.escapeHtml(r.CODDOC || '—')}</td>
+                    <td>${this.escapeHtml(r.TIPODOC || r.DESDOC || '—')}</td>
+                    <td>${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
+                    <td>${this.escapeHtml(r.DOC_NOMCLIE || '—')}</td>
+                    <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+                    <td>${this.escapeHtml(r.STATUS || '—')}</td>
+                  </tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '<p class="text-muted small mb-0 text-start">No hay documentos asociados (SERIEFAC / NOFAC).</p>';
+
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Trazabilidad',
+      html: `
+        <p class="small text-muted text-start mb-2">${this.escapeHtml(label)}</p>
+        ${bodyHtml}
+      `,
+      width: Math.min(760, window.innerWidth - 32),
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+    });
   },
 
   async anular(coddoc, correlativo) {

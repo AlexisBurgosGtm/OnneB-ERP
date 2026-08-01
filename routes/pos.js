@@ -27,6 +27,7 @@ const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipof
 const {
   resolveEmpleadoCoddocPreferido,
   pickCoddocDefault,
+  OPCION_SERIES,
 } = require('../lib/empleado-coddoc-preferido');
 const {
   STATUS_OPERADO,
@@ -303,7 +304,8 @@ router.get('/config', async (req, res) => {
       pool,
       sql,
       empnit,
-      req.query.codempleado
+      req.query.codempleado,
+      OPCION_SERIES.PEDIDOS_MOSTRADOR
     );
     const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
     const cliente = await pool

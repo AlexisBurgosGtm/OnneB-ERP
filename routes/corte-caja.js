@@ -18,6 +18,11 @@ const {
   listRetirosEfectivoSesionCaja,
   marcarRetirosEfectivoCorte,
 } = require('../lib/movimientos-banco');
+const {
+  resolveEmpleadoCoddocPreferido,
+  pickCajaDefault,
+  OPCION_SERIES,
+} = require('../lib/empleado-coddoc-preferido');
 
 const router = express.Router();
 
@@ -125,6 +130,10 @@ function isFacturaDoc(row) {
   return TIPODOC_FACTURA.includes(docTipodoc(row));
 }
 
+function isReciboDoc(row) {
+  return docTipodoc(row) === 'RCC';
+}
+
 function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosVales = 0, totalRetiros = 0) {
   const docs = rows || [];
   const first = docs[0] || null;
@@ -135,20 +144,32 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
   let totalDevoluciones = 0;
   let movDevoluciones = 0;
   let totalCredito = 0;
+  let totalRecibos = 0;
   let fpEfectivo = 0;
   let fpTarjeta = 0;
   let fpDeposito = 0;
   let fpCheque = 0;
 
   for (const d of docs) {
-    const dev = isDevolucionDoc(d);
-    const sign = dev ? -1 : 1;
     const costo = Number(d.TOTALCOSTO) || 0;
     const precio = Number(d.TOTALPRECIO) || 0;
     const efectivo = Number(d.FPAGO_EFECTIVO) || 0;
     const tarjeta = Number(d.FPAGO_TARJETA) || 0;
     const deposito = Number(d.FPAGO_DEPOSITO) || 0;
     const cheque = Number(d.FPAGO_CHEQUE) || 0;
+
+    // Recibos RCC: suman a caja por forma de pago; no inflan ventas/costos/crédito.
+    if (isReciboDoc(d)) {
+      totalRecibos += precio;
+      fpEfectivo += efectivo;
+      fpTarjeta += tarjeta;
+      fpDeposito += deposito;
+      fpCheque += cheque;
+      continue;
+    }
+
+    const dev = isDevolucionDoc(d);
+    const sign = dev ? -1 : 1;
 
     if (dev) {
       totalDevoluciones += precio;
@@ -175,6 +196,7 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
   totalVentasBrutas = roundMoney(totalVentasBrutas);
   totalDevoluciones = roundMoney(totalDevoluciones);
   totalCredito = roundMoney(totalCredito);
+  totalRecibos = roundMoney(totalRecibos);
   fpEfectivo = roundMoney(fpEfectivo);
   fpTarjeta = roundMoney(fpTarjeta);
   fpDeposito = roundMoney(fpDeposito);
@@ -200,6 +222,7 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
     totalUtilidad,
     margen,
     totalCredito,
+    totalRecibos,
     fpEfectivo,
     fpTarjeta,
     fpDeposito,
@@ -246,7 +269,18 @@ router.get('/cajas', async (req, res) => {
       WHERE EMPNIT = @EMPNIT
       ORDER BY DESCAJA ASC
     `);
-    res.json({ rows: result.recordset });
+    const preferred = await resolveEmpleadoCoddocPreferido(
+      pool,
+      sql,
+      empnit,
+      req.query.codempleado,
+      OPCION_SERIES.CAJAS
+    );
+    res.json({
+      rows: result.recordset,
+      cajaDefault: pickCajaDefault(result.recordset, preferred),
+      preferredCaja: preferred,
+    });
   } catch (err) {
     console.warn('[API GET /corte-caja/cajas]', err.message);
     res.status(500).json({ error: err.message });
@@ -634,7 +668,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .input('SOBRANTE', sql.Decimal(18, 3), sobrante)
       .input('OBS', sql.VarChar, obs)
       .input('TOTALGASTOS', sql.Decimal(18, 3), resumen.totalGastos)
-      .input('TOTALRECIBOS', sql.Decimal(18, 3), 0)
+      .input('TOTALRECIBOS', sql.Decimal(18, 3), resumen.totalRecibos || 0)
       .input('CODCAJA', sql.Int, codcaja)
       .input('TOTALTARJETA', sql.Decimal(18, 3), resumen.fpTarjeta)
       .input('REPORTADOTARJETA', sql.Decimal(18, 3), reportadoTarjeta)

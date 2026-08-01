@@ -95,11 +95,12 @@ const CorteCajaView = {
       ${statOrClick('Notas de crédito', this.formatMoney(r.totalDevoluciones || 0), 'devoluciones', 'text-danger')}
       ${statOrClick('Total venta (neto)', this.formatMoney(r.totalVenta), 'todos')}
       ${statOrClick('Crédito', this.formatMoney(r.totalCredito), 'credito')}
+      ${statOrClick('Recibos RCC', this.formatMoney(r.totalRecibos || 0), 'recibos', 'text-success')}
       ${this.renderStat('Efectivo inicial', this.formatMoney(r.efectivoInicial))}
       ${statOrClick('Vales empleados (−)', this.formatMoney(r.totalVales || 0), 'vales', 'text-danger')}
       ${statOrClick('Abonos vales (+)', this.formatMoney(r.totalPagosVales || 0), 'pagos-vales', 'text-success')}
       ${statOrClick('Retiros a banco (−)', this.formatMoney(r.totalRetiros || 0), 'retiros', 'text-danger')}
-      ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'contado', 'text-primary')}
+      ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'efectivo', 'text-primary')}
       ${statOrClick('Tarjeta', this.formatMoney(r.fpTarjeta), 'tarjeta')}
       ${statOrClick('Depósito', this.formatMoney(r.fpDeposito), 'deposito')}
       ${statOrClick('Cheque', this.formatMoney(r.fpCheque), 'cheque')}
@@ -265,8 +266,9 @@ const CorteCajaView = {
           ${row('Notas de crédito (DEV/FNC)', money(resumen.totalDevoluciones || 0))}
           ${row('Total venta (neto)', money(resumen.totalVenta))}
           ${row('Ventas al crédito', money(resumen.totalCredito))}
+          ${row('Recibos RCC', money(resumen.totalRecibos || 0))}
           ${row('Efectivo inicial', money(resumen.efectivoInicial))}
-          ${row('Efectivo ventas (neto)', money(resumen.fpEfectivo))}
+          ${row('Efectivo (neto)', money(resumen.fpEfectivo))}
           ${row('Vales a empleados (−)', money(resumen.totalVales || 0))}
           ${row('Abonos a vales (+)', money(resumen.totalPagosVales || 0))}
           ${row('Retiros a banco (−)', money(resumen.totalRetiros || 0))}
@@ -329,6 +331,8 @@ const CorteCajaView = {
       ventas: 'Ventas brutas (facturas)',
       credito: 'Facturas al crédito',
       contado: 'Ventas al contado',
+      recibos: 'Recibos de pago (RCC)',
+      efectivo: 'Documentos con efectivo',
       devoluciones: 'Notas de crédito (DEV, FNC)',
       tarjeta: 'Pagos con tarjeta',
       deposito: 'Pagos con depósito',
@@ -651,6 +655,7 @@ const CorteCajaView = {
     if (filtro === 'tarjeta') return 'Monto tarjeta';
     if (filtro === 'deposito') return 'Monto depósito';
     if (filtro === 'cheque') return 'Monto cheque';
+    if (filtro === 'efectivo') return 'Monto efectivo';
     return 'Importe';
   },
 
@@ -662,7 +667,9 @@ const CorteCajaView = {
           ? row.FPAGO_DEPOSITO
           : filtro === 'cheque'
             ? row.FPAGO_CHEQUE
-            : row.TOTALPRECIO;
+            : filtro === 'efectivo'
+              ? row.FPAGO_EFECTIVO
+              : row.TOTALPRECIO;
     const n = Number(raw) || 0;
     return filtro === 'devoluciones' ? Math.abs(n) : n;
   },
@@ -1069,11 +1076,27 @@ const CorteCajaView = {
   },
 
   async loadCajas() {
-    const data = await F.fetchJson(this.apiUrl('/cajas'));
+    const codempleado = F.sessionCodEmpleado();
+    const data = await F.fetchJson(
+      this.apiUrl('/cajas', {
+        ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
+      })
+    );
     this._cajas = data.rows || [];
     if (!this._selectedCodcaja && this._cajas.length) {
-      const abierta = this._cajas.find((c) => this.isAbierta(c));
-      this._selectedCodcaja = abierta ? abierta.CODCAJA : this._cajas[0].CODCAJA;
+      const preferred = F.pickCajaDefault(this._cajas, data.cajaDefault ?? data.preferredCaja);
+      const preferredRow = preferred
+        ? this._cajas.find((c) => String(c.CODCAJA) === String(preferred))
+        : null;
+      const abierta =
+        preferredRow && this.isAbierta(preferredRow)
+          ? preferredRow
+          : this._cajas.find((c) => this.isAbierta(c));
+      this._selectedCodcaja = abierta
+        ? abierta.CODCAJA
+        : preferredRow
+          ? preferredRow.CODCAJA
+          : this._cajas[0].CODCAJA;
     }
   },
 

@@ -18,6 +18,7 @@ const FacturacionView = {
   _cartBusy: false,
   _vendedores: [],
   _cajas: [],
+  _cajaDefault: null,
   _selectedCodcaja: null,
   _precioCampo: 'PRECIO',
   _urlFel: '',
@@ -1179,7 +1180,8 @@ const FacturacionView = {
   resolveInitialCodcaja(header) {
     const stored = header?.CODCAJA;
     if (stored != null && stored !== '' && Number(stored) > 0) return String(stored);
-    if (this._cajas.length) return String(this._cajas[0].CODCAJA);
+    const preferred = F.pickCajaDefault(this._cajas, this._cajaDefault);
+    if (preferred) return preferred;
     return '';
   },
 
@@ -2120,8 +2122,15 @@ const FacturacionView = {
   },
 
   async fetchCajasAbiertas() {
-    const data = await F.fetchJson(this.apiUrl('/cajas-abiertas', { _: Date.now() }));
+    const codempleado = F.sessionCodEmpleado();
+    const data = await F.fetchJson(
+      this.apiUrl('/cajas-abiertas', {
+        _: Date.now(),
+        ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
+      })
+    );
     this._cajas = data.rows || [];
+    this._cajaDefault = data.cajaDefault ?? data.preferredCaja ?? null;
     return this._cajas;
   },
 

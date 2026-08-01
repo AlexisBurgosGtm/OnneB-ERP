@@ -6,6 +6,7 @@ const NominaValesView = {
   _rows: [],
   _empleados: [],
   _cajas: [],
+  _cajaDefault: null,
   _mes: new Date().getMonth() + 1,
   _anio: new Date().getFullYear(),
   _loading: false,
@@ -48,11 +49,13 @@ const NominaValesView = {
   },
 
   apiUrl(extra = {}) {
+    const codempleado = F.sessionCodEmpleado();
     const params = new URLSearchParams({
       empnit: F.getEmpNit() || '',
       mes: String(this._mes),
       anio: String(this._anio),
       _: String(Date.now()),
+      ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
       ...extra,
     });
     return `/api/nomina/vales?${params}`;
@@ -233,25 +236,30 @@ const NominaValesView = {
     this._rows = data.rows || [];
     this._empleados = data.empleados || [];
     this._cajas = data.cajas || [];
+    this._cajaDefault = data.cajaDefault ?? data.preferredCaja ?? null;
     return data;
   },
 
   async reloadLookups() {
-    const data = await F.fetchJson(
-      `/api/nomina/vales/lookups?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`,
-      { cache: 'no-store' }
-    );
+    const codempleado = F.sessionCodEmpleado();
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), _: String(Date.now()) });
+    if (codempleado != null) params.set('codempleado', String(codempleado));
+    const data = await F.fetchJson(`/api/nomina/vales/lookups?${params}`, { cache: 'no-store' });
     this._empleados = data.empleados || [];
     this._cajas = data.cajas || [];
+    this._cajaDefault = data.cajaDefault ?? data.preferredCaja ?? null;
   },
 
   buildCajasOptions(selectedCodcaja, selectedDesc) {
     const cajas = [...this._cajas];
-    const sel = selectedCodcaja != null && selectedCodcaja !== '' ? String(selectedCodcaja) : '';
+    const sel =
+      selectedCodcaja != null && selectedCodcaja !== ''
+        ? String(selectedCodcaja)
+        : F.pickCajaDefault(cajas, this._cajaDefault);
     if (sel && !cajas.some((c) => String(c.CODCAJA) === sel)) {
       cajas.unshift({
-        CODCAJA: selectedCodcaja,
-        DESCAJA: selectedDesc || `Caja ${selectedCodcaja}`,
+        CODCAJA: selectedCodcaja || sel,
+        DESCAJA: selectedDesc || `Caja ${selectedCodcaja || sel}`,
       });
     }
     return cajas

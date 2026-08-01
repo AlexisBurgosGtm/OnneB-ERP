@@ -16,15 +16,48 @@ const PRIVATE_KEY_PATH = path.join(KEYS_DIR, 'private.pem');
 const PUBLIC_KEY_PATH = path.join(KEYS_DIR, 'public.pem');
 const APP_PUBLIC_KEY_PATH = path.join(ROOT, 'config', 'license-public.pem');
 
-const {
+function clearLicenseRequireCache() {
+  const targets = [
+    path.join(ROOT, 'lib', 'license-modules.js'),
+    path.join(ROOT, 'lib', 'roles-usuarios.js'),
+    path.join(ROOT, 'lib', 'license.js'),
+  ];
+  for (const key of Object.keys(require.cache)) {
+    const resolved = path.resolve(key);
+    if (targets.some((t) => resolved === path.resolve(t))) {
+      delete require.cache[key];
+    }
+  }
+}
+
+function loadLicenseLibs() {
+  clearLicenseRequireCache();
+  return {
+    ...require(path.join(ROOT, 'lib', 'license-modules')),
+    ...require(path.join(ROOT, 'lib', 'license')),
+  };
+}
+
+let {
   licenseModulesCatalog,
   modulesFromMenus,
   normalizeLicenseMenus,
   assertLicenseCatalogIntegrity,
   menusAssignedToLicenseGroups,
   CORE_MENUS,
-} = require(path.join(ROOT, 'lib', 'license-modules'));
-const { canonicalPayload } = require(path.join(ROOT, 'lib', 'license'));
+  canonicalPayload,
+} = (() => {
+  const libs = loadLicenseLibs();
+  return {
+    licenseModulesCatalog: libs.licenseModulesCatalog,
+    modulesFromMenus: libs.modulesFromMenus,
+    normalizeLicenseMenus: libs.normalizeLicenseMenus,
+    assertLicenseCatalogIntegrity: libs.assertLicenseCatalogIntegrity,
+    menusAssignedToLicenseGroups: libs.menusAssignedToLicenseGroups,
+    CORE_MENUS: libs.CORE_MENUS,
+    canonicalPayload: libs.canonicalPayload,
+  };
+})();
 
 const PORT = Number(process.env.LICENSE_GEN_PORT || 6501);
 
@@ -70,17 +103,37 @@ app.use('/icons', express.static(path.join(ROOT, 'public', 'icons')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/catalog', (_req, res) => {
+  const libs = loadLicenseLibs();
+  licenseModulesCatalog = libs.licenseModulesCatalog;
+  modulesFromMenus = libs.modulesFromMenus;
+  normalizeLicenseMenus = libs.normalizeLicenseMenus;
+  assertLicenseCatalogIntegrity = libs.assertLicenseCatalogIntegrity;
+  menusAssignedToLicenseGroups = libs.menusAssignedToLicenseGroups;
+  CORE_MENUS = libs.CORE_MENUS;
+  canonicalPayload = libs.canonicalPayload;
   const integrity = assertLicenseCatalogIntegrity({ log: () => {} });
+  const modules = licenseModulesCatalog();
   res.json({
-    modules: licenseModulesCatalog(),
+    modules,
     coreMenus: ['inicio', 'licencia'],
     source: 'lib/roles-usuarios.js → MENU_GROUPS',
     integrity,
+    moduleCount: modules.length,
+    menuCount: modules.reduce((n, m) => n + (m.menus?.length || 0), 0),
   });
 });
 
 app.post('/api/issue', (req, res) => {
   try {
+    const libs = loadLicenseLibs();
+    licenseModulesCatalog = libs.licenseModulesCatalog;
+    modulesFromMenus = libs.modulesFromMenus;
+    normalizeLicenseMenus = libs.normalizeLicenseMenus;
+    assertLicenseCatalogIntegrity = libs.assertLicenseCatalogIntegrity;
+    menusAssignedToLicenseGroups = libs.menusAssignedToLicenseGroups;
+    CORE_MENUS = libs.CORE_MENUS;
+    canonicalPayload = libs.canonicalPayload;
+
     const customer = String(req.body?.customer || '').trim();
     if (!customer) {
       return res.status(400).json({ error: 'Indique el nombre del cliente' });

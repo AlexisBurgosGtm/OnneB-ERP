@@ -19,6 +19,7 @@ const {
 const { fetchEstadoCuentaCliente } = require('../lib/cuentas-estado-cliente');
 const { fetchSaldoMesesCxc } = require('../lib/cuentas-saldo-meses');
 const { fetchConsolidadoProductos } = require('../lib/cuentas-consolidado-productos');
+const { listCajasAbiertasConDefault } = require('../lib/empleado-coddoc-preferido');
 
 const router = express.Router();
 const DEFAULT_LIMIT = 500;
@@ -45,7 +46,8 @@ function toNumber(value) {
 function mapRow(r) {
   const docSaldo = toNumber(r.DOC_SALDO);
   const docAbono = toNumber(r.DOC_ABONO);
-  const saldoPendiente = toNumber(r.SALDO_PENDIENTE ?? docSaldo - docAbono);
+  // DOC_SALDO ya es el restante; SALDO_PENDIENTE del SQL debe coincidir.
+  const saldoPendiente = toNumber(r.SALDO_PENDIENTE ?? docSaldo);
   return {
     FECHA: r.FECHA ?? null,
     VENCIMIENTO: r.VENCIMIENTO ?? null,
@@ -254,6 +256,26 @@ router.get('/rcc/tipos', async (req, res) => {
     res.json({ rows, empnit });
   } catch (err) {
     console.warn('[API GET /cuentas-cobrar/rcc/tipos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/cajas-abiertas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listCajasAbiertasConDefault(pool, sql, empnit, req.query.codempleado);
+    res.json({
+      rows: data.rows || [],
+      cajaDefault: data.cajaDefault,
+      preferredCaja: data.preferredCaja,
+      empnit,
+    });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

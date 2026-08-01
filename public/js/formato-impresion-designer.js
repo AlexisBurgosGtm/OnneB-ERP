@@ -101,6 +101,7 @@ ${this.designerChromeCss()}
       <th>Descripción</th>
       <th class="text-end">Med.</th>
       <th class="text-end">Cant.</th>
+      <th class="text-end">Precio</th>
       <th class="text-end">Total</th>
     </tr>
   </thead>
@@ -111,6 +112,7 @@ ${this.designerChromeCss()}
       <td>{{DESPROD}}</td>
       <td class="text-end">{{CODMEDIDA}}</td>
       <td class="text-end">{{CANTIDAD}}</td>
+      <td class="text-end">{{PRECIO_FMT}}</td>
       <td class="text-end">{{TOTALPRECIO_FMT}}</td>
     </tr>
     {{/LINES}}

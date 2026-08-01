@@ -98,7 +98,13 @@ function createInventarioMovView(cfg) {
     },
 
     async fetchConfig() {
-      return F.fetchJson(this.apiUrl('/config', { _: Date.now() }));
+      const codempleado = F.sessionCodEmpleado();
+      return F.fetchJson(
+        this.apiUrl('/config', {
+          _: Date.now(),
+          ...(codempleado != null ? { codempleado: String(codempleado) } : {}),
+        })
+      );
     },
 
     async fetchProductos(q) {

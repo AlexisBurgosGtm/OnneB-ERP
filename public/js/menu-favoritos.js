@@ -273,7 +273,7 @@ const MenuFavoritos = {
 const FavoritosFab = {
   POS_KEY: 'onneb-favoritos-fab-pos',
   SIZE: 56,
-  WIDTH_FALLBACK: 140,
+  WIDTH_FALLBACK: 56,
   MARGIN: 8,
   BOTTOM_DEFAULT: 20, // ~1.25rem
   DRAG_THRESHOLD: 6,

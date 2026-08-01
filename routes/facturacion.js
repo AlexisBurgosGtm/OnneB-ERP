@@ -37,6 +37,8 @@ const {
 const {
   resolveEmpleadoCoddocPreferido,
   pickCoddocDefault,
+  listCajasAbiertasConDefault,
+  OPCION_SERIES,
 } = require('../lib/empleado-coddoc-preferido');
 const {
   STATUS_OPERADO,
@@ -530,16 +532,12 @@ router.get('/cajas-abiertas', async (req, res) => {
   if (!empnit) return;
   try {
     const pool = await req.app.locals.getDbPool();
-    const result = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .query(`
-        SELECT CODCAJA, DESCAJA
-        FROM dbo.Cajas
-        WHERE EMPNIT = @EMPNIT AND STATUS = 1
-        ORDER BY DESCAJA ASC
-      `);
-    res.json({ rows: normalizeDocumentoRows(result.recordset) });
+    const data = await listCajasAbiertasConDefault(pool, sql, empnit, req.query.codempleado);
+    res.json({
+      rows: normalizeDocumentoRows(data.rows),
+      cajaDefault: data.cajaDefault,
+      preferredCaja: data.preferredCaja,
+    });
   } catch (err) {
     console.warn('[API GET /facturacion/cajas-abiertas]', err.message);
     res.status(500).json({ error: err.message });
@@ -567,12 +565,39 @@ router.get('/config', async (req, res) => {
         WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${tipodocIn}) AND ACTIVO = 'SI'${tipomFilter}
         ORDER BY CODDOC
       `);
-    const preferred = await resolveEmpleadoCoddocPreferido(
-      pool,
-      sql,
-      empnit,
-      req.query.codempleado
-    );
+    const preferredOpcion =
+      grupoId === 'fel'
+        ? OPCION_SERIES.FACTURAS_ELECTRONICAS
+        : grupoId === 'fac'
+          ? OPCION_SERIES.FACTURAS_NORMALES
+          : null;
+    let preferred = preferredOpcion
+      ? await resolveEmpleadoCoddocPreferido(
+          pool,
+          sql,
+          empnit,
+          req.query.codempleado,
+          preferredOpcion
+        )
+      : null;
+    // Mixto: prioriza serie FEL del empleado; si no, FAC.
+    if (!preferred && grupoId === 'mixto') {
+      preferred =
+        (await resolveEmpleadoCoddocPreferido(
+          pool,
+          sql,
+          empnit,
+          req.query.codempleado,
+          OPCION_SERIES.FACTURAS_ELECTRONICAS
+        )) ||
+        (await resolveEmpleadoCoddocPreferido(
+          pool,
+          sql,
+          empnit,
+          req.query.codempleado,
+          OPCION_SERIES.FACTURAS_NORMALES
+        ));
+    }
     const coddocDefault = pickCoddocDefault(tipos.recordset, preferred);
     const cliente = await pool
       .request()

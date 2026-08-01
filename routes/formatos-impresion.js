@@ -315,6 +315,8 @@ router.get('/variables', (_req, res) => {
           'PRECIO_FMT',
           'PRECIO_LETRAS',
           'TOTALPRECIO_FMT',
+          'TOTALPRECIO',
+          'PRECIO',
         ],
       },
       {

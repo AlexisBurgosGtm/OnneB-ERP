@@ -43,7 +43,7 @@ function toNumber(value) {
 function mapRow(r) {
   const docSaldo = toNumber(r.DOC_SALDO);
   const docAbono = toNumber(r.DOC_ABONO);
-  const saldoPendiente = toNumber(r.SALDO_PENDIENTE ?? docSaldo - docAbono);
+  const saldoPendiente = toNumber(r.SALDO_PENDIENTE ?? docSaldo);
   return {
     FECHA: r.FECHA ?? null,
     VENCIMIENTO: r.VENCIMIENTO ?? null,
