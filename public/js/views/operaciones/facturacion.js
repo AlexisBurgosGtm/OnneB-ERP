@@ -220,6 +220,8 @@ const FacturacionView = {
     } else if (this._grupo !== 'fac') {
       return false;
     }
+    const codEmbarque = String(row?.CODEMBARQUE || '').trim().toUpperCase();
+    if (codEmbarque === 'FRACCIONADA') return false;
     const idCola = Number(row?.ID_COLA_TRABAJO);
     return !(Number.isFinite(idCola) && idCola > 0);
   },
@@ -440,10 +442,23 @@ const FacturacionView = {
   },
 
   docEditable(header) {
-    return (
-      DocFecha.editableStatus(header?.STATUS) &&
-      String(header?.CORTE || 'NO').trim().toUpperCase() !== 'SI'
-    );
+    if (!DocFecha.editableStatus(header?.STATUS)) return false;
+    if (String(header?.CORTE || 'NO').trim().toUpperCase() !== 'SI') return true;
+    // Factura normal (FAC) con corte: permitir edición de contenido.
+    return this.isFacturaNormal(header);
+  },
+
+  isFacturaNormal(header) {
+    return String(header?.TIPODOC || '').trim().toUpperCase() === 'FAC';
+  },
+
+  docTieneCorte(header) {
+    return String(header?.CORTE || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  /** Precio editable si el documento es editable y la config lo permite. */
+  docPrecioEditable(header) {
+    return this.docEditable(header) && this.permiteCambiarPrecioPedido();
   },
 
   docTotalPrecio(header) {
@@ -592,6 +607,10 @@ const FacturacionView = {
     const h = this._pedido?.header;
     if (!this.docEditable(h)) {
       F.toast('El pedido no está operado', 'warning');
+      return;
+    }
+    if (this.docTieneCorte(h)) {
+      F.toast('La factura ya tiene corte de caja; no se puede volver a finalizar', 'warning');
       return;
     }
     if (!(this._pedido?.lines || []).length) {
@@ -878,6 +897,119 @@ const FacturacionView = {
     F.toast('Producto agregado', 'success');
   },
 
+  async agregarLineaPse({ desprod, cantidad, costo, precio }) {
+    const key = this.docKey();
+    if (!key) {
+      F.toast('No hay pedido activo', 'warning');
+      return;
+    }
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('El documento no está en edición', 'warning');
+      return;
+    }
+    const url = this.apiUrl(
+      `/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas`
+    );
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'pse',
+        DESPROD: desprod,
+        CANTIDAD: cantidad,
+        COSTO: costo,
+        PRECIO: precio,
+      }),
+    });
+    this._pedido = res.pedido;
+    this.renderCart();
+    this.renderOrderSummary();
+    F.toast('PSE agregado', 'success');
+  },
+
+  async onAgregarPse() {
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('El documento no está en edición', 'warning');
+      return;
+    }
+    const { value } = await Swal.fire({
+      ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+      title: 'Agregar PSE',
+      html: `
+        <p class="small text-muted mb-2 text-start">Producto sin existencia (no está en catálogo). Medida: UNIDAD.</p>
+        <label class="form-label small mb-0 text-start d-block" for="fac-swal-pse-desprod">Descripción</label>
+        <input type="text" id="fac-swal-pse-desprod" class="form-control form-control-sm" placeholder="Descripción del producto" autocomplete="off">
+        <div class="row g-2 mt-1">
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="fac-swal-pse-cant">Cantidad</label>
+            <input type="number" id="fac-swal-pse-cant" class="form-control form-control-sm" value="1" min="0" step="any">
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="fac-swal-pse-costo">Costo unit.</label>
+            <input type="number" id="fac-swal-pse-costo" class="form-control form-control-sm" value="0" min="0" step="any">
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="fac-swal-pse-precio">Precio unit.</label>
+            <input type="number" id="fac-swal-pse-precio" class="form-control form-control-sm" value="0" min="0" step="any">
+          </div>
+        </div>
+        <p class="small fw-semibold text-end mb-0 mt-2" id="fac-swal-pse-subtotal">Subtotal: ${this.escapeHtml(this.formatMoney(0))}</p>
+      `,
+      showCancelButton: true,
+      confirmButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Agregar') : 'Agregar',
+      cancelButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.cancelButtonHtml('Cancelar') : 'Cancelar',
+      focusConfirm: false,
+      didOpen: () => {
+        const cantInp = document.getElementById('fac-swal-pse-cant');
+        const precioInp = document.getElementById('fac-swal-pse-precio');
+        const subEl = document.getElementById('fac-swal-pse-subtotal');
+        const updateSub = () => {
+          const cant = Number(cantInp?.value) || 0;
+          const precio = Number(precioInp?.value) || 0;
+          if (subEl) subEl.textContent = `Subtotal: ${this.formatMoney(cant * precio)}`;
+        };
+        cantInp?.addEventListener('input', updateSub);
+        precioInp?.addEventListener('input', updateSub);
+        if (typeof PosProductKeyboardUI !== 'undefined') {
+          PosProductKeyboardUI.focusInput(document.getElementById('fac-swal-pse-desprod'));
+        } else {
+          document.getElementById('fac-swal-pse-desprod')?.focus();
+        }
+      },
+      preConfirm: () => {
+        const desprod = String(document.getElementById('fac-swal-pse-desprod')?.value || '').trim();
+        if (!desprod) {
+          Swal.showValidationMessage('La descripción es obligatoria');
+          return false;
+        }
+        const cantidad = Number(document.getElementById('fac-swal-pse-cant')?.value);
+        const costo = Number(document.getElementById('fac-swal-pse-costo')?.value);
+        const precio = Number(document.getElementById('fac-swal-pse-precio')?.value);
+        if (!Number.isFinite(cantidad) || cantidad <= 0) {
+          Swal.showValidationMessage('Cantidad inválida');
+          return false;
+        }
+        if (!Number.isFinite(costo) || costo < 0) {
+          Swal.showValidationMessage('Costo inválido');
+          return false;
+        }
+        if (!Number.isFinite(precio) || precio < 0) {
+          Swal.showValidationMessage('Precio inválido');
+          return false;
+        }
+        return { desprod, cantidad, costo, precio };
+      },
+    });
+    if (!value) return;
+    try {
+      await this.agregarLineaPse(value);
+    } catch (err) {
+      F.toast(err.message || 'No se pudo agregar el PSE', 'error');
+    }
+  },
+
   setCartBusy(busy) {
     this._cartBusy = busy;
     const tbody = this._container?.querySelector('#fac-cart-tbody');
@@ -902,6 +1034,57 @@ const FacturacionView = {
     this._pedido = res.pedido;
     this.renderCart();
     this.renderOrderSummary();
+  },
+
+  async actualizarPrecio(lineId, precio) {
+    const key = this.docKey();
+    if (!key) return;
+    const line = this.findLineById(lineId);
+    if (!line) throw new Error('No se encontró la línea del pedido');
+    const cantidad = Number(line.CANTIDAD) || 1;
+    const url = this.apiUrl(
+      `/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}`
+    );
+    const res = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CANTIDAD: cantidad, PRECIO: precio }),
+    });
+    this._pedido = res.pedido;
+    this.renderCart();
+    this.renderOrderSummary();
+  },
+
+  async promptEditarPrecioLinea(line) {
+    const current = Number(line?.PRECIO) || 0;
+    const label = `${line?.CODPROD || ''} ${line?.DESPROD || ''}`.trim();
+    const result = await Swal.fire({
+      ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+      title: 'Cambiar precio unitario',
+      html: `<p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+        <label class="form-label small mb-0" for="fac-cart-precio-edit">Precio</label>
+        <input type="number" id="fac-cart-precio-edit" class="form-control form-control-sm" value="${current}" min="0" step="any">`,
+      showCancelButton: true,
+      confirmButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Guardar') : 'Guardar',
+      cancelButtonText: 'Cancelar',
+      focusConfirm: false,
+      didOpen: () => {
+        const inp = document.getElementById('fac-cart-precio-edit');
+        inp?.focus();
+        inp?.select();
+      },
+      preConfirm: () => {
+        const precio = Number(document.getElementById('fac-cart-precio-edit')?.value);
+        if (!Number.isFinite(precio) || precio < 0) {
+          Swal.showValidationMessage('Precio inválido');
+          return false;
+        }
+        return precio;
+      },
+    });
+    if (!result.isConfirmed) return null;
+    return result.value;
   },
 
   async eliminarLinea(lineId) {
@@ -1105,6 +1288,7 @@ const FacturacionView = {
     const lines = this._pedido?.lines || [];
     const h = this._pedido?.header;
     const editable = this.docEditable(h);
+    const puedeEditarPrecio = this.docPrecioEditable(h);
     if (!lines.length) {
       tbody.innerHTML =
         '<tr><td colspan="6" class="text-center text-muted py-3">Sin productos en el pedido</td></tr>';
@@ -1120,9 +1304,12 @@ const FacturacionView = {
               <span class="px-1">${qty}</span>
               <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>`
           : `<span>${qty}</span>`;
+        const priceHtml = puedeEditarPrecio
+          ? `<button type="button" class="btn btn-link btn-sm p-0 pos-cart-unit-price pos-cart-price-btn" data-action="price-edit" data-id="${lineId}" title="Cambiar precio"${this._cartBusy ? ' disabled' : ''}>${this.escapeHtml(unitPrice)}</button>`
+          : `<span class="pos-cart-unit-price small text-nowrap">${this.escapeHtml(unitPrice)}</span>`;
         const qtyCell = `<div class="pos-cart-qty-price d-flex align-items-center justify-content-center gap-2 flex-wrap">
             <div class="d-flex align-items-center gap-1">${qtyControlsInner}</div>
-            <span class="pos-cart-unit-price small text-nowrap">${this.escapeHtml(unitPrice)}</span>
+            ${priceHtml}
           </div>`;
         const delBtn = editable
           ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${lineId}" title="Quitar"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
@@ -1259,14 +1446,18 @@ const FacturacionView = {
   },
 
   syncEditorControls() {
-    const editable = this.docEditable(this._pedido?.header);
+    const h = this._pedido?.header;
+    const editable = this.docEditable(h);
     PosDocSearchUI.syncControls(this._container, 'fac', editable);
-    ['#fac-cliente-search', '#fac-cliente-nuevo', '#fac-doc-fecha', '#fac-doc-vendedor', '#fac-doc-caja', '#fac-precio-campo', '.btn-refresh-vendedores'].forEach((sel) => {
+    ['#fac-cliente-search', '#fac-cliente-nuevo', '#fac-doc-fecha', '#fac-doc-vendedor', '#fac-doc-caja', '#fac-precio-campo', '#fac-btn-agregar-pse', '.btn-refresh-vendedores'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-fac-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (fab) {
+      // No re-finalizar documentos que ya entraron a corte de caja.
+      fab.style.display = editable && !this.docTieneCorte(h) ? '' : 'none';
+    }
     this.syncClienteSearchEmphasis();
     this.syncVendedorEmphasis();
   },
@@ -1302,13 +1493,26 @@ const FacturacionView = {
 
   async eliminarPedido(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
+    if (typeof AutorizacionesUI !== 'undefined') {
+      const allowed = await AutorizacionesUI.gateAccionDocumento({
+        accion: 'eliminar',
+        coddoc,
+        correlativo,
+        tipodoc: this._grupo === 'fel' ? 'FEL' : this._grupo === 'mixto' ? 'FAC/FEL' : 'FAC',
+        label,
+      });
+      if (!allowed) return;
+    }
     const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'pedido' });
     if (!pass) return;
     const url = this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`);
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass: String(pass) }),
+      body: JSON.stringify({
+        pass: String(pass),
+        USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+      }),
     });
     F.toast('Pedido eliminado', 'success');
     await this.fetchPedidosList();
@@ -1681,7 +1885,7 @@ const FacturacionView = {
     const fac = res.factura?.header;
     if (!fac) throw new Error('No se recibió la factura creada');
     F.toast(`Factura ${fac.CODDOC}-${fac.CORRELATIVO} creada desde documento`, 'success');
-    await this.showEditor(fac.CODDOC, fac.CORRELATIVO);
+    await this.showEditor(fac.CODDOC, fac.CORRELATIVO, { skipAuth: true });
   },
 
   renderListScreen() {
@@ -1761,6 +1965,8 @@ const FacturacionView = {
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="fac-product-search"
                   placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
+                <button type="button" class="btn btn-outline-secondary text-nowrap" id="fac-btn-agregar-pse"
+                  title="Agregar producto sin existencia"${editable ? '' : ' disabled'}>Agregar PSE</button>
               </div>
               <div class="pos-product-list" id="fac-product-list"></div>
             </div>
@@ -1898,6 +2104,10 @@ const FacturacionView = {
       });
     }
 
+    this._container?.querySelector('#fac-btn-agregar-pse')?.addEventListener('click', () => {
+      this.onAgregarPse().catch((err) => F.toast(err.message || 'Error al agregar PSE', 'error'));
+    });
+
     this._container?.querySelector('#fac-cart-tbody')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn || btn.disabled || this._cartBusy) return;
@@ -1909,6 +2119,24 @@ const FacturacionView = {
         return;
       }
       const action = btn.getAttribute('data-action');
+
+      if (action === 'price-edit') {
+        try {
+          const precio = await this.promptEditarPrecioLinea(line);
+          if (precio == null) return;
+          this.setCartBusy(true);
+          this.renderCart();
+          await this.actualizarPrecio(id, precio);
+          F.toast('Precio actualizado', 'success');
+        } catch (err) {
+          F.toast(err.message || 'Error al actualizar el precio', 'error');
+        } finally {
+          this.setCartBusy(false);
+          this.renderCart();
+        }
+        return;
+      }
+
       this.setCartBusy(true);
       this.renderCart();
       try {
@@ -2217,6 +2445,18 @@ const FacturacionView = {
   },
 
   async showEditor(coddoc, correlativo, opts = {}) {
+    if (!opts.skipAuth && coddoc != null && correlativo != null && correlativo !== '') {
+      if (typeof AutorizacionesUI !== 'undefined') {
+        const allowed = await AutorizacionesUI.gateAccionDocumento({
+          accion: 'editar',
+          coddoc,
+          correlativo,
+          tipodoc: this._grupo === 'fel' ? 'FEL' : this._grupo === 'mixto' ? 'FAC/FEL' : 'FAC',
+          label: `${coddoc} #${correlativo}`,
+        });
+        if (!allowed) return;
+      }
+    }
     this._screen = 'editor';
     PosDocSearchUI.unbindDocKeyboard(this);
     PosDocSearchUI.teardown('fac');
@@ -2244,7 +2484,7 @@ const FacturacionView = {
       }
       await this.crearPedido();
       const key = this.docKey();
-      if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true });
+      if (key) await this.showEditor(key.coddoc, key.correlativo, { focusProductSearch: true, skipAuth: true });
     } catch (err) {
       F.toast(err.message || 'Error al crear pedido', 'error');
     }

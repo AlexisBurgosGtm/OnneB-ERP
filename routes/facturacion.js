@@ -12,6 +12,7 @@ const {
 const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows, bindDocumentoFechaDiaParams, sqlDocumentoFechaDiaWhere } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
 const {
   fetchProductoPrecioForLinea,
@@ -47,6 +48,7 @@ const {
   isStatusEditable,
   isCorteCajaCerrado,
   isDocumentoEditable,
+  canEditFacturaNormalConCorte,
   SQL_STATUS_EDITABLE,
   SQL_DOCUMENTO_EDITABLE,
   sqlPedidosListStatusFilter,
@@ -134,11 +136,19 @@ async function loadDocumentoMeta(db, empnit, coddoc, correlativo) {
     .input('CODDOC', sql.VarChar, coddoc)
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
-      SELECT STATUS, ISNULL(CORTE, 'NO') AS CORTE
-      FROM dbo.DOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+      SELECT d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE, t.TIPODOC
+      FROM dbo.DOCUMENTOS d
+      LEFT JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
     `);
   return result.recordset[0] || null;
+}
+
+/** Edición de cabecera/líneas: documento editable o FAC operada con corte. */
+function isFacturacionContenidoEditable(meta) {
+  if (!meta) return false;
+  if (isDocumentoEditable(meta.STATUS, meta.CORTE)) return true;
+  return canEditFacturaNormalConCorte(meta.STATUS, meta.CORTE, meta.TIPODOC);
 }
 
 function roundMoney(n) {
@@ -701,7 +711,7 @@ router.get('/pedidos', async (req, res) => {
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
         d.F_ENTREGA, d.DIRENTREGA,
         d.FEL_UUDI, d.FEL_SERIE, d.FEL_NUMERO, d.CODCAJA, ISNULL(d.CONCRE, 'CON') AS CONCRE,
-        d.ID_COLA_TRABAJO,
+        d.ID_COLA_TRABAJO, LTRIM(RTRIM(ISNULL(d.CODEMBARQUE, ''))) AS CODEMBARQUE,
         t.TIPODOC, ISNULL(t.TIPOM, 0) AS TIPOM,
         c.NEGOCIO, c.TIPONEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
@@ -1204,7 +1214,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
 
     const docMetaPre = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
     if (!docMetaPre) return res.status(404).json({ error: 'Pedido no encontrado' });
-    if (!isDocumentoEditable(docMetaPre.STATUS, docMetaPre.CORTE)) {
+    if (!isFacturacionContenidoEditable(docMetaPre)) {
       return res.status(400).json({
         error: mensajeDocumentoNoEditable(docMetaPre.STATUS, docMetaPre.CORTE),
       });
@@ -1296,10 +1306,17 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
   if (!empnit) return;
   const coddoc = String(req.params.coddoc || '').trim();
   const correlativo = parseCorrelativo(req.params.correlativo);
-  const codprod = String(req.body?.CODPROD || '').trim();
-  const codmedida = String(req.body?.CODMEDIDA || '').trim();
+  const isPse = String(req.body?.tipo || '').trim().toLowerCase() === 'pse';
+  const desprodPse = String(req.body?.DESPROD || '').trim();
+  const codprod = isPse ? `PSE${Date.now()}` : String(req.body?.CODPROD || '').trim();
+  const codmedida = isPse ? 'UNIDAD' : String(req.body?.CODMEDIDA || '').trim();
   const cantidad = Number(req.body?.CANTIDAD ?? 1);
-  if (!coddoc || correlativo === null || !codprod || !codmedida) {
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+  if (isPse) {
+    if (!desprodPse) return res.status(400).json({ error: 'La descripción es obligatoria' });
+  } else if (!codprod || !codmedida) {
     return res.status(400).json({ error: 'CODPROD y CODMEDIDA son obligatorios' });
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
@@ -1312,39 +1329,75 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
-        SELECT STATUS, ISNULL(CORTE, 'NO') AS CORTE FROM dbo.DOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+        SELECT d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE, t.TIPODOC
+        FROM dbo.DOCUMENTOS d
+        LEFT JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+        WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
       `);
     if (!docCheck.recordset.length) return res.status(404).json({ error: 'Pedido no encontrado' });
     const docMetaLine = docCheck.recordset[0];
-    if (!isDocumentoEditable(docMetaLine.STATUS, docMetaLine.CORTE)) {
+    if (!isFacturacionContenidoEditable(docMetaLine)) {
       return res.status(400).json({ error: mensajeDocumentoNoEditable(docMetaLine.STATUS, docMetaLine.CORTE) });
     }
 
-    const found = await fetchProductoPrecioForLinea(pool, sql, {
-      empnit,
-      codprod,
-      codmedida,
-    });
-    if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
-    const prod = found.row;
-    const medidaLinea = found.codmedida;
-    const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
-    const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
-    const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    let precio = getPrecioFromPreciosRow(prod, campoPrecio);
-    const permiteCambiarPrecio = await getSettingSino(
-      pool,
-      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-    );
-    if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
-      const customPrecio = Number(req.body.PRECIO);
+    let desprod;
+    let medidaLinea;
+    let tipoprod;
+    let tipoprecio;
+    let costo;
+    let precio;
+    let equivale;
+    let exento;
+    let peso;
+
+    if (isPse) {
+      const customCosto = Number(req.body?.COSTO);
+      const customPrecio = Number(req.body?.PRECIO);
+      if (!Number.isFinite(customCosto) || customCosto < 0) {
+        return res.status(400).json({ error: 'Costo inválido' });
+      }
       if (!Number.isFinite(customPrecio) || customPrecio < 0) {
         return res.status(400).json({ error: 'Precio inválido' });
       }
+      desprod = desprodPse;
+      medidaLinea = 'UNIDAD';
+      tipoprod = 'S';
+      tipoprecio = 'P';
+      costo = roundMoney(customCosto);
       precio = roundMoney(customPrecio);
+      equivale = 1;
+      exento = 0;
+      peso = 0;
+    } else {
+      const found = await fetchProductoPrecioForLinea(pool, sql, {
+        empnit,
+        codprod,
+        codmedida,
+      });
+      if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
+      const prod = found.row;
+      medidaLinea = found.codmedida;
+      const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
+      ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
+      costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+      precio = getPrecioFromPreciosRow(prod, campoPrecio);
+      const permiteCambiarPrecio = await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+      );
+      if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+        const customPrecio = Number(req.body.PRECIO);
+        if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+          return res.status(400).json({ error: 'Precio inválido' });
+        }
+        precio = roundMoney(customPrecio);
+      }
+      equivale = Number(prod.EQUIVALE) || 1;
+      desprod = prod.DESPROD;
+      exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+      peso = pesoFromPreciosRow(prod);
     }
-    const equivale = Number(prod.EQUIVALE) || 1;
+
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
       costo,
@@ -1352,8 +1405,6 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       equivale
     );
     const parts = nowParts();
-    const exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
-    const peso = pesoFromPreciosRow(prod);
     const totalPeso = calcLinePeso(cantidad, peso);
 
     const transaction = new sql.Transaction(pool);
@@ -1369,7 +1420,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .input('CODPROD', sql.VarChar, codprod)
-        .input('DESPROD', sql.VarChar, prod.DESPROD)
+        .input('DESPROD', sql.VarChar, desprod)
         .input('CODMEDIDA', sql.VarChar, medidaLinea)
         .input('CANTIDAD', sql.Float, cantidad)
         .input('EQUIVALE', sql.Int, equivale)
@@ -1410,7 +1461,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         coddoc,
         correlativo,
         codprod,
-        desprod: prod.DESPROD,
+        desprod,
         totalUnidades,
         tipoprod,
         tipom,
@@ -1466,20 +1517,38 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
         SELECT
-          l.COSTO, l.PRECIO, l.EQUIVALE, l.PESO, l.TOTALUNIDADES,
+          l.CANTIDAD, l.COSTO, l.PRECIO, l.EQUIVALE, l.PESO, l.TOTALUNIDADES,
           l.CODPROD, l.DESPROD, l.TIPOPROD, l.TIPOM, l.CODBODEGAENTRADA, l.CODBODEGASALIDA,
-          d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE
+          d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE, t.TIPODOC
         FROM dbo.DOCPRODUCTOS l
         JOIN dbo.DOCUMENTOS d ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
+        JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
         WHERE l.ID = @ID AND l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       `);
     if (!lineRes.recordset.length) return res.status(404).json({ error: 'Línea no encontrada' });
     const lineMeta = lineRes.recordset[0];
-    if (!isDocumentoEditable(lineMeta.STATUS, lineMeta.CORTE)) {
+    if (!isFacturacionContenidoEditable(lineMeta)) {
       return res.status(400).json({ error: mensajeDocumentoNoEditable(lineMeta.STATUS, lineMeta.CORTE) });
     }
     const line = lineMeta;
-    const totals = calcLineTotals(cantidad, line.COSTO, line.PRECIO, line.EQUIVALE);
+
+    let precio = Number(line.PRECIO) || 0;
+    if (req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+      const permiteCambiarPrecio = await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+      );
+      if (permiteCambiarPrecio !== 'SI') {
+        return res.status(400).json({ error: 'No está permitido cambiar el precio' });
+      }
+      const customPrecio = Number(req.body.PRECIO);
+      if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      precio = roundMoney(customPrecio);
+    }
+
+    const totals = calcLineTotals(cantidad, line.COSTO, precio, line.EQUIVALE);
     const totalPeso = calcLinePeso(cantidad, line.PESO);
 
     const transaction = new sql.Transaction(pool);
@@ -1502,6 +1571,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         .request()
         .input('ID', sql.Int, lineId)
         .input('CANTIDAD', sql.Float, cantidad)
+        .input('PRECIO', sql.Decimal(18, 3), precio)
         .input('TOTALUNIDADES', sql.Float, totals.totalUnidades)
         .input('TOTALCOSTO', sql.Decimal(18, 3), totals.totalCosto)
         .input('TOTALPRECIO', sql.Decimal(18, 3), totals.totalPrecio)
@@ -1509,6 +1579,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         .query(`
           UPDATE dbo.DOCPRODUCTOS SET
             CANTIDAD = @CANTIDAD,
+            PRECIO = @PRECIO,
             TOTALUNIDADES = @TOTALUNIDADES,
             TOTALCOSTO = @TOTALCOSTO,
             TOTALPRECIO = @TOTALPRECIO,
@@ -1570,10 +1641,12 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         .query(`
           SELECT
             l.CODPROD, l.DESPROD, l.TOTALUNIDADES, l.TIPOPROD, l.TIPOM,
-            l.CODBODEGAENTRADA, l.CODBODEGASALIDA, d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE
+            l.CODBODEGAENTRADA, l.CODBODEGASALIDA, d.STATUS, ISNULL(d.CORTE, 'NO') AS CORTE,
+            t.TIPODOC
           FROM dbo.DOCPRODUCTOS l
           JOIN dbo.DOCUMENTOS d
             ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
+          LEFT JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
           WHERE l.ID = @ID AND l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
         `);
       if (!lineRes.recordset.length) {
@@ -1581,7 +1654,7 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         return res.status(404).json({ error: 'Línea no encontrada' });
       }
       const line = lineRes.recordset[0];
-      if (!isDocumentoEditable(line.STATUS, line.CORTE)) {
+      if (!isFacturacionContenidoEditable(line)) {
         await transaction.rollback();
         return res.status(400).json({ error: mensajeDocumentoNoEditable(line.STATUS, line.CORTE) });
       }
@@ -1888,7 +1961,7 @@ router.post('/pedidos/:coddoc/:correlativo/fraccionar', async (req, res) => {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .query(`
-          SELECT ID_COLA_TRABAJO
+          SELECT ID_COLA_TRABAJO, LTRIM(RTRIM(ISNULL(CODEMBARQUE, ''))) AS CODEMBARQUE
           FROM dbo.DOCUMENTOS WITH (UPDLOCK, ROWLOCK)
           WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
         `);
@@ -1896,7 +1969,15 @@ router.post('/pedidos/:coddoc/:correlativo/fraccionar', async (req, res) => {
         await tx.rollback();
         return res.status(404).json({ error: 'Documento no encontrado' });
       }
-      const idActual = docRes.recordset[0].ID_COLA_TRABAJO;
+      const docRow = docRes.recordset[0];
+      const idActual = docRow.ID_COLA_TRABAJO;
+      const codEmbarque = String(docRow.CODEMBARQUE || '').trim().toUpperCase();
+      if (codEmbarque === 'FRACCIONADA') {
+        await tx.rollback();
+        return res.status(409).json({
+          error: 'La factura ya fue fraccionada/certificada y no puede enviarse de nuevo',
+        });
+      }
       if (idActual !== null && idActual !== undefined && Number(idActual) > 0) {
         await tx.rollback();
         return res
@@ -1959,7 +2040,10 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     await assertAdminPass(pool, pass);
-    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
+      usuario: usuarioFromReq(req),
+      motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,
+    });
     res.json(result);
   } catch (err) {
     if (err instanceof DocumentoDeleteError) {

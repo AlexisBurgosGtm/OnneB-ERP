@@ -151,10 +151,8 @@ const NotasDebitoView = {
   },
 
   docEditable(header) {
-    return (
-      DocFecha.editableStatus(header?.STATUS) &&
-      String(header?.CORTE || 'NO').trim().toUpperCase() !== 'SI'
-    );
+    // Compras/DVP no se bloquean por corte de caja (no forman parte del efectivo).
+    return DocFecha.editableStatus(header?.STATUS);
   },
 
   felUudiValue(row) {
@@ -270,6 +268,10 @@ const NotasDebitoView = {
       </div>`;
   },
 
+  renderFechaField() {
+    return DocFecha.renderField('nd-doc-fecha', this._pedido?.header);
+  },
+
   async fetchPedidosList() {
     const fecha = String(this._listFecha || this.todayIsoDate()).slice(0, 10);
     this._listFecha = fecha;
@@ -336,6 +338,7 @@ const NotasDebitoView = {
       NOFAC: referencia.NOFAC,
       CODDOC: coddocDestino,
       USUARIO: this.usuario(),
+      FECHA: this.todayIsoDate(),
     };
     const pedido = await F.fetchJson(this.apiUrl('/pedidos'), {
       method: 'POST',
@@ -343,6 +346,8 @@ const NotasDebitoView = {
       body: JSON.stringify(body),
     });
     this._pedido = pedido;
+    const docFecha = this.rowFechaIso(pedido?.header) || body.FECHA;
+    if (docFecha) this._listFecha = String(docFecha).slice(0, 10);
     return pedido;
   },
 
@@ -781,7 +786,11 @@ const NotasDebitoView = {
       return;
     }
     const obsVal = this.escapeHtml(h.OBS || '');
-    const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
+    const felSerieVal = this.escapeHtml(String(h?.FEL_SERIE ?? '').trim());
+    const felNumeroVal = this.escapeHtml(String(h?.FEL_NUMERO ?? '').trim());
+    const felFechaVal = this.escapeHtml(
+      DocFecha.fechaIsoFromValue(h?.FEL_FECHA) || String(h?.FEL_FECHA || '').trim().slice(0, 10)
+    );
     const totalPrecio = this.docTotalPrecio(h);
     const ok = await Swal.fire({
       ...CatalogosUI.modalBase({
@@ -792,10 +801,22 @@ const NotasDebitoView = {
       html: `
         <p class="small text-muted mb-2">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
         <div class="text-start nd-finalizar-modal-body">
+          <div class="row g-2 mb-2">
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="nd-finalizar-fel-serie">Serie FEL</label>
+              <input type="text" id="nd-finalizar-fel-serie" class="form-control form-control-sm"
+                value="${felSerieVal}" placeholder="Serie FEL" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="nd-finalizar-fel-numero">Número FEL</label>
+              <input type="text" id="nd-finalizar-fel-numero" class="form-control form-control-sm"
+                value="${felNumeroVal}" placeholder="Número FEL" autocomplete="off">
+            </div>
+          </div>
           <div class="mb-3">
-            <label class="form-label small mb-0" for="nd-finalizar-fel-uudi">ID Electronico</label>
-            <input type="text" id="nd-finalizar-fel-uudi" class="form-control form-control-sm"
-              value="${felUudiVal}" placeholder="UUID FEL" autocomplete="off">
+            <label class="form-label small mb-0" for="nd-finalizar-fel-fecha">Fecha FEL</label>
+            <input type="date" id="nd-finalizar-fel-fecha" class="form-control form-control-sm"
+              value="${felFechaVal}">
           </div>
           <div class="row g-3 align-items-stretch">
             <div class="col-md-6">
@@ -822,9 +843,16 @@ const NotasDebitoView = {
           Swal.showValidationMessage(fpagoErr);
           return false;
         }
+        const felFecha = document.getElementById('nd-finalizar-fel-fecha')?.value?.trim() || '';
+        if (felFecha && !/^\d{4}-\d{2}-\d{2}$/.test(felFecha)) {
+          Swal.showValidationMessage('Fecha FEL inválida');
+          return false;
+        }
         return {
           OBS: document.getElementById('nd-finalizar-obs')?.value?.trim() || '',
-          FEL_UUDI: document.getElementById('nd-finalizar-fel-uudi')?.value?.trim() || '',
+          FEL_SERIE: document.getElementById('nd-finalizar-fel-serie')?.value?.trim() || '',
+          FEL_NUMERO: document.getElementById('nd-finalizar-fel-numero')?.value?.trim() || '',
+          FEL_FECHA: felFecha,
           CONCRE: 'CON',
           CODCAJA: this.readCodcajaForFinalizar(),
           ...this.readFinalizarFpagoFromDom(),
@@ -1080,6 +1108,7 @@ const NotasDebitoView = {
               </div>
               <div class="pos-header-doc-label small fw-semibold" id="nd-header-doc">${this.escapeHtml(this.docLabel())}</div>
               ${this.renderCajaField()}
+              ${this.renderFechaField()}
               <div class="ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="nd-header-total">Q 0.00</h3>
                 <div class="pos-header-items" id="nd-header-items">0 items</div>
@@ -1141,9 +1170,34 @@ const NotasDebitoView = {
     this.renderLineasDisponibles();
     this.renderCart();
     this.renderOrderSummary();
-    const editable = this.docEditable(this._pedido?.header);
+    const fechaInp = this._container?.querySelector('#nd-doc-fecha');
+    const h = this._pedido?.header;
+    if (fechaInp && h && !fechaInp.matches(':focus')) {
+      fechaInp.value = DocFecha.inputValueFromHeader(h);
+      fechaInp.disabled = !this.docEditable(h);
+    }
+    const editable = this.docEditable(h);
     const fab = this._container?.querySelector('#btn-nd-finalizar');
     if (fab) fab.style.display = editable ? '' : 'none';
+  },
+
+  async guardarFechaDocumento(fecha) {
+    const key = this.docKey();
+    if (!key || !this.docEditable(this._pedido?.header)) return;
+    const actual = DocFecha.inputValueFromHeader(this._pedido.header);
+    if (fecha === actual) return;
+    this._pedido = await F.fetchJson(
+      this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`),
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ FECHA: fecha }),
+      }
+    );
+    const docFecha = this.rowFechaIso(this._pedido?.header) || fecha;
+    if (docFecha) this._listFecha = String(docFecha).slice(0, 10);
+    this.renderOrderSummary();
+    F.toast('Fecha actualizada', 'success');
   },
 
   refreshListDom() {
@@ -1286,6 +1340,20 @@ const NotasDebitoView = {
     this._container?.querySelector('#nd-doc-caja')?.addEventListener('change', (e) => {
       if (e.target.disabled) return;
       this._selectedCodcaja = e.target.value?.trim() || '';
+    });
+    this._container?.querySelector('#nd-doc-fecha')?.addEventListener('change', () => {
+      const fechaInp = this._container?.querySelector('#nd-doc-fecha');
+      if (!fechaInp || fechaInp.disabled) return;
+      const val = String(fechaInp.value || '').trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        F.toast('Fecha inválida', 'warning');
+        fechaInp.value = DocFecha.inputValueFromHeader(this._pedido?.header);
+        return;
+      }
+      this.guardarFechaDocumento(val).catch((err) => {
+        F.toast(err.message || 'No se pudo actualizar la fecha', 'error');
+        fechaInp.value = DocFecha.inputValueFromHeader(this._pedido?.header);
+      });
     });
     this._container?.querySelector('#btn-nd-finalizar')?.addEventListener('click', () => {
       this.finalizarPedido().catch((err) => F.toast(err.message || 'Error al finalizar', 'error'));

@@ -3,8 +3,9 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { assertAdminPass } = require('../lib/config-auth');
 const { deleteDocumentoOperado, DocumentoDeleteError } = require('../lib/documento-delete');
+const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { InventarioError } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, fechaIsoFromRow } = require('../lib/documento-fecha');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -157,7 +158,7 @@ function bindListFilters(request, { empnit, mes, anio, tipodoc, q }) {
 function mapDocumentoRow(r) {
   const vendedor = r.VENDEDOR ?? r.vendedor ?? '';
   return {
-    FECHA: r.FECHA ?? null,
+    FECHA: fechaIsoFromRow(r) || null,
     CODDOC: r.CODDOC ?? null,
     DESDOC: r.DESDOC ?? null,
     TIPODOC: r.TIPODOC ?? null,
@@ -618,7 +619,10 @@ router.delete('/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     await assertAdminPass(pool, pass);
-    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
+      usuario: usuarioFromReq(req),
+      motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,
+    });
     res.json(result);
   } catch (err) {
     if (err instanceof DocumentoDeleteError || err instanceof InventarioError) {

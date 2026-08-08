@@ -19,6 +19,7 @@ const {
 } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
 const {
   fetchProductoPrecioForLinea,
@@ -40,8 +41,9 @@ const router = express.Router();
 
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
-const TIPODOC_COMPRAS = 'COM';
-const SQL_TIPODOC_COMPRAS_IN = `'COM', 'COP'`;
+/** COM = compra normal; COP = compra pequeño contribuyente (mismo flujo; difiere en contabilidad). */
+const TIPODOC_COMPRAS = ['COM', 'COP'];
+const SQL_TIPODOC_COMPRAS_IN = TIPODOC_COMPRAS.map((t) => `'${t}'`).join(', ');
 const DEFAULT_BODEGA = 0;
 const CODEMBARQUE_COMPRAS = 'COMPRAS';
 
@@ -147,7 +149,8 @@ async function getTipoDocCom(pool, empnit, coddocPreferred) {
     const one = await req.query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC
+        AND TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN}) AND ACTIVO = 'SI'
     `);
     if (one.recordset.length) return one.recordset[0];
   }
@@ -157,8 +160,8 @@ async function getTipoDocCom(pool, empnit, coddocPreferred) {
     .query(`
       SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
       FROM dbo.TIPODOCUMENTOS
-      WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
-      ORDER BY CODDOC
+      WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN}) AND ACTIVO = 'SI'
+      ORDER BY CASE TIPODOC WHEN 'COM' THEN 0 ELSE 1 END, CODDOC
     `);
   return all.recordset[0] || null;
 }
@@ -432,10 +435,10 @@ router.get('/config', async (req, res) => {
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .query(`
-        SELECT CODDOC, DESDOC, CORRELATIVO
+        SELECT CODDOC, DESDOC, TIPODOC, CORRELATIVO
         FROM dbo.TIPODOCUMENTOS
-        WHERE EMPNIT = @EMPNIT AND TIPODOC = '${TIPODOC_COMPRAS}' AND ACTIVO = 'SI'
-        ORDER BY CODDOC
+        WHERE EMPNIT = @EMPNIT AND TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN}) AND ACTIVO = 'SI'
+        ORDER BY CASE TIPODOC WHEN 'COM' THEN 0 ELSE 1 END, CODDOC
       `);
     const def = tipos.recordset[0] || null;
     const proveedor = await pool
@@ -449,7 +452,8 @@ router.get('/config', async (req, res) => {
       `);
     res.json({
       empnit,
-      tipodoc: TIPODOC_COMPRAS,
+      tipodoc: 'COM',
+      tipodocs: TIPODOC_COMPRAS,
       statusOperado: STATUS_OPERADO,
       statusBloqueado: STATUS_BLOQUEADO,
       statusAnulado: STATUS_ANULADO,
@@ -525,7 +529,7 @@ router.get('/compras', async (req, res) => {
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.PROVEEDORES p ON p.EMPNIT = d.EMPNIT AND p.CODPROV = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT
-        AND t.TIPODOC = '${TIPODOC_COMPRAS}'
+        AND t.TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN})
         AND d.STATUS = '${status}'
         AND ${sqlDocumentoFechaDiaWhere('d')}
         ${coddocFilter}
@@ -573,7 +577,7 @@ router.post('/compras', async (req, res) => {
     const tipo = await getTipoDocCom(pool, empnit, coddocBody);
     if (!tipo) {
       return res.status(400).json({
-        error: `No hay tipo de documento ${TIPODOC_COMPRAS} (compras) activo para la empresa`,
+        error: 'No hay tipo de documento COM/COP (compras) activo para la empresa',
       });
     }
     const coddoc = tipo.CODDOC;
@@ -1569,7 +1573,10 @@ router.delete('/compras/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     await assertAdminPass(pool, pass);
-    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
+      usuario: usuarioFromReq(req),
+      motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,
+    });
     res.json(result);
   } catch (err) {
     if (err instanceof DocumentoDeleteError) {

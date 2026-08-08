@@ -1,11 +1,12 @@
 /**
- * RH — Vales a empleados (descuento de efectivo en corte de caja).
+ * RH — Vales a empleados (acreditación por caja o banco + documento generado).
  */
 const NominaValesView = {
   _container: null,
   _rows: [],
   _empleados: [],
   _cajas: [],
+  _cuentas: [],
   _cajaDefault: null,
   _mes: new Date().getMonth() + 1,
   _anio: new Date().getFullYear(),
@@ -125,12 +126,22 @@ const NominaValesView = {
         const corteBadge = enCorte
           ? ` <span class="badge text-bg-light text-muted border">Corte #${this.escapeHtml(r.NOCORTE || '')}</span>`
           : '';
+        const tipoAcre = String(r.GENERADO_TIPO || '').trim().toUpperCase();
+        const acreLabel = tipoAcre
+          ? `${tipoAcre}${r.ACREDITACION_DESC ? ` · ${r.ACREDITACION_DESC}` : ''}`
+          : r.DESCAJA || r.CODCAJA || '—';
+        const docGen =
+          r.GENERADO_CODDOC || r.GENERADO_CORRELATIVO
+            ? ` <span class="badge text-bg-light text-muted border">${this.escapeHtml(
+                [r.GENERADO_CODDOC, r.GENERADO_CORRELATIVO].filter((x) => x != null && x !== '').join('-')
+              )}</span>`
+            : '';
         return `
       <tr data-id="${this.escapeHtml(r.ID)}">
         <td>${this.escapeHtml(r.ID)}</td>
         <td>${this.formatFecha(r.FECHA)}</td>
         <td>${this.escapeHtml(r.NOMEMPLEADO || r.CODEMP)}</td>
-        <td>${this.escapeHtml(r.DESCAJA || r.CODCAJA)}</td>
+        <td>${this.escapeHtml(acreLabel)}${docGen}</td>
         <td class="text-end">${this.escapeHtml(this.formatMoney(r.MONTO))}</td>
         <td class="text-end text-success">${this.escapeHtml(this.formatMoney(r.ABONOS))}</td>
         <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(saldo))}</td>
@@ -169,7 +180,7 @@ const NominaValesView = {
         <table class="table table-sm table-hover align-middle mb-0">
           <thead class="table-light">
             <tr>
-              <th>ID</th><th>Fecha</th><th>Empleado</th><th>Caja</th>
+              <th>ID</th><th>Fecha</th><th>Empleado</th><th>Acreditación</th>
               <th class="text-end">Monto</th><th class="text-end">Abonos</th><th class="text-end">Saldo</th>
               <th>Descripción</th><th>Estado</th><th></th>
             </tr>
@@ -194,7 +205,7 @@ const NominaValesView = {
         <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
           <div>
             <h5 class="mb-0">Vales a empleados</h5>
-            <p class="small text-muted mb-0">Los vales restan efectivo y los abonos suman efectivo en el corte de la caja seleccionada.</p>
+            <p class="small text-muted mb-0">Al crear un vale se genera un documento de caja (VC) o una salida bancaria, según la forma de acreditación.</p>
           </div>
         </div>
         <div class="card shadow-sm mb-3">
@@ -236,6 +247,7 @@ const NominaValesView = {
     this._rows = data.rows || [];
     this._empleados = data.empleados || [];
     this._cajas = data.cajas || [];
+    this._cuentas = data.cuentas || [];
     this._cajaDefault = data.cajaDefault ?? data.preferredCaja ?? null;
     return data;
   },
@@ -247,10 +259,11 @@ const NominaValesView = {
     const data = await F.fetchJson(`/api/nomina/vales/lookups?${params}`, { cache: 'no-store' });
     this._empleados = data.empleados || [];
     this._cajas = data.cajas || [];
+    this._cuentas = data.cuentas || [];
     this._cajaDefault = data.cajaDefault ?? data.preferredCaja ?? null;
   },
 
-  buildCajasOptions(selectedCodcaja, selectedDesc) {
+  buildCajasOptions(selectedCodcaja, selectedDesc, { placeholderSelect = true } = {}) {
     const cajas = [...this._cajas];
     const sel =
       selectedCodcaja != null && selectedCodcaja !== ''
@@ -262,22 +275,65 @@ const NominaValesView = {
         DESCAJA: selectedDesc || `Caja ${selectedCodcaja || sel}`,
       });
     }
-    return cajas
+    const opts = cajas
       .map((c) => {
         const v = String(c.CODCAJA);
         const selected = sel && v === sel ? ' selected' : '';
         return `<option value="${this.escapeHtml(v)}"${selected}>${this.escapeHtml(c.DESCAJA)} (${this.escapeHtml(v)})</option>`;
       })
       .join('');
+    if (!placeholderSelect) return opts;
+    return opts;
+  },
+
+  buildCuentasOptions(selectedCodcuenta) {
+    const sel = selectedCodcuenta != null && selectedCodcuenta !== '' ? String(selectedCodcuenta) : '';
+    return (this._cuentas || [])
+      .map((c) => {
+        const v = String(c.CODCUENTA);
+        const label = `${c.DESBANCO || 'Banco'} · ${c.NOCUENTA || v}`;
+        const selected = sel && v === sel ? ' selected' : '';
+        return `<option value="${this.escapeHtml(v)}"${selected}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+  },
+
+  fillAcreditacionDestino(tipo, selectedCodigo = '') {
+    const dest = document.getElementById('nv-acre-codigo');
+    const wrap = document.getElementById('nv-acre-codigo-wrap');
+    const label = document.getElementById('nv-acre-codigo-label');
+    if (!dest || !wrap || !label) return;
+    const t = String(tipo || '').trim().toUpperCase();
+    if (t !== 'CAJA' && t !== 'BANCO') {
+      wrap.classList.add('d-none');
+      dest.innerHTML = '<option value="">— Seleccione forma —</option>';
+      dest.disabled = true;
+      return;
+    }
+    wrap.classList.remove('d-none');
+    dest.disabled = false;
+    if (t === 'CAJA') {
+      label.innerHTML = 'Caja abierta <span class="text-danger">*</span>';
+      const opts = this.buildCajasOptions(selectedCodigo, '', { placeholderSelect: true });
+      dest.innerHTML = `<option value="">— Seleccione caja —</option>${opts}`;
+      if (!this._cajas.length) {
+        dest.innerHTML = '<option value="">No hay cajas abiertas</option>';
+        dest.disabled = true;
+      }
+    } else {
+      label.innerHTML = 'Cuenta bancaria <span class="text-danger">*</span>';
+      const opts = this.buildCuentasOptions(selectedCodigo);
+      dest.innerHTML = `<option value="">— Seleccione cuenta —</option>${opts}`;
+      if (!this._cuentas.length) {
+        dest.innerHTML = '<option value="">No hay cuentas bancarias</option>';
+        dest.disabled = true;
+      }
+    }
   },
 
   async showValeForm(row = null) {
     const editing = Boolean(row);
     await this.reloadLookups();
-    if (!editing && !this._cajas.length) {
-      F.toast('No hay cajas abiertas. Abra una caja antes de registrar vales.', 'warning');
-      return;
-    }
 
     const selEmp = editing ? String(row.CODEMP) : '';
     const empleados = [...this._empleados];
@@ -299,23 +355,57 @@ const NominaValesView = {
         return `<option value="${this.escapeHtml(v)}"${selected}>${this.escapeHtml(e.NOMEMPLEADO)} (${this.escapeHtml(v)})</option>`;
       })
       .join('');
-    const cajaOpts = this.buildCajasOptions(
-      editing ? row.CODCAJA : '',
-      editing ? row.DESCAJA : ''
-    );
-    if (!cajaOpts) {
-      F.toast('No hay cajas disponibles', 'warning');
-      return;
-    }
 
     const fechaVal = editing ? this.fechaInputValue(row.FECHA) : this.todayIso();
     const montoVal = editing && row.MONTO != null ? String(Number(row.MONTO)) : '';
     const descVal = editing ? String(row.DESCRIPCION || '') : '';
+    const tipoAcre = editing ? String(row.GENERADO_TIPO || '').trim().toUpperCase() : '';
+    const acreInfo =
+      editing && tipoAcre
+        ? `<div class="alert alert-light border small py-2 mb-0">
+             Forma de acreditación: <strong>${this.escapeHtml(tipoAcre)}</strong>
+             ${row.ACREDITACION_DESC ? ` · ${this.escapeHtml(row.ACREDITACION_DESC)}` : ''}
+             ${
+               row.GENERADO_CODDOC || row.GENERADO_CORRELATIVO
+                 ? ` · Doc <strong>${this.escapeHtml(
+                     [row.GENERADO_CODDOC, row.GENERADO_CORRELATIVO]
+                       .filter((x) => x != null && x !== '')
+                       .join('-')
+                   )}</strong>`
+                 : ''
+             }
+           </div>`
+        : '';
+
+    const acreditationCard = editing
+      ? acreInfo
+      : `
+        <div class="card border mt-3">
+          <div class="card-header py-2 fw-semibold">Forma de Acreditación</div>
+          <div class="card-body py-2">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label small mb-0" for="nv-acre-tipo">Forma de Cobrarlo <span class="text-danger">*</span></label>
+                <select id="nv-acre-tipo" class="form-select form-select-sm">
+                  <option value="">— Seleccione —</option>
+                  <option value="CAJA">CAJA</option>
+                  <option value="BANCO">BANCO</option>
+                </select>
+              </div>
+              <div class="col-md-6 d-none" id="nv-acre-codigo-wrap">
+                <label class="form-label small mb-0" id="nv-acre-codigo-label" for="nv-acre-codigo">Destino <span class="text-danger">*</span></label>
+                <select id="nv-acre-codigo" class="form-select form-select-sm" disabled>
+                  <option value="">— Seleccione forma —</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>`;
 
     const result = await Swal.fire({
       ...CatalogosUI.modalBase(),
       title: editing ? `Editar vale #${row.ID}` : 'Nuevo vale a empleado',
-      width: 520,
+      width: 560,
       html: `
         <div class="text-start">
           <div class="mb-2">
@@ -323,13 +413,6 @@ const NominaValesView = {
             <select id="nv-empleado" class="form-select form-select-sm">
               <option value="">— Seleccione —</option>
               ${empOpts}
-            </select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-0" for="nv-caja">Caja <span class="text-danger">*</span></label>
-            <select id="nv-caja" class="form-select form-select-sm">
-              <option value="">— Seleccione —</option>
-              ${cajaOpts}
             </select>
           </div>
           <div class="row g-2 mb-2">
@@ -349,25 +432,29 @@ const NominaValesView = {
             <label class="form-label small mb-0" for="nv-desc">Descripción</label>
             <input type="text" id="nv-desc" class="form-control form-control-sm" maxlength="250" placeholder="Opcional" value="${this.escapeHtml(descVal)}">
           </div>
+          ${acreditationCard}
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => document.getElementById('nv-empleado')?.focus(),
+      didOpen: () => {
+        document.getElementById('nv-empleado')?.focus();
+        if (!editing) {
+          const tipoEl = document.getElementById('nv-acre-tipo');
+          tipoEl?.addEventListener('change', () => {
+            this.fillAcreditacionDestino(tipoEl.value);
+          });
+        }
+      },
       preConfirm: () => {
         const CODEMP = document.getElementById('nv-empleado')?.value?.trim();
-        const CODCAJA = document.getElementById('nv-caja')?.value?.trim();
         const FECHA = document.getElementById('nv-fecha')?.value?.trim();
         const MONTO = Number(document.getElementById('nv-monto')?.value);
         const DESCRIPCION = document.getElementById('nv-desc')?.value?.trim() || '';
         if (!CODEMP) {
           Swal.showValidationMessage('Seleccione un empleado');
-          return false;
-        }
-        if (!CODCAJA) {
-          Swal.showValidationMessage('Seleccione una caja');
           return false;
         }
         if (!Number.isFinite(MONTO) || MONTO <= 0) {
@@ -378,11 +465,50 @@ const NominaValesView = {
           Swal.showValidationMessage('Ingrese la fecha');
           return false;
         }
-        return { CODEMP, CODCAJA, FECHA, MONTO, DESCRIPCION, USUARIO: this.usuario() };
+        if (editing) {
+          return { CODEMP, FECHA, MONTO, DESCRIPCION, USUARIO: this.usuario() };
+        }
+        const GENERADO_TIPO = document.getElementById('nv-acre-tipo')?.value?.trim().toUpperCase();
+        const GENERADO_CODIGO = document.getElementById('nv-acre-codigo')?.value?.trim();
+        if (GENERADO_TIPO !== 'CAJA' && GENERADO_TIPO !== 'BANCO') {
+          Swal.showValidationMessage('Seleccione la forma de cobrarlo');
+          return false;
+        }
+        if (!GENERADO_CODIGO) {
+          Swal.showValidationMessage(
+            GENERADO_TIPO === 'CAJA' ? 'Seleccione una caja abierta' : 'Seleccione una cuenta bancaria'
+          );
+          return false;
+        }
+        return {
+          CODEMP,
+          FECHA,
+          MONTO,
+          DESCRIPCION,
+          USUARIO: this.usuario(),
+          GENERADO_TIPO,
+          GENERADO_CODIGO,
+          CODCAJA: null,
+        };
       },
     });
 
     if (!result.isConfirmed || !result.value) return;
+
+    if (!editing) {
+      const tipo = result.value.GENERADO_TIPO;
+      const ok = await CatalogosUI.fireConfirm({
+        title: '¿Confirmar vale?',
+        text:
+          tipo === 'CAJA'
+            ? 'Se registrará el vale y se generará un documento en Vales de caja.'
+            : 'Se registrará el vale y se generará una salida en Documentos de banco.',
+        icon: 'question',
+        confirmText: 'Confirmar',
+      });
+      if (!ok) return;
+    }
+
     try {
       let data;
       if (editing) {
@@ -437,7 +563,11 @@ const NominaValesView = {
       F.toast('No hay cajas abiertas. Abra una caja para registrar el abono.', 'warning');
       return;
     }
-    const cajaOpts = this.buildCajasOptions(row.CODCAJA, row.DESCAJA);
+    const cajaDefault =
+      String(row.GENERADO_TIPO || '').toUpperCase() === 'CAJA' && row.GENERADO_CODIGO
+        ? row.GENERADO_CODIGO
+        : row.CODCAJA;
+    const cajaOpts = this.buildCajasOptions(cajaDefault, row.ACREDITACION_DESC || row.DESCAJA);
     const result = await Swal.fire({
       ...CatalogosUI.modalBase(),
       title: `Abonar vale #${row.ID}`,

@@ -95,10 +95,9 @@ const CorteCajaView = {
       ${statOrClick('Notas de crédito', this.formatMoney(r.totalDevoluciones || 0), 'devoluciones', 'text-danger')}
       ${statOrClick('Total venta (neto)', this.formatMoney(r.totalVenta), 'todos')}
       ${statOrClick('Crédito', this.formatMoney(r.totalCredito), 'credito')}
-      ${statOrClick('Recibos RCC', this.formatMoney(r.totalRecibos || 0), 'recibos', 'text-success')}
+      ${statOrClick('Recibos RCC/PRC', this.formatMoney(r.totalRecibos || 0), 'recibos', 'text-success')}
       ${this.renderStat('Efectivo inicial', this.formatMoney(r.efectivoInicial))}
-      ${statOrClick('Vales empleados (−)', this.formatMoney(r.totalVales || 0), 'vales', 'text-danger')}
-      ${statOrClick('Abonos vales (+)', this.formatMoney(r.totalPagosVales || 0), 'pagos-vales', 'text-success')}
+      ${statOrClick('Vales de caja (−)', this.formatMoney(r.totalValesCaja || 0), 'vales-caja', 'text-danger')}
       ${statOrClick('Retiros a banco (−)', this.formatMoney(r.totalRetiros || 0), 'retiros', 'text-danger')}
       ${statOrClick('Efectivo esperado', this.formatMoney(r.efectivoEsperado), 'efectivo', 'text-primary')}
       ${statOrClick('Tarjeta', this.formatMoney(r.fpTarjeta), 'tarjeta')}
@@ -232,11 +231,23 @@ const CorteCajaView = {
       </div>`;
   },
 
-  buildCortePrintHtml({ caja, corte, resumen, reportado, faltante, sobrante, obs, usuarioNombre }) {
-    const fecha = new Date().toLocaleString('es-GT', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+  buildCortePrintHtml({ caja, corte, resumen, reportado, faltante, sobrante, obs, usuarioNombre, fechaLabel }) {
+    let fecha = fechaLabel;
+    if (!fecha) {
+      if (corte?.FECHA) {
+        const h = Number(corte.HORA);
+        const m = Number(corte.MINUTO);
+        const horaTxt = Number.isFinite(h)
+          ? `${String(h).padStart(2, '0')}:${String(Number.isFinite(m) ? m : 0).padStart(2, '0')}`
+          : '';
+        fecha = `${this.formatFecha(corte.FECHA)}${horaTxt ? ` ${horaTxt}` : ''}`;
+      } else {
+        fecha = new Date().toLocaleString('es-GT', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+      }
+    }
     const money = (v) => PrintReport.escapeHtml(this.formatMoney(v));
     const row = (label, value, extraClass = '') =>
       `<tr><td>${PrintReport.escapeHtml(label)}</td><td class="text-end${extraClass ? ` ${extraClass}` : ''}">${value}</td></tr>`;
@@ -266,11 +277,10 @@ const CorteCajaView = {
           ${row('Notas de crédito (DEV/FNC)', money(resumen.totalDevoluciones || 0))}
           ${row('Total venta (neto)', money(resumen.totalVenta))}
           ${row('Ventas al crédito', money(resumen.totalCredito))}
-          ${row('Recibos RCC', money(resumen.totalRecibos || 0))}
+          ${row('Recibos RCC/PRC', money(resumen.totalRecibos || 0))}
           ${row('Efectivo inicial', money(resumen.efectivoInicial))}
           ${row('Efectivo (neto)', money(resumen.fpEfectivo))}
-          ${row('Vales a empleados (−)', money(resumen.totalVales || 0))}
-          ${row('Abonos a vales (+)', money(resumen.totalPagosVales || 0))}
+          ${row('Vales de caja (−)', money(resumen.totalValesCaja || 0))}
           ${row('Retiros a banco (−)', money(resumen.totalRetiros || 0))}
           ${row('Efectivo esperado', money(resumen.efectivoEsperado))}
           ${row('Tarjeta (sistema)', money(resumen.fpTarjeta))}
@@ -307,6 +317,312 @@ const CorteCajaView = {
     await PrintReport.openAndPrint(() => this.buildCortePrintHtml(payload), 'width=800,height=700');
   },
 
+  formatHoraCorte(hora, minuto) {
+    const h = Number(hora);
+    const m = Number(minuto);
+    if (!Number.isFinite(h)) return '—';
+    return `${String(h).padStart(2, '0')}:${String(Number.isFinite(m) ? m : 0).padStart(2, '0')}`;
+  },
+
+  mesOptionsHtml(selected) {
+    const names = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+    return names
+      .map((label, i) => {
+        const mes = i + 1;
+        const sel = mes === Number(selected) ? ' selected' : '';
+        return `<option value="${mes}"${sel}>${label}</option>`;
+      })
+      .join('');
+  },
+
+  anioOptionsHtml(selected) {
+    const cur = new Date().getFullYear();
+    const years = [];
+    for (let y = cur + 1; y >= 2020; y -= 1) years.push(y);
+    return years
+      .map((y) => {
+        const sel = y === Number(selected) ? ' selected' : '';
+        return `<option value="${y}"${sel}>${y}</option>`;
+      })
+      .join('');
+  },
+
+  renderHistorialRows(rows) {
+    if (!rows.length) {
+      return `<tr><td colspan="8" class="text-center text-muted py-4">No hay cortes en el período</td></tr>`;
+    }
+    return rows
+      .map(
+        (c) => `
+      <tr>
+        <td class="text-nowrap fw-semibold">#${this.escapeHtml(c.CORRELATIVO)}</td>
+        <td class="text-nowrap">${this.escapeHtml(this.formatFecha(c.FECHA))}</td>
+        <td class="text-nowrap">${this.escapeHtml(this.formatHoraCorte(c.HORA, c.MINUTO))}</td>
+        <td>${this.escapeHtml(c.DESCAJA || `Caja ${c.CODCAJA}`)}</td>
+        <td class="text-end">${this.escapeHtml(c.TOTALMOVIMIENTOS)}</td>
+        <td class="text-end">${this.escapeHtml(this.formatMoney(c.TOTALVENTA))}</td>
+        <td class="small">${this.escapeHtml(c.USUARIO || '—')}</td>
+        <td class="text-end text-nowrap">
+          <button type="button" class="btn btn-sm btn-outline-secondary me-1 btn-corte-hist-print"
+            data-id="${this.escapeHtml(c.ID)}" title="Reimprimir corte">
+            <i class="fa-solid fa-print"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-primary btn-corte-hist-docs"
+            data-id="${this.escapeHtml(c.ID)}" title="Documentos del corte">
+            <i class="fa-solid fa-list"></i>
+          </button>
+        </td>
+      </tr>`
+      )
+      .join('');
+  },
+
+  renderHistorialModalHtml(mes, anio, rows, loading = false) {
+    const body = loading
+      ? `<tr><td colspan="8" class="text-center text-muted py-4">
+          <i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando…
+        </td></tr>`
+      : this.renderHistorialRows(rows);
+    return `
+      <div class="corte-caja-historial-modal text-start">
+        <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+          <div>
+            <label class="form-label form-label-sm mb-0" for="corte-hist-mes">Mes</label>
+            <select id="corte-hist-mes" class="form-select form-select-sm">${this.mesOptionsHtml(mes)}</select>
+          </div>
+          <div>
+            <label class="form-label form-label-sm mb-0" for="corte-hist-anio">Año</label>
+            <select id="corte-hist-anio" class="form-select form-select-sm">${this.anioOptionsHtml(anio)}</select>
+          </div>
+          <button type="button" class="btn btn-sm btn-primary" id="corte-hist-aplicar">Aplicar</button>
+        </div>
+        <div class="table-responsive corte-caja-historial-table">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>No.</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Caja</th>
+                <th class="text-end">Movs.</th>
+                <th class="text-end">Venta</th>
+                <th>Usuario</th>
+                <th class="text-end"></th>
+              </tr>
+            </thead>
+            <tbody id="corte-hist-tbody">${body}</tbody>
+          </table>
+        </div>
+      </div>`;
+  },
+
+  renderHistorialGruposHtml(corte, grupos, totalDocs, totalGeneral) {
+    if (!grupos.length) {
+      return `
+        <p class="small text-muted mb-0">
+          Corte #${this.escapeHtml(corte?.CORRELATIVO)} no tiene documentos marcados (NOCORTE).
+          Si es un corte antiguo, ejecute la reparación de NOCORTE.
+        </p>`;
+    }
+    const sections = grupos
+      .map((g) => {
+        const rows = (g.rows || [])
+          .map((r) => {
+            const anulado = r.STATUS === 'A';
+            return `
+            <tr class="${anulado ? 'text-muted' : ''}">
+              <td class="text-nowrap small">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+              <td class="small fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+              <td class="small">${this.escapeHtml(r.CLIENTE || '—')}</td>
+              <td class="text-end small">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+              <td class="text-center small">${this.escapeHtml(r.STATUS)}</td>
+            </tr>`;
+          })
+          .join('');
+        return `
+          <section class="corte-hist-grupo mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-1">
+              <h6 class="mb-0 small fw-semibold">
+                ${this.escapeHtml(g.TIPODOC)}
+                <span class="text-muted fw-normal">— ${this.escapeHtml(g.DESDOC || '')}</span>
+              </h6>
+              <span class="small text-muted">${g.count} doc(s)${
+                g.anulados ? ` · ${g.anulados} anulado(s)` : ''
+              }</span>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Documento</th>
+                    <th>Cliente</th>
+                    <th class="text-end">Importe</th>
+                    <th class="text-center">St</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3" class="text-end fw-semibold small">Total</td>
+                    <td class="text-end fw-semibold small">${this.escapeHtml(this.formatMoney(g.total))}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>`;
+      })
+      .join('');
+    return `
+      <div class="corte-caja-hist-docs text-start">
+        <p class="small text-muted mb-2">
+          Corte #${this.escapeHtml(corte?.CORRELATIVO)} · ${this.escapeHtml(corte?.DESCAJA || '')}
+          · ${totalDocs} documento(s) · Total ${this.escapeHtml(this.formatMoney(totalGeneral))}
+        </p>
+        <div class="corte-caja-hist-docs-scroll">${sections}</div>
+      </div>`;
+  },
+
+  async fetchHistorialCortes(mes, anio) {
+    return F.fetchJson(this.apiUrl('/cortes', { mes: String(mes), anio: String(anio) }));
+  },
+
+  async fetchHistorialDetalle(id) {
+    return F.fetchJson(this.apiUrl(`/cortes/${encodeURIComponent(id)}`));
+  },
+
+  bindHistorialRowActions(ctx) {
+    const root = ctx.getRoot?.() || document;
+    root.querySelectorAll('.btn-corte-hist-print').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        if (!id) return;
+        try {
+          btn.disabled = true;
+          const data = await this.fetchHistorialDetalle(id);
+          const p = data.print;
+          if (!p?.corte) {
+            F.toast('No se pudo armar la reimpresión', 'warning');
+            return;
+          }
+          await this.imprimirCorte({
+            ...p,
+            corte: {
+              ...p.corte,
+              FECHA: p.corte.FECHA || data.corte?.FECHA,
+              HORA: p.corte.HORA ?? data.corte?.HORA,
+              MINUTO: p.corte.MINUTO ?? data.corte?.MINUTO,
+            },
+          });
+        } catch (err) {
+          F.toast(err.message || 'No se pudo reimprimir', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+    root.querySelectorAll('.btn-corte-hist-docs').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        if (!id || !ctx.showDocs) return;
+        try {
+          btn.disabled = true;
+          await ctx.showDocs(id);
+        } catch (err) {
+          F.toast(err.message || 'No se pudo cargar documentos', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  },
+
+  async showHistorialModal() {
+    const now = new Date();
+    let mes = now.getMonth() + 1;
+    let anio = now.getFullYear();
+
+    const hostEl = () => document.getElementById('corte-hist-host');
+
+    const showDocs = async (id) => {
+      const host = hostEl();
+      if (!host) return;
+      host.innerHTML = `
+        <div class="text-center text-muted py-4">
+          <i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando documentos…
+        </div>`;
+      const data = await this.fetchHistorialDetalle(id);
+      host.innerHTML = `
+        <div class="mb-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="corte-hist-back">
+            <i class="fa-solid fa-arrow-left me-1"></i>Volver al historial
+          </button>
+        </div>
+        ${this.renderHistorialGruposHtml(
+          data.corte,
+          data.grupos || [],
+          data.totalDocs || 0,
+          data.totalGeneral || 0
+        )}`;
+      document.getElementById('corte-hist-back')?.addEventListener('click', () => {
+        paintList();
+      });
+    };
+
+    const paintList = async () => {
+      const host = hostEl();
+      if (!host) return;
+      host.innerHTML = this.renderHistorialModalHtml(mes, anio, [], true);
+      const tbody = document.getElementById('corte-hist-tbody');
+      document.getElementById('corte-hist-aplicar')?.addEventListener('click', () => {
+        mes = Number(document.getElementById('corte-hist-mes')?.value) || mes;
+        anio = Number(document.getElementById('corte-hist-anio')?.value) || anio;
+        paintList();
+      });
+      if (!tbody) return;
+      try {
+        const data = await this.fetchHistorialCortes(mes, anio);
+        mes = Number(data.mes) || mes;
+        anio = Number(data.anio) || anio;
+        const mesEl = document.getElementById('corte-hist-mes');
+        const anioEl = document.getElementById('corte-hist-anio');
+        if (mesEl) mesEl.value = String(mes);
+        if (anioEl) anioEl.value = String(anio);
+        tbody.innerHTML = this.renderHistorialRows(data.rows || []);
+        this.bindHistorialRowActions({ getRoot: () => host, showDocs });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${this.escapeHtml(
+          err.message || 'Error al cargar'
+        )}</td></tr>`;
+      }
+    };
+
+    await Swal.fire({
+      ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+      title: 'Historial de cortes',
+      width: '56rem',
+      html: '<div id="corte-hist-host" class="corte-caja-historial-modal text-start"></div>',
+      confirmButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.aceptarButtonHtml('Cerrar') : 'Cerrar',
+      showCancelButton: false,
+      customClass: {
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase().customClass : {}),
+        popup: 'modal-catalogo corte-caja-historial-swal',
+      },
+      didOpen: () => {
+        paintList();
+      },
+    });
+  },
+
   async fetchMuestraDatosConfig() {
     try {
       const opcion = encodeURIComponent('MUESTRA DATOS EN CORTE DE CAJA');
@@ -331,15 +647,14 @@ const CorteCajaView = {
       ventas: 'Ventas brutas (facturas)',
       credito: 'Facturas al crédito',
       contado: 'Ventas al contado',
-      recibos: 'Recibos de pago (RCC)',
+      recibos: 'Recibos de pago (RCC / PRC)',
       efectivo: 'Documentos con efectivo',
       devoluciones: 'Notas de crédito (DEV, FNC)',
       tarjeta: 'Pagos con tarjeta',
       deposito: 'Pagos con depósito',
       cheque: 'Pagos con cheque',
       anuladas: 'Facturas anuladas (referencia)',
-      vales: 'Vales a empleados (−)',
-      'pagos-vales': 'Abonos a vales (+)',
+      'vales-caja': 'Vales de caja (−)',
       retiros: 'Retiros de efectivo a banco (−)',
     };
     return map[filtro] || 'Documentos';
@@ -349,25 +664,25 @@ const CorteCajaView = {
     return this.formatFecha(value);
   },
 
-  renderValesModalHtml(tipo, rows) {
-    const isPagos = tipo === 'pagos';
+  renderValesCajaModalHtml(rows) {
     if (!rows.length) {
-      return `<p class="text-muted small mb-0 text-center py-3">Sin ${isPagos ? 'abonos' : 'vales'} pendientes en esta caja.</p>`;
+      return '<p class="text-muted small mb-0 text-center py-3">Sin vales de caja pendientes en esta sesión.</p>';
     }
     let total = 0;
     const body = rows
       .map((r) => {
-        const monto = Number(r.MONTO) || 0;
+        const monto = Number(r.IMPORTE ?? r.MONTO) || 0;
         total += monto;
         return `
-        <tr data-row-id="${this.escapeHtml(r.ID)}">
-          <td>${this.escapeHtml(r.ID)}</td>
+        <tr data-row-id="${this.escapeHtml(r.NOVALE || r.ID)}">
+          <td>${this.escapeHtml(r.NOVALE || r.ID)}</td>
           <td class="text-nowrap">${this.escapeHtml(this.formatFechaCorta(r.FECHA))}</td>
-          <td>${this.escapeHtml(r.NOMEMPLEADO || r.CODEMP || '—')}</td>
-          <td class="small">${this.escapeHtml(isPagos ? `Vale #${r.IDVALE}` : r.DESCRIPCION || '—')}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(monto))}</td>
+          <td>${this.escapeHtml(r.TIPO || '—')}</td>
+          <td>${this.escapeHtml(r.RECIBE || '—')}</td>
+          <td class="small">${this.escapeHtml(r.DESCRIPCION || '—')}</td>
+          <td class="text-end text-danger">${this.escapeHtml(this.formatMoney(monto))}</td>
           <td class="text-end">
-            <button type="button" class="btn btn-sm btn-outline-secondary corte-vale-print" title="Imprimir">
+            <button type="button" class="btn btn-sm btn-outline-secondary corte-vale-caja-print" title="Imprimir">
               <i class="fa-solid fa-print"></i>
             </button>
           </td>
@@ -375,23 +690,24 @@ const CorteCajaView = {
       })
       .join('');
     return `
-      <div class="table-responsive" style="max-height: 22rem;" id="corte-vales-detalle-wrap">
+      <div class="table-responsive" style="max-height: 22rem;" id="corte-vales-caja-detalle-wrap">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead class="table-light sticky-top">
             <tr>
-              <th>ID</th>
+              <th>#</th>
               <th>Fecha</th>
-              <th>Empleado</th>
-              <th>${isPagos ? 'Vale' : 'Descripción'}</th>
-              <th class="text-end">Monto</th>
+              <th>Tipo</th>
+              <th>Recibe</th>
+              <th>Descripción</th>
+              <th class="text-end">Importe</th>
               <th></th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
           <tfoot class="table-light">
             <tr>
-              <th colspan="4" class="text-end">${rows.length} registro(s)</th>
-              <th class="text-end">${this.escapeHtml(this.formatMoney(total))}</th>
+              <th colspan="5" class="text-end">${rows.length} registro(s)</th>
+              <th class="text-end text-danger">${this.escapeHtml(this.formatMoney(total))}</th>
               <th></th>
             </tr>
           </tfoot>
@@ -399,54 +715,31 @@ const CorteCajaView = {
       </div>`;
   },
 
-  async printCorteValeRow(tipo, row) {
-    if (!row || typeof NominaPrint === 'undefined') {
-      F.toast('Impresión no disponible', 'warning');
-      return;
-    }
-    if (tipo === 'pagos') {
-      await NominaPrint.printAbonoVale({
-        pago: row,
-        vale: {
-          ID: row.IDVALE,
-          CODEMP: row.CODEMP,
-          NOMEMPLEADO: row.NOMEMPLEADO,
-          DESCRIPCION: row.VALE_DESC,
-          MONTO: row.VALE_MONTO,
-          ABONOS: row.VALE_ABONOS,
-          SALDO: row.VALE_SALDO,
-          CODCAJA: row.CODCAJA,
-          DESCAJA: row.DESCAJA,
-        },
-      });
-      return;
-    }
-    await NominaPrint.printValeEmpleado(row);
-  },
-
-  async showValesDetalleModal(filtro) {
+  async showValesCajaDetalleModal() {
     const caja = this.selectedCaja();
     if (!caja || !this.isAbierta(caja)) return;
-    const tipo = filtro === 'pagos-vales' ? 'pagos' : 'vales';
     try {
-      const data = await F.fetchJson(this.apiUrl(`/${caja.CODCAJA}/vales-detalle`, { tipo }));
+      const data = await F.fetchJson(this.apiUrl(`/${caja.CODCAJA}/vales-caja-detalle`));
       const rows = data.rows || [];
       await Swal.fire({
         ...CatalogosUI.modalBase(),
-        title: this.filtroTitulo(filtro),
-        width: '42rem',
-        html: this.renderValesModalHtml(tipo, rows),
+        title: this.filtroTitulo('vales-caja'),
+        width: '48rem',
+        html: this.renderValesCajaModalHtml(rows),
         confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar'),
         showCancelButton: false,
         didOpen: () => {
-          document.getElementById('corte-vales-detalle-wrap')?.addEventListener('click', (e) => {
-            const btn = e.target.closest('.corte-vale-print');
+          document.getElementById('corte-vales-caja-detalle-wrap')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('.corte-vale-caja-print');
             if (!btn) return;
             const tr = btn.closest('tr[data-row-id]');
             const id = tr?.getAttribute('data-row-id');
-            const row = rows.find((r) => String(r.ID) === String(id));
-            if (!row) return;
-            this.printCorteValeRow(tipo, row).catch((err) =>
+            const row = rows.find((r) => String(r.NOVALE || r.ID) === String(id));
+            if (!row || typeof NominaPrint === 'undefined') {
+              F.toast('Impresión no disponible', 'warning');
+              return;
+            }
+            NominaPrint.printValeCaja(row).catch((err) =>
               F.toast(err.message || 'No se pudo imprimir', 'error')
             );
           });
@@ -458,8 +751,8 @@ const CorteCajaView = {
   },
 
   async showDocumentosModal(filtro) {
-    if (filtro === 'vales' || filtro === 'pagos-vales') {
-      return this.showValesDetalleModal(filtro);
+    if (filtro === 'vales-caja') {
+      return this.showValesCajaDetalleModal();
     }
     if (filtro === 'retiros') {
       return this.showRetirosDetalleModal();
@@ -866,14 +1159,21 @@ const CorteCajaView = {
       <div class="corte-caja-wrap w-100">
         <div class="card shadow-sm mb-0">
           <div class="card-body">
-            <h5 class="card-title mb-2">
-              <i class="fa-solid fa-money-check me-1 text-primary"></i>Corte de caja
-            </h5>
-            <p class="small text-muted mb-3">
-              Abra la caja al iniciar el turno (efectivo inicial). Al cerrarla se genera un registro en
-              <strong>CORTES</strong> con el resumen de movimientos del período.
-            </p>
-            <div class="row g-3 corte-caja-main-row">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+              <div>
+                <h5 class="card-title mb-2">
+                  <i class="fa-solid fa-money-check me-1 text-primary"></i>Corte de caja
+                </h5>
+                <p class="small text-muted mb-0">
+                  Abra la caja al iniciar el turno (efectivo inicial). Al cerrarla se genera un registro en
+                  <strong>CORTES</strong> con el resumen de movimientos del período.
+                </p>
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-corte-historial">
+                <i class="fa-solid fa-clock-rotate-left me-1"></i>Historial de cortes
+              </button>
+            </div>
+            <div class="row g-3 corte-caja-main-row mt-1">
               <div class="col-12 col-lg-3 col-xl-2">
                 <h6 class="small fw-semibold mb-2">Cajas</h6>
                 <div id="corte-caja-list">${this.renderCajasHtml()}</div>
@@ -883,6 +1183,14 @@ const CorteCajaView = {
           </div>
         </div>
       </div>`;
+  },
+
+  bindHeaderEvents() {
+    document.getElementById('btn-corte-historial')?.addEventListener('click', () => {
+      this.showHistorialModal().catch((err) =>
+        F.toast(err.message || 'No se pudo abrir el historial', 'error')
+      );
+    });
   },
 
   refreshPanels() {
@@ -947,20 +1255,33 @@ const CorteCajaView = {
     const caja = this.selectedCaja();
     if (!caja || this._loading) return;
 
+    const sugeridoRaw = Number(caja.EFECTIVO_PROXIMA_CAJA);
+    const sugerido = Number.isFinite(sugeridoRaw) && sugeridoRaw >= 0 ? sugeridoRaw : 0;
+    const sugeridoAttr = String(sugerido);
+    const hint =
+      sugerido > 0
+        ? `<p class="small text-muted mb-2 text-start">Sugerido según efectivo contado del último cierre: <strong>${this.escapeHtml(this.formatMoney(sugerido))}</strong></p>`
+        : '';
+
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase(),
       title: 'Abrir caja',
       html: `
-        <p class="small text-muted mb-3">${this.escapeHtml(caja.DESCAJA)}</p>
+        <p class="small text-muted mb-2">${this.escapeHtml(caja.DESCAJA)}</p>
+        ${hint}
         <label class="form-label small mb-0 text-start w-100" for="corte-abrir-efectivo">Efectivo inicial en caja</label>
-        <input type="number" id="corte-abrir-efectivo" class="form-control" min="0" step="0.01" value="0">
+        <input type="number" id="corte-abrir-efectivo" class="form-control" min="0" step="0.01" value="${this.escapeHtml(sugeridoAttr)}">
       `,
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Abrir caja'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
-      didOpen: () => document.getElementById('corte-abrir-efectivo')?.focus(),
+      didOpen: () => {
+        const input = document.getElementById('corte-abrir-efectivo');
+        input?.focus();
+        input?.select?.();
+      },
       preConfirm: () => {
         const v = Number(document.getElementById('corte-abrir-efectivo')?.value ?? 0);
         if (!Number.isFinite(v) || v < 0) {
@@ -1144,6 +1465,7 @@ const CorteCajaView = {
       await this.loadCajas();
       await this.loadResumen();
       container.innerHTML = this.renderHtml();
+      this.bindHeaderEvents();
       this.bindPanelEvents();
     } catch (err) {
       container.innerHTML = `

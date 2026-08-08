@@ -688,6 +688,17 @@ const DocumentosView = {
       return;
     }
 
+    if (typeof AutorizacionesUI !== 'undefined') {
+      const allowed = await AutorizacionesUI.gateAccionDocumento({
+        accion: 'anular',
+        coddoc,
+        correlativo,
+        tipodoc: row.TIPODOC,
+        label: this.docLabel(row),
+      });
+      if (!allowed) return;
+    }
+
     const auth = await this.confirmAnularFel(row);
     if (!auth) return;
 

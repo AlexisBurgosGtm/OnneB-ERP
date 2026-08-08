@@ -599,6 +599,20 @@ const FormatosImpresionView = {
       if (e.target.id === 'fi-preview-overlay') this.closePreviewModal();
     });
     root.querySelector('#fi-preview-print')?.addEventListener('click', () => {
+      if (typeof PrintReport !== 'undefined' && this._previewHtml) {
+        PrintReport.openAndPrint(
+          this._previewHtml,
+          PrintReport.maximizedFeatures ? PrintReport.maximizedFeatures() : undefined,
+          { ticket: isTicket, papel: isTicket ? 'TICKET' : 'CARTA' }
+        ).catch(() => {
+          const w = frame?.contentWindow;
+          if (w) {
+            w.focus();
+            w.print();
+          }
+        });
+        return;
+      }
       const w = frame?.contentWindow;
       if (w) {
         w.focus();

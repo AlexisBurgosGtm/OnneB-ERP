@@ -15,7 +15,7 @@ const router = express.Router();
 const EXPORT_COLUMNS = [
   { header: 'No.', key: 'LINEA', width: 6 },
   { header: 'Cuenta', key: 'CODCUENTA', width: 14 },
-  { header: 'Fecha', key: 'FECHA', width: 12 },
+  { header: 'Fecha', key: 'FECHA', width: 12, type: 'date' },
   { header: 'Documento', key: 'DOC_REF', width: 16 },
   { header: 'Glosa', key: 'GLOSA', width: 28 },
   { header: 'Debe', key: 'DEBE', width: 14, type: 'money' },
@@ -57,7 +57,7 @@ router.get('/export', async (req, res) => {
       .map((r) => ({
         LINEA: r.LINEA,
         CODCUENTA: r.CODCUENTA,
-        FECHA: r.FECHA ? String(r.FECHA).slice(0, 10) : '',
+        FECHA: r.FECHA || '',
         DOC_REF: r.DOC_REF || '',
         GLOSA: r.GLOSA || '',
         DEBE: r.DEBE ?? '',

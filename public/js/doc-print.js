@@ -51,9 +51,19 @@ const DocPrint = {
   layoutStyles(formato) {
     if (this.isTicket(formato)) {
       return `
-        @page { margin: 4mm; size: 80mm auto; }
-        body{font-family:Consolas,Monaco,monospace;padding:4mm 3mm;font-size:11px;color:#111;max-width:80mm;margin:0 auto}
-        .doc-print-sheet{max-width:80mm}
+        @page { size: 80mm auto; margin: 2mm; }
+        html{width:100%;margin:0;padding:0;box-sizing:border-box}
+        body{
+          font-family:Consolas,Monaco,monospace;
+          font-size:11px;color:#111;position:relative;
+          width:100%!important;max-width:none!important;
+          margin:0!important;padding:2mm 2.5mm!important;
+          box-sizing:border-box;
+        }
+        .doc-print-sheet,.fel-ticket{
+          width:100%!important;max-width:none!important;margin:0!important;
+          box-sizing:border-box;
+        }
         .report-header{margin-bottom:.5rem;border-bottom:1px dashed #999;padding-bottom:.4rem}
         .report-brand{flex-direction:column;align-items:center;text-align:center;gap:.25rem}
         .report-logo{max-height:42px;max-width:68px}
@@ -63,18 +73,36 @@ const DocPrint = {
         .doc-meta-grid{display:block}
         .doc-meta-item{margin-bottom:.15rem;font-size:10px}
         .doc-lines-table th,.doc-lines-table td{font-size:9px;padding:2px 3px}
-        .doc-lines-table .col-desc{max-width:9rem;word-break:break-word}
+        .doc-lines-table .col-desc{max-width:none;word-break:break-word}
         .doc-totals{font-size:10px}
         .doc-footer{margin-top:.5rem;font-size:9px;text-align:center;color:#555}
         table{width:100%;border-collapse:collapse;margin-top:.35rem}
         th,td{border:1px solid #ccc}
         th{background:#f3f3f3}
         .text-end{text-align:right}
+        @media print{
+          html,body{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+          body{padding:1mm 1.5mm!important;font-size:11px!important}
+        }
+        @media screen{
+          html,body{width:100%!important;max-width:none!important;margin:0!important;box-sizing:border-box}
+          body{padding:1.25rem 1.75rem!important;font-size:15px!important;line-height:1.35!important}
+          .doc-print-sheet,.fel-ticket{width:100%!important;max-width:none!important;margin:0!important}
+          .report-logo{max-height:72px!important;max-width:140px!important}
+          .report-empresa-nombre{font-size:1.35rem!important}
+          .report-title{font-size:1.1rem!important}
+          .report-subtitle,.doc-meta-item{font-size:14px!important}
+          .doc-lines-table th,.doc-lines-table td{font-size:13px!important;padding:6px 8px!important}
+          .doc-totals,.doc-totals-row{font-size:14px!important}
+          .doc-totals-row.grand{font-size:1.15rem!important}
+          .doc-footer{font-size:12px!important}
+        }
+        ${this.prioridadBadgeCss()}
       `;
     }
     return `
       @page { margin: 12mm; }
-      body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:0;font-size:12px;color:#1a1a1a;background:#fff}
+      body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:0;font-size:12px;color:#1a1a1a;background:#fff;position:relative}
       .doc-print-sheet{max-width:210mm;margin:0 auto}
       .report-header{margin-bottom:1rem;border-bottom:2px solid #1e3a5f;padding-bottom:.75rem}
       .report-brand{align-items:center}
@@ -96,6 +124,7 @@ const DocPrint = {
       table{width:100%;border-collapse:collapse}
       th,td{padding:5px 8px}
       .text-end{text-align:right}
+      ${this.prioridadBadgeCss()}
     `;
   },
 
@@ -151,6 +180,15 @@ const DocPrint = {
       this.metaItem('Cliente', h.DOC_NOMCLIE),
       this.metaItem('NIT', h.DOC_NIT),
       this.metaItem('Dirección', h.DOC_DIRCLIE),
+      this.metaItem('Tipo entrega', h.F_ENTREGA),
+      this.metaItem(
+        'Dirección de entrega',
+        (() => {
+          const dir = String(h.DIRENTREGA || '').trim();
+          if (!dir || dir.toUpperCase() === 'SN') return '';
+          return dir;
+        })()
+      ),
       this.metaItem('Vendedor', h.VENDEDOR || h.NOMEMPLEADO),
       this.metaItem('Tel. vendedor', h.VENDEDOR_TELEFONO || h.TELEFONOS),
       ...extraMeta.map((m) => this.metaItem(m.label, m.value)).filter(Boolean),
@@ -160,10 +198,12 @@ const DocPrint = {
 
     const obs = h.OBS ? `<p class="doc-obs"><em>${this.escapeHtml(h.OBS)}</em></p>` : '';
     const anulado = this.isAnulado(h) ? this.anuladoStampHtml() : '';
+    const prioridadBadge = this.prioridadBadgeHtml(h.PRIORIDAD);
 
     return `
       <div class="doc-print-sheet">
         ${anulado}
+        ${prioridadBadge}
         ${PrintReport.reportHeaderHtml({
           title,
           subtitleHtml: ticket ? '' : `<p class="mb-0">${this.escapeHtml(title)}</p>`,
@@ -187,7 +227,11 @@ const DocPrint = {
     const factura = data.factura || {};
     const fpago = data.fpago || {};
     const cliente = data.cliente || '—';
-    const facturaRef = `${abono.SERIEFAC || factura.CODDOC || ''} #${abono.NOFAC || factura.CORRELATIVO || ''}`.trim();
+    const facturas = Array.isArray(data.facturas) ? data.facturas.filter(Boolean) : null;
+    const multi = Boolean(facturas?.length);
+    const facturaRef = multi
+      ? `${facturas.length} factura(s)`
+      : `${abono.SERIEFAC || factura.CODDOC || ''} #${abono.NOFAC || factura.CORRELATIVO || ''}`.trim();
 
     const fpRows = [
       ['Efectivo', fpago.FPAGO_EFECTIVO],
@@ -206,33 +250,65 @@ const DocPrint = {
       this.metaItem('Recibo', `${abono.CODDOC || ''} #${abono.CORRELATIVO ?? ''}`),
       this.metaItem('Fecha', this.formatFecha(data.fecha || new Date())),
       this.metaItem('Cliente', cliente),
-      this.metaItem('Factura', facturaRef),
+      this.metaItem(multi ? 'Facturas' : 'Factura', facturaRef),
       this.metaItem('Usuario', data.usuario),
+      this.metaItem('NIT', data.nit),
+      fpago.FPAGO_DESCRIPCION ? this.metaItem('Detalle pago', fpago.FPAGO_DESCRIPCION) : '',
     ]
       .filter(Boolean)
       .join('');
+
+    let detalleHtml = '';
+    if (multi) {
+      const rows = facturas
+        .map(
+          (f) => `<tr>
+            <td class="text-nowrap">${this.escapeHtml(f.CODDOC || f.CODDOC_FAC || '')} #${this.escapeHtml(f.CORRELATIVO ?? f.CORRELATIVO_FAC ?? '')}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(f.ABONO ?? f.TOTALPRECIO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(f.DOC_SALDO ?? f.FAC_DOC_SALDO))}</td>
+          </tr>`
+        )
+        .join('');
+      detalleHtml = `
+        <table class="doc-lines-table" style="margin-top:.5rem">
+          <thead>
+            <tr>
+              <th>Factura</th>
+              <th class="text-end">Abono</th>
+              <th class="text-end">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } else {
+      detalleHtml = `
+        <div class="doc-totals-row" style="margin-top:.5rem">
+          <span>Saldo factura</span>
+          <span>${this.escapeHtml(this.formatMoney(factura.DOC_SALDO))}</span>
+        </div>`;
+    }
 
     return `
       <div class="doc-print-sheet">
         ${this.isAnulado(abono) || this.isAnulado(factura) ? this.anuladoStampHtml() : ''}
         ${PrintReport.reportHeaderHtml({
           title: 'Recibo de pago',
-          subtitleHtml: ticket ? '' : '<p class="mb-0">Recibo de pago a cliente</p>',
+          subtitleHtml: ticket
+            ? ''
+            : `<p class="mb-0">${multi ? 'Recibo de caja CXC' : 'Recibo de pago a cliente'}</p>`,
         })}
         <div class="doc-meta-grid">${meta}</div>
+        ${multi ? detalleHtml : ''}
         <div class="doc-totals">
           <div class="doc-totals-row grand">
             <span>Monto recibido</span>
             <span>${this.escapeHtml(this.formatMoney(abono.TOTALPRECIO || data.monto))}</span>
           </div>
           ${fpRows}
-          <div class="doc-totals-row" style="margin-top:.5rem">
-            <span>Saldo factura</span>
-            <span>${this.escapeHtml(this.formatMoney(factura.DOC_SALDO))}</span>
-          </div>
+          ${multi ? '' : detalleHtml}
         </div>
         ${data.obs ? `<p class="doc-obs"><em>${this.escapeHtml(data.obs)}</em></p>` : ''}
-        <div class="doc-footer">Recibo de pago — cuentas por cobrar</div>
+        <div class="doc-footer">${multi ? 'Recibo de caja CXC — cuentas por cobrar' : 'Recibo de pago — cuentas por cobrar'}</div>
       </div>`;
   },
 
@@ -254,12 +330,41 @@ const DocPrint = {
     return `left=0,top=0,width=${w},height=${h}`;
   },
 
+  printOptionsFor(formato) {
+    return this.isTicket(formato) ? { ticket: true, papel: 'TICKET' } : { ticket: false };
+  },
+
   isAnulado(header) {
     return String(header?.STATUS || '').trim().toUpperCase() === 'A';
   },
 
   anuladoStampHtml() {
     return `<div class="doc-anulado-stamp" aria-label="Anulado">ANULADO</div>`;
+  },
+
+  prioridadBadgeHtml(prioridad) {
+    const p = String(prioridad || '').trim().toUpperCase();
+    if (p !== 'BAJA' && p !== 'MEDIA' && p !== 'ALTA') return '';
+    const cls = p === 'ALTA' ? 'alta' : p === 'MEDIA' ? 'media' : 'baja';
+    return `<div class="doc-prioridad-badge doc-prioridad-badge--${cls}" aria-label="Prioridad ${this.escapeHtml(p)}">${this.escapeHtml(p)}</div>`;
+  },
+
+  prioridadBadgeCss() {
+    return `
+      .doc-prioridad-badge{
+        position:fixed;top:8px;right:12px;z-index:60;
+        padding:5px 12px;font-size:11px;font-weight:800;letter-spacing:.08em;
+        text-transform:uppercase;border-radius:4px;line-height:1.2;
+        box-shadow:0 1px 3px rgba(0,0,0,.12);
+        -webkit-print-color-adjust:exact;print-color-adjust:exact
+      }
+      .doc-prioridad-badge--baja{background:#86efac;color:#14532d}
+      .doc-prioridad-badge--media{background:#facc15;color:#713f12}
+      .doc-prioridad-badge--alta{background:#ef4444;color:#fff}
+      @media print{
+        .doc-prioridad-badge{position:absolute;top:4px;right:6px}
+      }
+    `;
   },
 
   /**
@@ -283,7 +388,7 @@ const DocPrint = {
       }),
     });
     if (!data?.html) return false;
-    await PrintReport.openAndPrint(data.html, this.windowFeaturesFor(papel));
+    await PrintReport.openAndPrint(data.html, this.windowFeaturesFor(papel), this.printOptionsFor(papel));
     return true;
   },
 
@@ -316,7 +421,8 @@ const DocPrint = {
           bodyHtml: this.buildDocumentHtml({ title, header, lines, extraMeta, footerNote }, fmt),
           formato: fmt,
         }),
-      this.windowFeaturesFor(fmt)
+      this.windowFeaturesFor(fmt),
+      this.printOptionsFor(fmt)
     );
   },
 
@@ -346,7 +452,8 @@ const DocPrint = {
           bodyHtml: this.buildReciboPagoHtml(data, fmt),
           formato: fmt,
         }),
-      this.windowFeaturesFor(fmt)
+      this.windowFeaturesFor(fmt),
+      this.printOptionsFor(fmt)
     );
   },
 };

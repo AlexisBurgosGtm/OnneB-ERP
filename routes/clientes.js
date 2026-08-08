@@ -81,10 +81,18 @@ function parseListQuery(req) {
   return { q, habilitado, limit };
 }
 
+function buildClientSearchLike(q) {
+  const raw = String(q || '').trim();
+  if (!raw) return null;
+  // Si el usuario escribe % o _, respeta el patrón LIKE tal cual.
+  if (raw.includes('%') || raw.includes('_')) return raw;
+  return `%${raw}%`;
+}
+
 function bindListFilters(request, { empnit, q, habilitado }) {
   request.input('EMPNIT', sql.VarChar, empnit);
   request.input('q', sql.NVarChar, q || null);
-  request.input('qLike', sql.NVarChar, q ? `%${q}%` : null);
+  request.input('qLike', sql.NVarChar, buildClientSearchLike(q));
   request.input('habilitado', sql.VarChar, habilitado);
 }
 
@@ -104,6 +112,49 @@ const LIST_WHERE = `
       OR r.DESRUTA LIKE @qLike
     )
 `;
+
+function normalizeNitKey(nit) {
+  return String(nit || '').trim().toUpperCase();
+}
+
+/** CF y vacío pueden repetirse; cualquier otro NIT debe ser único por empresa. */
+function isNitExemptFromUnique(nit) {
+  const key = normalizeNitKey(nit);
+  return !key || key === 'CF';
+}
+
+/**
+ * @param {import('mssql').ConnectionPool} pool
+ * @param {string} empnit
+ * @param {string|null} nit
+ * @param {{ excludeCodcliente?: number|null }} [opts]
+ */
+async function assertNitUniqueInEmpresa(pool, empnit, nit, { excludeCodcliente = null } = {}) {
+  if (isNitExemptFromUnique(nit)) return;
+  const nitKey = normalizeNitKey(nit);
+  const request = pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('NIT', sql.NVarChar, nitKey);
+  let excludeSql = '';
+  if (excludeCodcliente != null && Number.isFinite(Number(excludeCodcliente))) {
+    request.input('CODCLIENTE', sql.Int, Number(excludeCodcliente));
+    excludeSql = 'AND CODCLIENTE <> @CODCLIENTE';
+  }
+  const result = await request.query(`
+    SELECT TOP 1 CODCLIENTE, NOMBRECLIENTE, NIT
+    FROM dbo.CLIENTES
+    WHERE EMPNIT = @EMPNIT
+      AND UPPER(LTRIM(RTRIM(ISNULL(NIT, '')))) = @NIT
+      ${excludeSql}
+  `);
+  const row = result.recordset[0];
+  if (!row) return;
+  const nombre = String(row.NOMBRECLIENTE || '').trim() || `#${row.CODCLIENTE}`;
+  const err = new Error(`Ya existe un cliente con el NIT ${nitKey}: ${nombre}`);
+  err.statusCode = 409;
+  throw err;
+}
 
 function todayDateOnly() {
   const d = new Date();
@@ -318,12 +369,16 @@ router.get('/export', async (req, res) => {
     ];
     sheet.getRow(1).font = { bold: true };
 
+    const { excelDateCellValue, EXCEL_DATE_NUMFMT } = require('../lib/excel-export');
     for (const row of result.recordset) {
       const r = { ...row };
-      if (r.FECHAINICIO) {
-        r.FECHAINICIO = new Date(r.FECHAINICIO);
-      }
+      r.FECHAINICIO = excelDateCellValue(r.FECHAINICIO);
       sheet.addRow(r);
+    }
+    sheet.getColumn('FECHAINICIO').numFmt = EXCEL_DATE_NUMFMT;
+    for (let r = 2; r <= sheet.rowCount; r += 1) {
+      const cell = sheet.getRow(r).getCell('FECHAINICIO');
+      if (cell.value instanceof Date) cell.numFmt = EXCEL_DATE_NUMFMT;
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -426,6 +481,7 @@ router.post('/', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertNitUniqueInEmpresa(pool, empnit, data.NIT);
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
     bindClienteRequest(request, data);
     request.input('HABILITADO', sql.VarChar, 'SI');
@@ -452,7 +508,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({ ok: true, CODCLIENTE: codcliente, ...data });
   } catch (err) {
     console.warn('[API POST /clientes]', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -472,6 +528,7 @@ router.put('/:codcliente', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    await assertNitUniqueInEmpresa(pool, empnit, data.NIT, { excludeCodcliente: codcliente });
     const request = pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -506,7 +563,7 @@ router.put('/:codcliente', async (req, res) => {
     res.json({ ok: true, CODCLIENTE: codcliente, ...data });
   } catch (err) {
     console.warn('[API PUT /clientes]', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

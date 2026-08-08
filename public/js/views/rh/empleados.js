@@ -4,8 +4,12 @@
 
 function empleadosValidateForm(data, isEdit = false) {
   if (!data.NOMEMPLEADO) return 'El nombre es obligatorio';
-  if (!String(data.USUARIO || '').trim()) return 'El usuario de acceso es obligatorio';
-  if (!isEdit && !String(data.CLAVE || '').trim()) return 'La clave de acceso es obligatoria';
+  const usuario = String(data.USUARIO || '').trim();
+  const clave = String(data.CLAVE || '').trim();
+  // Ambos vacíos: empleado sin acceso al sistema (permitido en alta y edición).
+  if (!usuario && !clave) return null;
+  if (!usuario) return 'El usuario es obligatorio si indica clave';
+  if (!clave) return 'La clave es obligatoria si indica usuario';
   return null;
 }
 
@@ -48,6 +52,7 @@ function empleadosMapFormToApi(data, isEdit = false) {
     SEGUNDO_APELLIDO: data.SEGUNDO_APELLIDO || null,
     APELLIDO_CASADA: data.APELLIDO_CASADA || null,
     NIT: data.NIT || null,
+    FECHA_INICIO: data.FECHA_INICIO || null,
   };
   if (!isEdit) {
     payload.ACTIVO = 'SI';
@@ -106,6 +111,24 @@ const EmpleadosView = {
   normalizeRowForForm(row = {}) {
     const cat = row.CODCATALOGO;
     const catStr = cat !== null && cat !== undefined && cat !== '' ? String(cat) : '';
+    const fechaInicio = (() => {
+      const v = row.FECHA_INICIO;
+      if (!v) return '';
+      if (typeof v === 'string') {
+        const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+      }
+      try {
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return '';
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${mo}-${day}`;
+      } catch {
+        return '';
+      }
+    })();
     return {
       ...row,
       CODEMPLEADO: row.CODEMPLEADO ?? '',
@@ -130,6 +153,7 @@ const EmpleadosView = {
       SEGUNDO_APELLIDO: row.SEGUNDO_APELLIDO ?? '',
       APELLIDO_CASADA: row.APELLIDO_CASADA ?? '',
       NIT: row.NIT ?? '',
+      FECHA_INICIO: fechaInicio,
     };
   },
 
@@ -459,6 +483,7 @@ const EmpleadosView = {
             <i class="fa-solid fa-right-to-bracket me-1" aria-hidden="true"></i>
             Acceso al inicio de sesión
           </p>
+          <p class="small text-muted mb-2">Deje usuario y clave vacíos si el empleado no usará el sistema.</p>
           ${this.row2(
             this.inputField('USUARIO', 'Usuario', r.USUARIO),
             this.inputField('CLAVE', 'Clave', r.CLAVE)
@@ -483,6 +508,9 @@ const EmpleadosView = {
             <div class="col-md-4">${this.inputField('SEGUNDO_APELLIDO', 'Segundo apellido', r.SEGUNDO_APELLIDO)}</div>
             <div class="col-md-4">${this.inputField('APELLIDO_CASADA', 'Apellido de casada', r.APELLIDO_CASADA)}</div>
             <div class="col-md-4">${this.inputField('NIT', 'NIT', r.NIT)}</div>
+            <div class="col-md-4">${this.inputField('DPI', 'DPI', r.DPI)}</div>
+            <div class="col-md-4">${this.inputField('IGSS', 'IGSS', r.IGSS)}</div>
+            <div class="col-md-4">${this.inputField('FECHA_INICIO', 'Fecha inicio', r.FECHA_INICIO, { type: 'date' })}</div>
           </div>
         </div>
       </div>
@@ -509,7 +537,6 @@ const EmpleadosView = {
       this.row2(codigoHtml, this.selectField('CODTIPOEMPLEADO', 'Tipo empleado', L.tipos, r.CODTIPOEMPLEADO)),
       this.fieldBlock(this.inputField('NOMEMPLEADO', 'Nombre completo', r.NOMEMPLEADO)),
       this.accesoCardHtml(r),
-      this.row2(this.inputField('DPI', 'DPI', r.DPI), this.inputField('IGSS', 'IGSS', r.IGSS)),
       this.fieldBlock(this.inputField('DIRECCION', 'Dirección', r.DIRECCION)),
     ].join('');
 
@@ -566,6 +593,7 @@ const EmpleadosView = {
       'SEGUNDO_APELLIDO',
       'APELLIDO_CASADA',
       'NIT',
+      'FECHA_INICIO',
     ];
     const data = {};
     names.forEach((name) => {
@@ -631,7 +659,7 @@ const EmpleadosView = {
     const confirm = await CatalogosUI.fireConfirm({
       title: '¿Eliminar empleado?',
       html: `<p class="mb-0">Se intentará eliminar a <strong>${this.escapeHtml(nombre)}</strong>.</p>
-        <p class="small text-muted mb-0 mt-2">Si tiene movimientos asociados, solo se deshabilitará.</p>`,
+        <p class="small text-muted mb-0 mt-2">Si tiene documentos asociados (CODVEN), solo se deshabilitará (ACTIVO = NO).</p>`,
       icon: 'warning',
       confirmText: 'Continuar',
       confirmClass: 'btn-catalogo-eliminar',
@@ -650,7 +678,7 @@ const EmpleadosView = {
         body: JSON.stringify({ pass: String(pass) }),
       });
       if (res?.action === 'disabled') {
-        F.toast(res.message || 'Empleado deshabilitado (tiene movimientos)', 'warning');
+        F.toast(res.message || 'Empleado deshabilitado (tiene documentos asociados)', 'warning');
       } else {
         F.toast('Empleado eliminado', 'success');
       }

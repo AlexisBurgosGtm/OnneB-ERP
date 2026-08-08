@@ -11,6 +11,7 @@ const {
 const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
 const {
   fetchProductoPrecioForLinea,
@@ -22,7 +23,7 @@ const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../l
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
-const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
+const { getSettingSino, getSettingTipofacFinalizado, SETTING_OPCION } = require('../lib/settings');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
   resolveEmpleadoCoddocPreferido,
@@ -829,10 +830,17 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
   if (!empnit) return;
   const coddoc = String(req.params.coddoc || '').trim();
   const correlativo = parseCorrelativo(req.params.correlativo);
-  const codprod = String(req.body?.CODPROD || '').trim();
-  const codmedida = String(req.body?.CODMEDIDA || '').trim();
+  const isPse = String(req.body?.tipo || '').trim().toLowerCase() === 'pse';
+  const desprodPse = String(req.body?.DESPROD || '').trim();
+  const codprod = isPse ? `PSE${Date.now()}` : String(req.body?.CODPROD || '').trim();
+  const codmedida = isPse ? 'UNIDAD' : String(req.body?.CODMEDIDA || '').trim();
   const cantidad = Number(req.body?.CANTIDAD ?? 1);
-  if (!coddoc || correlativo === null || !codprod || !codmedida) {
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+  if (isPse) {
+    if (!desprodPse) return res.status(400).json({ error: 'La descripción es obligatoria' });
+  } else if (!codprod || !codmedida) {
     return res.status(400).json({ error: 'CODPROD y CODMEDIDA son obligatorios' });
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
@@ -853,30 +861,64 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       return res.status(400).json({ error: 'El pedido ya no está en edición' });
     }
 
-    const found = await fetchProductoPrecioForLinea(pool, sql, {
-      empnit,
-      codprod,
-      codmedida,
-    });
-    if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
-    const prod = found.row;
-    const medidaLinea = found.codmedida;
-    const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
-    const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
-    const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
-    let precio = getPrecioFromPreciosRow(prod, campoPrecio);
-    const permiteCambiarPrecio = await getSettingSino(
-      pool,
-      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-    );
-    if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
-      const customPrecio = Number(req.body.PRECIO);
+    let desprod;
+    let medidaLinea;
+    let tipoprod;
+    let tipoprecio;
+    let costo;
+    let precio;
+    let equivale;
+    let exento;
+    let peso;
+
+    if (isPse) {
+      const customCosto = Number(req.body?.COSTO);
+      const customPrecio = Number(req.body?.PRECIO);
+      if (!Number.isFinite(customCosto) || customCosto < 0) {
+        return res.status(400).json({ error: 'Costo inválido' });
+      }
       if (!Number.isFinite(customPrecio) || customPrecio < 0) {
         return res.status(400).json({ error: 'Precio inválido' });
       }
+      desprod = desprodPse;
+      medidaLinea = 'UNIDAD';
+      tipoprod = 'S';
+      tipoprecio = 'P';
+      costo = roundMoney(customCosto);
       precio = roundMoney(customPrecio);
+      equivale = 1;
+      exento = 0;
+      peso = 0;
+    } else {
+      const found = await fetchProductoPrecioForLinea(pool, sql, {
+        empnit,
+        codprod,
+        codmedida,
+      });
+      if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
+      const prod = found.row;
+      medidaLinea = found.codmedida;
+      const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
+      ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
+      costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
+      precio = getPrecioFromPreciosRow(prod, campoPrecio);
+      const permiteCambiarPrecio = await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+      );
+      if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+        const customPrecio = Number(req.body.PRECIO);
+        if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+          return res.status(400).json({ error: 'Precio inválido' });
+        }
+        precio = roundMoney(customPrecio);
+      }
+      equivale = Number(prod.EQUIVALE) || 1;
+      desprod = prod.DESPROD;
+      exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
+      peso = pesoFromPreciosRow(prod);
     }
-    const equivale = Number(prod.EQUIVALE) || 1;
+
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
       costo,
@@ -884,8 +926,6 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       equivale
     );
     const parts = nowParts();
-    const exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
-    const peso = pesoFromPreciosRow(prod);
     const totalPeso = calcLinePeso(cantidad, peso);
 
     const transaction = new sql.Transaction(pool);
@@ -901,7 +941,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
         .input('CODPROD', sql.VarChar, codprod)
-        .input('DESPROD', sql.VarChar, prod.DESPROD)
+        .input('DESPROD', sql.VarChar, desprod)
         .input('CODMEDIDA', sql.VarChar, medidaLinea)
         .input('CANTIDAD', sql.Float, cantidad)
         .input('EQUIVALE', sql.Int, equivale)
@@ -942,7 +982,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         coddoc,
         correlativo,
         codprod,
-        desprod: prod.DESPROD,
+        desprod,
         totalUnidades,
         tipoprod,
         tipom,
@@ -1004,7 +1044,24 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       return res.status(400).json({ error: 'El pedido ya no está en edición' });
     }
     const line = lineRes.recordset[0];
-    const totals = calcLineTotals(cantidad, line.COSTO, line.PRECIO, line.EQUIVALE);
+
+    let precio = Number(line.PRECIO) || 0;
+    if (req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
+      const permiteCambiarPrecio = await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
+      );
+      if (permiteCambiarPrecio !== 'SI') {
+        return res.status(400).json({ error: 'No está permitido cambiar el precio' });
+      }
+      const customPrecio = Number(req.body.PRECIO);
+      if (!Number.isFinite(customPrecio) || customPrecio < 0) {
+        return res.status(400).json({ error: 'Precio inválido' });
+      }
+      precio = roundMoney(customPrecio);
+    }
+
+    const totals = calcLineTotals(cantidad, line.COSTO, precio, line.EQUIVALE);
     const totalPeso = calcLinePeso(cantidad, line.PESO);
 
     const transaction = new sql.Transaction(pool);
@@ -1027,6 +1084,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         .request()
         .input('ID', sql.Int, lineId)
         .input('CANTIDAD', sql.Float, cantidad)
+        .input('PRECIO', sql.Decimal(18, 3), precio)
         .input('TOTALUNIDADES', sql.Float, totals.totalUnidades)
         .input('TOTALCOSTO', sql.Decimal(18, 3), totals.totalCosto)
         .input('TOTALPRECIO', sql.Decimal(18, 3), totals.totalPrecio)
@@ -1034,6 +1092,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
         .query(`
           UPDATE dbo.DOCPRODUCTOS SET
             CANTIDAD = @CANTIDAD,
+            PRECIO = @PRECIO,
             TOTALUNIDADES = @TOTALUNIDADES,
             TOTALCOSTO = @TOTALCOSTO,
             TOTALPRECIO = @TOTALPRECIO,
@@ -1163,7 +1222,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   let tipofac;
   let prioridad;
   try {
-    tipofac = normalizeTipofac(req.body?.TIPOFAC ?? req.body?.tipofac);
+    const rawTipofac = req.body?.TIPOFAC ?? req.body?.tipofac;
+    if (rawTipofac === undefined || rawTipofac === null || String(rawTipofac).trim() === '') {
+      tipofac = null;
+    } else {
+      tipofac = normalizeTipofac(rawTipofac);
+    }
     prioridad = normalizePrioridad(req.body?.PRIORIDAD ?? req.body?.prioridad);
   } catch (parseErr) {
     return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
@@ -1171,6 +1235,9 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
+    if (tipofac === null) {
+      tipofac = await getSettingTipofacFinalizado(pool);
+    }
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -1331,7 +1398,10 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     await assertAdminPass(pool, pass);
-    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
+      usuario: usuarioFromReq(req),
+      motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,
+    });
     res.json(result);
   } catch (err) {
     if (err instanceof DocumentoDeleteError) {

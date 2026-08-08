@@ -85,4 +85,27 @@ const DocTipofacPrioridad = {
   readPrioridadFromDom(id = 'doc-finalizar-prioridad') {
     return String(document.getElementById(id)?.value || 'BAJA').trim().toUpperCase() || 'BAJA';
   },
+
+  OPCION_DEFAULT_TIPOFAC: 'DEFAULT TIPO DOCUMENTO FINALIZADO',
+  _defaultTipofacCache: null,
+
+  normalizeTipofac(value) {
+    const v = String(value || 'FEF').trim().toUpperCase();
+    return this.TIPOFAC_OPTS.some((o) => o.value === v) ? v : 'FEF';
+  },
+
+  async fetchDefaultTipofac(force = false) {
+    if (!force && this._defaultTipofacCache) return this._defaultTipofacCache;
+    try {
+      const params = new URLSearchParams({
+        opcion: this.OPCION_DEFAULT_TIPOFAC,
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(`/api/config/tipofac-finalizado?${params}`, { cache: 'no-store' });
+      this._defaultTipofacCache = this.normalizeTipofac(data.tipofac);
+    } catch {
+      this._defaultTipofacCache = 'FEF';
+    }
+    return this._defaultTipofacCache;
+  },
 };

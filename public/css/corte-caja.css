@@ -151,3 +151,22 @@
 .corte-denom-footer {
   border-top: 1px solid var(--bs-border-color);
 }
+
+.swal2-popup.corte-caja-historial-swal {
+  max-width: min(56rem, 96vw);
+}
+
+.corte-caja-historial-table {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.corte-caja-hist-docs-scroll {
+  max-height: 26rem;
+  overflow: auto;
+  text-align: left;
+}
+
+.corte-hist-grupo .table {
+  font-size: 0.85rem;
+}

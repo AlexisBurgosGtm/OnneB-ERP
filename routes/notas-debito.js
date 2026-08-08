@@ -35,9 +35,7 @@ const {
   STATUS_BLOQUEADO,
   STATUS_ANULADO,
   isStatusEditable,
-  isCorteCajaCerrado,
-  isDocumentoEditable,
-  SQL_DOCUMENTO_EDITABLE,
+  SQL_STATUS_EDITABLE,
   sqlPedidosListStatusFilter,
   resolvePedidosListStatusLabel,
 } = require('../lib/documento-status');
@@ -69,10 +67,7 @@ function parseCorrelativo(raw) {
   return Number.isNaN(n) ? null : n;
 }
 
-function mensajeDocumentoNoEditable(status, corte) {
-  if (isCorteCajaCerrado(corte)) {
-    return 'El documento está incluido en corte de caja y no se puede editar';
-  }
+function mensajeDocumentoNoEditable(status) {
   if (!isStatusEditable(status)) {
     return 'El pedido ya no está en edición';
   }
@@ -805,9 +800,9 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
 
     const docMetaPre = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
     if (!docMetaPre) return res.status(404).json({ error: 'Documento no encontrado' });
-    if (!isDocumentoEditable(docMetaPre.STATUS, docMetaPre.CORTE)) {
+    if (!isStatusEditable(docMetaPre.STATUS)) {
       return res.status(400).json({
-        error: mensajeDocumentoNoEditable(docMetaPre.STATUS, docMetaPre.CORTE),
+        error: mensajeDocumentoNoEditable(docMetaPre.STATUS),
       });
     }
 
@@ -863,7 +858,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
         const result = await txReq.query(`
           UPDATE dbo.DOCUMENTOS SET ${setSql.join(', ')}
           WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-            AND ${SQL_DOCUMENTO_EDITABLE}
+            AND ${SQL_STATUS_EDITABLE}
         `);
         if (result.rowsAffected[0] === 0) {
           await transaction.rollback();
@@ -908,8 +903,8 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       const pool = await req.app.locals.getDbPool();
       const docMeta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
       if (!docMeta) return res.status(404).json({ error: 'Documento no encontrado' });
-      if (!isDocumentoEditable(docMeta.STATUS, docMeta.CORTE)) {
-        return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS, docMeta.CORTE) });
+      if (!isStatusEditable(docMeta.STATUS)) {
+        return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS) });
       }
 
       const parts = nowParts();
@@ -952,8 +947,8 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     const docMeta = await loadDocumentoMeta(pool, empnit, coddoc, correlativo);
     if (!docMeta) return res.status(404).json({ error: 'Documento no encontrado' });
-    if (!isDocumentoEditable(docMeta.STATUS, docMeta.CORTE)) {
-      return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS, docMeta.CORTE) });
+    if (!isStatusEditable(docMeta.STATUS)) {
+      return res.status(400).json({ error: mensajeDocumentoNoEditable(docMeta.STATUS) });
     }
     const comCoddoc = String(docMeta.SERIEFAC || '').trim();
     const comCorrelativo = parseCorrelativo(docMeta.NOFAC);
@@ -1092,8 +1087,8 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
       `);
     if (!lineRes.recordset.length) return res.status(404).json({ error: 'Línea no encontrada' });
     const lineMeta = lineRes.recordset[0];
-    if (!isDocumentoEditable(lineMeta.STATUS, lineMeta.CORTE)) {
-      return res.status(400).json({ error: mensajeDocumentoNoEditable(lineMeta.STATUS, lineMeta.CORTE) });
+    if (!isStatusEditable(lineMeta.STATUS)) {
+      return res.status(400).json({ error: mensajeDocumentoNoEditable(lineMeta.STATUS) });
     }
     if (isLineaDescuentoCodprod(lineMeta.CODPROD)) {
       return res.status(400).json({ error: 'Las líneas de descuento no permiten cambiar la cantidad' });
@@ -1217,9 +1212,9 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
         return res.status(404).json({ error: 'Línea no encontrada' });
       }
       const line = lineRes.recordset[0];
-      if (!isDocumentoEditable(line.STATUS, line.CORTE)) {
+      if (!isStatusEditable(line.STATUS)) {
         await transaction.rollback();
-        return res.status(400).json({ error: mensajeDocumentoNoEditable(line.STATUS, line.CORTE) });
+        return res.status(400).json({ error: mensajeDocumentoNoEditable(line.STATUS) });
       }
       if (!isLineaDescuentoCodprod(line.CODPROD)) {
         await revertirMovimientoInventarioLinea(transaction, {
@@ -1272,6 +1267,16 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
   const felUudi = req.body?.FEL_UUDI !== undefined ? String(req.body.FEL_UUDI || '').trim() : null;
+  const hasFelFields =
+    req.body?.FEL_SERIE !== undefined ||
+    req.body?.FEL_NUMERO !== undefined ||
+    req.body?.FEL_FECHA !== undefined;
+  const felSerie =
+    req.body?.FEL_SERIE !== undefined ? String(req.body.FEL_SERIE || '').trim() : null;
+  const felNumero =
+    req.body?.FEL_NUMERO !== undefined ? String(req.body.FEL_NUMERO || '').trim() : null;
+  const felFecha =
+    req.body?.FEL_FECHA !== undefined ? String(req.body.FEL_FECHA || '').trim().slice(0, 10) : null;
   let codcaja = null;
   if (req.body?.CODCAJA !== undefined && req.body?.CODCAJA !== null && req.body?.CODCAJA !== '') {
     const parsed = parseInt(req.body.CODCAJA, 10);
@@ -1291,9 +1296,9 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         await transaction.rollback();
         return res.status(404).json({ error: 'Documento no encontrado' });
       }
-      if (!isDocumentoEditable(meta.STATUS, meta.CORTE)) {
+      if (!isStatusEditable(meta.STATUS)) {
         await transaction.rollback();
-        return res.status(400).json({ error: mensajeDocumentoNoEditable(meta.STATUS, meta.CORTE) });
+        return res.status(400).json({ error: mensajeDocumentoNoEditable(meta.STATUS) });
       }
       const serieFac = String(meta.SERIEFAC || '').trim();
       const noFac = String(meta.NOFAC || '').trim();
@@ -1302,19 +1307,41 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         return res.status(400).json({ error: 'La nota debe tener SERIEFAC y NOFAC para finalizar' });
       }
 
-      if (obs !== null) {
-        await transaction
+      if (obs !== null || hasFelFields) {
+        const upd = transaction
           .request()
           .input('EMPNIT', sql.VarChar, empnit)
           .input('CODDOC', sql.VarChar, coddoc)
-          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-          .input('OBS', sql.VarChar, obs)
-          .query(`
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo);
+        const sets = [];
+        if (obs !== null) {
+          upd.input('OBS', sql.VarChar, obs);
+          sets.push('OBS = @OBS');
+        }
+        if (felSerie !== null) {
+          upd.input('FEL_SERIE', sql.VarChar, felSerie);
+          sets.push('FEL_SERIE = @FEL_SERIE');
+        }
+        if (felNumero !== null) {
+          upd.input('FEL_NUMERO', sql.VarChar, felNumero);
+          sets.push('FEL_NUMERO = @FEL_NUMERO');
+        }
+        if (felFecha !== null) {
+          if (felFecha && !/^\d{4}-\d{2}-\d{2}$/.test(felFecha)) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Fecha FEL inválida' });
+          }
+          upd.input('FEL_FECHA', sql.VarChar, felFecha || null);
+          sets.push('FEL_FECHA = @FEL_FECHA');
+        }
+        if (sets.length) {
+          await upd.query(`
             UPDATE dbo.DOCUMENTOS
-            SET OBS = @OBS
+            SET ${sets.join(', ')}
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-              AND ${SQL_DOCUMENTO_EDITABLE}
+              AND ${SQL_STATUS_EDITABLE}
           `);
+        }
       }
       if (felUudi !== null) {
         await transaction
@@ -1327,7 +1354,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
             UPDATE dbo.DOCUMENTOS
             SET FEL_UUDI = @FEL_UUDI
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-              AND ${SQL_DOCUMENTO_EDITABLE}
+              AND ${SQL_STATUS_EDITABLE}
           `);
       }
       if (codcaja !== null) {
@@ -1341,7 +1368,7 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
             UPDATE dbo.DOCUMENTOS
             SET CODCAJA = @CODCAJA
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-              AND ${SQL_DOCUMENTO_EDITABLE}
+              AND ${SQL_STATUS_EDITABLE}
           `);
       }
       const lineCount = await transaction
@@ -1439,10 +1466,6 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
       if (!isStatusEditable(meta.STATUS)) {
         await transaction.rollback();
         return res.status(400).json({ error: 'El documento no está operado y no se puede eliminar' });
-      }
-      if (isCorteCajaCerrado(meta.CORTE)) {
-        await transaction.rollback();
-        return res.status(400).json({ error: 'El documento está incluido en corte de caja; no se puede eliminar' });
       }
 
       const serieFac = String(meta.SERIEFAC || '').trim();

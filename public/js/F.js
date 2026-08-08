@@ -41,14 +41,23 @@ let F = {
   },
 
   /**
-   * Fecha en formato dd-mm-yyyy
+   * Fecha en formato dd-mm-yyyy (día calendario; sin desfase UTC en cadenas YYYY-MM-DD).
    */
   formatDateDD(date = new Date()) {
+    if (date == null || date === '') return '—';
+    if (typeof DocFecha !== 'undefined' && DocFecha.formatDisplay) {
+      const disp = DocFecha.formatDisplay(date, '');
+      if (disp) return disp.replace(/\//g, '-');
+    }
+    if (typeof date === 'string') {
+      const m = date.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    }
     const d = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(d.getTime())) return '—';
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const year = d.getUTCFullYear();
     return `${day}-${month}-${year}`;
   },
 
@@ -56,7 +65,20 @@ let F = {
    * Formato de fecha local
    */
   formatDate(date = new Date(), locale = 'es-MX') {
+    if (typeof date === 'string') {
+      const m = date.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        return `${m[3]}/${m[2]}/${m[1]}`;
+      }
+    }
     const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return '—';
+    if (date instanceof Date || (typeof date === 'string' && /T00:00:00(\.\d+)?Z$/i.test(String(date)))) {
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const year = d.getUTCFullYear();
+      return `${day}/${month}/${year}`;
+    }
     return d.toLocaleDateString(locale, {
       year: 'numeric',
       month: '2-digit',

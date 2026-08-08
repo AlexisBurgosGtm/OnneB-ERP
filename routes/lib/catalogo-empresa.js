@@ -20,6 +20,7 @@ function sqlTypeFor(field) {
   if (field.type === 'float') return sql.Float;
   if (field.type === 'numeric') return sql.Decimal(18, 0);
   if (field.type === 'varcharmax') return sql.VarChar(sql.MAX);
+  if (field.type === 'date') return sql.Date;
   return sql.VarChar;
 }
 
@@ -30,6 +31,12 @@ function parseValue(field, raw) {
   }
   if (field.type === 'int') return Number(raw);
   if (field.type === 'float' || field.type === 'numeric') return Number(raw);
+  if (field.type === 'date') {
+    const s = String(raw).trim().slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
   return String(raw).trim();
 }
 

@@ -1,7 +1,8 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
-const { STATUS_OPERADO } = require('../lib/documento-status');
+const { STATUS_OPERADO, SQL_TIPODOC_REPORTES_SI } = require('../lib/documento-status');
+const { fechaIsoFromValue } = require('../lib/documento-fecha');
 const {
   SQL_TIPODOC_CUENTAS_COBRAR_IN,
   SQL_DOC_SALDO_PENDIENTE,
@@ -49,8 +50,8 @@ function mapRow(r) {
   // DOC_SALDO ya es el restante; SALDO_PENDIENTE del SQL debe coincidir.
   const saldoPendiente = toNumber(r.SALDO_PENDIENTE ?? docSaldo);
   return {
-    FECHA: r.FECHA ?? null,
-    VENCIMIENTO: r.VENCIMIENTO ?? null,
+    FECHA: fechaIsoFromValue(r.FECHA) || null,
+    VENCIMIENTO: fechaIsoFromValue(r.VENCIMIENTO) || null,
     CODDOC: r.CODDOC ?? null,
     DESDOC: r.DESDOC ?? null,
     TIPODOC: r.TIPODOC ?? null,
@@ -106,6 +107,7 @@ router.get('/documentos', async (req, res) => {
         AND t.TIPODOC IN (${SQL_TIPODOC_CUENTAS_COBRAR_IN})
         AND d.STATUS = '${STATUS_OPERADO}'
         AND ISNULL(d.CONCRE, 'CON') = 'CRE'
+        AND ${SQL_TIPODOC_REPORTES_SI}
         AND ${SQL_DOC_SALDO_PENDIENTE_POSITIVO}
         AND (
           @q IS NULL OR @q = ''
@@ -221,7 +223,7 @@ router.get('/consolidado-productos', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     const data = await fetchConsolidadoProductos(pool, sql, empnit, {
       tipodocSqlIn: SQL_TIPODOC_CUENTAS_COBRAR_IN,
-      saldoWhereSql: SQL_DOC_SALDO_PENDIENTE_POSITIVO,
+      saldoWhereSql: `${SQL_DOC_SALDO_PENDIENTE_POSITIVO} AND ${SQL_TIPODOC_REPORTES_SI}`,
     });
     res.json({ ...data, empnit });
   } catch (err) {

@@ -731,6 +731,22 @@ body.pos-product-sheet-open {
   white-space: nowrap;
 }
 
+.pos-product-item .pos-prod-cost {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.2;
+  margin-top: 0.1rem;
+}
+
+.pos-cart-price-btn {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
 .pos-cart-exist {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

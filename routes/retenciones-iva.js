@@ -11,6 +11,8 @@ const {
   loadDocumento,
   searchProveedores,
   parseCorrelativo,
+  listComprasCreditoPendientesProveedor,
+  loadCalcParams,
 } = require('../lib/retenciones-iva');
 const { parsePeriod, requireEmpNit } = require('../lib/libro-contable-utils');
 
@@ -25,7 +27,8 @@ router.get('/config', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     const setup = await ensureRetencionesIvaSetup(pool, empnit);
     const tipo = await getTipoDocRtv(pool, empnit);
-    res.json({ tipo, setup });
+    const calc = await loadCalcParams(pool, 'iva');
+    res.json({ tipo, setup, calc });
   } catch (err) {
     console.warn('[API GET /retenciones-iva/config]', err.message);
     res.status(500).json({ error: err.message });
@@ -60,6 +63,30 @@ router.get('/proveedores', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /retenciones-iva/proveedores]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/proveedores/:codprov/compras-pendientes', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprov = parseInt(req.params.codprov, 10);
+  if (!Number.isFinite(codprov) || codprov <= 0) {
+    return res.status(400).json({ error: 'Proveedor inválido' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listComprasCreditoPendientesProveedor(pool, empnit, codprov, {
+      q: String(req.query.q || '').trim(),
+      limit: req.query.limit,
+    });
+    const calc = await loadCalcParams(pool, 'iva');
+    res.json({ rows, calc });
+  } catch (err) {
+    const code = err.statusCode || 500;
+    if (code >= 500) console.warn('[API GET /retenciones-iva/.../compras-pendientes]', err.message);
+    res.status(code).json({ error: err.message });
   }
 });
 

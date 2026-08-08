@@ -431,6 +431,16 @@ const ListaFacturasView = {
       F.toast('Esta factura no se puede anular', 'warning');
       return;
     }
+    if (typeof AutorizacionesUI !== 'undefined') {
+      const allowed = await AutorizacionesUI.gateAccionDocumento({
+        accion: 'anular',
+        coddoc,
+        correlativo,
+        tipodoc: row.TIPODOC,
+        label: `${coddoc} #${correlativo}`,
+      });
+      if (!allowed) return;
+    }
     if (this.puedeAnularFel(row)) {
       await this.anularFel(row);
       return;

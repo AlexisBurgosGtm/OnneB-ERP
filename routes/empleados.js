@@ -6,8 +6,16 @@ const { assertAccesoUnico, normalizeUsuario, normalizeClave } = require('../lib/
 async function validateEmpleadoAcceso(pool, data, exclude) {
   const usuario = normalizeUsuario(data.USUARIO);
   const clave = normalizeClave(data.CLAVE);
-  if (!usuario) return 'USUARIO es obligatorio';
-  if (clave === '') return 'CLAVE es obligatoria';
+  // Empleados sin acceso al sistema: ambos vacíos → guardar sin validar unicidad.
+  if (!usuario && clave === '') {
+    data.USUARIO = null;
+    data.CLAVE = null;
+    return null;
+  }
+  if (!usuario) return 'USUARIO es obligatorio si se indica clave';
+  if (clave === '') return 'CLAVE es obligatoria si se indica usuario';
+  data.USUARIO = usuario;
+  data.CLAVE = clave;
   try {
     await assertAccesoUnico(pool, usuario, clave, exclude);
   } catch (err) {
@@ -16,8 +24,8 @@ async function validateEmpleadoAcceso(pool, data, exclude) {
   return null;
 }
 
-/** Documentos u otros registros que referencian al empleado. */
-async function empleadoTieneMovimientos(pool, empnit, codempleado) {
+/** Documentos que referencian al empleado como vendedor (CODVEN). */
+async function empleadoTieneDocumentos(pool, empnit, codempleado) {
   const result = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -27,43 +35,7 @@ async function empleadoTieneMovimientos(pool, empnit, codempleado) {
       FROM dbo.DOCUMENTOS
       WHERE EMPNIT = @EMPNIT AND CODVEN = @CODEMPLEADO
     `);
-  if (result.recordset.length) return true;
-
-  try {
-    const nomina = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODEMPLEADO', sql.Int, codempleado)
-      .query(`
-        SELECT TOP 1 1 AS X
-        FROM dbo.NOMINA_EMPLEADO
-        WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-        UNION ALL
-        SELECT TOP 1 1 AS X
-        FROM dbo.NOMINA_DETALLE
-        WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
-      `);
-    if (nomina.recordset.length) return true;
-  } catch (_) {
-    /* tablas de nómina pueden no existir en todas las instalaciones */
-  }
-
-  try {
-    const km = await pool
-      .request()
-      .input('EMPNIT', sql.VarChar, empnit)
-      .input('CODEMPLEADO', sql.Int, codempleado)
-      .query(`
-        SELECT TOP 1 1 AS X
-        FROM dbo.KILOMETRAJES
-        WHERE EMPNIT = @EMPNIT AND CODEMP = @CODEMPLEADO
-      `);
-    if (km.recordset.length) return true;
-  } catch (_) {
-    /* opcional */
-  }
-
-  return false;
+  return result.recordset.length > 0;
 }
 
 const router = createCatalogoRouter({
@@ -102,6 +74,7 @@ const router = createCatalogoRouter({
     'SEGUNDO_APELLIDO',
     'APELLIDO_CASADA',
     'NIT',
+    'FECHA_INICIO',
   ],
   fields: [
     { name: 'NOMEMPLEADO', type: 'varchar', required: true },
@@ -128,6 +101,7 @@ const router = createCatalogoRouter({
     { name: 'SEGUNDO_APELLIDO', type: 'varchar' },
     { name: 'APELLIDO_CASADA', type: 'varchar' },
     { name: 'NIT', type: 'varchar' },
+    { name: 'FECHA_INICIO', type: 'date' },
   ],
   insertFields: [
     'NOMEMPLEADO',
@@ -154,6 +128,7 @@ const router = createCatalogoRouter({
     'SEGUNDO_APELLIDO',
     'APELLIDO_CASADA',
     'NIT',
+    'FECHA_INICIO',
   ],
   updateFields: [
     'NOMEMPLEADO',
@@ -179,6 +154,7 @@ const router = createCatalogoRouter({
     'SEGUNDO_APELLIDO',
     'APELLIDO_CASADA',
     'NIT',
+    'FECHA_INICIO',
   ],
   async validateInsert(pool, empnit, data) {
     return validateEmpleadoAcceso(pool, data);
@@ -203,8 +179,8 @@ const router = createCatalogoRouter({
       return { error: 'Empleado no encontrado', statusCode: 404 };
     }
 
-    const tieneMovimientos = await empleadoTieneMovimientos(pool, empnit, idValue);
-    if (tieneMovimientos) {
+    const tieneDocumentos = await empleadoTieneDocumentos(pool, empnit, idValue);
+    if (tieneDocumentos) {
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -219,7 +195,7 @@ const router = createCatalogoRouter({
         CODEMPLEADO: idValue,
         ACTIVO: 'NO',
         message:
-          'El empleado tiene movimientos asociados; no se eliminó y quedó deshabilitado (ACTIVO = NO).',
+          'El empleado tiene documentos asociados; no se eliminó y quedó deshabilitado (ACTIVO = NO).',
       };
     }
 

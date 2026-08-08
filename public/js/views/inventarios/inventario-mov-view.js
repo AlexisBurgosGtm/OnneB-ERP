@@ -1013,7 +1013,10 @@ function createInventarioMovView(cfg) {
         {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pass: String(pass) }),
+          body: JSON.stringify({
+            pass: String(pass),
+            USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+          }),
         }
       );
       F.toast('Documento eliminado', 'success');

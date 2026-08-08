@@ -1,0 +1,119 @@
+/* Reportes → Auditoría Cajas */
+.audcaja-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100vh - 7.5rem);
+  max-height: calc(100vh - 7.5rem);
+}
+
+.audcaja-table {
+  font-size: 0.78rem;
+}
+
+.audcaja-table th,
+.audcaja-table td {
+  padding: 0.28rem 0.45rem;
+  vertical-align: middle;
+}
+
+.audcaja-list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.audcaja-detail {
+  gap: 0.5rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.audcaja-detail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-right: 0.15rem;
+  padding-bottom: 0.25rem;
+}
+
+.audcaja-grupo {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.65rem 0.35rem;
+  margin-bottom: 0;
+  background: var(--bs-body-bg, #fff);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.audcaja-grupo-head {
+  flex: 0 0 auto;
+}
+
+.audcaja-grupo-title {
+  font-size: 0.95rem;
+}
+
+.audcaja-grupo-search {
+  min-width: 10rem;
+  max-width: 16rem;
+}
+
+.audcaja-grupo-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  margin-top: 0.35rem;
+}
+
+.audcaja-grupo-scroll .sticky-top {
+  z-index: 2;
+  background: var(--bs-body-bg, #fff);
+}
+
+.audcaja-grupo-footer {
+  flex: 0 0 auto;
+  margin-top: 0;
+  border-top: 2px solid var(--bs-border-color, #dee2e6);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.audcaja-grupo-footer .table {
+  margin-bottom: 0;
+}
+
+.audcaja-grupo-footer td {
+  border-bottom: 0;
+}
+
+.audcaja-corte-row {
+  cursor: pointer;
+}
+
+.audcaja-row-anulado {
+  color: #a3a3a3;
+  text-decoration: line-through;
+}
+
+.audcaja-tipodoc-select,
+.audcaja-concre-select {
+  min-width: 11rem;
+  max-width: 22rem;
+}
+
+.audcaja-detail .pos-list-header {
+  margin-bottom: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.audcaja-badge-concre {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff !important;
+}

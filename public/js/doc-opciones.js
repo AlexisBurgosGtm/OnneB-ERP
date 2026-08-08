@@ -409,6 +409,15 @@ const DocOpciones = {
   },
 
   async eliminar(coddoc, correlativo, label) {
+    if (typeof AutorizacionesUI !== 'undefined') {
+      const allowed = await AutorizacionesUI.gateAccionDocumento({
+        accion: 'eliminar',
+        coddoc,
+        correlativo,
+        label: label || `${coddoc} #${correlativo}`,
+      });
+      if (!allowed) return false;
+    }
     const pass = await CatalogosUI.confirmEliminarDocumento({
       label,
       tipo: 'documento',
@@ -417,7 +426,10 @@ const DocOpciones = {
     await F.fetchJson(this.deleteUrl(coddoc, correlativo), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass: String(pass) }),
+      body: JSON.stringify({
+        pass: String(pass),
+        USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+      }),
     });
     F.toast('Documento eliminado', 'success');
     return true;
@@ -447,13 +459,24 @@ const DocOpciones = {
       return false;
     }
 
+    if (typeof AutorizacionesUI !== 'undefined') {
+      const allowed = await AutorizacionesUI.gateAccionDocumento({
+        accion: 'editar',
+        coddoc,
+        correlativo,
+        tipodoc: t,
+        label: `${coddoc} #${correlativo}`,
+      });
+      if (!allowed) return false;
+    }
+
     const mainContent = document.getElementById('main-content');
     if (!mainContent) return false;
 
     this.activateMenuLink(cfg.menu);
     mainContent.className = 'main-content flex-grow-1 d-flex p-2 p-md-3';
     await view.load(mainContent);
-    await view.showEditor(coddoc, correlativo);
+    await view.showEditor(coddoc, correlativo, { skipAuth: true });
     return true;
   },
 };

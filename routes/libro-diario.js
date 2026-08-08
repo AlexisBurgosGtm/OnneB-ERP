@@ -14,7 +14,7 @@ const router = express.Router();
 
 const EXPORT_COLUMNS = [
   { header: 'No.', key: 'LINEA', width: 6 },
-  { header: 'Fecha', key: 'FECHA', width: 12 },
+  { header: 'Fecha', key: 'FECHA', width: 12, type: 'date' },
   { header: 'Documento', key: 'DOC_REF', width: 16 },
   { header: 'Tipo', key: 'TIPODOC', width: 8 },
   { header: 'Pago', key: 'TIPOPAGO', width: 10 },
@@ -61,10 +61,7 @@ router.get('/export', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const data = await listLibroDiario(pool, require('mssql'), empnit, period.mes, period.anio);
-    const exportRows = (data.rows || []).map((r) => ({
-      ...r,
-      FECHA: r.FECHA ? String(r.FECHA).slice(0, 10) : '',
-    }));
+    const exportRows = (data.rows || []).map((r) => ({ ...r }));
     const t = data.totals || {};
     const buffer = await buildLibroWorkbook({
       sheetName: 'Libro Diario',

@@ -13,6 +13,87 @@
   padding-bottom: 1.25rem;
 }
 
+.main-content > .prc-editor-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.prc-editor-wrap {
+  gap: 0.65rem;
+}
+
+.prc-editor-wrap .prc-editor-header,
+.prc-editor-wrap .prc-editor-meta {
+  flex-shrink: 0;
+}
+
+.prc-editor-wrap .prc-editor-meta {
+  position: relative;
+  z-index: 40;
+  overflow: visible !important;
+}
+
+.prc-editor-wrap .prc-editor-meta > .card-body {
+  overflow: visible;
+}
+
+.prc-editor-wrap .prc-editor-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+  position: relative;
+  z-index: 1;
+}
+
+.prc-editor-wrap .prc-editor-panel {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.prc-editor-wrap .prc-editor-panel > .card-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.prc-editor-wrap .prc-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prc-editor-wrap .prc-editor-actions {
+  flex-shrink: 0;
+}
+
+.prc-suggest {
+  z-index: 50;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--bs-body-bg, #fff);
+}
+
+@media (max-width: 991.98px) {
+  .prc-editor-wrap .prc-editor-main {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cxp-wrap {
   max-width: 100%;
 }

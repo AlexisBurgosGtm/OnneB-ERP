@@ -11,6 +11,7 @@ const {
 const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const { assertAdminPass } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
+const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
 const {
   fetchProductoPrecioForLinea,
@@ -1157,7 +1158,10 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
     } catch (_) {
       /* ignore */
     }
-    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo);
+    const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
+      usuario: usuarioFromReq(req),
+      motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,
+    });
     if (mesaCode && /^\d+$/.test(mesaCode)) {
       try {
         await pool

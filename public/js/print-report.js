@@ -127,6 +127,22 @@ const PrintReport = {
     return `left=0,top=0,width=${w},height=${h}`;
   },
 
+  /**
+   * Ventana de vista previa ticket (misma maximizada que carta; el tamaño
+   * térmico se aplica en @page al imprimir).
+   */
+  ticketFeatures() {
+    return this.maximizedFeatures();
+  },
+
+  isTicketPrintOptions(options) {
+    if (options && options.ticket === true) return true;
+    if (options && String(options.papel || options.formato || '').toUpperCase() === 'TICKET') {
+      return true;
+    }
+    return false;
+  },
+
   /** Teléfonos / tablets: window.open deja la app detrás de una pestaña de impresión. */
   isCompactPrintViewport() {
     try {
@@ -263,7 +279,7 @@ const PrintReport = {
     return true;
   },
 
-  _openPrintWindow(html, windowFeatures) {
+  _openPrintWindow(html, windowFeatures, options = {}) {
     if (this.isCompactPrintViewport()) {
       return this._printViaIframe(html);
     }
@@ -320,10 +336,13 @@ const PrintReport = {
    * Abre impresión. Asegura logo de empresa antes de generar el HTML.
    * En pantallas pequeñas usa iframe oculto para no tapar/bloquear la app.
    * @param {string|function(): string} htmlOrBuilder — HTML listo o función que lo construye tras cargar el logo.
+   * @param {string} [windowFeatures]
+   * @param {{ ticket?: boolean, papel?: string, formato?: string }} [options]
    */
-  async openAndPrint(htmlOrBuilder, windowFeatures) {
+  async openAndPrint(htmlOrBuilder, windowFeatures, options = {}) {
     await this.ensureLogo();
     const html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
-    return this._openPrintWindow(html, windowFeatures || this.maximizedFeatures());
+    const features = windowFeatures || this.maximizedFeatures();
+    return this._openPrintWindow(html, features, options);
   },
 };

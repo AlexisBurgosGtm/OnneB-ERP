@@ -4,6 +4,9 @@
  */
 const AutorizacionesUI = {
   TIPO_CAMBIO_PRECIO: 'AUTORIZACION PRECIOS',
+  TIPO_EDITAR_DOCUMENTO: 'EDITAR DOCUMENTO',
+  TIPO_ELIMINAR_DOCUMENTO: 'ELIMINAR DOCUMENTO',
+  TIPO_ANULAR_DOCUMENTO: 'ANULAR DOCUMENTO',
   OPCION_SOLICITA: 'SOLICITA AUTORIZACIONES',
 
   _socketBound: false,
@@ -678,5 +681,67 @@ const AutorizacionesUI = {
     } finally {
       this._waitModalActive = false;
     }
+  },
+
+  /**
+   * Gate para editar / eliminar / anular documentos (si SOLICITA AUTORIZACIONES = SI).
+   * Admin/supervisor no piden autorización. Si el usuario cancela el modal → no continúa.
+   * @returns {Promise<boolean>} true si puede proceder
+   */
+  async gateAccionDocumento({
+    accion,
+    coddoc,
+    correlativo,
+    tipodoc = '',
+    label = '',
+  } = {}) {
+    const act = String(accion || '').trim().toLowerCase();
+    const map = {
+      editar: {
+        tipo: this.TIPO_EDITAR_DOCUMENTO,
+        verb: 'editar',
+        title: 'Esperando autorización — Editar',
+      },
+      eliminar: {
+        tipo: this.TIPO_ELIMINAR_DOCUMENTO,
+        verb: 'eliminar',
+        title: 'Esperando autorización — Eliminar',
+      },
+      anular: {
+        tipo: this.TIPO_ANULAR_DOCUMENTO,
+        verb: 'anular',
+        title: 'Esperando autorización — Anular',
+      },
+    };
+    const cfg = map[act];
+    if (!cfg) return true;
+
+    if (!(await this.isEnabled())) return true;
+    if (this._isAdminViewer()) return true;
+
+    this.bindSocket();
+    const docLabel =
+      String(label || '').trim() ||
+      `${String(coddoc || '').trim()} #${correlativo ?? ''}`.trim();
+    const tipoDocTxt = String(tipodoc || '').trim();
+    const desc =
+      `${this.usuario()} solicita ${cfg.verb} el documento ${docLabel}` +
+      (tipoDocTxt ? ` (${tipoDocTxt})` : '');
+
+    const result = await this.solicitarYEsperar({
+      tipo: cfg.tipo,
+      descripcion: desc,
+      title: cfg.title,
+      waitingMessage: `Se está solicitando autorización a un administrador para ${cfg.verb} ${docLabel}. Mantenga este aviso abierto hasta que le autoricen.`,
+    });
+
+    if (result.cancelled) return false;
+    if (!result.ok) {
+      if (typeof F !== 'undefined' && F.toast) {
+        F.toast(result.error || 'No se obtuvo autorización', 'error');
+      }
+      return false;
+    }
+    return true;
   },
 };

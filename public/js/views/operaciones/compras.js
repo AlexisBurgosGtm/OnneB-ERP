@@ -1,5 +1,6 @@
 /**
- * Vista Compras — documentos COM (DOCUMENTOS + DOCPRODUCTOS).
+ * Vista Compras — documentos COM/COP (DOCUMENTOS + DOCPRODUCTOS).
+ * COP (pequeño contribuyente) usa el mismo flujo; solo cambia el tratamiento contable.
  */
 const ComprasView = {
   _container: null,
@@ -1194,7 +1195,10 @@ const ComprasView = {
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass: String(pass) }),
+      body: JSON.stringify({
+        pass: String(pass),
+        USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+      }),
     });
     F.toast('Compra eliminada', 'success');
     await this.fetchComprasList();
@@ -1214,7 +1218,8 @@ const ComprasView = {
             <td>${this.escapeHtml(ln.DESPROD)}</td>
             <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
             <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
           </tr>`
         )
         .join('');
@@ -1232,9 +1237,9 @@ const ComprasView = {
               ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
             `,
           })}
-          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Total</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALCOSTO))}</strong></p>
+          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Precio</th><th class="text-end">Total</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6">Sin líneas</td></tr>'}</tbody></table>
+          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO ?? h.TOTALCOSTO))}</strong></p>
         `,
           }),
         'width=800,height=600'
@@ -1827,7 +1832,7 @@ const ComprasView = {
       if (!this._config.coddocDefault) {
         container.innerHTML = `
           <div class="alert alert-warning m-3 w-100">
-            Configure un tipo de documento <strong>COM</strong> (compras) activo para esta empresa.
+            Configure un tipo de documento <strong>COM</strong> o <strong>COP</strong> (compras) activo para esta empresa.
           </div>`;
         return;
       }

@@ -1,5 +1,6 @@
 /**
- * Vista Credenciales FEL — CRUD sobre dbo.FEL_CREDENCIALES (un registro por EMPNIT).
+ * Vista Credenciales FEL — CRUD sobre dbo.FEL_CREDENCIALES (un registro por EMPNIT)
+ * + configuración de adendas Perso1–Perso20 (JSON global).
  */
 const CredencialesFelViewBase = createCatalogoEmpresaView({
   slug: 'credenciales-fel',
@@ -30,6 +31,9 @@ const CredencialesFelViewBase = createCatalogoEmpresaView({
 
 const CredencialesFelView = {
   ...CredencialesFelViewBase,
+
+  _adendaSlots: null,
+  _adendaOptions: null,
 
   formatDate(value) {
     if (!value) return '—';
@@ -248,11 +252,212 @@ const CredencialesFelView = {
     }
   },
 
-  renderTable() {
+  adendasApiUrl() {
+    return `/api/credenciales-fel/adendas?_=${Date.now()}`;
+  },
+
+  defaultAdendaOptions() {
+    return [
+      { value: '', label: '(Sin asignar)' },
+      { value: 'DOCUMENTO_INTERNO', label: 'DOCUMENTO INTERNO' },
+      { value: 'EMPLEADO', label: 'EMPLEADO' },
+      { value: 'TELEFONO_EMPLEADO', label: 'TELEFONO EMPLEADO' },
+      { value: 'FORMA_DE_PAGO', label: 'FORMA DE PAGO' },
+      { value: 'EMBARQUE', label: 'EMBARQUE' },
+      { value: 'VENCIMIENTO', label: 'VENCIMIENTO' },
+      { value: 'TELEFONO_EMPRESA', label: 'TELEFONO EMPRESA' },
+      { value: 'OBSERVACIONES', label: 'OBSERVACIONES' },
+      { value: 'DIRECCION_ENTREGA', label: 'DIRECCION ENTREGA' },
+    ];
+  },
+
+  renderCredentialsCard() {
     const html = CredencialesFelViewBase.renderTable.call(this);
+    let body = html;
     if (this._rows.length >= 1) {
-      return html.replace(CatalogosUI.btnNuevoFab('btn-credenciales-fel-nuevo'), '');
+      body = html.replace(CatalogosUI.btnNuevoFab('btn-credenciales-fel-nuevo'), '');
     }
-    return html;
+    // Quitar título duplicado del panel base; el de la vista split ya lo muestra.
+    body = body.replace(/<h2 class="catalogo-vista-title[^>]*>[\s\S]*?<\/h2>/, '');
+    return `
+      <div class="card h-100 credenciales-fel-card">
+        <div class="card-header py-2">
+          <span class="fw-semibold"><i class="fa-solid fa-key me-2" aria-hidden="true"></i>Credenciales</span>
+        </div>
+        <div class="card-body p-2 catalogo-vista-wrap">${body}</div>
+      </div>
+    `;
+  },
+
+  renderAdendaSelect(index, selected) {
+    const opts = this._adendaOptions || this.defaultAdendaOptions();
+    const sel = String(selected || '');
+    const optionsHtml = opts
+      .map(
+        (o) =>
+          `<option value="${this.escapeHtml(o.value)}"${sel === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+      )
+      .join('');
+    return `
+      <div class="row g-2 align-items-center mb-2 fel-adenda-row">
+        <div class="col-auto">
+          <span class="badge text-bg-light border fel-adenda-num">${index}</span>
+        </div>
+        <div class="col">
+          <label class="visually-hidden" for="fel-adenda-${index}">Perso${index}</label>
+          <select class="form-select form-select-sm" id="fel-adenda-${index}" data-adenda-slot="${index}">
+            ${optionsHtml}
+          </select>
+        </div>
+        <div class="col-auto">
+          <span class="small text-muted">Perso${index}</span>
+        </div>
+      </div>
+    `;
+  },
+
+  renderAdendasCard() {
+    const slots = this._adendaSlots || {};
+    const rows = [];
+    for (let i = 1; i <= 20; i++) {
+      rows.push(this.renderAdendaSelect(i, slots[String(i)] || ''));
+    }
+    return `
+      <div class="card h-100 d-flex flex-column fel-adendas-card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+          <span class="fw-semibold"><i class="fa-solid fa-list-ol me-2" aria-hidden="true"></i>Adendas</span>
+          <span class="small text-muted">Perso1–Perso20</span>
+        </div>
+        <div class="card-body p-3 overflow-auto flex-grow-1" style="max-height: calc(100vh - 14rem);">
+          <p class="small text-muted mb-3">
+            Configure qué dato del documento se envía en cada adenda personalizada al certificar FEL.
+            Los slots vacíos no se envían.
+          </p>
+          <div class="fel-adendas-list">${rows.join('')}</div>
+        </div>
+        <div class="card-footer py-2 d-flex justify-content-end">
+          <button type="button" class="btn btn-sm btn-primary" id="btn-fel-adendas-guardar">
+            <i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>Guardar adendas
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  renderTable() {
+    return `
+      <div class="catalogo-vista-wrap w-100 credenciales-fel-layout">
+        <h2 class="catalogo-vista-title h5 mb-3 px-1">Credenciales FEL</h2>
+        <div class="row g-3 align-items-stretch credenciales-fel-split">
+          <div class="col-lg-6 d-flex">${this.renderCredentialsCard()}</div>
+          <div class="col-lg-6 d-flex">${this.renderAdendasCard()}</div>
+        </div>
+      </div>
+    `;
+  },
+
+  collectAdendaSlotsFromDom() {
+    const slots = {};
+    for (let i = 1; i <= 20; i++) {
+      const el = this._container?.querySelector(`#fel-adenda-${i}`);
+      slots[String(i)] = String(el?.value || '').trim().toUpperCase();
+    }
+    return slots;
+  },
+
+  async onGuardarAdendas() {
+    const slots = this.collectAdendaSlotsFromDom();
+    try {
+      const res = await F.fetchJson('/api/credenciales-fel/adendas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slots }),
+      });
+      this._adendaSlots = res.slots || slots;
+      if (res.options) this._adendaOptions = res.options;
+      F.toast('Adendas guardadas', 'success');
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudieron guardar las adendas', 'error');
+    }
+  },
+
+  bindAdendas() {
+    this._container
+      ?.querySelector('#btn-fel-adendas-guardar')
+      ?.addEventListener('click', () => this.onGuardarAdendas());
+  },
+
+  bindEvents() {
+    CredencialesFelViewBase.bindEvents.call(this);
+    this.bindAdendas();
+  },
+
+  async load(container) {
+    const navToken =
+      typeof F !== 'undefined' && typeof F.getMenuNavToken === 'function'
+        ? F.getMenuNavToken()
+        : 0;
+    this._container = container;
+    container.classList.remove('align-items-center', 'justify-content-center');
+    container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
+
+    if (!F.getEmpNit()) {
+      if (
+        typeof F !== 'undefined' &&
+        typeof F.isMenuNavigationCurrent === 'function' &&
+        !F.isMenuNavigationCurrent(navToken)
+      ) {
+        return;
+      }
+      container.innerHTML = `
+        <div class="alert alert-warning m-3 w-100" role="alert">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i>
+          No hay empresa activa. Cierre sesión e ingrese seleccionando una empresa.
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="text-center text-muted py-4 w-100">
+        <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando credenciales FEL…
+      </div>
+    `;
+
+    try {
+      const baseUrl = this.apiBase();
+      const cacheSep = baseUrl.includes('?') ? '&' : '?';
+      const [credData, adendaData] = await Promise.all([
+        F.fetchJson(`${baseUrl}${cacheSep}_=${Date.now()}`, { cache: 'no-store' }),
+        F.fetchJson(this.adendasApiUrl(), { cache: 'no-store' }),
+      ]);
+      if (
+        typeof F !== 'undefined' &&
+        typeof F.isMenuNavigationCurrent === 'function' &&
+        !F.isMenuNavigationCurrent(navToken)
+      ) {
+        return;
+      }
+      this._rows = credData.rows || [];
+      this._adendaSlots = adendaData.slots || {};
+      this._adendaOptions = adendaData.options || this.defaultAdendaOptions();
+      container.innerHTML = this.renderTable();
+      this.bindEvents();
+    } catch (err) {
+      if (
+        typeof F !== 'undefined' &&
+        typeof F.isMenuNavigationCurrent === 'function' &&
+        !F.isMenuNavigationCurrent(navToken)
+      ) {
+        return;
+      }
+      container.innerHTML = `
+        <div class="alert alert-danger m-3 w-100" role="alert">
+          <i class="fa-solid fa-circle-exclamation me-2"></i>
+          No se pudo cargar: ${this.escapeHtml(err.message)}
+        </div>
+      `;
+      F.toast('Error al cargar credenciales FEL', 'error');
+    }
   },
 };

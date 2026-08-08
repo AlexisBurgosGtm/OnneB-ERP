@@ -39,6 +39,8 @@
   <link rel="stylesheet" href="/css/lista-facturas.css">
   <link rel="stylesheet" href="/css/cuadre-caja.css">
   <link rel="stylesheet" href="/css/documentos.css">
+  <link rel="stylesheet" href="/css/auditoria-cajas.css">
+  <link rel="stylesheet" href="/css/reportes-ventas.css">
   <link rel="stylesheet" href="/css/libro-ventas.css">
   <link rel="stylesheet" href="/css/inventario-fiscal.css">
   <link rel="stylesheet" href="/css/libro-compras.css">
@@ -183,6 +185,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="compras"><i class="fa-solid fa-bag-shopping" aria-hidden="true"></i> Compras</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="notas-debito"><i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i> Notas de credito (Proveedores)</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="gastos"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i> Gastos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="vales-caja"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Vales de Caja</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="corte-caja"><i class="fa-solid fa-money-check" aria-hidden="true"></i> Corte de Caja</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tareas"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Tareas</a></li>
                 </ul>
@@ -211,6 +214,7 @@
               <div id="collapseCuentasCxp" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="cuentas-cobrar"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Cuentas por Cobrar</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="recibos-caja-cxc"><i class="fa-solid fa-cash-register" aria-hidden="true"></i> Recibos de Caja CXC</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="cuentas-pagar"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Cuentas por Pagar</a></li>
                 </ul>
               </div>
@@ -263,6 +267,21 @@
                   <li><a href="#" class="sidebar-link" data-menu="cuadre-caja"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Cuadre de Caja</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="resumen-del-dia"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i> Resumen del día</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="autorizaciones"><i class="fa-solid fa-lock" aria-hidden="true"></i> Autorizaciones</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="documentos-eliminados"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Documentos eliminados</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseReportes" aria-expanded="false" aria-controls="collapseReportes">
+                  <i class="fa-solid fa-chart-column sidebar-icon" aria-hidden="true"></i>
+                  <span>REPORTES</span>
+                </button>
+              </h2>
+              <div id="collapseReportes" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="auditoria-cajas"><i class="fa-solid fa-cash-register" aria-hidden="true"></i> Auditoría Cajas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="reportes-ventas"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Reportes de Ventas</a></li>
                 </ul>
               </div>
             </div>
@@ -290,8 +309,10 @@
               </h2>
               <div id="collapseContabilidad" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                 <ul class="sidebar-submenu list-unstyled mb-0">
-                  <li><a href="#" class="sidebar-link" data-menu="retenciones-isr"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Retenciones ISR</a></li>
-                  <li><a href="#" class="sidebar-link" data-menu="retenciones-iva"><i class="fa-solid fa-percent" aria-hidden="true"></i> Retenciones IVA</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="retenciones-isr"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Retenciones Emitidas ISR</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="retenciones-iva"><i class="fa-solid fa-percent" aria-hidden="true"></i> Retenciones Emitidas IVA</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="retenciones-isr-recibidas"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Retenciones ISR Recibidas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="retenciones-iva-recibidas"><i class="fa-solid fa-percent" aria-hidden="true"></i> Retenciones IVA Recibidas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-compras"><i class="fa-solid fa-cart-shopping" aria-hidden="true"></i> Libro Compras</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-ventas"><i class="fa-solid fa-cash-register" aria-hidden="true"></i> Libro Ventas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-diario"><i class="fa-solid fa-book" aria-hidden="true"></i> Libro Diario</a></li>
@@ -520,6 +541,7 @@
   <script src="/js/views/operaciones/notas-credito.js"></script>
   <script src="/js/views/operaciones/notas-abono.js"></script>
   <script src="/js/views/operaciones/notas-debito.js"></script>
+  <script src="/js/views/operaciones/vales-caja.js"></script>
   <script src="/js/views/operaciones/corte-caja.js"></script>
   <script src="/js/views/operaciones/compras.js"></script>
   <script src="/js/views/inventarios/inventario-mov-view.js"></script>
@@ -529,6 +551,7 @@
   <script src="/js/views/inventarios/actualizacion-costos.js"></script>
   <script src="/js/views/inventarios/lista-precios.js"></script>
   <script src="/js/views/cuentas/cuentas-por-cobrar.js"></script>
+  <script src="/js/views/cuentas/recibos-caja-cxc.js"></script>
   <script src="/js/views/cuentas/cuentas-por-pagar.js"></script>
   <script src="/js/doc-opciones.js"></script>
   <script src="/js/autorizaciones-ui.js"></script>
@@ -537,6 +560,9 @@
   <script src="/js/views/archivo/cuadre-caja.js"></script>
   <script src="/js/views/archivo/resumen-del-dia.js"></script>
   <script src="/js/views/archivo/autorizaciones.js"></script>
+  <script src="/js/views/archivo/documentos-eliminados.js"></script>
+  <script src="/js/views/reportes/auditoria-cajas.js"></script>
+  <script src="/js/views/reportes/reportes-ventas.js"></script>
   <script src="/js/views/online-services/subir-catalogo.js"></script>
   <script src="/js/views/online-services/descargar-catalogo.js"></script>
   <script src="/js/views/online-services/traslados-en-transito.js"></script>
@@ -550,6 +576,8 @@
   <script src="/js/views/contabilidad/retenciones-doc-view.js"></script>
   <script src="/js/views/contabilidad/retenciones-iva.js"></script>
   <script src="/js/views/contabilidad/retenciones-isr.js"></script>
+  <script src="/js/views/contabilidad/retenciones-iva-recibidas.js"></script>
+  <script src="/js/views/contabilidad/retenciones-isr-recibidas.js"></script>
   <script src="/js/views/contabilidad/nomenclatura-contable.js"></script>
   <script src="/js/views/contabilidad/formatos-contables.js"></script>
   <script src="/js/views/contabilidad/configuraciones-contabilidad.js"></script>

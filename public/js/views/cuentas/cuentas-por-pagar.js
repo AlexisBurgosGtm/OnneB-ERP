@@ -1172,6 +1172,7 @@ const CuentasPorPagarView = {
       `,
       icon: 'question',
       showCancelButton: true,
+      allowEnterKey: false,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar pago'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
@@ -1181,17 +1182,32 @@ const CuentasPorPagarView = {
         document.getElementById('cxp-abono-fpago-efectivo')?.focus();
       },
       preConfirm: async () => {
+        if (this._guardandoRecibo) return false;
+        this._guardandoRecibo = true;
+        Swal.getCancelButton()?.setAttribute('disabled', 'true');
+        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
+
+        const unlock = () => {
+          this._guardandoRecibo = false;
+          Swal.hideLoading();
+          Swal.getCancelButton()?.removeAttribute('disabled');
+          Swal.getConfirmButton()?.removeAttribute('disabled');
+        };
+
         const coddocRcp = document.getElementById('cxp-abono-coddoc')?.value?.trim();
         if (!coddocRcp) {
+          unlock();
           Swal.showValidationMessage('Seleccione el documento RCP');
           return false;
         }
         const monto = Math.round(this.sumFpagoInputs() * 1000) / 1000;
         if (!Number.isFinite(monto) || monto <= 0) {
+          unlock();
           Swal.showValidationMessage('Indique el monto del pago en las formas de pago');
           return false;
         }
         if (monto > saldo + 0.001) {
+          unlock();
           Swal.showValidationMessage(`El pago no puede superar el saldo (${this.formatMoney(saldo)})`);
           return false;
         }
@@ -1202,9 +1218,6 @@ const CuentasPorPagarView = {
           USUARIO: this.usuario(),
         };
         Swal.showLoading();
-        Swal.getCancelButton()?.setAttribute('disabled', 'true');
-        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
-        this._guardandoRecibo = true;
         try {
           const res = await F.fetchJson(this.pagosUrl(coddoc, correlativo), {
             method: 'POST',
@@ -1213,17 +1226,14 @@ const CuentasPorPagarView = {
           });
           return res;
         } catch (e) {
-          Swal.hideLoading();
-          Swal.getCancelButton()?.removeAttribute('disabled');
-          Swal.getConfirmButton()?.removeAttribute('disabled');
+          unlock();
           Swal.showValidationMessage(e.message || 'Error al guardar el pago');
           return false;
-        } finally {
-          this._guardandoRecibo = false;
         }
       },
     });
 
+    this._guardandoRecibo = false;
     if (!isConfirmed || !value) return;
 
     F.toast(`Pago ${value.pago?.CODDOC}-${value.pago?.CORRELATIVO} registrado`, 'success');

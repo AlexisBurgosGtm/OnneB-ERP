@@ -55,6 +55,10 @@
   color: #664d03;
 }
 
+.libro-compras-table-card .table tbody tr.libro-compras-row-peq > td {
+  color: #0c5460;
+}
+
 .libro-compras-table-card .table tfoot td {
   background: #f8f9fa;
   border-top: 2px solid #adb5bd;

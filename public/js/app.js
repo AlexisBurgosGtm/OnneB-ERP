@@ -649,15 +649,19 @@
     compras: 'Compras',
     'notas-debito': 'Notas de credito (Proveedores)',
     gastos: 'Gastos',
+    'vales-caja': 'Vales de Caja',
     'corte-caja': 'Corte de Caja',
     cotizaciones: 'Cotizaciones',
     'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
     'pendientes-entrega': 'Pendientes Entrega',
     'cuentas-cobrar': 'Cuentas por Cobrar',
+    'recibos-caja-cxc': 'Recibos de Caja CXC',
     'cuentas-pagar': 'Cuentas por Pagar',
-    'retenciones-isr': 'Retenciones ISR',
-    'retenciones-iva': 'Retenciones IVA',
+    'retenciones-isr': 'Retenciones Emitidas ISR',
+    'retenciones-iva': 'Retenciones Emitidas IVA',
+    'retenciones-isr-recibidas': 'Retenciones ISR Recibidas',
+    'retenciones-iva-recibidas': 'Retenciones IVA Recibidas',
     'libro-compras': 'Libro Compras',
     'libro-ventas': 'Libro Ventas',
     'libro-diario': 'Libro Diario',
@@ -686,6 +690,9 @@
     'cuadre-caja': 'Cuadre de Caja',
     'resumen-del-dia': 'Resumen del día',
     autorizaciones: 'Autorizaciones',
+    'documentos-eliminados': 'Documentos eliminados',
+    'auditoria-cajas': 'Auditoría Cajas',
+    'reportes-ventas': 'Reportes de Ventas',
     'subir-catalogo': 'Subir catálogo',
     'descargar-catalogo': 'Descargar Catálogo',
     'traslados-en-transito': 'Traslados en tránsito',
@@ -783,6 +790,8 @@
       NotasAbonoView.load(mainContent);
     } else if (key === 'notas-debito' && typeof NotasDebitoView !== 'undefined') {
       NotasDebitoView.load(mainContent);
+    } else if (key === 'vales-caja' && typeof ValesCajaView !== 'undefined') {
+      ValesCajaView.load(mainContent);
     } else if (key === 'corte-caja' && typeof CorteCajaView !== 'undefined') {
       CorteCajaView.load(mainContent);
     } else if (key === 'cotizaciones' && typeof CotizacionesView !== 'undefined') {
@@ -793,6 +802,8 @@
       TareasView.load(mainContent);
     } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
       CuentasPorCobrarView.load(mainContent);
+    } else if (key === 'recibos-caja-cxc' && typeof RecibosCajaCxcView !== 'undefined') {
+      RecibosCajaCxcView.load(mainContent);
     } else if (key === 'cuentas-pagar' && typeof CuentasPorPagarView !== 'undefined') {
       CuentasPorPagarView.load(mainContent);
     } else if (key === 'entradas-inventario' && typeof EntradasInventarioView !== 'undefined') {
@@ -826,6 +837,12 @@
       ResumenDelDiaView.load(mainContent);
     } else if (key === 'autorizaciones' && typeof AutorizacionesView !== 'undefined') {
       AutorizacionesView.load(mainContent);
+    } else if (key === 'documentos-eliminados' && typeof DocumentosEliminadosView !== 'undefined') {
+      DocumentosEliminadosView.load(mainContent);
+    } else if (key === 'auditoria-cajas' && typeof AuditoriaCajasView !== 'undefined') {
+      AuditoriaCajasView.load(mainContent);
+    } else if (key === 'reportes-ventas' && typeof ReportesVentasView !== 'undefined') {
+      ReportesVentasView.load(mainContent);
     } else if (key === 'subir-catalogo' && typeof SubirCatalogoView !== 'undefined') {
       SubirCatalogoView.load(mainContent);
     } else if (key === 'descargar-catalogo' && typeof DescargarCatalogoView !== 'undefined') {
@@ -848,6 +865,16 @@
       RetencionesIvaView.load(mainContent);
     } else if (key === 'retenciones-isr' && typeof RetencionesIsrView !== 'undefined') {
       RetencionesIsrView.load(mainContent);
+    } else if (
+      key === 'retenciones-iva-recibidas' &&
+      typeof RetencionesIvaRecibidasView !== 'undefined'
+    ) {
+      RetencionesIvaRecibidasView.load(mainContent);
+    } else if (
+      key === 'retenciones-isr-recibidas' &&
+      typeof RetencionesIsrRecibidasView !== 'undefined'
+    ) {
+      RetencionesIsrRecibidasView.load(mainContent);
     } else if (key === 'nomenclatura-contable' && typeof NomenclaturaContableView !== 'undefined') {
       NomenclaturaContableView.load(mainContent);
     } else if (key === 'formatos-contables' && typeof FormatosContablesView !== 'undefined') {

@@ -1,9 +1,29 @@
 /**
- * Factory vista Retenciones (IVA / ISR) — listado + editor como compras/cotizaciones.
+ * Factory vista Retenciones (IVA / ISR) emitidas o recibidas —
+ * listado + editor con documentos crédito (dual panel como recibos CXC).
+ * cfg.side: 'emitida' (proveedor/CXP) | 'recibida' (cliente/CXC)
  */
 function createRetencionesDocView(cfg) {
   const P = cfg.prefix;
   const id = (name) => `${P}-${name}`;
+  const kind = cfg.kind === 'isr' ? 'isr' : 'iva';
+  const isRecibida = cfg.side === 'recibida';
+  const partyLabel = isRecibida ? 'Cliente' : 'Proveedor';
+  const partyLabelLower = isRecibida ? 'cliente' : 'proveedor';
+  const docsLabel = isRecibida ? 'facturas' : 'compras';
+  const docsLabelCap = isRecibida ? 'Facturas' : 'Compras';
+  const pendingTitle = isRecibida
+    ? 'Facturas crédito FEL (FEF/FEC/FES) con saldo'
+    : 'Compras crédito con saldo';
+  const pendingEmpty = isRecibida
+    ? 'Sin facturas FEL a crédito con saldo'
+    : 'Sin compras a crédito con saldo';
+  const docColLabel = isRecibida ? 'Factura' : 'Compra';
+  const cuentaLabel = isRecibida ? 'cuentas por cobrar' : 'cuentas por pagar';
+  const partyCodeField = isRecibida ? 'CODCLIENTE' : 'CODPROV';
+  const partyApiSeg = isRecibida ? 'clientes' : 'proveedores';
+  const pendingApiSeg = isRecibida ? 'facturas-pendientes' : 'compras-pendientes';
+  const partyCodeAttr = 'data-party-code';
 
   return {
     _container: null,
@@ -16,7 +36,13 @@ function createRetencionesDocView(cfg) {
     _loading: false,
     _saving: false,
     _setup: null,
-    _proveedores: [],
+    _parties: [],
+    _provQuery: '',
+    _pendingDocs: [],
+    _pendingQuery: '',
+    _pendingDiag: null,
+    _abonos: [],
+    _calc: { ivaFactor: 1.12, retencionPorcentaje: kind === 'isr' ? 5 : 15 },
 
     escapeHtml(value) {
       if (value === null || value === undefined) return '';
@@ -54,7 +80,18 @@ function createRetencionesDocView(cfg) {
     },
 
     docEditable(doc) {
-      return DocFecha.editableStatus(doc?.STATUS);
+      return DocFecha.editableStatus(doc?.STATUS) && !doc?.FINALIZADO;
+    },
+
+    calcRetencion(totalPrecio) {
+      const total = Number(totalPrecio) || 0;
+      const factor = Number(this._calc?.ivaFactor) > 0 ? Number(this._calc.ivaFactor) : 1.12;
+      const pct = Number(this._calc?.retencionPorcentaje) || 0;
+      const base = this.roundMoney(total / factor);
+      // ISR: % sobre base gravada. IVA: % sobre el IVA (total − base).
+      const montoBase = kind === 'iva' ? this.roundMoney(Math.max(0, total - base)) : base;
+      const retencion = this.roundMoney((montoBase * pct) / 100);
+      return { base, retencion };
     },
 
     async fetchList() {
@@ -69,63 +106,104 @@ function createRetencionesDocView(cfg) {
       return data;
     },
 
-    async fetchProveedores() {
-      const data = await F.fetchJson(this.apiBase('/proveedores') + '&limit=500', {
-        cache: 'no-store',
+    async fetchParties(q = '') {
+      const params = new URLSearchParams({
+        empnit: F.getEmpNit(),
+        q: String(q || '').trim(),
+        limit: '80',
+        _: String(Date.now()),
       });
-      this._proveedores = data.rows || [];
-      return this._proveedores;
+      const data = await F.fetchJson(`${cfg.apiPath}/${partyApiSeg}?${params}`, { cache: 'no-store' });
+      this._parties = data.rows || [];
+      return this._parties;
+    },
+
+    async fetchPendientes(partyCode, q = '') {
+      if (!partyCode) {
+        this._pendingDocs = [];
+        this._pendingDiag = null;
+        return [];
+      }
+      const params = new URLSearchParams({
+        empnit: F.getEmpNit(),
+        q: String(q || '').trim(),
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(
+        `${cfg.apiPath}/${partyApiSeg}/${encodeURIComponent(partyCode)}/${pendingApiSeg}?${params}`,
+        { cache: 'no-store' }
+      );
+      this._pendingDocs = data.rows || [];
+      this._pendingDiag = data.diag || null;
+      if (data.calc) this._calc = data.calc;
+      return this._pendingDocs;
+    },
+
+    pendingEmptyHtml() {
+      const diag = this._pendingDiag;
+      if (!diag) {
+        return `<tr><td colspan="7" class="text-center text-muted py-5">${pendingEmpty}</td></tr>`;
+      }
+      const tips = (diag.tipodocsConSaldo || [])
+        .map((t) => `${t.TIPODOC}: ${t.CNT}`)
+        .join(', ');
+      const hints = [];
+      if (diag.facCreSaldo > 0) {
+        hints.push(
+          `Hay <strong>${diag.facCreSaldo}</strong> factura(s) FAC a crédito con saldo (no se listan; solo FEF/FEC/FES).`
+        );
+      }
+      if (diag.felCre > 0 && diag.felOk === 0) {
+        hints.push(
+          `Hay <strong>${diag.felCre}</strong> FEL a crédito, pero ninguna con DOC_SALDO &gt; 0.`
+        );
+      }
+      if (!hints.length && diag.anyCreSaldo === 0) {
+        hints.push('Este cliente no tiene documentos a crédito con saldo en la empresa activa.');
+      }
+      if (tips) hints.push(`Tipos con saldo: ${this.escapeHtml(tips)}.`);
+      return `<tr><td colspan="7" class="text-center text-muted py-4">
+        <div class="mb-2">${pendingEmpty}</div>
+        <div class="small text-start mx-auto" style="max-width:28rem">${hints.join('<br>')}</div>
+        <div class="small mt-2">Cliente #${this.escapeHtml(this.partyCodeOf() || '')}</div>
+      </td></tr>`;
+    },
+
+    partyCodeOf(doc = this._doc) {
+      if (!doc) return null;
+      return doc[partyCodeField] ?? doc.CODCLIENTE ?? doc.CODPROV ?? null;
     },
 
     filteredRows() {
       const q = this._listFilter.trim().toLowerCase();
       if (!q) return this._rows;
       return this._rows.filter((r) => {
-        const hay = [
-          r.CODDOC,
-          r.CORRELATIVO,
-          r.DOC_NOMCLIE,
-          r.DOC_NIT,
-          r.SERIEFAC,
-          r.NOFAC,
-        ]
+        const hay = [r.CODDOC, r.CORRELATIVO, r.DOC_NOMCLIE, r.DOC_NIT, r.SERIEFAC, r.NOFAC]
           .map((v) => String(v ?? '').toLowerCase())
           .join(' ');
         return hay.includes(q);
       });
     },
 
-    proveedorLabel(codprov) {
-      const p = this._proveedores.find((x) => String(x.CODPROV) === String(codprov));
-      if (!p) return '';
+    abonosSum() {
+      return this.roundMoney(this._abonos.reduce((s, a) => s + (Number(a.ABONO) || 0), 0));
+    },
+
+    abonosBaseSum() {
+      return this.roundMoney(this._abonos.reduce((s, a) => s + (Number(a.BASE) || 0), 0));
+    },
+
+    partyLabelText(code) {
+      const p = this._parties.find((x) => String(x[partyCodeField] ?? x.CODCLIENTE ?? x.CODPROV) === String(code));
+      if (!p) return this._doc?.DOC_NOMCLIE || '';
+      if (isRecibida) {
+        const nom = String(p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
+        const nit = String(p.NIT || '').trim();
+        return nit ? `${nom} (${nit})` : nom;
+      }
       const nom = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
       const nit = String(p.NIT || '').trim();
       return nit ? `${nom} (${nit})` : nom;
-    },
-
-    proveedorSelectHtml(selected) {
-      const sel = String(selected ?? '');
-      const opts = (this._proveedores || [])
-        .map((p) => {
-          const cod = String(p.CODPROV ?? '');
-          const nom = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
-          const nit = String(p.NIT || '').trim();
-          const label = nit ? `${cod} — ${nom} (${nit})` : `${cod} — ${nom}`;
-          return `<option value="${this.escapeHtml(cod)}"${sel === cod ? ' selected' : ''}>${this.escapeHtml(label)}</option>`;
-        })
-        .join('');
-      return `<option value="">— Seleccione proveedor —</option>${opts}`;
-    },
-
-    moneyInput(fieldId, value, { readonly = false, extraClass = '' } = {}) {
-      const ro = readonly ? 'readonly' : '';
-      const cls = extraClass ? ` ${extraClass}` : '';
-      return `
-        <div class="input-group input-group-sm ret-doc-money${cls}">
-          <span class="input-group-text">Q</span>
-          <input type="number" step="0.001" class="form-control form-control-sm" id="${fieldId}"
-            value="${value !== '' && value !== null && value !== undefined ? Number(value) : ''}" ${ro}>
-        </div>`;
     },
 
     renderListCardsHtml() {
@@ -135,10 +213,9 @@ function createRetencionesDocView(cfg) {
       }
       return rows
         .map((r) => {
-          const factRef =
-            r.SERIEFAC || r.NOFAC
-              ? `${this.escapeHtml(r.SERIEFAC || '—')}-${this.escapeHtml(r.NOFAC || '—')}`
-              : '—';
+          const estado = r.FINALIZADO
+            ? '<span class="badge text-bg-success">Finalizada</span>'
+            : '<span class="badge text-bg-secondary">Borrador</span>';
           return `
         <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}">
           <div class="pos-pedido-card-top">
@@ -146,13 +223,12 @@ function createRetencionesDocView(cfg) {
             <span class="pos-pedido-card-total">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</span>
           </div>
           <div class="pos-pedido-card-meta small text-muted mb-1">
-            ${this.escapeHtml(this.formatDate(r.FECHA))} · ${this.escapeHtml(r.CONCRE === 'CRE' ? 'Crédito' : 'Contado')}
+            ${this.escapeHtml(this.formatDate(r.FECHA))} · ${this.escapeHtml(r.CONCRE === 'CRE' ? 'Crédito' : 'Contado')} · ${estado}
           </div>
           <div class="pos-pedido-card-cliente">${this.escapeHtml(r.DOC_NOMCLIE || '—')}</div>
-          <div class="small text-muted mb-2">Factura ref.: ${factRef}</div>
           <div class="inv-card-actions">
             <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar">
-              <i class="fa-solid fa-pen me-1"></i>Editar
+              <i class="fa-solid fa-pen me-1"></i>${r.FINALIZADO ? 'Ver' : 'Editar'}
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary inv-card-btn" data-action="imprimir">
               <i class="fa-solid fa-print me-1"></i>Imprimir
@@ -184,11 +260,13 @@ function createRetencionesDocView(cfg) {
             </button>
             <div class="pos-list-search flex-grow-1">
               <input type="search" class="form-control form-control-sm pos-search-glow" id="${id('list-search')}"
-                placeholder="Buscar proveedor, factura…" value="${this.escapeHtml(this._listFilter)}">
+                placeholder="Buscar ${partyLabelLower}…" value="${this.escapeHtml(this._listFilter)}">
             </div>
           </div>
           <p class="small text-muted mb-2">
             Formato contado: <code>${cfg.formatoCon}</code> · crédito: <code>${cfg.formatoCre}</code>
+            · retención ${this.escapeHtml(String(this._calc.retencionPorcentaje))}% sobre
+            ${kind === 'iva' ? `IVA (Total − Total/${this.escapeHtml(String(this._calc.ivaFactor))})` : `base (Total / ${this.escapeHtml(String(this._calc.ivaFactor))})`}
           </p>
           <div class="pos-pedido-cards" id="${id('list-cards')}">${this.renderListCardsHtml()}</div>
           <button type="button" class="btn-onneb-nuevo-fab pos-list-fab-nuevo" id="btn-${P}-list-nuevo"
@@ -198,82 +276,247 @@ function createRetencionesDocView(cfg) {
         </div>`;
     },
 
+    renderPartyItemHtml(p) {
+      const cod = String(p[partyCodeField] ?? p.CODCLIENTE ?? p.CODPROV ?? '');
+      if (isRecibida) {
+        const nom = String(p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
+        const negocio = String(p.NEGOCIO || '').trim();
+        const nit = String(p.NIT || '').trim();
+        return `<button type="button" class="list-group-item list-group-item-action small ret-prov-pick"
+          ${partyCodeAttr}="${this.escapeHtml(cod)}">
+          <strong>${this.escapeHtml(nom || negocio || cod)}</strong>
+          <span class="text-muted d-block">${this.escapeHtml([negocio && negocio !== nom ? negocio : '', nit].filter(Boolean).join(' · '))}</span>
+        </button>`;
+      }
+      const nom = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
+      const razon = String(p.RAZONSOCIAL || '').trim();
+      const nit = String(p.NIT || '').trim();
+      return `<button type="button" class="list-group-item list-group-item-action small ret-prov-pick"
+        ${partyCodeAttr}="${this.escapeHtml(cod)}">
+        <strong>${this.escapeHtml(nom || razon || cod)}</strong>
+        <span class="text-muted d-block">${this.escapeHtml([razon && razon !== nom ? razon : '', nit].filter(Boolean).join(' · '))}</span>
+      </button>`;
+    },
+
+    renderPartyPickerHtml(editable) {
+      const sel = this.partyCodeOf();
+      const label = sel ? this.partyLabelText(sel) : '';
+      const dis = editable ? '' : 'disabled';
+      return `
+        <label class="form-label small mb-1">${partyLabel}</label>
+        <div class="ret-prov-picker position-relative">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="search" class="form-control pos-search-glow" id="${id('prov-search')}" ${dis}
+              placeholder="Buscar ${partyLabelLower}…"
+              value="${this.escapeHtml(this._provQuery || label)}"
+              autocomplete="off">
+          </div>
+          <input type="hidden" id="${id('codparty')}" value="${this.escapeHtml(sel || '')}">
+          <div class="small text-muted mt-1" id="${id('prov-selected')}">
+            ${sel ? `Seleccionado: <strong>${this.escapeHtml(label)}</strong>` : `Sin ${partyLabelLower} seleccionado`}
+          </div>
+          ${
+            editable
+              ? `<div class="list-group position-absolute w-100 shadow-sm d-none ret-prov-results"
+                  id="${id('prov-results')}" style="z-index: 20; max-height: 200px; overflow-y: auto;"></div>`
+              : ''
+          }
+        </div>`;
+    },
+
+    renderPendingHtml() {
+      const editable = this.docEditable(this._doc);
+      const hasParty = !!this.partyCodeOf();
+      const colSpan = 7;
+      const body = !hasParty
+        ? `<tr><td colspan="${colSpan}" class="text-center text-muted py-5">Seleccione un ${partyLabelLower}</td></tr>`
+        : !this._pendingDocs.length
+          ? this.pendingEmptyHtml()
+          : this._pendingDocs
+              .map((d) => {
+                const already = this._abonos.some(
+                  (a) =>
+                    String(a.CODDOC_FAC) === String(d.CODDOC) &&
+                    String(a.CORRELATIVO_FAC) === String(d.CORRELATIVO)
+                );
+                return `<tr>
+          <td class="fw-semibold text-nowrap small">${this.escapeHtml(d.CODDOC)} #${this.escapeHtml(d.CORRELATIVO)}</td>
+          <td class="small text-nowrap">${this.escapeHtml(d.SERIEFAC || '—')}</td>
+          <td class="small text-nowrap">${this.escapeHtml(d.NOFAC || '—')}</td>
+          <td class="small text-nowrap">${this.escapeHtml(this.formatDate(d.FECHA))}</td>
+          <td class="text-end small text-muted">${this.escapeHtml(this.formatMoney(d.TOTALPRECIO))}</td>
+          <td class="text-end fw-semibold small text-primary">${this.escapeHtml(this.formatMoney(d.DOC_SALDO))}</td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-success ret-add-fac"
+              data-coddoc="${this.escapeHtml(d.CODDOC)}" data-corr="${this.escapeHtml(d.CORRELATIVO)}"
+              ${!editable || already ? 'disabled' : ''}>
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </td>
+        </tr>`;
+              })
+              .join('');
+      return `
+      <div class="card shadow-sm prc-editor-panel h-100">
+        <div class="card-header py-2">
+          <strong class="small"><i class="fa-solid fa-file-invoice-dollar me-1"></i>${pendingTitle}</strong>
+          <div class="input-group input-group-sm mt-2">
+            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+            <input type="search" class="form-control" id="${id('pending-search')}"
+              placeholder="Buscar ${docsLabel.slice(0, -1)}, serie o número…" value="${this.escapeHtml(this._pendingQuery)}"
+              ${hasParty && editable ? '' : 'disabled'}>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive prc-panel-scroll">
+            <table class="table table-sm table-striped mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>${docColLabel}</th>
+                  <th>Serie</th>
+                  <th>Número</th>
+                  <th>Fecha</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">Saldo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    },
+
+    renderAbonosHtml() {
+      const editable = this.docEditable(this._doc);
+      const rows = this._abonos;
+      const colSpan = 7;
+      const body = !rows.length
+        ? `<tr><td colspan="${colSpan}" class="text-center text-muted py-5">Sin ${docsLabel}. Agregue de la izquierda.</td></tr>`
+        : rows
+            .map((a, idx) => {
+              const monto = editable
+                ? `<input type="number" class="form-control form-control-sm text-end ret-abono-monto" data-idx="${idx}"
+                    min="0.01" step="0.001" value="${this.escapeHtml(a.ABONO)}"
+                    max="${this.escapeHtml(a.FAC_DOC_SALDO || a.ABONO)}">`
+                : this.escapeHtml(this.formatMoney(a.ABONO));
+              const remove = editable
+                ? `<button type="button" class="btn btn-sm btn-outline-danger ret-abono-remove" data-idx="${idx}"><i class="fa-solid fa-xmark"></i></button>`
+                : '';
+              return `<tr>
+          <td class="fw-semibold text-nowrap small">${this.escapeHtml(a.CODDOC_FAC)} #${this.escapeHtml(a.CORRELATIVO_FAC)}</td>
+          <td class="small text-nowrap">${this.escapeHtml(a.FAC_SERIEFAC || '—')}</td>
+          <td class="small text-nowrap">${this.escapeHtml(a.FAC_NOFAC || '—')}</td>
+          <td class="small text-nowrap">${this.escapeHtml(this.formatDate(a.FAC_FECHA))}</td>
+          <td class="text-end small text-muted">${this.escapeHtml(this.formatMoney(a.FAC_TOTALPRECIO))}</td>
+          <td class="text-end" style="min-width:6.5rem">${monto}</td>
+          <td class="text-end">${remove}</td>
+        </tr>`;
+            })
+            .join('');
+      return `
+      <div class="card shadow-sm prc-editor-panel h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <strong class="small"><i class="fa-solid fa-list-check me-1"></i>Facturas en retención</strong>
+          <span class="fw-bold text-success">${this.escapeHtml(this.formatMoney(this.abonosSum()))}</span>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive prc-panel-scroll">
+            <table class="table table-sm table-striped mb-0">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>${docColLabel}</th>
+                  <th>Serie</th>
+                  <th>Número</th>
+                  <th>Fecha</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">A retener</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    },
+
     renderEditorForm() {
       const d = this._doc || {};
       const editable = this.docEditable(d);
       const dis = editable ? '' : 'disabled';
+      const base = this.abonosBaseSum() || Number(d.TOTALSINIVA) || 0;
+      const ret = this.abonosSum() || Number(d.TOTALIVA) || Number(d.TOTALPRECIO) || 0;
       return `
-        <div class="row g-2 mb-2">
-          <div class="col-md-4">
-            <label class="form-label small mb-0">Documento</label>
-            <input type="text" class="form-control form-control-sm" readonly
-              value="${this.escapeHtml(`${d.CODDOC || ''} #${d.CORRELATIVO || ''}`)}">
+        <div class="row g-3 align-items-start mb-3">
+          <div class="col-md-8">
+            <div class="card shadow-sm h-100">
+              <div class="card-header py-2 px-3 small fw-semibold bg-light border-0">
+                <i class="fa-solid fa-file-lines me-1 text-primary"></i>Documento
+              </div>
+              <div class="card-body">
+                <div class="row g-2 mb-2">
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-0">Documento</label>
+                    <input type="text" class="form-control form-control-sm" readonly
+                      value="${this.escapeHtml(`${d.CODDOC || ''} #${d.CORRELATIVO || ''}`)}">
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label small mb-0" for="${id('fecha')}">Fecha</label>
+                    <input type="date" class="form-control form-control-sm" id="${id('fecha')}" ${dis}
+                      value="${this.escapeHtml(String(d.FECHA || '').slice(0, 10))}">
+                  </div>
+                </div>
+                <div class="mb-3">${this.renderPartyPickerHtml(editable)}</div>
+                <div class="mb-2">
+                  <label class="form-label small mb-0" for="${id('obs')}">Observaciones</label>
+                  <textarea class="form-control form-control-sm" id="${id('obs')}" rows="2" ${dis}>${this.escapeHtml(d.OBS || '')}</textarea>
+                </div>
+                ${
+                  editable
+                    ? `<div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="btn-${P}-guardar">
+                          <i class="fa-solid fa-floppy-disk me-1"></i>Guardar
+                        </button>
+                      </div>`
+                    : ''
+                }
+              </div>
+            </div>
           </div>
           <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('fecha')}">Fecha</label>
-            <input type="date" class="form-control form-control-sm" id="${id('fecha')}" ${dis}
-              value="${this.escapeHtml(String(d.FECHA || '').slice(0, 10))}">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('concre')}">Tipo pago</label>
-            <select class="form-select form-select-sm" id="${id('concre')}" ${dis}>
-              <option value="CON"${d.CONCRE === 'CON' ? ' selected' : ''}>Contado</option>
-              <option value="CRE"${d.CONCRE === 'CRE' ? ' selected' : ''}>Crédito</option>
-            </select>
+            <div class="card shadow-sm h-100 ret-doc-montos-card">
+              <div class="card-header py-2 px-3 small fw-semibold bg-light border-0">
+                <i class="fa-solid fa-coins me-1 text-success"></i>Montos
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <label class="form-label small mb-0">${cfg.baseLabel}</label>
+                  <input type="text" class="form-control form-control-sm fw-semibold" readonly id="${id('base-display')}"
+                    value="${this.escapeHtml(this.formatMoney(base))}">
+                </div>
+                <div class="row g-2 mb-0">
+                  <div class="col-7">
+                    <label class="form-label small mb-0">${cfg.retencionLabel}</label>
+                    <input type="text" class="form-control form-control-sm fw-semibold text-success" readonly id="${id('ret-display')}"
+                      value="${this.escapeHtml(this.formatMoney(ret))}">
+                  </div>
+                  <div class="col-5">
+                    <label class="form-label small mb-0">${docsLabelCap}</label>
+                    <input type="text" class="form-control form-control-sm text-end" readonly id="${id('fac-count')}"
+                      value="${this._abonos.length}">
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="row g-2 mb-2">
-          <div class="col-12">
-            <label class="form-label small mb-0" for="${id('codprov')}">Proveedor</label>
-            <select class="form-select form-select-sm" id="${id('codprov')}" ${dis}>
-              ${this.proveedorSelectHtml(d.CODPROV)}
-            </select>
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('serie')}">Serie factura ref.</label>
-            <input type="text" class="form-control form-control-sm" id="${id('serie')}" ${dis}
-              value="${this.escapeHtml(d.SERIEFAC || '')}">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('numero')}">Número factura ref.</label>
-            <input type="text" class="form-control form-control-sm" id="${id('numero')}" ${dis}
-              value="${this.escapeHtml(d.NOFAC || '')}">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('fel')}">ID electrónico (FEL)</label>
-            <input type="text" class="form-control form-control-sm" id="${id('fel')}" ${dis}
-              value="${this.escapeHtml(d.FEL_UUDI || '')}">
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('base')}">${cfg.baseLabel}</label>
-            ${this.moneyInput(id('base'), d.TOTALSINIVA ?? '', { readonly: !editable })}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('retencion')}">${cfg.retencionLabel}</label>
-            ${this.moneyInput(id('retencion'), d.TOTALIVA ?? d.TOTALPRECIO ?? '', { readonly: !editable })}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label small mb-0" for="${id('total-doc')}">Total documento</label>
-            ${this.moneyInput(id('total-doc'), '', {
-              readonly: true,
-              extraClass: ' ret-doc-total-field',
-            })}
-          </div>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-0" for="${id('obs')}">Observaciones</label>
-          <textarea class="form-control form-control-sm" id="${id('obs')}" rows="2" ${dis}>${this.escapeHtml(d.OBS || '')}</textarea>
-        </div>
-        ${editable ? `
-          <div class="d-flex flex-wrap gap-2">
-            <button type="button" class="btn btn-sm btn-primary" id="btn-${P}-guardar">
-              <i class="fa-solid fa-floppy-disk me-1"></i>Guardar
-            </button>
-          </div>` : ''}`;
+        <div class="prc-editor-main ret-doc-dual mb-0">
+          ${this.renderPendingHtml()}
+          ${this.renderAbonosHtml()}
+        </div>`;
     },
 
     renderEditorShell() {
@@ -281,17 +524,16 @@ function createRetencionesDocView(cfg) {
       const editable = this.docEditable(d);
       return `
         <div class="pos-vista-wrap ret-doc-editor-wrap">
-          <div class="pos-header card shadow-sm mb-2">
+          <div class="pos-header card shadow-sm mb-2 flex-shrink-0">
             <div class="card-body py-2 d-flex align-items-center gap-2">
               <button type="button" class="btn btn-sm btn-outline-secondary pos-btn-atras" id="btn-${P}-atras">
                 <i class="fa-solid fa-arrow-left me-1"></i>Atrás
               </button>
               <span class="pos-header-doc-label fw-semibold">${this.escapeHtml(cfg.title)} · ${this.escapeHtml(d?.CODDOC || '')} #${this.escapeHtml(d?.CORRELATIVO || '')}</span>
+              ${d?.FINALIZADO ? '<span class="badge text-bg-success ms-auto">Finalizada</span>' : ''}
             </div>
           </div>
-          <div class="card shadow-sm mx-2 mb-5">
-            <div class="card-body" id="${id('editor-body')}">${this.renderEditorForm()}</div>
-          </div>
+          <div class="ret-doc-editor-scroll mx-2" id="${id('editor-body')}">${this.renderEditorForm()}</div>
           ${editable ? `
             <div class="pos-fab-bar" id="${id('fab-bar')}">
               <button type="button" class="pos-fab-finalizar" id="btn-${P}-finalizar">
@@ -301,32 +543,73 @@ function createRetencionesDocView(cfg) {
         </div>`;
     },
 
-    syncTotalDocumento() {
-      const baseEl = document.getElementById(id('base'));
-      const retEl = document.getElementById(id('retencion'));
-      const totalEl = document.getElementById(id('total-doc'));
-      if (!baseEl || !retEl || !totalEl) return;
-      const base = Number(baseEl.value) || 0;
-      const ret = Number(retEl.value) || 0;
-      const net = this.roundMoney(base - ret);
-      totalEl.value = Number.isFinite(net) ? net : '';
+    refreshTotalsDisplay() {
+      const baseEl = document.getElementById(id('base-display'));
+      const retEl = document.getElementById(id('ret-display'));
+      const facEl = document.getElementById(id('fac-count'));
+      if (baseEl) baseEl.value = this.formatMoney(this.abonosBaseSum());
+      if (retEl) retEl.value = this.formatMoney(this.abonosSum());
+      if (facEl) facEl.value = String(this._abonos.length);
+    },
+
+    refreshDualPanels() {
+      const body = this._container?.querySelector(`#${id('editor-body')}`);
+      if (!body) return;
+      const dual = body.querySelector('.ret-doc-dual');
+      if (!dual) return;
+      dual.innerHTML = `${this.renderPendingHtml()}${this.renderAbonosHtml()}`;
+      this.bindDualPanelEvents();
+      this.refreshTotalsDisplay();
     },
 
     readEditorPayload() {
-      const retencion = Number(document.getElementById(id('retencion'))?.value) || 0;
-      const base = Number(document.getElementById(id('base'))?.value) || 0;
+      const partyCode = document.getElementById(id('codparty'))?.value || null;
       return {
         FECHA: document.getElementById(id('fecha'))?.value || null,
-        CODPROV: document.getElementById(id('codprov'))?.value || null,
-        CONCRE: document.getElementById(id('concre'))?.value || 'CON',
-        SERIEFAC: document.getElementById(id('serie'))?.value?.trim() || '',
-        NOFAC: document.getElementById(id('numero'))?.value?.trim() || '',
-        FEL_UUDI: document.getElementById(id('fel'))?.value?.trim() || '',
-        TOTALSINIVA: base,
-        TOTALIVA: retencion,
-        TOTALPRECIO: retencion,
+        [partyCodeField]: partyCode,
+        CONCRE: this._doc?.CONCRE || 'CON',
         OBS: document.getElementById(id('obs'))?.value?.trim() || '',
+        TOTALSINIVA: this.abonosBaseSum(),
+        TOTALIVA: this.abonosSum(),
+        TOTALPRECIO: this.abonosSum(),
+        abonos: this._abonos.map((a) => ({
+          CODDOC_FAC: a.CODDOC_FAC,
+          CORRELATIVO_FAC: a.CORRELATIVO_FAC,
+          ABONO: Number(a.ABONO) || 0,
+          BASE: Number(a.BASE) || 0,
+        })),
       };
+    },
+
+    addPendingDoc(coddoc, correlativo) {
+      const d = this._pendingDocs.find(
+        (x) => String(x.CODDOC) === String(coddoc) && String(x.CORRELATIVO) === String(correlativo)
+      );
+      if (!d) return;
+      const exists = this._abonos.some(
+        (a) => String(a.CODDOC_FAC) === String(coddoc) && String(a.CORRELATIVO_FAC) === String(correlativo)
+      );
+      if (exists) return;
+      const { base, retencion } = this.calcRetencion(d.TOTALPRECIO);
+      const maxSaldo = Number(d.DOC_SALDO) || 0;
+      const abono = Math.min(retencion, maxSaldo);
+      this._abonos.push({
+        CODDOC_FAC: d.CODDOC,
+        CORRELATIVO_FAC: d.CORRELATIVO,
+        ABONO: abono,
+        BASE: base,
+        FAC_FECHA: d.FECHA,
+        FAC_TOTALPRECIO: d.TOTALPRECIO,
+        FAC_DOC_SALDO: d.DOC_SALDO,
+        FAC_SERIEFAC: d.SERIEFAC || null,
+        FAC_NOFAC: d.NOFAC || null,
+      });
+      this.refreshDualPanels();
+    },
+
+    removeAbono(idx) {
+      this._abonos.splice(idx, 1);
+      this.refreshDualPanels();
     },
 
     refreshListDom() {
@@ -337,6 +620,8 @@ function createRetencionesDocView(cfg) {
     async showList() {
       this._screen = 'list';
       this._doc = null;
+      this._abonos = [];
+      this._pendingDocs = [];
       await this.fetchList();
       this._container.innerHTML = this.renderListScreen();
       this.bindListEvents();
@@ -344,13 +629,29 @@ function createRetencionesDocView(cfg) {
 
     async showEditor(coddoc, correlativo) {
       this._screen = 'editor';
-      if (!this._proveedores.length) await this.fetchProveedores();
       this._doc = await F.fetchJson(this.apiBase(`/${encodeURIComponent(coddoc)}/${correlativo}`), {
         cache: 'no-store',
       });
+      if (this._doc.calc) this._calc = this._doc.calc;
+      this._abonos = (this._doc.abonos || []).map((a) => ({
+        CODDOC_FAC: a.CODDOC_FAC,
+        CORRELATIVO_FAC: a.CORRELATIVO_FAC,
+        ABONO: Number(a.ABONO) || 0,
+        BASE: this.calcRetencion(a.FAC_TOTALPRECIO).base,
+        FAC_FECHA: a.FAC_FECHA,
+        FAC_TOTALPRECIO: a.FAC_TOTALPRECIO,
+        FAC_DOC_SALDO: a.FAC_DOC_SALDO,
+        FAC_SERIEFAC: a.FAC_SERIEFAC || null,
+        FAC_NOFAC: a.FAC_NOFAC || null,
+      }));
+      this._provQuery = this.partyLabelText(this.partyCodeOf(this._doc));
+      if (this.partyCodeOf(this._doc) && this.docEditable(this._doc)) {
+        await this.fetchPendientes(this.partyCodeOf(this._doc));
+      } else {
+        this._pendingDocs = [];
+      }
       this._container.innerHTML = this.renderEditorShell();
       this.bindEditorEvents();
-      this.syncTotalDocumento();
     },
 
     async reloadListOnly() {
@@ -388,6 +689,10 @@ function createRetencionesDocView(cfg) {
       this._saving = true;
       try {
         const payload = this.readEditorPayload();
+        if (!payload[partyCodeField]) {
+          F.toast(`Seleccione un ${partyLabelLower}`, 'warning');
+          return;
+        }
         const { CODDOC, CORRELATIVO } = this._doc;
         const doc = await F.fetchJson(
           this.apiBase(`/${encodeURIComponent(CODDOC)}/${CORRELATIVO}`),
@@ -397,7 +702,7 @@ function createRetencionesDocView(cfg) {
             body: JSON.stringify(payload),
           }
         );
-        this._doc = doc;
+        this._doc = { ...doc, abonos: this._doc.abonos };
         F.toast('Retención guardada', 'success');
       } finally {
         this._saving = false;
@@ -406,19 +711,19 @@ function createRetencionesDocView(cfg) {
 
     async onFinalizar() {
       if (!this._doc || this._saving) return;
+      if (!this._abonos.length) {
+        F.toast(`Agregue al menos una ${docsLabel.slice(0, -1)} a la retención`, 'warning');
+        return;
+      }
+      if (this.abonosSum() <= 0) {
+        F.toast('El monto de retención debe ser mayor a cero', 'warning');
+        return;
+      }
       await this.onGuardar();
       this._saving = true;
       try {
         const payload = this.readEditorPayload();
         const { CODDOC, CORRELATIVO } = this._doc;
-        if (!payload.SERIEFAC || !payload.NOFAC) {
-          F.toast('Indique serie y número de factura referencia', 'warning');
-          return;
-        }
-        if (payload.TOTALIVA <= 0) {
-          F.toast('El monto de retención debe ser mayor a cero', 'warning');
-          return;
-        }
         await F.fetchJson(
           this.apiBase(`/${encodeURIComponent(CODDOC)}/${CORRELATIVO}/finalizar`),
           {
@@ -427,7 +732,7 @@ function createRetencionesDocView(cfg) {
             body: JSON.stringify(payload),
           }
         );
-        F.toast('Retención finalizada', 'success');
+        F.toast(`Retención finalizada — abonos aplicados a ${cuentaLabel}`, 'success');
         this._doc = null;
         await this.showList();
       } finally {
@@ -466,7 +771,15 @@ function createRetencionesDocView(cfg) {
       });
       const base = Number(doc.TOTALSINIVA) || 0;
       const ret = Number(doc.TOTALIVA) || Number(doc.TOTALPRECIO) || 0;
-      const neto = this.roundMoney(base - ret);
+      const abonosHtml = (doc.abonos || [])
+        .map(
+          (a) =>
+            `<tr>
+              <td>${PrintReport.escapeHtml(a.CODDOC_FAC)} #${PrintReport.escapeHtml(a.CORRELATIVO_FAC)}</td>
+              <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(a.ABONO))}</td>
+            </tr>`
+        )
+        .join('');
       await PrintReport.openAndPrint(
         () =>
           PrintReport.wrapDocument({
@@ -476,16 +789,18 @@ function createRetencionesDocView(cfg) {
                 title: cfg.title,
                 subtitleHtml: `
                   <p><strong>${PrintReport.escapeHtml(doc.CODDOC)} #${doc.CORRELATIVO}</strong> · ${PrintReport.escapeHtml(this.formatDate(doc.FECHA))}</p>
-                  <p><strong>Proveedor:</strong> ${PrintReport.escapeHtml(doc.DOC_NOMCLIE || '—')} · NIT ${PrintReport.escapeHtml(doc.DOC_NIT || '—')}</p>
-                  <p><strong>Factura ref.:</strong> ${PrintReport.escapeHtml(doc.SERIEFAC || '—')} ${PrintReport.escapeHtml(doc.NOFAC || '')}</p>
+                  <p><strong>${partyLabel}:</strong> ${PrintReport.escapeHtml(doc.DOC_NOMCLIE || '—')} · NIT ${PrintReport.escapeHtml(doc.DOC_NIT || '—')}</p>
                   <p><strong>Pago:</strong> ${doc.CONCRE === 'CRE' ? 'Crédito' : 'Contado'}</p>
                 `,
               })}
               <table class="table table-sm">
+                <thead><tr><th>${docColLabel}</th><th class="text-end">Retención</th></tr></thead>
+                <tbody>${abonosHtml || `<tr><td colspan="2" class="text-muted">Sin ${docsLabel}</td></tr>`}</tbody>
+              </table>
+              <table class="table table-sm">
                 <tbody>
                   <tr><td>${PrintReport.escapeHtml(cfg.baseLabel)}</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(base))}</td></tr>
                   <tr><td>${PrintReport.escapeHtml(cfg.retencionLabel)}</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(ret))}</td></tr>
-                  <tr><td><strong>Total documento</strong></td><td class="text-end"><strong>${PrintReport.escapeHtml(this.formatMoney(neto))}</strong></td></tr>
                 </tbody>
               </table>
               ${doc.OBS ? `<p><em>${PrintReport.escapeHtml(doc.OBS)}</em></p>` : ''}
@@ -528,10 +843,61 @@ function createRetencionesDocView(cfg) {
         const correlativo = card?.getAttribute('data-correlativo');
         const action = btn.getAttribute('data-action');
         if (!coddoc || !correlativo) return;
-        if (action === 'editar') await this.showEditor(coddoc, correlativo);
-        else if (action === 'imprimir') await this.imprimirRetencion(coddoc, correlativo);
-        else if (action === 'eliminar') await this.eliminarRetencion(coddoc, correlativo);
+        try {
+          if (action === 'editar') await this.showEditor(coddoc, correlativo);
+          else if (action === 'imprimir') await this.imprimirRetencion(coddoc, correlativo);
+          else if (action === 'eliminar') await this.eliminarRetencion(coddoc, correlativo);
+        } catch (err) {
+          F.toast(err.message, 'error');
+        }
       });
+    },
+
+    bindDualPanelEvents() {
+      const c = this._container;
+      c?.querySelectorAll('.ret-add-fac').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.addPendingDoc(btn.dataset.coddoc, btn.dataset.corr);
+        });
+      });
+      c?.querySelectorAll('.ret-abono-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.removeAbono(Number(btn.dataset.idx));
+        });
+      });
+      c?.querySelectorAll('.ret-abono-monto').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const idx = Number(inp.dataset.idx);
+          const a = this._abonos[idx];
+          if (!a) return;
+          let val = this.roundMoney(inp.value);
+          const max = Number(a.FAC_DOC_SALDO) || val;
+          if (val < 0) val = 0;
+          if (val > max) {
+            val = max;
+            F.toast(`Máximo saldo: ${this.formatMoney(max)}`, 'info');
+          }
+          a.ABONO = val;
+          inp.value = val;
+          this.refreshTotalsDisplay();
+          const sumEl = c?.querySelector('.ret-doc-dual .text-success.fw-bold');
+          if (sumEl) sumEl.textContent = this.formatMoney(this.abonosSum());
+        });
+      });
+      const pendingSearch = c?.querySelector(`#${id('pending-search')}`);
+      if (pendingSearch && !pendingSearch.dataset.bound) {
+        pendingSearch.dataset.bound = '1';
+        const run = F.debounce(async () => {
+          this._pendingQuery = pendingSearch.value;
+          try {
+            await this.fetchPendientes(this.partyCodeOf(), this._pendingQuery);
+            this.refreshDualPanels();
+          } catch (err) {
+            F.toast(err.message, 'error');
+          }
+        }, 250);
+        pendingSearch.addEventListener('input', run);
+      }
     },
 
     bindEditorEvents() {
@@ -543,8 +909,95 @@ function createRetencionesDocView(cfg) {
       c?.querySelector(`#btn-${P}-finalizar`)?.addEventListener('click', () => {
         this.onFinalizar().catch((err) => F.toast(err.message, 'error'));
       });
-      document.getElementById(id('base'))?.addEventListener('input', () => this.syncTotalDocumento());
-      document.getElementById(id('retencion'))?.addEventListener('input', () => this.syncTotalDocumento());
+
+      const provSearch = c?.querySelector(`#${id('prov-search')}`);
+      const provList = c?.querySelector(`#${id('prov-results')}`);
+      if (provSearch && provList) {
+        const hideProvList = () => provList.classList.add('d-none');
+        const runSearch = F.debounce(async () => {
+          const q = provSearch.value.trim();
+          this._provQuery = provSearch.value;
+          if (q.length < 2) {
+            hideProvList();
+            return;
+          }
+          try {
+            await this.fetchParties(q);
+            const rows = this._parties || [];
+            if (!rows.length) {
+              provList.innerHTML = '<div class="list-group-item small text-muted">Sin resultados</div>';
+            } else {
+              provList.innerHTML = rows.slice(0, 15).map((p) => this.renderPartyItemHtml(p)).join('');
+            }
+            provList.classList.remove('d-none');
+          } catch (err) {
+            provList.innerHTML = `<div class="list-group-item text-danger small">${this.escapeHtml(err.message)}</div>`;
+            provList.classList.remove('d-none');
+          }
+        }, 350);
+        provSearch.addEventListener('input', runSearch);
+        provList.addEventListener('click', (e) => {
+          const btn = e.target.closest(`[${partyCodeAttr}]`);
+          if (!btn) return;
+          hideProvList();
+          const code =
+            btn.getAttribute('data-party-code') ||
+            btn.getAttribute('data-codcliente') ||
+            btn.getAttribute('data-codprov') ||
+            btn.dataset.partyCode ||
+            btn.dataset.codcliente ||
+            btn.dataset.codprov;
+          if (!code) {
+            F.toast(`No se pudo leer el código de ${partyLabelLower}`, 'error');
+            return;
+          }
+          this.onSelectParty(code).catch((err) => F.toast(err.message, 'error'));
+        });
+        if (typeof PosProductKeyboardUI !== 'undefined') {
+          PosProductKeyboardUI.bindPartyResultsKeyboard(provSearch, provList, {
+            itemSelector: `button[${partyCodeAttr}]`,
+          });
+        }
+        document.addEventListener('click', (e) => {
+          if (!provSearch.contains(e.target) && !provList.contains(e.target)) hideProvList();
+        });
+      }
+
+      this.bindDualPanelEvents();
+    },
+
+    async onSelectParty(code) {
+      if (!this.docEditable(this._doc)) return;
+      const hidden = document.getElementById(id('codparty'));
+      if (hidden) hidden.value = code;
+      if (this._doc) this._doc[partyCodeField] = Number(code) || code;
+      const p = (this._parties || []).find(
+        (x) => String(x[partyCodeField] ?? x.CODCLIENTE ?? x.CODPROV) === String(code)
+      );
+      if (p) {
+        if (isRecibida) {
+          this._doc.DOC_NOMCLIE = String(p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
+        } else {
+          this._doc.DOC_NOMCLIE = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
+        }
+        this._doc.DOC_NIT = String(p.NIT || '').trim();
+      }
+      this._provQuery = this.partyLabelText(code);
+      const search = document.getElementById(id('prov-search'));
+      if (search) search.value = this._provQuery;
+      const selLabel = document.getElementById(id('prov-selected'));
+      if (selLabel) {
+        selLabel.innerHTML = `Seleccionado: <strong>${this.escapeHtml(this._provQuery)}</strong>`;
+      }
+      document.getElementById(id('prov-results'))?.classList.add('d-none');
+      this._abonos = [];
+      this._pendingQuery = '';
+      try {
+        await this.fetchPendientes(code);
+        this.refreshDualPanels();
+      } catch (err) {
+        F.toast(err.message, 'error');
+      }
     },
 
     async load(container) {
@@ -558,7 +1011,7 @@ function createRetencionesDocView(cfg) {
       try {
         const config = await F.fetchJson(this.apiBase('/config'), { cache: 'no-store' });
         this._setup = config.setup;
-        await this.fetchProveedores();
+        if (config.calc) this._calc = config.calc;
         await this.showList();
       } catch (err) {
         container.innerHTML = `<div class="alert alert-danger m-3">${this.escapeHtml(err.message)}</div>`;

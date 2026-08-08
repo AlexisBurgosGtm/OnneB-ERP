@@ -2,7 +2,8 @@ const express = require('express');
 const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
-const { parseFechaInput, nowParts } = require('../lib/documento-fecha');
+const { parseFechaInput, nowParts, fechaIsoFromValue } = require('../lib/documento-fecha');
+const { excelDateCellValue, EXCEL_DATE_NUMFMT } = require('../lib/excel-export');
 
 const router = express.Router();
 
@@ -24,6 +25,11 @@ const CUADRE_TIPOS = {
     label: 'FNC - NOTAS DE CREDITO FEL',
     tipodocs: ['FNC'],
   },
+  VALES_CAJA: {
+    label: 'VALES DE CAJA',
+    tipodocs: ['VALES_CAJA'],
+    source: 'vales_caja',
+  },
 };
 
 function getEmpNitFromReq(req) {
@@ -37,6 +43,11 @@ function requireEmpNit(req, res) {
     return null;
   }
   return empnit;
+}
+
+function parseCodcaja(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function resolveTipoGrupo(raw) {
@@ -83,6 +94,11 @@ function mapCuadreRow(row) {
       deposito = roundMoney(row.FPAGO_DEPOSITO);
       tarjeta = roundMoney(row.FPAGO_TARJETA);
       cheque = roundMoney(row.FPAGO_CHEQUE);
+      const sumaFp = roundMoney(efectivo + deposito + tarjeta + cheque);
+      // Contado sin formas de pago cargadas: asignar TOTALPRECIO a efectivo.
+      if (sumaFp === 0 && total !== 0) {
+        efectivo = total;
+      }
     }
   }
 
@@ -94,11 +110,12 @@ function mapCuadreRow(row) {
       : '';
 
   return {
-    FECHA: row.FECHA,
+    FECHA: fechaIsoFromValue(row.FECHA) || null,
     CODDOC: row.CODDOC,
     CORRELATIVO: row.CORRELATIVO,
     DOCUMENTO: `${String(row.CODDOC || '').trim()}-${row.CORRELATIVO}`,
     TIPODOC: row.TIPODOC,
+    CODCAJA: row.CODCAJA ?? null,
     SAT: sat,
     STATUS: status || '—',
     CONCRE: concre,
@@ -112,19 +129,76 @@ function mapCuadreRow(row) {
   };
 }
 
-async function queryCuadreRows(pool, { empnit, desde, hasta, tipoKey }) {
+function mapCuadreValeCajaRow(row) {
+  const importe = roundMoney(Math.abs(Number(row.IMPORTE) || 0));
+  const recibe = String(row.RECIBE || '').trim();
+  const tipo = String(row.TIPO || '').trim();
+  const desc = String(row.DESCRIPCION || '').trim();
+  const cliente = [recibe, tipo, desc].filter(Boolean).join(' · ') || 'Vale de caja';
+  return {
+    FECHA: fechaIsoFromValue(row.FECHA) || null,
+    CODDOC: 'VC',
+    CORRELATIVO: row.NOVALE,
+    DOCUMENTO: `VC-${row.NOVALE}`,
+    TIPODOC: 'VALES_CAJA',
+    CODCAJA: row.CODCAJA ?? null,
+    SAT: tipo || '',
+    STATUS: 'O',
+    CONCRE: 'CON',
+    EFECTIVO: importe,
+    DEPOSITO: 0,
+    TARJETA: 0,
+    CHEQUE: 0,
+    CREDITO: 0,
+    NIT: '',
+    DOC_NOMCLIE: cliente,
+  };
+}
+
+async function queryCuadreValesCajaRows(pool, { empnit, desde, hasta, codcaja }) {
+  const result = await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('DESDE', sql.Date, desde.fecha)
+    .input('HASTA', sql.Date, hasta.fecha)
+    .input('CODCAJA', sql.Int, codcaja)
+    .query(`
+      SELECT
+        v.NOVALE,
+        v.FECHA,
+        v.CODCAJA,
+        ISNULL(v.TIPO, '') AS TIPO,
+        ISNULL(v.DESCRIPCION, '') AS DESCRIPCION,
+        ISNULL(v.RECIBE, '') AS RECIBE,
+        ISNULL(v.IMPORTE, 0) AS IMPORTE
+      FROM dbo.DOCUMENTOS_VALES_CAJA v
+      WHERE v.EMPNIT = @EMPNIT
+        AND TRY_CONVERT(INT, v.CODCAJA) = @CODCAJA
+        AND CAST(v.FECHA AS DATE) >= @DESDE
+        AND CAST(v.FECHA AS DATE) <= @HASTA
+      ORDER BY v.FECHA ASC, v.NOVALE ASC
+    `);
+  return (result.recordset || []).map(mapCuadreValeCajaRow);
+}
+
+async function queryCuadreRows(pool, { empnit, desde, hasta, tipoKey, codcaja }) {
   const grupo = CUADRE_TIPOS[tipoKey];
+  if (grupo.source === 'vales_caja') {
+    return queryCuadreValesCajaRows(pool, { empnit, desde, hasta, codcaja });
+  }
   const tipodocIn = grupo.tipodocs.map((t) => `'${t}'`).join(', ');
   const result = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('DESDE', sql.Date, desde.fecha)
     .input('HASTA', sql.Date, hasta.fecha)
+    .input('CODCAJA', sql.Int, codcaja)
     .query(`
       SELECT
         d.FECHA,
         d.CODDOC,
         d.CORRELATIVO,
+        d.CODCAJA,
         t.TIPODOC,
         d.STATUS,
         ISNULL(d.CONCRE, 'CON') AS CONCRE,
@@ -143,6 +217,8 @@ async function queryCuadreRows(pool, { empnit, desde, hasta, tipoKey }) {
       LEFT JOIN dbo.CLIENTES c
         ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT
+        AND d.CODCAJA IS NOT NULL
+        AND TRY_CONVERT(INT, d.CODCAJA) = @CODCAJA
         AND CAST(d.FECHA AS DATE) >= @DESDE
         AND CAST(d.FECHA AS DATE) <= @HASTA
         AND t.TIPODOC IN (${tipodocIn})
@@ -161,6 +237,26 @@ router.get('/tipos', (_req, res) => {
   });
 });
 
+router.get('/cajas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool.request().input('EMPNIT', sql.VarChar, empnit).query(`
+      SELECT CODCAJA, ISNULL(DESCAJA, '') AS DESCAJA, ISNULL(STATUS, 0) AS STATUS
+      FROM dbo.Cajas
+      WHERE EMPNIT = @EMPNIT
+      ORDER BY DESCAJA ASC, CODCAJA ASC
+    `);
+    res.json({ rows: result.recordset || [] });
+  } catch (err) {
+    console.warn('[API GET /cuadre-caja/cajas]', err.message);
+    res.status(500).json({ error: err.message || 'Error al cargar cajas' });
+  }
+});
+
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -169,18 +265,23 @@ router.get('/', async (req, res) => {
 
   const tipoKey = resolveTipoGrupo(req.query.tipo);
   if (!tipoKey) {
-    return res.status(400).json({ error: 'Tipo de documento inválido (FAC, FEL, DEV, FNC)' });
+    return res.status(400).json({ error: 'Tipo de documento inválido (FAC, FEL, DEV, FNC, VALES_CAJA)' });
+  }
+  const codcaja = parseCodcaja(req.query.codcaja);
+  if (!codcaja) {
+    return res.status(400).json({ error: 'CODCAJA requerido' });
   }
   const { desde, hasta } = resolveRangoFechas(req.query.desde, req.query.hasta);
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const rows = await queryCuadreRows(pool, { empnit, desde, hasta, tipoKey });
+    const rows = await queryCuadreRows(pool, { empnit, desde, hasta, tipoKey, codcaja });
     res.json({
       rows,
       total: rows.length,
       tipo: tipoKey,
       tipodocs: CUADRE_TIPOS[tipoKey].tipodocs,
+      codcaja,
       desde: desde.fecha,
       hasta: hasta.fecha,
     });
@@ -198,13 +299,17 @@ router.get('/export', async (req, res) => {
 
   const tipoKey = resolveTipoGrupo(req.query.tipo);
   if (!tipoKey) {
-    return res.status(400).json({ error: 'Tipo de documento inválido (FAC, FEL, DEV, FNC)' });
+    return res.status(400).json({ error: 'Tipo de documento inválido (FAC, FEL, DEV, FNC, VALES_CAJA)' });
+  }
+  const codcaja = parseCodcaja(req.query.codcaja);
+  if (!codcaja) {
+    return res.status(400).json({ error: 'CODCAJA requerido' });
   }
   const { desde, hasta } = resolveRangoFechas(req.query.desde, req.query.hasta);
 
   try {
     const pool = await req.app.locals.getDbPool();
-    const rows = await queryCuadreRows(pool, { empnit, desde, hasta, tipoKey });
+    const rows = await queryCuadreRows(pool, { empnit, desde, hasta, tipoKey, codcaja });
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Cuadre de caja');
@@ -224,10 +329,8 @@ router.get('/export', async (req, res) => {
     sheet.getRow(1).font = { bold: true };
 
     for (const r of rows) {
-      const fechaStr = String(r.FECHA || '').slice(0, 10);
-      const m = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
       sheet.addRow({
-        FECHA: m ? `${m[3]}-${m[2]}-${m[1]}` : fechaStr,
+        FECHA: excelDateCellValue(r.FECHA),
         DOCUMENTO: r.DOCUMENTO,
         SAT: r.SAT || '',
         STATUS: r.STATUS,
@@ -241,6 +344,11 @@ router.get('/export', async (req, res) => {
       });
     }
 
+    sheet.getColumn('FECHA').numFmt = EXCEL_DATE_NUMFMT;
+    for (let r = 2; r <= sheet.rowCount; r += 1) {
+      const cell = sheet.getRow(r).getCell('FECHA');
+      if (cell.value instanceof Date) cell.numFmt = EXCEL_DATE_NUMFMT;
+    }
     for (const col of ['EFECTIVO', 'DEPOSITO', 'TARJETA', 'CHEQUE', 'CREDITO']) {
       sheet.getColumn(col).numFmt = '#,##0.00';
     }
@@ -254,7 +362,7 @@ router.get('/export', async (req, res) => {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="cuadre_caja_${tipoKey}_${safeEmp}_${stamp}.xlsx"`
+      `attachment; filename="cuadre_caja_${tipoKey}_caja${codcaja}_${safeEmp}_${stamp}.xlsx"`
     );
     res.send(Buffer.from(buffer));
   } catch (err) {

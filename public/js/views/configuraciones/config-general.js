@@ -21,6 +21,8 @@ const ConfigGeneralView = {
     MAXIMO_FRACCIONAMIENTO_FACTURAS: 'MAXIMO FRACCIONAMIENTO FACTURAS',
     MUESTRA_DESPROD2_EN_DOCS_Y_PRODS: 'MUESTRA DESPROD2 EN DOCS Y PRODS',
     PERMITE_BIOMETRICO_EN_LOGIN: 'PERMITE BIOMETRICO EN LOGIN',
+    DEFAULT_TIPO_DOCUMENTO_FINALIZADO: 'DEFAULT TIPO DOCUMENTO FINALIZADO',
+    LIMITA_EFECTIVO_DISPONIBLE_EN_VALES_CAJA: 'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA',
   },
 
   TEXT_CARDS: [
@@ -120,6 +122,13 @@ const ConfigGeneralView = {
       fallbackDesc:
         'Si está en SI, permite iniciar sesión y registrar huella / passkeys. Si está en NO, no se solicita aunque el dispositivo lo soporte.',
     },
+    {
+      opcion: 'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA',
+      title: 'Limita efectivo disponible en vales caja',
+      icon: 'fa-ticket',
+      fallbackDesc:
+        'Si está en SI, el importe de cada vale de caja no puede superar el efectivo inicial de la caja abierta. En NO no hay tope.',
+    },
   ],
 
   CONCRE_OPTIONS: [
@@ -167,6 +176,23 @@ const ConfigGeneralView = {
     },
   ],
 
+  TIPOFAC_FINALIZADO_OPTIONS: [
+    {
+      opcion: 'DEFAULT TIPO DOCUMENTO FINALIZADO',
+      title: 'Default Tipo documento Finalizado',
+      icon: 'fa-file-circle-check',
+      fallbackDesc:
+        'Valor por defecto del selector Tipo Documento al finalizar pedidos, cotizaciones o facturas (si el selector está disponible).',
+      labels: {
+        FEF: 'FACTURA FEL NORMAL',
+        FAC: 'ENVIO',
+        FEC: 'FACTURA FEL CAMBIARIA',
+      },
+      defaultValue: 'FEF',
+      values: ['FEF', 'FAC', 'FEC'],
+    },
+  ],
+
   PASS_CARDS: [
     {
       opcion: 'CLAVE ADMIN',
@@ -192,6 +218,7 @@ const ConfigGeneralView = {
   _formatoMeta: {},
   _fotoMeta: {},
   _felFormatoMeta: {},
+  _tipofacFinalizadoMeta: {},
   _invSaldoPendientes: null,
 
   escapeHtml(value) {
@@ -233,6 +260,12 @@ const ConfigGeneralView = {
     return 'NO';
   },
 
+  normalizeTipofacFinalizado(value) {
+    const s = String(value ?? 'FEF').trim().toUpperCase();
+    if (s === 'FAC' || s === 'FEC' || s === 'FEF') return s;
+    return 'FEF';
+  },
+
   getFormatoOption(opcion) {
     return this.FORMATO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
   },
@@ -243,6 +276,10 @@ const ConfigGeneralView = {
 
   getFelFormatoOption(opcion) {
     return this.FEL_FORMATO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
+  },
+
+  getTipofacFinalizadoOption(opcion) {
+    return this.TIPOFAC_FINALIZADO_OPTIONS.find((opt) => opt.opcion === opcion) || null;
   },
 
   getFormatoLabel(option, formato) {
@@ -257,6 +294,11 @@ const ConfigGeneralView = {
 
   getFelFormatoLabel(option, modo) {
     const val = this.normalizeFelFormatoModo(modo);
+    return option?.labels?.[val] || val;
+  },
+
+  getTipofacFinalizadoLabel(option, tipofac) {
+    const val = this.normalizeTipofacFinalizado(tipofac);
     return option?.labels?.[val] || val;
   },
 
@@ -340,6 +382,36 @@ const ConfigGeneralView = {
               <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
             </div>
             <select class="form-select form-select-sm config-fel-formato-select" style="max-width:8rem"
+              data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  renderTipofacFinalizadoCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const tipofac = this.normalizeTipofacFinalizado(meta.tipofac || option.defaultValue || 'FEF');
+    const values = option.values || ['FEF', 'FAC', 'FEC'];
+    const options = values
+      .map((val) => {
+        const label = this.getTipofacFinalizadoLabel(option, val);
+        const sel = val === tipofac ? ' selected' : '';
+        return `<option value="${val}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <div class="card config-card-compact" data-tipofac-finalizado-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            <select class="form-select form-select-sm config-tipofac-finalizado-select" style="max-width:14rem"
               data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
               ${options}
             </select>
@@ -634,6 +706,9 @@ const ConfigGeneralView = {
     const felFormatoCards = this.FEL_FORMATO_OPTIONS.map((opt) =>
       this.renderFelFormatoCard(opt, this._felFormatoMeta[opt.opcion] || {})
     ).join('');
+    const tipofacFinalizadoCards = this.TIPOFAC_FINALIZADO_OPTIONS.map((opt) =>
+      this.renderTipofacFinalizadoCard(opt, this._tipofacFinalizadoMeta[opt.opcion] || {})
+    ).join('');
     return `
       <div class="config-general-wrap w-100">
         <div class="config-general-panel">
@@ -645,6 +720,7 @@ const ConfigGeneralView = {
             ${formatoCards}
             ${fotoCards}
             ${felFormatoCards}
+            ${tipofacFinalizadoCards}
             ${this.renderInvSaldoCard(this._invSaldoPendientes)}
             ${this.renderCorreccionProductosCard()}
             ${this.renderCorregirSaldosCxcCard()}
@@ -722,6 +798,10 @@ const ConfigGeneralView = {
       sel.addEventListener('change', () => this.onChangeFelFormatoModo(sel));
     });
 
+    this._container?.querySelectorAll('.config-tipofac-finalizado-select').forEach((sel) => {
+      sel.addEventListener('change', () => this.onChangeTipofacFinalizado(sel));
+    });
+
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
       this.onSincronizarInvSaldo();
     });
@@ -775,6 +855,12 @@ const ConfigGeneralView = {
 
   async fetchFelFormatoModo(opcion) {
     return F.fetchJson(`/api/config/muestra-formato-fel?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  async fetchTipofacFinalizado(opcion) {
+    return F.fetchJson(`/api/config/tipofac-finalizado?${this.configQuery(opcion)}&_=${Date.now()}`, {
       cache: 'no-store',
     });
   },
@@ -837,6 +923,31 @@ const ConfigGeneralView = {
         body: JSON.stringify({ opcion, modo }),
       });
       this._felFormatoMeta[opcion] = { ...(this._felFormatoMeta[opcion] || {}), modo };
+      F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      sel.value = prev;
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      sel.disabled = false;
+    }
+  },
+
+  async onChangeTipofacFinalizado(sel) {
+    const opcion = sel.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const tipofac = this.normalizeTipofacFinalizado(sel.value);
+    const prev = this.normalizeTipofacFinalizado(this._tipofacFinalizadoMeta[opcion]?.tipofac || 'FEF');
+    sel.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/tipofac-finalizado?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, tipofac }),
+      });
+      this._tipofacFinalizadoMeta[opcion] = { ...(this._tipofacFinalizadoMeta[opcion] || {}), tipofac };
+      if (typeof DocTipofacPrioridad !== 'undefined') {
+        DocTipofacPrioridad._defaultTipofacCache = tipofac;
+      }
       F.toast('Configuración actualizada', 'success');
     } catch (err) {
       sel.value = prev;
@@ -1152,6 +1263,9 @@ const ConfigGeneralView = {
       const formatoFetches = this.FORMATO_OPTIONS.map((opt) => this.fetchFormato(opt.opcion));
       const fotoFetches = this.FOTO_OPTIONS.map((opt) => this.fetchFotoModo(opt.opcion));
       const felFormatoFetches = this.FEL_FORMATO_OPTIONS.map((opt) => this.fetchFelFormatoModo(opt.opcion));
+      const tipofacFinalizadoFetches = this.TIPOFAC_FINALIZADO_OPTIONS.map((opt) =>
+        this.fetchTipofacFinalizado(opt.opcion)
+      );
       const fetches = [
         ...passFetches,
         ...textFetches,
@@ -1160,6 +1274,7 @@ const ConfigGeneralView = {
         ...formatoFetches,
         ...fotoFetches,
         ...felFormatoFetches,
+        ...tipofacFinalizadoFetches,
       ];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
       const results = await Promise.all(fetches);
@@ -1171,6 +1286,7 @@ const ConfigGeneralView = {
       const formatoResults = results.slice(idx, (idx += this.FORMATO_OPTIONS.length));
       const fotoResults = results.slice(idx, (idx += this.FOTO_OPTIONS.length));
       const felFormatoResults = results.slice(idx, (idx += this.FEL_FORMATO_OPTIONS.length));
+      const tipofacFinalizadoResults = results.slice(idx, (idx += this.TIPOFAC_FINALIZADO_OPTIONS.length));
       const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
 
       this._passMeta = {};
@@ -1200,6 +1316,10 @@ const ConfigGeneralView = {
       this._felFormatoMeta = {};
       this.FEL_FORMATO_OPTIONS.forEach((opt, i) => {
         this._felFormatoMeta[opt.opcion] = felFormatoResults[i];
+      });
+      this._tipofacFinalizadoMeta = {};
+      this.TIPOFAC_FINALIZADO_OPTIONS.forEach((opt, i) => {
+        this._tipofacFinalizadoMeta[opt.opcion] = tipofacFinalizadoResults[i];
       });
       this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
 

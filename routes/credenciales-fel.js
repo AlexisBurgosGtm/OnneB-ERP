@@ -1,6 +1,11 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
+const {
+  ADENDA_OPTIONS,
+  loadAdendasConfig,
+  saveAdendasConfig,
+} = require('../lib/fel/adendas');
 
 const router = express.Router();
 
@@ -128,6 +133,37 @@ router.get('/', async (req, res) => {
     res.json({ rows: result.recordset, total: result.recordset.length, empnit });
   } catch (err) {
     console.warn('[API GET /credenciales-fel]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Adendas FEL (JSON global en data/fel-adendas.json). Debe ir antes de /:empnit. */
+router.get('/adendas', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const cfg = loadAdendasConfig();
+    res.json({
+      version: cfg.version,
+      slots: cfg.slots,
+      options: ADENDA_OPTIONS,
+    });
+  } catch (err) {
+    console.warn('[API GET /credenciales-fel/adendas]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/adendas', (req, res) => {
+  try {
+    const cfg = saveAdendasConfig(req.body?.slots || req.body || {});
+    res.json({
+      ok: true,
+      version: cfg.version,
+      slots: cfg.slots,
+      options: ADENDA_OPTIONS,
+    });
+  } catch (err) {
+    console.warn('[API PUT /credenciales-fel/adendas]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

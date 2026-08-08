@@ -717,7 +717,10 @@ const ComandasRestauranteView = {
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass: String(pass) }),
+      body: JSON.stringify({
+        pass: String(pass),
+        USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+      }),
     });
     F.toast('Comanda eliminada', 'success');
     await this.showMesas();

@@ -112,6 +112,7 @@ const LibroComprasView = {
     const classes = [];
     if (row.ANULADO) classes.push('libro-compras-row-anulado');
     else if (row.ES_NOTA_CREDITO) classes.push('libro-compras-row-nc');
+    else if (row.ES_PEQ_CONTRIBUYENTE) classes.push('libro-compras-row-peq');
     return classes.join(' ');
   },
 
@@ -133,8 +134,9 @@ const LibroComprasView = {
     const parts = [
       `${total} registro(s)`,
       `${this.mesLabel(this._mes)} ${this._anio}`,
-      `Compras: ${t.compras ?? 0}`,
-      `Notas crédito: ${t.notasCredito ?? 0}`,
+      `COM: ${t.compras ?? 0}`,
+      `COP: ${t.peqContribuyente ?? 0}`,
+      `DVP: ${t.notasCredito ?? 0}`,
     ];
     if ((t.anulados ?? 0) > 0) parts.push(`Anulados: ${t.anulados}`);
     return parts.join(' · ');
@@ -180,8 +182,11 @@ const LibroComprasView = {
           </div>
           <div class="libro-compras-badge small text-muted mt-2" id="libro-compras-count">${this.escapeHtml(this.badgeText())}</div>
           <div class="small text-muted mt-1">
-            Documentos contables (<strong>CONTABLE = SI</strong>): compras COM, COP y notas de crédito DVP.
-            Serie, número y fecha provienen de FEL (o factura proveedor). Los documentos con estado <strong>A</strong> se marcan como anulados.
+            Documentos contables (<strong>CONTABLE = SI</strong>):
+            <strong>COM</strong> (IVA desglosado),
+            <strong>COP</strong> (pequeño contribuyente → Exentas, sin IVA),
+            <strong>DVP</strong> (nota crédito: resta con IVA normal).
+            Serie/número/fecha: FEL o factura proveedor. Estado <strong>A</strong> = anulado.
           </div>
         </div>
       </div>

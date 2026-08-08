@@ -2,7 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { assertAdminPass } = require('../lib/config-auth');
-const { normalizeDocumentoRows, nowParts, parseFechaInput } = require('../lib/documento-fecha');
+const { normalizeDocumentoRows, nowParts, parseFechaInput, fechaIsoFromRow } = require('../lib/documento-fecha');
 const { STATUS_OPERADO, STATUS_ANULADO } = require('../lib/documento-status');
 const { certificarDocumentoFel } = require('../lib/fel/certificar');
 const { getTipomDocumento } = require('../lib/inventario');
@@ -643,14 +643,24 @@ async function finalizeCola(txOrPool, empnit, idCola) {
     .input('ID_COLA', sql.Int, idCola)
     .input('CODDOC', sql.VarChar, row.CODDOC)
     .input('CORRELATIVO', sql.Decimal(18, 0), row.CORRELATIVO)
+    .input('CODEMBARQUE', sql.VarChar, 'FRACCIONADA')
+    .query(`
+      UPDATE dbo.DOCUMENTOS
+      SET ID_COLA_TRABAJO = NULL,
+          CODEMBARQUE = @CODEMBARQUE
+      WHERE EMPNIT = @EMPNIT
+        AND CODDOC = @CODDOC
+        AND CORRELATIVO = @CORRELATIVO
+    `);
+
+  /* Por si otra fila quedó apuntando a la misma cola. */
+  await new sql.Request(txOrPool)
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('ID_COLA', sql.Int, idCola)
     .query(`
       UPDATE dbo.DOCUMENTOS
       SET ID_COLA_TRABAJO = NULL
-      WHERE EMPNIT = @EMPNIT
-        AND (
-          ID_COLA_TRABAJO = @ID_COLA
-          OR (CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO AND ID_COLA_TRABAJO = @ID_COLA)
-        )
+      WHERE EMPNIT = @EMPNIT AND ID_COLA_TRABAJO = @ID_COLA
     `);
 
   await new sql.Request(txOrPool)
@@ -797,7 +807,9 @@ router.get('/:id/prep-certificar', async (req, res) => {
         CORRELATIVO_SIGUIENTE: await peekNextCorrelativo(pool, empnit, r.CODDOC),
       });
     }
-    const parts = nowParts();
+    const fechaDoc = fechaIsoFromRow(doc) || '';
+    // Default del modal «certificar toda»: hoy (no la fecha del documento fuente).
+    const fechaModalDefault = nowParts().fecha;
     res.json({
       cola: normalizeDocumentoRows([cola])[0],
       documento: {
@@ -812,9 +824,16 @@ router.get('/:id/prep-certificar', async (req, res) => {
         TOTALPRECIO: doc.TOTALPRECIO,
         FEL_UUDI: doc.FEL_UUDI || '',
         STATUS: doc.STATUS,
+        FECHA: fechaDoc,
+        ANIO: doc.ANIO,
+        MES: doc.MES,
+        DIA: doc.DIA,
+        HORA: doc.HORA,
+        MINUTO: doc.MINUTO,
       },
       tipodocs: tipodocsConCorr,
-      fechaCertificacion: parts.fecha,
+      fechaEmision: fechaModalDefault,
+      fechaCertificacion: fechaModalDefault,
     });
   } catch (err) {
     console.warn('[API GET /fraccionamiento-fac/:id/prep-certificar]', err.message);
@@ -838,25 +857,22 @@ router.post('/:id/certificar-toda', async (req, res) => {
   const docNom = String(req.body?.DOC_NOMCLIE || req.body?.NOMBRE || '').trim();
   const docDir = String(req.body?.DOC_DIRCLIE || req.body?.DIRECCION || 'CIUDAD').trim() || 'CIUDAD';
   const usuario = String(req.body?.USUARIO || req.body?.usuario || req.headers['x-user'] || 'FAC').trim();
-  let fechaParts;
-  const fechaRaw = req.body?.FECHA || req.body?.fechaCertificacion;
-  if (fechaRaw) {
-    const parsed = parseFechaInput(fechaRaw);
-    if (!parsed) return res.status(400).json({ error: 'Fecha inválida' });
-    const now = nowParts();
-    fechaParts = {
-      ...now,
-      anio: parsed.anio,
-      mes: parsed.mes,
-      dia: parsed.dia,
-      fecha: parsed.fecha,
-    };
-  } else {
-    fechaParts = nowParts();
+  const fechaRaw = req.body?.FECHA || req.body?.fechaEmision || req.body?.fechaCertificacion;
+  // Certificar toda: emisión y certificación usan solo la fecha del modal (no la del documento).
+  const parsedFecha = parseFechaInput(fechaRaw);
+  if (!parsedFecha) {
+    return res.status(400).json({ error: 'Fecha de emisión/certificación requerida (del modal)' });
   }
-
-  if (!coddocDest) return res.status(400).json({ error: 'Seleccione un CODDOC (FEF o FEC)' });
-  if (!docNom) return res.status(400).json({ error: 'Nombre de cliente requerido' });
+  const now = nowParts();
+  const fechaParts = {
+    ...now,
+    anio: parsedFecha.anio,
+    mes: parsedFecha.mes,
+    dia: parsedFecha.dia,
+    fecha: parsedFecha.fecha,
+  };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const felFechaModal = `${fechaParts.fecha}T${pad2(fechaParts.hora)}:${pad2(fechaParts.minuto)}:00-06:00`;
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -872,20 +888,51 @@ router.post('/:id/certificar-toda', async (req, res) => {
       return res.status(400).json({ error: 'El documento fuente debe estar operado' });
     }
 
+    if (!coddocDest) return res.status(400).json({ error: 'Seleccione un CODDOC (FEF o FEC)' });
+    if (!docNom) return res.status(400).json({ error: 'Nombre de cliente requerido' });
+
     await assertCoddocFelTipom0(pool, empnit, coddocDest);
 
     const tipodocFuente = String(fuente.TIPODOC || '').trim().toUpperCase();
-    let coddocCert = fuente.CODDOC;
-    let correlativoCert = Number(fuente.CORRELATIVO);
+    if (TIPODOC_CERT_FAC.includes(tipodocFuente) && String(fuente.FEL_UUDI || '').trim()) {
+      return res.status(409).json({ error: 'El documento fuente ya está certificado ante SAT' });
+    }
 
-    // Si la fuente ya es FEF/FEC y es el mismo CODDOC elegido: actualizar cliente y certificar.
-    const mismaFiscal =
-      TIPODOC_CERT_FAC.includes(tipodocFuente) && String(fuente.CODDOC).trim() === coddocDest;
+    // Enlace a la factura original de la cola (nunca se modifica su fecha).
+    const serieFacOrigen = String(fuente.CODDOC || '').trim();
 
-    if (mismaFiscal) {
-      if (String(fuente.FEL_UUDI || '').trim()) {
-        return res.status(409).json({ error: 'El documento ya está certificado ante SAT' });
-      }
+    const existentes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('SERIEFAC', sql.VarChar, serieFacOrigen)
+      .input('CORR_SRC', sql.Decimal(18, 0), Number(fuente.CORRELATIVO))
+      .query(`
+          SELECT TOP 1 d.CODDOC, d.CORRELATIVO, d.FEL_UUDI
+          FROM dbo.DOCUMENTOS d
+          JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+          WHERE d.EMPNIT = @EMPNIT
+            AND t.TIPODOC IN (${tipodocSqlIn(TIPODOC_CERT_FAC)})
+            AND d.SERIEFAC = @SERIEFAC
+            AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR_SRC
+            AND d.STATUS <> '${STATUS_ANULADO}'
+          ORDER BY CASE WHEN ISNULL(LTRIM(RTRIM(d.FEL_UUDI)), '') <> '' THEN 0 ELSE 1 END,
+                   d.CORRELATIVO DESC
+        `);
+
+    let coddocCert;
+    let correlativoCert;
+    const existente = existentes.recordset[0];
+
+    if (existente && String(existente.FEL_UUDI || '').trim()) {
+      return res.status(409).json({
+        error: `Ya existe documento fiscal certificado ${existente.CODDOC} #${existente.CORRELATIVO} para esta factura`,
+      });
+    }
+
+    if (existente) {
+      // Reintento: actualizar solo la copia fiscal pendiente (no el documento original).
+      coddocCert = existente.CODDOC;
+      correlativoCert = Number(existente.CORRELATIVO);
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -898,38 +945,19 @@ router.post('/:id/certificar-toda', async (req, res) => {
         .input('MES', sql.Int, fechaParts.mes)
         .input('DIA', sql.Int, fechaParts.dia)
         .input('FECHA', sql.Date, fechaParts.fecha)
+        .input('HORA', sql.Int, fechaParts.hora)
+        .input('MINUTO', sql.Int, fechaParts.minuto)
         .query(`
           UPDATE dbo.DOCUMENTOS
           SET DOC_NIT = @DOC_NIT,
               DOC_NOMCLIE = @DOC_NOMCLIE,
               DOC_DIRCLIE = @DOC_DIRCLIE,
-              ANIO = @ANIO, MES = @MES, DIA = @DIA, FECHA = @FECHA
+              ANIO = @ANIO, MES = @MES, DIA = @DIA, FECHA = @FECHA,
+              HORA = @HORA, MINUTO = @MINUTO
           WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
         `);
     } else {
-      // Crear documento fiscal nuevo (sin inventario: ya movido en FAC).
-      const dup = await pool
-        .request()
-        .input('EMPNIT', sql.VarChar, empnit)
-        .input('SERIEFAC', sql.VarChar, fuente.CODDOC)
-        .input('CORR_SRC', sql.Decimal(18, 0), fuente.CORRELATIVO)
-        .query(`
-          SELECT TOP 1 d.CODDOC, d.CORRELATIVO
-          FROM dbo.DOCUMENTOS d
-          JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
-          WHERE d.EMPNIT = @EMPNIT
-            AND t.TIPODOC IN (${tipodocSqlIn(TIPODOC_CERT_FAC)})
-            AND d.SERIEFAC = @SERIEFAC
-            AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR_SRC
-            AND d.STATUS <> '${STATUS_ANULADO}'
-        `);
-      if (dup.recordset.length) {
-        const d = dup.recordset[0];
-        return res.status(409).json({
-          error: `Ya existe documento fiscal ${d.CODDOC} #${d.CORRELATIVO} para esta factura`,
-        });
-      }
-
+      // Nueva copia FEF/FEC con la fecha del modal.
       const tx = new sql.Transaction(pool);
       await tx.begin();
       try {
@@ -969,7 +997,9 @@ router.post('/:id/certificar-toda', async (req, res) => {
 
     let fel;
     try {
-      fel = await certificarDocumentoFel(pool, empnit, coddocCert, correlativoCert);
+      fel = await certificarDocumentoFel(pool, empnit, coddocCert, correlativoCert, {
+        fechaCertificacion: felFechaModal,
+      });
     } catch (felErr) {
       // Documento fiscal pudo crearse; la cola sigue abierta para reintento
       throw felErr;

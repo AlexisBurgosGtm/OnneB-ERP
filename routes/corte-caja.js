@@ -1,17 +1,25 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
-const { nowParts } = require('../lib/documento-fecha');
+const { nowParts, fechaIsoFromRow, normalizeDocumentoRows } = require('../lib/documento-fecha');
 const {
   sessionCorteDocsSql,
   sessionCorteDocsListSql,
   sessionCorteAnuladasSumSql,
   SQL_TIPODOC_CORTE_IN,
   SQL_EXCLUIR_FACTURAS_TIPOM_NEUTRO,
+  SQL_EXCLUIR_COMPRAS_Y_DVP_CORTE,
+  SQL_TIPODOC_FACTURA_IN,
+  SQL_TIPODOC_PRC_IN,
   TIPODOC_FACTURA,
   TIPODOC_DEVOLUCION,
+  TIPODOC_EXCLUIDOS_CORTE_CAJA,
 } = require('../lib/corte-caja-docs');
-const { sumValesSesionCaja, marcarValesCorte, sumPagosValesSesionCaja, marcarPagosValesCorte, listValesSesionCaja, listPagosValesSesionCaja } = require('../lib/nomina-vales');
+const {
+  sumValesCajaSesion,
+  marcarValesCajaCorte,
+  listValesCajaSesion,
+} = require('../lib/vales-caja');
 const {
   crearMovimientoBanco,
   sumRetirosEfectivoSesionCaja,
@@ -77,6 +85,7 @@ async function loadCaja(pool, empnit, codcaja) {
       SELECT CODCAJA, DESCAJA, ISNULL(STATUS, 0) AS STATUS,
              ISNULL(EFECTIVOINICIAL, 0) AS EFECTIVOINICIAL,
              ISNULL(EFECTIVOLIMITE, 0) AS EFECTIVOLIMITE,
+             ISNULL(EFECTIVO_PROXIMA_CAJA, 0) AS EFECTIVO_PROXIMA_CAJA,
              LASTUPDATE
       FROM dbo.Cajas
       WHERE EMPNIT = @EMPNIT AND CODCAJA = @CODCAJA
@@ -89,8 +98,52 @@ function sessionDocsSql() {
   return sessionCorteDocsSql();
 }
 
+/**
+ * Marca documentos de la sesión con CORTE='SI' y NOCORTE=correlativo del corte.
+ * Debe ejecutarse ANTES de insertar el registro en CORTES: el filtro por IDFINAL
+ * usa el último corte de la caja; si ya existiera el nuevo, IDFINAL excluiría
+ * justo los documentos de esta sesión.
+ * Incluye operados (STATUS='O') y facturas anuladas de la sesión (STATUS='A').
+ */
 async function marcarDocumentosCorte(transaction, empnit, codcaja, nocorte, apertura) {
-  const result = await transaction
+  const sessionIdFilter = `
+        AND d.ID > ISNULL((
+          SELECT TOP 1 CASE WHEN c.IDFINAL > 0 THEN c.IDFINAL ELSE 0 END
+          FROM dbo.CORTES c
+          WHERE c.EMPNIT = @EMPNIT AND c.CODCAJA = @CODCAJA
+          ORDER BY c.ID DESC
+        ), 0)
+        AND d.FECHA >= CAST(@APERTURA AS DATE)`;
+
+  const resultOperados = await transaction
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODCAJA', sql.Int, codcaja)
+    .input('NOCORTE', sql.Int, nocorte)
+    .input('APERTURA', sql.DateTime, apertura)
+    .query(`
+      UPDATE d
+      SET d.CORTE = 'SI', d.NOCORTE = @NOCORTE, d.CODCAJA = @CODCAJA
+      FROM dbo.DOCUMENTOS d
+      INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE d.EMPNIT = @EMPNIT
+        AND (
+          d.CODCAJA = @CODCAJA
+          OR (
+            t.TIPODOC IN (${SQL_TIPODOC_PRC_IN})
+            AND ISNULL(TRY_CONVERT(INT, d.CODCAJA), 0) = 0
+            AND UPPER(LTRIM(RTRIM(ISNULL(d.CODEMBARQUE, '')))) = 'CXC'
+          )
+        )
+        AND d.STATUS = 'O'
+        AND ISNULL(d.CORTE, 'NO') = 'NO'
+        AND t.TIPODOC IN (${SQL_TIPODOC_CORTE_IN})
+        ${SQL_EXCLUIR_COMPRAS_Y_DVP_CORTE}
+        ${SQL_EXCLUIR_FACTURAS_TIPOM_NEUTRO}
+        ${sessionIdFilter}
+    `);
+
+  const resultAnuladas = await transaction
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('CODCAJA', sql.Int, codcaja)
@@ -103,19 +156,35 @@ async function marcarDocumentosCorte(transaction, empnit, codcaja, nocorte, aper
       INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
       WHERE d.EMPNIT = @EMPNIT
         AND d.CODCAJA = @CODCAJA
-        AND d.STATUS = 'O'
+        AND d.STATUS = 'A'
         AND ISNULL(d.CORTE, 'NO') = 'NO'
-        AND t.TIPODOC IN (${SQL_TIPODOC_CORTE_IN})
-        ${SQL_EXCLUIR_FACTURAS_TIPOM_NEUTRO}
-        AND d.ID > ISNULL((
-          SELECT TOP 1 CASE WHEN c.IDFINAL > 0 THEN c.IDFINAL ELSE 0 END
-          FROM dbo.CORTES c
-          WHERE c.EMPNIT = @EMPNIT AND c.CODCAJA = @CODCAJA
-          ORDER BY c.ID DESC
-        ), 0)
-        AND d.FECHA >= CAST(@APERTURA AS DATE)
+        AND t.TIPODOC IN (${SQL_TIPODOC_FACTURA_IN})
+        AND ISNULL(t.TIPOM, 0) <> 0
+        ${SQL_EXCLUIR_COMPRAS_Y_DVP_CORTE}
+        ${sessionIdFilter}
     `);
-  return result.rowsAffected[0] || 0;
+
+  /* Libera COM/COP/DVP marcados por error en cortes previos (no cuentan en efectivo).
+   * Compras finalizadas conservan CORTE='SI' cuando NOCORTE está vacío. */
+  await transaction
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .query(`
+      UPDATE d
+      SET
+        d.NOCORTE = NULL,
+        d.CORTE = CASE
+          WHEN t.TIPODOC = 'DVP' THEN 'NO'
+          ELSE d.CORTE
+        END
+      FROM dbo.DOCUMENTOS d
+      INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE d.EMPNIT = @EMPNIT
+        AND t.TIPODOC IN (${TIPODOC_EXCLUIDOS_CORTE_CAJA.map((t) => `'${t}'`).join(', ')})
+        AND ISNULL(d.NOCORTE, 0) > 0
+    `);
+
+  return (resultOperados.rowsAffected[0] || 0) + (resultAnuladas.rowsAffected[0] || 0);
 }
 
 function docTipodoc(row) {
@@ -131,11 +200,17 @@ function isFacturaDoc(row) {
 }
 
 function isReciboDoc(row) {
-  return docTipodoc(row) === 'RCC';
+  return ['RCC', 'PRC'].includes(docTipodoc(row));
 }
 
-function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosVales = 0, totalRetiros = 0) {
-  const docs = rows || [];
+function buildResumenFromRows(
+  rows,
+  efectivoInicial,
+  totalRetiros = 0,
+  totalValesCaja = 0
+) {
+  const excluidos = new Set(TIPODOC_EXCLUIDOS_CORTE_CAJA);
+  const docs = (rows || []).filter((d) => !excluidos.has(docTipodoc(d)));
   const first = docs[0] || null;
   const last = docs[docs.length - 1] || null;
   let totalCosto = 0;
@@ -158,13 +233,22 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
     const deposito = Number(d.FPAGO_DEPOSITO) || 0;
     const cheque = Number(d.FPAGO_CHEQUE) || 0;
 
-    // Recibos RCC: suman a caja por forma de pago; no inflan ventas/costos/crédito.
+    // Recibos RCC/PRC: suman a caja por forma de pago; no inflan ventas/costos/crédito.
     if (isReciboDoc(d)) {
       totalRecibos += precio;
-      fpEfectivo += efectivo;
-      fpTarjeta += tarjeta;
-      fpDeposito += deposito;
-      fpCheque += cheque;
+      let efe = efectivo;
+      let tar = tarjeta;
+      let dep = deposito;
+      let che = cheque;
+      const sumaFp = roundMoney(efe + tar + dep + che);
+      // Si no cargaron formas de pago, el monto del recibo entra a efectivo.
+      if (sumaFp === 0 && precio !== 0) {
+        efe = precio;
+      }
+      fpEfectivo += efe;
+      fpTarjeta += tar;
+      fpDeposito += dep;
+      fpCheque += che;
       continue;
     }
 
@@ -203,13 +287,12 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
   fpCheque = roundMoney(fpCheque);
   const totalUtilidad = roundMoney(totalVenta - totalCosto);
   const margen = totalVenta > 0 ? roundMoney((totalUtilidad / totalVenta) * 100) : 0;
-  const vales = roundMoney(totalVales);
-  const pagosVales = roundMoney(totalPagosVales);
   const retiros = roundMoney(totalRetiros);
-  // Gastos netos de vales: vales restan, abonos suman efectivo
-  const totalGastos = roundMoney(vales - pagosVales + retiros);
+  const valesCaja = roundMoney(totalValesCaja);
+  // Gastos: retiros a banco y vales de caja (salidas de efectivo).
+  const totalGastos = roundMoney(retiros + valesCaja);
   const efectivoEsperado = roundMoney(
-    (Number(efectivoInicial) || 0) + fpEfectivo - vales + pagosVales - retiros
+    (Number(efectivoInicial) || 0) + fpEfectivo - retiros - valesCaja
   );
 
   return {
@@ -228,9 +311,8 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
     fpDeposito,
     fpCheque,
     totalGastos,
-    totalVales: vales,
-    totalPagosVales: pagosVales,
     totalRetiros: retiros,
+    totalValesCaja: valesCaja,
     efectivoInicial: roundMoney(efectivoInicial),
     efectivoEsperado,
     docInicial: first
@@ -254,6 +336,112 @@ function buildResumenFromRows(rows, efectivoInicial, totalVales = 0, totalPagosV
   };
 }
 
+function parseMesAnio(req) {
+  const now = new Date();
+  const mes = parseInt(req.query.mes, 10);
+  const anio = parseInt(req.query.anio, 10);
+  return {
+    mes: Number.isFinite(mes) && mes >= 1 && mes <= 12 ? mes : now.getMonth() + 1,
+    anio: Number.isFinite(anio) && anio >= 2000 && anio <= 2100 ? anio : now.getFullYear(),
+  };
+}
+
+function mapCorteListRow(r) {
+  if (!r) return null;
+  return {
+    ID: r.ID,
+    CORRELATIVO: r.CORRELATIVO,
+    FECHA: fechaIsoFromRow({ FECHA: r.FECHA }) || null,
+    ANIO: r.ANIO,
+    MES: r.MES,
+    DIA: r.DIA,
+    HORA: r.HORA,
+    MINUTO: r.MINUTO,
+    CODCAJA: r.CODCAJA,
+    DESCAJA: r.DESCAJA || '',
+    TOTALMOVIMIENTOS: Number(r.TOTALMOVIMIENTOS) || 0,
+    TOTALVENTA: roundMoney(r.TOTALVENTA),
+    TOTALREPORTADO: roundMoney(r.TOTALREPORTADO),
+    FALTANTE: roundMoney(r.FALTANTE),
+    SOBRANTE: roundMoney(r.SOBRANTE),
+    USUARIO: r.USUARIO || '',
+    OBS: r.OBS || '',
+  };
+}
+
+function mapCortePrintPayload(r) {
+  if (!r) return null;
+  const faltante = roundMoney(r.FALTANTE);
+  const sobrante = roundMoney(r.SOBRANTE);
+  const totalReportado = roundMoney(r.TOTALREPORTADO);
+  const totalDevoluciones = roundMoney(r.TOTALDEVOLUCIONES);
+  const totalVenta = roundMoney(r.TOTALVENTA);
+  const fpEfectivo = roundMoney(r.FPAGO_EFECTIVO);
+  const fpTarjeta = roundMoney(r.FPAGO_TARJETA ?? r.TOTALTARJETA);
+  const fpDeposito = roundMoney(r.FPAGO_DEPOSITO);
+  const fpCheque = roundMoney(r.FPAGO_CHEQUE ?? r.TOTALCHEQUES);
+  const totalGastos = roundMoney(r.TOTALGASTOS);
+  // CORTES no guarda retiros/vales-caja por separado; TOTALGASTOS = retiros + vales de caja.
+  const efectivoEsperado = roundMoney(totalReportado - sobrante + faltante);
+  return {
+    corte: {
+      ID: r.ID,
+      CORRELATIVO: r.CORRELATIVO,
+      FECHA: fechaIsoFromRow({ FECHA: r.FECHA }) || null,
+      HORA: r.HORA,
+      MINUTO: r.MINUTO,
+    },
+    caja: {
+      CODCAJA: r.CODCAJA,
+      DESCAJA: r.DESCAJA || `Caja ${r.CODCAJA}`,
+    },
+    resumen: {
+      totalMovimientos: Number(r.TOTALMOVIMIENTOS) || 0,
+      totalVentasBrutas: roundMoney(totalVenta + totalDevoluciones),
+      totalDevoluciones,
+      totalVenta,
+      totalCredito: roundMoney(r.TOTALVENTASCREDITO),
+      totalRecibos: roundMoney(r.TOTALRECIBOS),
+      efectivoInicial: 0,
+      fpEfectivo,
+      fpTarjeta,
+      fpDeposito,
+      fpCheque,
+      totalValesCaja: 0,
+      totalRetiros: totalGastos > 0 ? totalGastos : 0,
+      efectivoEsperado,
+    },
+    reportado: {
+      efectivo: totalReportado,
+      tarjeta: roundMoney(r.REPORTADOTARJETA),
+      cheques: roundMoney(r.REPORTADOCHEQUES),
+      deposito: roundMoney(r.REPORTADO_DEPOSITO),
+    },
+    faltante,
+    sobrante,
+    obs: r.OBS || '',
+    usuarioNombre: r.USUARIO || 'SN',
+  };
+}
+
+function mapCorteDocRow(r) {
+  const status = String(r.STATUS || '').trim().toUpperCase();
+  const total = roundMoney(r.TOTALPRECIO);
+  const anulado = status === 'A';
+  return {
+    ID: r.ID,
+    FECHA: fechaIsoFromRow(r) || null,
+    CODDOC: r.CODDOC,
+    CORRELATIVO: r.CORRELATIVO,
+    CLIENTE: r.DOC_NOMCLIE || '',
+    TOTALPRECIO: total,
+    IMPORTE: anulado ? 0 : total,
+    STATUS: status || '—',
+    TIPODOC: String(r.TIPODOC || '').trim().toUpperCase(),
+    DESDOC: r.DESDOC || '',
+  };
+}
+
 router.get('/cajas', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -264,6 +452,7 @@ router.get('/cajas', async (req, res) => {
     const result = await pool.request().input('EMPNIT', sql.VarChar, empnit).query(`
       SELECT CODCAJA, DESCAJA, ISNULL(STATUS, 0) AS STATUS,
              ISNULL(EFECTIVOINICIAL, 0) AS EFECTIVOINICIAL,
+             ISNULL(EFECTIVO_PROXIMA_CAJA, 0) AS EFECTIVO_PROXIMA_CAJA,
              LASTUPDATE
       FROM dbo.Cajas
       WHERE EMPNIT = @EMPNIT
@@ -292,30 +481,153 @@ router.get('/cortes', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 100);
-  const codcaja = req.query.codcaja != null ? parseCodcaja(req.query.codcaja) : null;
+  const { mes, anio } = parseMesAnio(req);
+  const codcaja = req.query.codcaja != null && String(req.query.codcaja).trim() !== ''
+    ? parseCodcaja(req.query.codcaja)
+    : null;
   try {
     const pool = await req.app.locals.getDbPool();
-    const request = pool.request().input('EMPNIT', sql.VarChar, empnit).input('LIMIT', sql.Int, limit);
+    const request = pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('MES', sql.Int, mes)
+      .input('ANIO', sql.Int, anio);
     let cajaFilter = '';
     if (codcaja) {
       request.input('CODCAJA', sql.Int, codcaja);
       cajaFilter = ' AND c.CODCAJA = @CODCAJA';
     }
     const result = await request.query(`
-      SELECT TOP (@LIMIT)
-        c.ID, c.CORRELATIVO, c.FECHA, c.HORA, c.MINUTO, c.CODCAJA,
-        c.TOTALMOVIMIENTOS, c.TOTALVENTA, c.TOTALREPORTADO, c.FALTANTE, c.SOBRANTE,
-        c.USUARIO, c.OBS, c.TOTALTARJETA, c.TOTALCHEQUES,
+      SELECT
+        c.ID, c.CORRELATIVO, c.FECHA, c.ANIO, c.MES, c.DIA, c.HORA, c.MINUTO,
+        c.CODCAJA, c.TOTALMOVIMIENTOS, c.TOTALVENTA, c.TOTALREPORTADO,
+        c.FALTANTE, c.SOBRANTE, c.USUARIO, c.OBS,
         ISNULL(cj.DESCAJA, '') AS DESCAJA
       FROM dbo.CORTES c
       LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = c.EMPNIT AND cj.CODCAJA = c.CODCAJA
-      WHERE c.EMPNIT = @EMPNIT${cajaFilter}
-      ORDER BY c.ID DESC
+      WHERE c.EMPNIT = @EMPNIT
+        AND (
+          (ISNULL(c.MES, 0) = @MES AND ISNULL(c.ANIO, 0) = @ANIO)
+          OR (
+            ISNULL(c.MES, 0) = 0
+            AND MONTH(c.FECHA) = @MES
+            AND YEAR(c.FECHA) = @ANIO
+          )
+        )
+        ${cajaFilter}
+      ORDER BY c.FECHA DESC, c.HORA DESC, c.MINUTO DESC, c.ID DESC
     `);
-    res.json({ rows: result.recordset });
+    res.json({
+      mes,
+      anio,
+      rows: (result.recordset || []).map(mapCorteListRow),
+    });
   } catch (err) {
     console.warn('[API GET /corte-caja/cortes]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Detalle para historial: documentos por NOCORTE agrupados + payload de reimpresión. */
+router.get('/cortes/:id', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID de corte inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const corteRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('ID', sql.Int, id)
+      .query(`
+        SELECT
+          c.ID, c.CORRELATIVO, c.FECHA, c.ANIO, c.MES, c.DIA, c.HORA, c.MINUTO,
+          c.CODCAJA, c.TOTALMOVIMIENTOS, c.TOTALVENTA, c.TOTALREPORTADO,
+          c.FALTANTE, c.SOBRANTE, c.USUARIO, c.OBS,
+          c.TOTALGASTOS, c.TOTALRECIBOS, c.TOTALDEVOLUCIONES, c.TOTALVENTASCREDITO,
+          c.FPAGO_EFECTIVO, c.FPAGO_TARJETA, c.FPAGO_DEPOSITO, c.FPAGO_CHEQUE,
+          c.REPORTADOTARJETA, c.REPORTADOCHEQUES, c.REPORTADO_DEPOSITO,
+          c.TOTALTARJETA, c.TOTALCHEQUES,
+          ISNULL(cj.DESCAJA, '') AS DESCAJA
+        FROM dbo.CORTES c
+        LEFT JOIN dbo.Cajas cj ON cj.EMPNIT = c.EMPNIT AND cj.CODCAJA = c.CODCAJA
+        WHERE c.EMPNIT = @EMPNIT AND c.ID = @ID
+      `);
+
+    const corteRow = corteRes.recordset[0];
+    if (!corteRow) return res.status(404).json({ error: 'Corte no encontrado' });
+
+    const print = mapCortePrintPayload(corteRow);
+    const nocorte = Number(corteRow.CORRELATIVO);
+    const codcaja = Number(corteRow.CODCAJA);
+
+    const docsRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('NOCORTE', sql.Int, nocorte)
+      .input('CODCAJA', sql.Int, Number.isFinite(codcaja) ? codcaja : null)
+      .query(`
+        SELECT
+          d.ID, d.FECHA, d.ANIO, d.MES, d.DIA, d.CODDOC, d.CORRELATIVO,
+          ISNULL(d.DOC_NOMCLIE, '') AS DOC_NOMCLIE,
+          ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
+          ISNULL(d.STATUS, '') AS STATUS,
+          UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) AS TIPODOC,
+          ISNULL(t.DESDOC, '') AS DESDOC
+        FROM dbo.DOCUMENTOS d
+        LEFT JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+        WHERE d.EMPNIT = @EMPNIT
+          AND d.NOCORTE = @NOCORTE
+          AND (@CODCAJA IS NULL OR d.CODCAJA = @CODCAJA)
+          AND (
+            t.TIPODOC IS NULL
+            OR t.TIPODOC NOT IN (${TIPODOC_EXCLUIDOS_CORTE_CAJA.map((t) => `'${t}'`).join(', ')})
+          )
+        ORDER BY t.TIPODOC, d.FECHA, d.CODDOC, d.CORRELATIVO
+      `);
+
+    const rawDocs = normalizeDocumentoRows(docsRes.recordset || []);
+    const byTipo = new Map();
+    for (const raw of rawDocs) {
+      const row = mapCorteDocRow(raw);
+      const key = row.TIPODOC || 'SN';
+      if (!byTipo.has(key)) {
+        byTipo.set(key, {
+          TIPODOC: key,
+          DESDOC: row.DESDOC || key,
+          rows: [],
+          total: 0,
+          count: 0,
+          anulados: 0,
+        });
+      }
+      const g = byTipo.get(key);
+      if (!g.DESDOC && row.DESDOC) g.DESDOC = row.DESDOC;
+      g.rows.push(row);
+      g.total = roundMoney(g.total + row.IMPORTE);
+      g.count += 1;
+      if (row.STATUS === 'A') g.anulados += 1;
+    }
+
+    const grupos = [...byTipo.values()].sort((a, b) =>
+      String(a.TIPODOC).localeCompare(String(b.TIPODOC), 'es')
+    );
+
+    res.json({
+      corte: mapCorteListRow(corteRow),
+      print,
+      grupos,
+      totalGeneral: roundMoney(grupos.reduce((s, g) => s + g.total, 0)),
+      totalDocs: grupos.reduce((s, g) => s + g.count, 0),
+    });
+  } catch (err) {
+    console.warn('[API GET /corte-caja/cortes/:id]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -341,20 +653,17 @@ router.get('/:codcaja/resumen', async (req, res) => {
       .input('CODCAJA', sql.Int, codcaja)
       .input('APERTURA', sql.DateTime, apertura)
       .query(sessionDocsSql());
-    const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
-    const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    const valesCajaInfo = await sumValesCajaSesion(pool, empnit, codcaja, apertura);
     const anuladasInfo = await loadAnuladasSesion(pool, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docs.recordset,
       caja.EFECTIVOINICIAL,
-      valesInfo.totalVales,
-      pagosInfo.totalPagos,
-      retirosInfo.totalRetiros
+      retirosInfo.totalRetiros,
+      valesCajaInfo.totalValesCaja
     );
-    resumen.cantidadVales = valesInfo.cantidadVales;
-    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadValesCaja = valesCajaInfo.cantidadValesCaja;
     resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
     resumen.totalAnuladas = anuladasInfo.totalAnuladas;
     res.json({ caja, resumen });
@@ -395,17 +704,13 @@ router.get('/:codcaja/documentos', async (req, res) => {
   }
 });
 
-router.get('/:codcaja/vales-detalle', async (req, res) => {
+router.get('/:codcaja/vales-caja-detalle', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
   const codcaja = parseCodcaja(req.params.codcaja);
   if (!codcaja) return res.status(400).json({ error: 'CODCAJA inválido' });
-  const tipo = String(req.query.tipo || 'vales').trim().toLowerCase();
-  if (tipo !== 'vales' && tipo !== 'pagos') {
-    return res.status(400).json({ error: 'Tipo inválido (vales|pagos)' });
-  }
   try {
     const pool = await req.app.locals.getDbPool();
     const caja = await loadCaja(pool, empnit, codcaja);
@@ -414,13 +719,10 @@ router.get('/:codcaja/vales-detalle', async (req, res) => {
       return res.status(400).json({ error: 'La caja no está abierta' });
     }
     const apertura = caja.LASTUPDATE || new Date();
-    const rows =
-      tipo === 'pagos'
-        ? await listPagosValesSesionCaja(pool, empnit, codcaja, apertura)
-        : await listValesSesionCaja(pool, empnit, codcaja, apertura);
-    res.json({ tipo, rows });
+    const rows = await listValesCajaSesion(pool, empnit, codcaja, apertura);
+    res.json({ rows });
   } catch (err) {
-    console.warn('[API GET /corte-caja/:codcaja/vales-detalle]', err.message);
+    console.warn('[API GET /corte-caja/:codcaja/vales-caja-detalle]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -497,20 +799,17 @@ router.post('/:codcaja/retiro-efectivo', async (req, res) => {
       .input('CODCAJA', sql.Int, codcaja)
       .input('APERTURA', sql.DateTime, apertura)
       .query(sessionDocsSql());
-    const valesInfo = await sumValesSesionCaja(pool, empnit, codcaja, apertura);
-    const pagosInfo = await sumPagosValesSesionCaja(pool, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(pool, empnit, codcaja, apertura);
+    const valesCajaInfo = await sumValesCajaSesion(pool, empnit, codcaja, apertura);
     const anuladasInfo = await loadAnuladasSesion(pool, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docs.recordset,
       caja.EFECTIVOINICIAL,
-      valesInfo.totalVales,
-      pagosInfo.totalPagos,
-      retirosInfo.totalRetiros
+      retirosInfo.totalRetiros,
+      valesCajaInfo.totalValesCaja
     );
-    resumen.cantidadVales = valesInfo.cantidadVales;
-    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadValesCaja = valesCajaInfo.cantidadValesCaja;
     resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
     resumen.totalAnuladas = anuladasInfo.totalAnuladas;
 
@@ -606,20 +905,17 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       .input('CODCAJA', sql.Int, codcaja)
       .input('APERTURA', sql.DateTime, apertura)
       .query(sessionDocsSql());
-    const valesInfo = await sumValesSesionCaja(transaction, empnit, codcaja, apertura);
-    const pagosInfo = await sumPagosValesSesionCaja(transaction, empnit, codcaja, apertura);
     const retirosInfo = await sumRetirosEfectivoSesionCaja(transaction, empnit, codcaja, apertura);
+    const valesCajaInfo = await sumValesCajaSesion(transaction, empnit, codcaja, apertura);
     const anuladasInfo = await loadAnuladasSesion(transaction, empnit, codcaja, apertura);
     const resumen = buildResumenFromRows(
       docsResult.recordset,
       caja.EFECTIVOINICIAL,
-      valesInfo.totalVales,
-      pagosInfo.totalPagos,
-      retirosInfo.totalRetiros
+      retirosInfo.totalRetiros,
+      valesCajaInfo.totalValesCaja
     );
-    resumen.cantidadVales = valesInfo.cantidadVales;
-    resumen.cantidadPagosVales = pagosInfo.cantidadPagos;
     resumen.cantidadRetiros = retirosInfo.cantidadRetiros;
+    resumen.cantidadValesCaja = valesCajaInfo.cantidadValesCaja;
     resumen.cantidadAnuladas = anuladasInfo.cantidadAnuladas;
     resumen.totalAnuladas = anuladasInfo.totalAnuladas;
 
@@ -636,6 +932,23 @@ router.post('/:codcaja/cerrar', async (req, res) => {
 
     const ini = resumen.docInicial;
     const fin = resumen.docFinal;
+
+    // Marcar antes del INSERT en CORTES (ver marcarDocumentosCorte).
+    const docsMarcados = await marcarDocumentosCorte(transaction, empnit, codcaja, correlativo, apertura);
+    const valesCajaMarcados = await marcarValesCajaCorte(
+      transaction,
+      empnit,
+      codcaja,
+      correlativo,
+      apertura
+    );
+    const retirosMarcados = await marcarRetirosEfectivoCorte(
+      transaction,
+      empnit,
+      codcaja,
+      correlativo,
+      apertura
+    );
 
     const insertResult = await transaction
       .request()
@@ -710,30 +1023,16 @@ router.post('/:codcaja/cerrar', async (req, res) => {
 
     const newId = insertResult.recordset[0]?.ID;
 
-    const docsMarcados = await marcarDocumentosCorte(transaction, empnit, codcaja, correlativo, apertura);
-    const valesMarcados = await marcarValesCorte(transaction, empnit, codcaja, correlativo, apertura);
-    const pagosValesMarcados = await marcarPagosValesCorte(
-      transaction,
-      empnit,
-      codcaja,
-      correlativo,
-      apertura
-    );
-    const retirosMarcados = await marcarRetirosEfectivoCorte(
-      transaction,
-      empnit,
-      codcaja,
-      correlativo,
-      apertura
-    );
-
     await transaction
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .input('CODCAJA', sql.Int, codcaja)
+      .input('EFECTIVO_PROXIMA_CAJA', sql.Decimal(18, 3), totalReportado)
       .query(`
         UPDATE dbo.Cajas
-        SET STATUS = 0, LASTUPDATE = GETDATE()
+        SET STATUS = 0,
+            LASTUPDATE = GETDATE(),
+            EFECTIVO_PROXIMA_CAJA = @EFECTIVO_PROXIMA_CAJA
         WHERE EMPNIT = @EMPNIT AND CODCAJA = @CODCAJA
       `);
 
@@ -742,8 +1041,7 @@ router.post('/:codcaja/cerrar', async (req, res) => {
       ok: true,
       corte: { ID: newId, CORRELATIVO: correlativo },
       documentosMarcados: docsMarcados,
-      valesMarcados,
-      pagosValesMarcados,
+      valesCajaMarcados,
       retirosMarcados,
       resumen,
       faltante,

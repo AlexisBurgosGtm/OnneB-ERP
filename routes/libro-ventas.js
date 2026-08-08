@@ -28,7 +28,7 @@ const upload = multer({
 
 const EXPORT_COLUMNS = [
   { header: 'No.', key: 'LINEA', width: 6 },
-  { header: 'Fecha', key: 'FEL_FECHA', width: 12 },
+  { header: 'Fecha', key: 'FEL_FECHA', width: 12, type: 'string' },
   { header: 'Tipo', key: 'TIPODOC', width: 8 },
   { header: 'Serie', key: 'FEL_SERIE', width: 10 },
   { header: 'Número', key: 'FEL_NUMERO', width: 12 },

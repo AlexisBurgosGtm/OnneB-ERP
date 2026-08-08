@@ -5,6 +5,7 @@ const {
   listVales,
   listEmpleadosActivosCombo,
   listCajasAbiertas,
+  listCuentasBancariasCombo,
   createVale,
   updateVale,
   deleteVale,
@@ -58,10 +59,11 @@ router.get('/', async (req, res) => {
   const { mes, anio } = parseMesAnio(req.query.mes, req.query.anio);
   try {
     const pool = await req.app.locals.getDbPool();
-    const [rows, empleados, cajaData] = await Promise.all([
+    const [rows, empleados, cajaData, cuentas] = await Promise.all([
       listVales(pool, empnit, mes, anio),
       listEmpleadosActivosCombo(pool, empnit),
       cajasConDefault(pool, empnit, req.query.codempleado),
+      listCuentasBancariasCombo(pool, empnit),
     ]);
     res.json({
       mes,
@@ -71,6 +73,7 @@ router.get('/', async (req, res) => {
       cajas: cajaData.cajas,
       cajaDefault: cajaData.cajaDefault,
       preferredCaja: cajaData.preferredCaja,
+      cuentas,
     });
   } catch (err) {
     console.warn('[API GET /nomina/vales]', err.message);
@@ -85,15 +88,17 @@ router.get('/lookups', async (req, res) => {
   if (!empnit) return;
   try {
     const pool = await req.app.locals.getDbPool();
-    const [empleados, cajaData] = await Promise.all([
+    const [empleados, cajaData, cuentas] = await Promise.all([
       listEmpleadosActivosCombo(pool, empnit),
       cajasConDefault(pool, empnit, req.query.codempleado),
+      listCuentasBancariasCombo(pool, empnit),
     ]);
     res.json({
       empleados,
       cajas: cajaData.cajas,
       cajaDefault: cajaData.cajaDefault,
       preferredCaja: cajaData.preferredCaja,
+      cuentas,
     });
   } catch (err) {
     console.warn('[API GET /nomina/vales/lookups]', err.message);

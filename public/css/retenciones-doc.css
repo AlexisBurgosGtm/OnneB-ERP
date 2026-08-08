@@ -1,23 +1,110 @@
 .ret-doc-main-host {
-  padding: 0.75rem 1rem 1rem !important;
+  width: 100%;
 }
 
 .ret-doc-list-wrap {
+  width: 100%;
+}
+
+/* Listado: scroll de página (main-content usa overflow:hidden). */
+.main-content > .ret-doc-list-wrap,
+.main-content.ret-doc-main-host > .ret-doc-list-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding-bottom: 5rem;
 }
 
+/* Editor: no reutilizar prc-editor-wrap (overflow:hidden sin panel scrolleable). */
+.main-content > .ret-doc-editor-wrap,
+.main-content.ret-doc-main-host > .ret-doc-editor-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.ret-doc-editor-wrap .ret-doc-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 5.5rem;
+}
+
 .ret-doc-total-field input {
-  font-weight: 700 !important;
-  color: #dc2626 !important;
-  background-color: #fef2f2 !important;
+  font-weight: 600;
 }
 
 .ret-doc-money .input-group-text {
-  font-size: 0.8125rem;
-  min-width: 2rem;
-  justify-content: center;
+  font-size: 0.8rem;
 }
 
 .ret-doc-editor-wrap .pos-fab-bar {
   z-index: 20;
+}
+
+.ret-doc-dual {
+  min-height: 18rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.ret-doc-dual .prc-editor-panel {
+  min-height: 16rem;
+  max-height: min(28rem, 55vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ret-doc-dual .prc-editor-panel > .card-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ret-doc-dual .prc-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ret-prov-picker {
+  z-index: 5;
+}
+
+.ret-prov-results {
+  left: 0;
+  right: 0;
+}
+
+.ret-prov-picker .list-group-item {
+  cursor: pointer;
+}
+
+.ret-doc-montos-card .form-control[readonly] {
+  background-color: var(--bs-light, #f8f9fa);
+}
+
+@media (max-width: 767.98px) {
+  .ret-doc-montos-card {
+    margin-top: 0.25rem;
+  }
+
+  .ret-doc-dual {
+    grid-template-columns: 1fr;
+  }
 }

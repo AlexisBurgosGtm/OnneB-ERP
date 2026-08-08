@@ -1497,6 +1497,7 @@ const CuentasPorCobrarView = {
       `,
       icon: 'question',
       showCancelButton: true,
+      allowEnterKey: false,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar abono'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
@@ -1506,22 +1507,38 @@ const CuentasPorCobrarView = {
         document.getElementById('cxp-abono-fpago-efectivo')?.focus();
       },
       preConfirm: async () => {
+        if (this._guardandoRecibo) return false;
+        this._guardandoRecibo = true;
+        Swal.getCancelButton()?.setAttribute('disabled', 'true');
+        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
+
+        const unlock = () => {
+          this._guardandoRecibo = false;
+          Swal.hideLoading();
+          Swal.getCancelButton()?.removeAttribute('disabled');
+          Swal.getConfirmButton()?.removeAttribute('disabled');
+        };
+
         const coddocRcc = document.getElementById('cxp-abono-coddoc')?.value?.trim();
         if (!coddocRcc) {
+          unlock();
           Swal.showValidationMessage('Seleccione el documento RCC');
           return false;
         }
         const codcaja = document.getElementById('cxp-abono-caja')?.value?.trim();
         if (!codcaja) {
+          unlock();
           Swal.showValidationMessage('Seleccione una caja abierta');
           return false;
         }
         const monto = Math.round(this.sumFpagoInputs() * 1000) / 1000;
         if (!Number.isFinite(monto) || monto <= 0) {
+          unlock();
           Swal.showValidationMessage('Indique el monto del abono en las formas de pago');
           return false;
         }
         if (monto > saldo + 0.001) {
+          unlock();
           Swal.showValidationMessage(`El abono no puede superar el saldo (${this.formatMoney(saldo)})`);
           return false;
         }
@@ -1533,28 +1550,23 @@ const CuentasPorCobrarView = {
           USUARIO: this.usuario(),
         };
         Swal.showLoading();
-        Swal.getCancelButton()?.setAttribute('disabled', 'true');
-        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
-        this._guardandoRecibo = true;
         try {
           const res = await F.fetchJson(this.abonosUrl(coddoc, correlativo), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
+          // Mantener bloqueo hasta cerrar el modal (evita doble POST).
           return { ...res, fpago: payload };
         } catch (e) {
-          Swal.hideLoading();
-          Swal.getCancelButton()?.removeAttribute('disabled');
-          Swal.getConfirmButton()?.removeAttribute('disabled');
+          unlock();
           Swal.showValidationMessage(e.message || 'Error al guardar el abono');
           return false;
-        } finally {
-          this._guardandoRecibo = false;
         }
       },
     });
 
+    this._guardandoRecibo = false;
     if (!isConfirmed || !value) return;
 
     F.toast(`Abono ${value.abono?.CODDOC}-${value.abono?.CORRELATIVO} registrado`, 'success');

@@ -121,7 +121,18 @@ const NominaPrint = {
       <table class="table table-sm">
         <tr><td>Empleado</td><td class="text-end fw-semibold">${PrintReport.escapeHtml(vale.NOMEMPLEADO || vale.CODEMP || '—')}</td></tr>
         <tr><td>Código empleado</td><td class="text-end">${PrintReport.escapeHtml(vale.CODEMP || '—')}</td></tr>
-        <tr><td>Caja</td><td class="text-end">${PrintReport.escapeHtml(vale.DESCAJA || vale.CODCAJA || '—')}</td></tr>
+        <tr><td>Acreditación</td><td class="text-end">${PrintReport.escapeHtml(
+          vale.GENERADO_TIPO
+            ? `${vale.GENERADO_TIPO}${vale.ACREDITACION_DESC ? ` · ${vale.ACREDITACION_DESC}` : ''}`
+            : vale.DESCAJA || vale.CODCAJA || '—'
+        )}</td></tr>
+        ${
+          vale.GENERADO_CODDOC || vale.GENERADO_CORRELATIVO
+            ? `<tr><td>Documento generado</td><td class="text-end">${PrintReport.escapeHtml(
+                [vale.GENERADO_CODDOC, vale.GENERADO_CORRELATIVO].filter((x) => x != null && x !== '').join('-')
+              )}</td></tr>`
+            : ''
+        }
         <tr><td>Descripción</td><td class="text-end">${PrintReport.escapeHtml(vale.DESCRIPCION || '—')}</td></tr>
         <tr class="fw-semibold"><td>Monto del vale</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale.MONTO))}</td></tr>
         <tr><td>Abonos</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(vale.ABONOS || 0))}</td></tr>
@@ -173,6 +184,73 @@ const NominaPrint = {
           title: `Abono vale #${pago.ID || ''}`,
           bodyHtml,
           extraStyles: 'table{font-size:13px;} td{padding:6px 8px;}',
+        }),
+      'width=720,height=780'
+    );
+  },
+
+  async printValeCaja(vale) {
+    await PrintReport.ensureLogo();
+    const novale = vale?.NOVALE ?? vale?.ID ?? '';
+    const enCorte = String(vale?.CORTE || 'NO').trim().toUpperCase() === 'SI';
+    const importeFmt = PrintReport.escapeHtml(this.formatMoney(vale.IMPORTE ?? vale.MONTO));
+    const bodyHtml = `
+      ${PrintReport.reportHeaderHtml({
+        title: 'Vale de caja',
+        subtitleHtml: `
+          <p><strong>No. vale:</strong> ${PrintReport.escapeHtml(novale)}</p>
+          <p><strong>Fecha:</strong> ${PrintReport.escapeHtml(this.formatFecha(vale.FECHA))}</p>
+          <p class="small text-muted mb-0">Salida de efectivo · integra al corte de caja</p>
+        `,
+      })}
+      <table class="table table-sm vale-caja-table">
+        <tr><td>Caja</td><td class="text-end fw-semibold">${PrintReport.escapeHtml(vale.DESCAJA || vale.CODCAJA || '—')}</td></tr>
+        <tr><td>Tipo</td><td class="text-end">${PrintReport.escapeHtml(vale.TIPO || '—')}</td></tr>
+        <tr><td>Recibe</td><td class="text-end">${PrintReport.escapeHtml(vale.RECIBE || '—')}</td></tr>
+        <tr><td>Descripción</td><td class="text-end">${PrintReport.escapeHtml(vale.DESCRIPCION || '—')}</td></tr>
+        <tr class="vale-caja-importe-row">
+          <td>Importe (efectivo)</td>
+          <td class="text-end vale-caja-importe">${importeFmt}</td>
+        </tr>
+        <tr><td>Estado corte</td><td class="text-end">${PrintReport.escapeHtml(
+          enCorte ? `Incluido en corte #${vale.NOCORTE || ''}` : 'Pendiente de corte'
+        )}</td></tr>
+      </table>
+      <div class="vale-caja-firmas">
+        <div class="vale-caja-firma">Entregó caja</div>
+        <div class="vale-caja-firma">Recibió</div>
+      </div>`;
+    await PrintReport.openAndPrint(
+      () =>
+        PrintReport.wrapDocument({
+          title: `Vale de caja #${novale}`,
+          bodyHtml,
+          extraStyles: `
+            table.vale-caja-table{font-size:13px;}
+            table.vale-caja-table td{padding:6px 8px;}
+            .vale-caja-importe{
+              color:#c62828 !important;
+              font-size:1.45rem !important;
+              font-weight:700 !important;
+              line-height:1.2;
+            }
+            .vale-caja-importe-row td:first-child{
+              vertical-align:middle;
+            }
+            .vale-caja-firmas{
+              margin-top:5.5rem;
+              display:flex;
+              justify-content:space-between;
+              gap:2.5rem;
+            }
+            .vale-caja-firma{
+              flex:1;
+              text-align:center;
+              border-top:1px solid #333;
+              padding-top:.55rem;
+              min-height:3.25rem;
+            }
+          `,
         }),
       'width=720,height=780'
     );

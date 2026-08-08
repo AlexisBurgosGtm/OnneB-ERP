@@ -207,23 +207,88 @@ function anuladoStampHtml() {
   return `<div class="doc-anulado-stamp" aria-label="Anulado">ANULADO</div>`;
 }
 
-function wrapPrintHtml({ title, bodyHtml, css, preview = false, anulado = false }) {
+function normalizePrioridadPrint(raw) {
+  const p = String(raw || '').trim().toUpperCase();
+  return p === 'BAJA' || p === 'MEDIA' || p === 'ALTA' ? p : '';
+}
+
+function prioridadBadgeHtml(prioridad) {
+  const p = normalizePrioridadPrint(prioridad);
+  if (!p) return '';
+  const cls = p === 'ALTA' ? 'alta' : p === 'MEDIA' ? 'media' : 'baja';
+  return `<div class="doc-prioridad-badge doc-prioridad-badge--${cls}" aria-label="Prioridad ${p}">${p}</div>`;
+}
+
+const PRIORIDAD_BADGE_CSS = `
+.doc-prioridad-badge{
+  position:fixed;top:8px;right:12px;z-index:60;
+  padding:5px 12px;font-size:11px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;border-radius:4px;line-height:1.2;
+  box-shadow:0 1px 3px rgba(0,0,0,.12);
+  -webkit-print-color-adjust:exact;print-color-adjust:exact
+}
+.doc-prioridad-badge--baja{background:#86efac;color:#14532d}
+.doc-prioridad-badge--media{background:#facc15;color:#713f12}
+.doc-prioridad-badge--alta{background:#ef4444;color:#fff}
+@media print{
+  .doc-prioridad-badge{position:absolute;top:4px;right:6px}
+}
+`;
+
+/** Fuerza papel térmico 80mm al imprimir; en pantalla maximizada el contenido usa todo el ancho legible. */
+const TICKET_PAPER_OVERRIDE_CSS = `
+@page{size:80mm auto!important;margin:2mm!important}
+html{width:100%;margin:0;padding:0;box-sizing:border-box}
+html,body{zoom:1!important;transform:none!important}
+body{
+  width:100%!important;max-width:none!important;margin:0!important;
+  padding:2mm 2.5mm!important;box-sizing:border-box
+}
+.doc-print-sheet,.fel-ticket{
+  width:100%!important;max-width:none!important;margin:0!important;box-sizing:border-box
+}
+@media screen{
+  html,body{width:100%!important;max-width:none!important;margin:0!important}
+  body{padding:1.25rem 1.75rem!important;font-size:15px!important;line-height:1.35!important}
+  .doc-print-sheet,.fel-ticket{width:100%!important;max-width:none!important;margin:0!important}
+  .report-logo{max-height:72px!important;max-width:140px!important}
+  .fel-logo{max-height:84px!important;max-width:140px!important}
+  .report-empresa-nombre,.fel-nombre{font-size:1.35rem!important}
+  .report-title,.fel-dte-tipo{font-size:1.1rem!important}
+  .report-subtitle,.doc-meta-item,.fel-meta,.fel-muted{font-size:14px!important}
+  .doc-lines-table th,.doc-lines-table td,
+  .fel-table th,.fel-table td{font-size:13px!important;padding:6px 8px!important}
+  .doc-totals,.doc-totals-row,.fel-totals-row{font-size:14px!important}
+  .doc-totals-row.grand,.fel-totals-row.grand{font-size:1.15rem!important}
+  .doc-footer,.fel-scan,.fel-uuid{font-size:12px!important}
+  .fel-qr{width:110px!important;height:110px!important}
+  .fel-fel-badge svg{width:120px!important}
+}
+@media print{
+  html,body{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+  body{padding:1mm 1.5mm!important;font-size:11px!important}
+}
+`;
+
+function wrapPrintHtml({ title, bodyHtml, css, preview = false, anulado = false, prioridad = '', papel = 'CARTA' }) {
   const safeTitle = String(title || 'Documento')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+  const isTicket = String(papel || '').trim().toUpperCase() === 'TICKET';
   const previewCss = preview
     ? `
-body{padding:16px;background:#fff}
+body{padding:${isTicket ? '8px' : '16px'};background:#fff}
 `
     : '';
   const stamp = anulado ? anuladoStampHtml() : '';
+  const badge = prioridadBadgeHtml(prioridad);
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>${safeTitle}</title>
 <style>
 html,body{zoom:1!important;transform:none!important;-webkit-text-size-adjust:100%}
-body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:1.25rem;font-size:12px;color:#111;background:#fff}
+body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:1.25rem;font-size:12px;color:#111;background:#fff;position:relative}
 .doc-print-sheet,.fel-ticket{zoom:1!important;transform:none!important}
 .doc-anulado-stamp{
   text-align:center;color:#dc2626;font-size:3.25rem;font-weight:900;
@@ -231,6 +296,7 @@ body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:1.25rem;font-size:1
   margin:0 0 .85rem;padding:.45rem .6rem;border:3px solid #dc2626;
   background:rgba(254,226,226,.55)
 }
+${PRIORIDAD_BADGE_CSS}
 @media print{
   html,body{zoom:1!important;transform:none!important}
   body{padding:.5rem}
@@ -238,7 +304,8 @@ body{font-family:Segoe UI,Helvetica,Arial,sans-serif;padding:1.25rem;font-size:1
 }
 ${previewCss}
 ${css || ''}
-</style></head><body>${stamp}${bodyHtml}</body></html>`;
+${isTicket ? TICKET_PAPER_OVERRIDE_CSS : ''}
+</style></head><body>${stamp}${badge}${bodyHtml}</body></html>`;
 }
 
 /** Catálogo de variables disponibles para el editor. */
@@ -258,12 +325,15 @@ router.get('/variables', (_req, res) => {
           'DOC.DOC_NOMCLIE',
           'DOC.DOC_NIT',
           'DOC.DOC_DIRCLIE',
+          'DOC.F_ENTREGA',
+          'DOC.DIRENTREGA',
           'DOC.NEGOCIO',
           'DOC.CONCRE',
           'DOC.CONCRE_LABEL',
           'DOC.VENDEDOR',
           'DOC.VENDEDOR_TELEFONO',
           'DOC.OBS',
+          'DOC.PRIORIDAD',
           'DOC.FEL_UUDI',
           'DOC.FEL_SERIE',
           'DOC.FEL_NUMERO',
@@ -509,6 +579,8 @@ async function handleRender(req, res) {
       bodyHtml,
       css: formato.CSS,
       anulado: isDocAnulado(doc.header),
+      prioridad: doc.header?.PRIORIDAD,
+      papel,
     });
 
     res.json({
@@ -586,6 +658,8 @@ router.post('/preview', async (req, res) => {
             DOC_NOMCLIE: ctx.DOC.DOC_NOMCLIE,
             DOC_NIT: ctx.DOC.DOC_NIT,
             DOC_DIRCLIE: ctx.DOC.DOC_DIRCLIE,
+            F_ENTREGA: ctx.DOC.F_ENTREGA,
+            DIRENTREGA: ctx.DOC.DIRENTREGA,
             TOTALPRECIO: ctx.TOTALES.TOTALPRECIO,
             TOTALDESCUENTO: ctx.TOTALES.DESCUENTO,
             FEL_UUDI: ctx.DOC.FEL_UUDI,
@@ -612,6 +686,8 @@ router.post('/preview', async (req, res) => {
       css: style,
       preview: true,
       anulado: Boolean(ctx?.DOC?.IS_ANULADO) || isDocAnulado({ STATUS: ctx?.DOC?.STATUS }),
+      prioridad: ctx?.DOC?.PRIORIDAD,
+      papel,
     });
     res.json({ html: fullHtml, bodyHtml, css: style, papel });
   } catch (err) {

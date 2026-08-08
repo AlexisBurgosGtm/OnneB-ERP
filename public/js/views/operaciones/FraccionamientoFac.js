@@ -671,7 +671,8 @@ const FraccionamientoFacView = {
       cache: 'no-store',
     });
     const doc = prep.documento || {};
-    const fechaDefault = String(prep.fechaCertificacion || this.todayIso()).slice(0, 10);
+    // Certificar toda: la fecha del modal manda (no la del documento fuente).
+    const fechaDefault = this.todayIso();
 
     await this.reloadCorrelativoParam();
 
@@ -700,9 +701,10 @@ const FraccionamientoFacView = {
             value="${this.escapeHtml(doc.DOC_DIRCLIE || 'CIUDAD')}">
         </div>
         <div class="mb-0">
-          <label class="form-label small mb-0" for="ffac-fecha">Fecha de certificación</label>
+          <label class="form-label small mb-0" for="ffac-fecha">Fecha de emisión / certificación</label>
           <input type="date" class="form-control form-control-sm" id="ffac-fecha" name="FECHA"
             value="${this.escapeHtml(fechaDefault)}" required>
+          <p class="small text-muted mb-0 mt-1">Aplica solo a la factura fiscal nueva (FechaHoraEmision y FEL_FECHA). El documento original de la cola no se modifica.</p>
         </div>
       `,
       didOpen: (popup) => {
@@ -725,7 +727,7 @@ const FraccionamientoFacView = {
           return false;
         }
         if (!fecha) {
-          Swal.showValidationMessage('Ingrese la fecha de certificación');
+          Swal.showValidationMessage('Ingrese la fecha de emisión');
           return false;
         }
         try {

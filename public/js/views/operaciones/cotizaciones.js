@@ -270,11 +270,15 @@ const CotizacionesView = {
     const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
     const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
+    const tipofacDefault =
+      typeof DocTipofacPrioridad !== 'undefined'
+        ? await DocTipofacPrioridad.fetchDefaultTipofac()
+        : 'FEF';
     const tipofacHtml =
       typeof DocTipofacPrioridad !== 'undefined'
         ? DocTipofacPrioridad.tipofacSelectHtml({
             id: 'pos-finalizar-tipofac',
-            selected: h.TIPOFAC || 'FEF',
+            selected: h.TIPOFAC || tipofacDefault,
           })
         : '';
     const prioridadHtml =
@@ -407,6 +411,117 @@ const CotizacionesView = {
     F.toast('Producto agregado', 'success');
   },
 
+  async agregarLineaPse({ desprod, cantidad, costo, precio }) {
+    const key = this.docKey();
+    if (!key) {
+      F.toast('No hay cotización activa', 'warning');
+      return;
+    }
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('La cotización no está en edición', 'warning');
+      return;
+    }
+    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'pse',
+        DESPROD: desprod,
+        CANTIDAD: cantidad,
+        COSTO: costo,
+        PRECIO: precio,
+      }),
+    });
+    this._pedido = res.pedido;
+    this.renderCart();
+    this.renderOrderSummary();
+    F.toast('PSE agregado', 'success');
+  },
+
+  async onAgregarPse() {
+    if (!this.docEditable(this._pedido?.header)) {
+      F.toast('La cotización no está en edición', 'warning');
+      return;
+    }
+    const { value } = await Swal.fire({
+      ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+      title: 'Agregar PSE',
+      html: `
+        <p class="small text-muted mb-2 text-start">Producto sin existencia (no está en catálogo). Medida: UNIDAD.</p>
+        <label class="form-label small mb-0 text-start d-block" for="pos-swal-pse-desprod">Descripción</label>
+        <input type="text" id="pos-swal-pse-desprod" class="form-control form-control-sm" placeholder="Descripción del producto" autocomplete="off">
+        <div class="row g-2 mt-1">
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="pos-swal-pse-cant">Cantidad</label>
+            <input type="number" id="pos-swal-pse-cant" class="form-control form-control-sm" value="1" min="0" step="any">
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="pos-swal-pse-costo">Costo unit.</label>
+            <input type="number" id="pos-swal-pse-costo" class="form-control form-control-sm" value="0" min="0" step="any">
+          </div>
+          <div class="col-4">
+            <label class="form-label small mb-0 text-start d-block" for="pos-swal-pse-precio">Precio unit.</label>
+            <input type="number" id="pos-swal-pse-precio" class="form-control form-control-sm" value="0" min="0" step="any">
+          </div>
+        </div>
+        <p class="small fw-semibold text-end mb-0 mt-2" id="pos-swal-pse-subtotal">Subtotal: ${this.escapeHtml(this.formatMoney(0))}</p>
+      `,
+      showCancelButton: true,
+      confirmButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Agregar') : 'Agregar',
+      cancelButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.cancelButtonHtml('Cancelar') : 'Cancelar',
+      focusConfirm: false,
+      didOpen: () => {
+        const cantInp = document.getElementById('pos-swal-pse-cant');
+        const precioInp = document.getElementById('pos-swal-pse-precio');
+        const subEl = document.getElementById('pos-swal-pse-subtotal');
+        const updateSub = () => {
+          const cant = Number(cantInp?.value) || 0;
+          const precio = Number(precioInp?.value) || 0;
+          if (subEl) subEl.textContent = `Subtotal: ${this.formatMoney(cant * precio)}`;
+        };
+        cantInp?.addEventListener('input', updateSub);
+        precioInp?.addEventListener('input', updateSub);
+        if (typeof PosProductKeyboardUI !== 'undefined') {
+          PosProductKeyboardUI.focusInput(document.getElementById('pos-swal-pse-desprod'));
+        } else {
+          document.getElementById('pos-swal-pse-desprod')?.focus();
+        }
+      },
+      preConfirm: () => {
+        const desprod = String(document.getElementById('pos-swal-pse-desprod')?.value || '').trim();
+        if (!desprod) {
+          Swal.showValidationMessage('La descripción es obligatoria');
+          return false;
+        }
+        const cantidad = Number(document.getElementById('pos-swal-pse-cant')?.value);
+        const costo = Number(document.getElementById('pos-swal-pse-costo')?.value);
+        const precio = Number(document.getElementById('pos-swal-pse-precio')?.value);
+        if (!Number.isFinite(cantidad) || cantidad <= 0) {
+          Swal.showValidationMessage('Cantidad inválida');
+          return false;
+        }
+        if (!Number.isFinite(costo) || costo < 0) {
+          Swal.showValidationMessage('Costo inválido');
+          return false;
+        }
+        if (!Number.isFinite(precio) || precio < 0) {
+          Swal.showValidationMessage('Precio inválido');
+          return false;
+        }
+        return { desprod, cantidad, costo, precio };
+      },
+    });
+    if (!value) return;
+    try {
+      await this.agregarLineaPse(value);
+    } catch (err) {
+      F.toast(err.message || 'No se pudo agregar el PSE', 'error');
+    }
+  },
+
   setCartBusy(busy) {
     this._cartBusy = busy;
     const tbody = this._container?.querySelector('#pos-cart-tbody');
@@ -427,6 +542,55 @@ const CotizacionesView = {
     this._pedido = res.pedido;
     this.renderCart();
     this.renderOrderSummary();
+  },
+
+  async actualizarPrecio(lineId, precio) {
+    const key = this.docKey();
+    if (!key) return;
+    const line = this.findLineById(lineId);
+    if (!line) throw new Error('No se encontró la línea del pedido');
+    const cantidad = Number(line.CANTIDAD) || 1;
+    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/lineas/${lineId}?empnit=${encodeURIComponent(F.getEmpNit())}`;
+    const res = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CANTIDAD: cantidad, PRECIO: precio }),
+    });
+    this._pedido = res.pedido;
+    this.renderCart();
+    this.renderOrderSummary();
+  },
+
+  async promptEditarPrecioLinea(line) {
+    const current = Number(line?.PRECIO) || 0;
+    const label = `${line?.CODPROD || ''} ${line?.DESPROD || ''}`.trim();
+    const result = await Swal.fire({
+      ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+      title: 'Cambiar precio unitario',
+      html: `<p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
+        <label class="form-label small mb-0" for="pos-cart-precio-edit">Precio</label>
+        <input type="number" id="pos-cart-precio-edit" class="form-control form-control-sm" value="${current}" min="0" step="any">`,
+      showCancelButton: true,
+      confirmButtonText:
+        typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Guardar') : 'Guardar',
+      cancelButtonText: 'Cancelar',
+      focusConfirm: false,
+      didOpen: () => {
+        const inp = document.getElementById('pos-cart-precio-edit');
+        inp?.focus();
+        inp?.select();
+      },
+      preConfirm: () => {
+        const precio = Number(document.getElementById('pos-cart-precio-edit')?.value);
+        if (!Number.isFinite(precio) || precio < 0) {
+          Swal.showValidationMessage('Precio inválido');
+          return false;
+        }
+        return precio;
+      },
+    });
+    if (!result.isConfirmed) return null;
+    return result.value;
   },
 
   async eliminarLinea(lineId) {
@@ -606,9 +770,14 @@ const CotizacionesView = {
       });
       return;
     }
+    const showCosto = this.isAdminOrSuperUser();
     const html = this._productos
-      .map(
-        (p) => `
+      .map((p) => {
+        const costo = Number(p.COSTO ?? p.COSTO_PROD) || 0;
+        const costoHtml = showCosto
+          ? `<div class="pos-prod-cost small text-danger fw-semibold">Costo: ${this.escapeHtml(this.formatMoney(costo))}</div>`
+          : '';
+        return `
           <div class="pos-product-item" tabindex="0" role="button"
             data-codprod="${this.escapeHtml(p.CODPROD)}"
             data-codmedida="${this.escapeHtml(p.CODMEDIDA)}"
@@ -621,10 +790,11 @@ const CotizacionesView = {
             <div class="pos-prod-meta text-end">
               <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
               <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+              ${costoHtml}
             </div>
           </div>
-        `
-      )
+        `;
+      })
       .join('');
     targets.forEach((el) => {
       el.innerHTML = html;
@@ -637,6 +807,7 @@ const CotizacionesView = {
     const lines = this._pedido?.lines || [];
     const h = this._pedido?.header;
     const editable = this.docEditable(h);
+    const puedeEditarPrecio = editable && this.permiteCambiarPrecioPedido();
     if (!lines.length) {
       tbody.innerHTML =
         '<tr><td colspan="6" class="text-center text-muted py-3">Sin productos en la cotización</td></tr>';
@@ -652,9 +823,12 @@ const CotizacionesView = {
               <span class="px-1">${qty}</span>
               <button type="button" class="btn btn-outline-secondary btn-sm pos-qty-btn" data-action="qty-plus" data-id="${lineId}"${this._cartBusy ? ' disabled' : ''}>+</button>`
           : `<span>${qty}</span>`;
+        const priceHtml = puedeEditarPrecio
+          ? `<button type="button" class="btn btn-link btn-sm p-0 pos-cart-unit-price pos-cart-price-btn" data-action="price-edit" data-id="${lineId}" title="Cambiar precio"${this._cartBusy ? ' disabled' : ''}>${this.escapeHtml(unitPrice)}</button>`
+          : `<span class="pos-cart-unit-price small text-nowrap">${this.escapeHtml(unitPrice)}</span>`;
         const qtyCell = `<div class="pos-cart-qty-price d-flex align-items-center justify-content-center gap-2 flex-wrap">
             <div class="d-flex align-items-center gap-1">${qtyControlsInner}</div>
-            <span class="pos-cart-unit-price small text-nowrap">${this.escapeHtml(unitPrice)}</span>
+            ${priceHtml}
           </div>`;
         const delBtn = editable
           ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="line-del" data-id="${lineId}" title="Quitar"${this._cartBusy ? ' disabled' : ''}><i class="fa-solid fa-trash"></i></button>`
@@ -775,6 +949,7 @@ const CotizacionesView = {
       '#pos-doc-prioridad',
       '#pos-precio-campo',
       '#pos-cliente-nuevo',
+      '#pos-btn-agregar-pse',
       '.btn-refresh-vendedores',
     ].forEach((sel) => {
       const el = this._container?.querySelector(sel);
@@ -821,7 +996,10 @@ const CotizacionesView = {
     await F.fetchJson(url, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pass: String(pass) }),
+      body: JSON.stringify({
+        pass: String(pass),
+        USUARIO: String(F.session('user')?.usuario || '').trim() || undefined,
+      }),
     });
     F.toast('Cotización eliminada', 'success');
     await this.fetchPedidosList();
@@ -990,6 +1168,8 @@ const CotizacionesView = {
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control pos-search-glow" id="pos-product-search"
                   placeholder="Código o descripción… (Enter)" autocomplete="off"${editable ? '' : ' disabled'}>
+                <button type="button" class="btn btn-outline-secondary text-nowrap" id="pos-btn-agregar-pse"
+                  title="Agregar producto sin existencia"${editable ? '' : ' disabled'}>Agregar PSE</button>
               </div>
               <div class="pos-product-list" id="pos-product-list"></div>
             </div>
@@ -1109,6 +1289,10 @@ const CotizacionesView = {
       this.openHistorialFacturasCliente().catch((err) => F.toast(err.message, 'error'));
     });
 
+    this._container?.querySelector('#pos-btn-agregar-pse')?.addEventListener('click', () => {
+      this.onAgregarPse().catch((err) => F.toast(err.message || 'Error al agregar PSE', 'error'));
+    });
+
     this._container?.querySelector('#pos-cart-tbody')?.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-action]');
       if (!btn || btn.disabled || this._cartBusy) return;
@@ -1120,6 +1304,24 @@ const CotizacionesView = {
         return;
       }
       const action = btn.getAttribute('data-action');
+
+      if (action === 'price-edit') {
+        try {
+          const precio = await this.promptEditarPrecioLinea(line);
+          if (precio == null) return;
+          this.setCartBusy(true);
+          this.renderCart();
+          await this.actualizarPrecio(id, precio);
+          F.toast('Precio actualizado', 'success');
+        } catch (err) {
+          F.toast(err.message || 'Error al actualizar el precio', 'error');
+        } finally {
+          this.setCartBusy(false);
+          this.renderCart();
+        }
+        return;
+      }
+
       this.setCartBusy(true);
       this.renderCart();
       try {

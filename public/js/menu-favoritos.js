@@ -138,15 +138,13 @@ const MenuFavoritos = {
       Swal.fire({
         ...modalOpts,
         title: 'Favoritos',
-        html: `<p class="small text-muted mb-0">Aún no tiene favoritos. Puede configurarlos ahora.</p>`,
+        html: `<p class="small text-muted mb-0">Aún no tiene favoritos. Puede configurarlos desde el menú lateral (Favoritos).</p>`,
+        showConfirmButton: false,
         showCancelButton: true,
-        confirmButtonText: 'Configurar',
         cancelButtonText:
           typeof CatalogosUI !== 'undefined'
             ? CatalogosUI.cancelButtonHtml('Cerrar')
             : 'Cerrar',
-      }).then((result) => {
-        if (result.isConfirmed) this.openConfig();
       });
       return;
     }
@@ -165,12 +163,7 @@ const MenuFavoritos = {
       ...modalOpts,
       title: 'Favoritos',
       width: 'min(26rem, 96vw)',
-      html: `
-        <div class="favoritos-menu-list text-start">${rows}</div>
-        <button type="button" class="btn btn-sm btn-outline-secondary mt-3 w-100" id="favoritos-menu-config">
-          <i class="fa-solid fa-gear me-1"></i>Configurar favoritos
-        </button>
-      `,
+      html: `<div class="favoritos-menu-list text-start">${rows}</div>`,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText:
@@ -185,10 +178,6 @@ const MenuFavoritos = {
             Swal.close();
             this.navigateTo(key);
           });
-        });
-        popup?.querySelector('#favoritos-menu-config')?.addEventListener('click', () => {
-          Swal.close();
-          this.openConfig();
         });
       },
     });

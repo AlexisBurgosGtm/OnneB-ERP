@@ -11,12 +11,14 @@ const {
   getSettingFormatoImpresion,
   getSettingGuardadoFotos,
   getSettingMuestraFormatoFelOnline,
+  getSettingTipofacFinalizado,
   setSettingValue,
   verifySettingPass,
   ensureSettingDefault,
   normalizeFormatoImpresion,
   normalizeGuardadoFotos,
   normalizeMuestraFormatoFelOnline,
+  normalizeTipofacFinalizado,
 } = require('../lib/settings');
 
 const router = express.Router();
@@ -271,6 +273,44 @@ router.put('/muestra-formato-fel', async (req, res) => {
     res.json({ ok: true, opcion, modo });
   } catch (err) {
     console.warn('[API PUT /config/muestra-formato-fel]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/tipofac-finalizado', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const tipofac = await getSettingTipofacFinalizado(pool, opcion);
+    res.json({ opcion, tipofac });
+  } catch (err) {
+    console.warn('[API GET /config/tipofac-finalizado]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/tipofac-finalizado', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const tipofac = normalizeTipofacFinalizado(req.body?.tipofac ?? req.body?.valor ?? req.body?.TIPOFAC);
+  if (tipofac !== 'FEF' && tipofac !== 'FAC' && tipofac !== 'FEC') {
+    return res.status(400).json({ error: 'El valor debe ser FEF, FAC o FEC' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
+    await setSettingValue(pool, opcion, tipofac);
+    res.json({ ok: true, opcion, tipofac });
+  } catch (err) {
+    console.warn('[API PUT /config/tipofac-finalizado]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
