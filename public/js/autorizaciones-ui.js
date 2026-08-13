@@ -7,6 +7,7 @@ const AutorizacionesUI = {
   TIPO_EDITAR_DOCUMENTO: 'EDITAR DOCUMENTO',
   TIPO_ELIMINAR_DOCUMENTO: 'ELIMINAR DOCUMENTO',
   TIPO_ANULAR_DOCUMENTO: 'ANULAR DOCUMENTO',
+  TIPO_ELIMINAR_REGISTRO: 'ELIMINAR REGISTRO',
   OPCION_SOLICITA: 'SOLICITA AUTORIZACIONES',
 
   _socketBound: false,
@@ -733,6 +734,35 @@ const AutorizacionesUI = {
       descripcion: desc,
       title: cfg.title,
       waitingMessage: `Se está solicitando autorización a un administrador para ${cfg.verb} ${docLabel}. Mantenga este aviso abierto hasta que le autoricen.`,
+    });
+
+    if (result.cancelled) return false;
+    if (!result.ok) {
+      if (typeof F !== 'undefined' && F.toast) {
+        F.toast(result.error || 'No se obtuvo autorización', 'error');
+      }
+      return false;
+    }
+    return true;
+  },
+
+  /**
+   * Gate para eliminar registros clave de catálogo (marcas, clientes, etc.).
+   * Si SOLICITA AUTORIZACIONES = NO o el usuario es admin/supervisor → true sin modal.
+   * @returns {Promise<boolean>}
+   */
+  async gateEliminarRegistro({ label = '', tipoEntidad = 'registro' } = {}) {
+    if (!(await this.isEnabled())) return true;
+    if (this._isAdminViewer()) return true;
+
+    this.bindSocket();
+    const ent = String(tipoEntidad || 'registro').trim() || 'registro';
+    const nombre = String(label || '').trim() || ent;
+    const result = await this.solicitarYEsperar({
+      tipo: this.TIPO_ELIMINAR_REGISTRO,
+      descripcion: `${this.usuario()} solicita eliminar el ${ent} ${nombre}`,
+      title: 'Esperando autorización — Eliminar',
+      waitingMessage: `Se está solicitando autorización a un administrador para eliminar ${nombre}. Mantenga este aviso abierto hasta que le autoricen.`,
     });
 
     if (result.cancelled) return false;

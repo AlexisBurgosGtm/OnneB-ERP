@@ -3,7 +3,7 @@ const sql = require('mssql');
 const multer = require('multer');
 const { isDbConfigured } = require('../config/database');
 const { ensureInvSaldoForProduct } = require('../lib/invsaldo');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { corregirProductosYPrecios } = require('../lib/correccion-productos-precios');
 const {
   listMovimientosProducto,
@@ -965,7 +965,7 @@ router.delete('/:codprod', async (req, res) => {
         count: movCount,
       });
     }
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {

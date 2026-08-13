@@ -1,0 +1,41 @@
+---
+description: Proyecto futuro VistaCompartida — pestañas internas (máx. 1 por vista)
+alwaysApply: false
+---
+
+# VistaCompartida (pendiente de implementar)
+
+Pestañas internas tipo Chrome dentro de OnneB: varias vistas abiertas a la vez, sin ventanas del navegador.
+
+## Decisión final
+
+- **Máximo una pestaña por vista** (`data-menu` / key de menú).
+- Si el usuario vuelve a abrir una vista ya abierta → **activar la pestaña existente** (no crear otra; no “bloquear” a secas).
+- Pueden coexistir vistas distintas (ej. Facturación + Compras), nunca dos de la misma.
+
+## Contexto actual del sistema
+
+- Un solo `#main-content`; `app.js` monta con `View.load(mainContent)` y **reemplaza** el contenido.
+- Muchas vistas son **singletons** con estado en el objeto (`_doc`, `_rows`, `_container`).
+- IDs DOM fijos y listeners; montar la misma vista dos veces rompería el estado.
+
+Por eso la regla “una pestaña por vista” encaja con la arquitectura actual.
+
+## Enfoque recomendado (cuando se implemente)
+
+1. Shell: barra de pestañas + host por pestaña (o un host reutilizado).
+2. Mapa `menuKey → tabId`; al click de menú: crear pestaña o enfocar la existente.
+3. Preferir **desmontar/recargar al activar** al inicio (más seguro) vs. N DOMs vivos en paralelo.
+4. No reescribir el negocio de cada vista en la primera fase.
+5. Más adelante (opcional): `cleanup` / `onLeave` en vistas con timers, charts o trabajo a medias (POS, facturación).
+
+## Fuera de alcance inicial
+
+- Dos documentos de la misma vista a la vez (ej. dos facturas) → requeriría factories por instancia.
+- Pestañas del navegador / ventanas externas.
+
+## Archivos clave
+
+- `public/js/app.js` — router de menús / carga de vistas
+- `public/index.html` — `#main-content`, sidebar `data-menu`
+- Vistas en `public/js/views/**` — singletons `*.load(container)`

@@ -7,6 +7,10 @@ const { getUpdateDbPool } = require('../lib/update-db-pool');
 const { checkTokenActivo, TOKEN_NO_NUBE_MSG } = require('../lib/community-token');
 const { uploadCatalogToCommunity } = require('../lib/community-catalog-upload');
 const {
+  previewCatalogFromCommunity,
+  downloadCatalogFromCommunity,
+} = require('../lib/community-catalog-download');
+const {
   listCommunityTrasladoLineas,
   loadCommunityTraslado,
   deleteCommunityTraslado,
@@ -192,6 +196,109 @@ router.post('/catalogo/subir', async (req, res) => {
   } catch (err) {
     console.warn('[API POST /community/catalogo/subir]', err.message);
     res.status(500).json({ error: err.message || 'Error al subir catálogo' });
+  }
+});
+
+/**
+ * Preview del catálogo en la nube (COMMUNITY_PRODUCTOS / COMMUNITY_PRECIOS, EMPNIT=GENERAL).
+ * Solo empresa SUCURSAL.
+ */
+router.get('/catalogo/preview', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const localPool = await req.app.locals.getDbPool();
+    const tip = await getCodTipoEmpresa(localPool, empnit);
+    if (tip !== TIPO_EMPRESA_SUCURSAL) {
+      return res.status(403).json({
+        error: 'Solo las empresas SUCURSAL pueden descargar el catálogo',
+        code: 'EMPRESA_NO_SUCURSAL',
+      });
+    }
+
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const result = await previewCatalogFromCommunity({ hostPool, token });
+    res.json(result);
+  } catch (err) {
+    console.warn('[API GET /community/catalogo/preview]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Error al leer catálogo en la nube' });
+  }
+});
+
+/**
+ * Descarga catálogo: reemplaza PRODUCTOS/PRECIOS locales y sincroniza INVSALDO faltantes en 0.
+ * Solo empresa SUCURSAL. Bulk insert (SqlBulkCopy).
+ */
+router.post('/catalogo/descargar', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const localPool = await req.app.locals.getDbPool();
+    const tip = await getCodTipoEmpresa(localPool, empnit);
+    if (tip !== TIPO_EMPRESA_SUCURSAL) {
+      return res.status(403).json({
+        error: 'Solo las empresas SUCURSAL pueden descargar el catálogo',
+        code: 'EMPRESA_NO_SUCURSAL',
+      });
+    }
+
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const result = await downloadCatalogFromCommunity({
+      localPool,
+      hostPool,
+      token,
+      empnit,
+    });
+    res.json(result);
+  } catch (err) {
+    console.warn('[API POST /community/catalogo/descargar]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message || 'Error al descargar catálogo' });
   }
 });
 

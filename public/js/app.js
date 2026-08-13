@@ -697,6 +697,7 @@
     'descargar-catalogo': 'Descargar Catálogo',
     'traslados-en-transito': 'Traslados en tránsito',
     empleados: 'Empleados',
+    'control-asistencia': 'Control de Asistencia',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
     'nomina-empleados': 'Datos nómina empleados',
@@ -923,6 +924,8 @@
       DepartamentosView.load(mainContent);
     } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
       EmpleadosView.load(mainContent);
+    } else if (key === 'control-asistencia' && typeof ControlAsistenciaView !== 'undefined') {
+      ControlAsistenciaView.load(mainContent);
     } else if (key === 'nomina-config' && typeof NominaConfigView !== 'undefined') {
       NominaConfigView.load(mainContent);
     } else if (key === 'nomina-conceptos' && typeof NominaConceptosView !== 'undefined') {

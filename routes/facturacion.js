@@ -10,7 +10,7 @@ const {
   revertirMovimientoInventarioDocumento,
 } = require('../lib/inventario');
 const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows, bindDocumentoFechaDiaParams, sqlDocumentoFechaDiaWhere } = require('../lib/documento-fecha');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
@@ -2039,7 +2039,7 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
     const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
       usuario: usuarioFromReq(req),
       motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,

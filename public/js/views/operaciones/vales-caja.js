@@ -434,19 +434,13 @@ const ValesCajaView = {
     const row = this.findRow(novale);
     if (!row) return;
     const label = `VC #${novale}`;
-    if (typeof AutorizacionesUI !== 'undefined') {
-      const allowed = await AutorizacionesUI.gateAccionDocumento({
-        accion: 'eliminar',
-        coddoc: 'VC',
-        correlativo: novale,
-        tipodoc: 'VALES_CAJA',
-        label,
-      });
-      if (!allowed) return;
-    }
     const pass = await CatalogosUI.confirmEliminarDocumento({
       label,
       tipo: 'vale de caja',
+      kind: 'documento',
+      coddoc: 'VC',
+      correlativo: novale,
+      tipodoc: 'VALES_CAJA',
     });
     if (!pass) return;
     try {

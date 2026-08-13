@@ -1189,7 +1189,13 @@ const ComprasView = {
 
   async eliminarCompra(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
-    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'compra' });
+    const pass = await CatalogosUI.confirmEliminarDocumento({
+      label,
+      tipo: 'compra',
+      kind: 'documento',
+      coddoc,
+      correlativo,
+    });
     if (!pass) return;
     const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     await F.fetchJson(url, {

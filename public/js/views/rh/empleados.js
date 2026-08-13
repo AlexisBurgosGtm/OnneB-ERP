@@ -241,7 +241,17 @@ const EmpleadosView = {
             return `<td>${this.formatCell(row[c.key], c)}</td>`;
           })
           .join('');
-        return `<tr>${cells}<td class="text-end">${CatalogosUI.accionesRow(row.CODEMPLEADO, 'codempleado')}</td></tr>`;
+        return `<tr>${cells}<td class="text-end">
+          <div class="catalogo-acciones">
+            <button type="button" class="btn btn-outline-secondary btn-sm btn-empleado-carne"
+              data-codempleado="${this.escapeHtml(row.CODEMPLEADO)}"
+              aria-label="Imprimir carné" title="Imprimir carné">
+              <i class="fa-solid fa-id-badge" aria-hidden="true"></i>
+            </button>
+            ${CatalogosUI.btnEditar(row.CODEMPLEADO, 'codempleado')}
+            ${CatalogosUI.btnEliminar(row.CODEMPLEADO, 'codempleado')}
+          </div>
+        </td></tr>`;
       })
       .join('');
   },
@@ -517,6 +527,169 @@ const EmpleadosView = {
     `;
   },
 
+  fotoApiUrl(codempleado, extra = {}) {
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), ...extra, _: String(Date.now()) });
+    return `/api/empleados/${encodeURIComponent(codempleado)}/foto?${params}`;
+  },
+
+  renderFotoSelectorHtml(codempleado) {
+    const preview = this._fotoUrl
+      ? `<img src="${this.escapeHtml(this._fotoUrl)}" alt="Foto empleado" class="empleados-foto-preview-img" id="empleados-foto-preview-img">`
+      : `<div class="empleados-foto-placeholder" id="empleados-foto-placeholder">
+          <i class="fa-solid fa-user" aria-hidden="true"></i>
+          <span>Sin foto</span>
+        </div>`;
+    return `
+      <div class="card empleados-foto-card mb-2">
+        <div class="card-body py-2 px-2 d-flex flex-wrap gap-3 align-items-center">
+          <div class="empleados-foto-preview" id="empleados-foto-preview">${preview}</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold mb-1"><i class="fa-solid fa-image me-1"></i>Foto del empleado</div>
+            <p class="small text-muted mb-2">Se guarda en EMPLEADOS como empnit-codempleado.png (LOCAL o HOST según configuración).</p>
+            <div class="d-flex flex-wrap gap-2">
+              <label class="btn btn-sm btn-outline-primary mb-0" for="empleados-foto-input" id="empleados-foto-label">
+                <i class="fa-solid fa-upload me-1"></i>Cargar foto
+              </label>
+              <input type="file" id="empleados-foto-input" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
+              <button type="button" class="btn btn-sm btn-outline-danger" id="btn-empleados-foto-quitar"${this._fotoUrl || this._pendingFotoFile ? '' : ' disabled'}>
+                <i class="fa-solid fa-trash me-1"></i>Quitar
+              </button>
+            </div>
+            <div class="small mt-2" id="empleados-foto-status" aria-live="polite"></div>
+            ${
+              codempleado
+                ? `<div class="small text-muted mt-1">Archivo: ${this.escapeHtml(F.getEmpNit())}-${this.escapeHtml(codempleado)}.png</div>`
+                : '<div class="small text-muted mt-1">La foto se subirá al guardar el empleado nuevo.</div>'
+            }
+          </div>
+        </div>
+      </div>`;
+  },
+
+  setFotoStatus(message, kind = 'muted') {
+    const el = document.getElementById('empleados-foto-status');
+    if (!el) return;
+    const cls =
+      kind === 'success'
+        ? 'text-success'
+        : kind === 'error'
+          ? 'text-danger'
+          : kind === 'warning'
+            ? 'text-warning'
+            : 'text-muted';
+    el.className = `small mt-2 ${cls}`;
+    el.textContent = message || '';
+  },
+
+  setFotoPreview(url) {
+    this._fotoUrl = url || null;
+    const wrap = document.getElementById('empleados-foto-preview');
+    if (!wrap) return;
+    if (this._fotoUrl) {
+      wrap.innerHTML = `<img src="${this.escapeHtml(this._fotoUrl)}" alt="Foto empleado" class="empleados-foto-preview-img" id="empleados-foto-preview-img">`;
+    } else {
+      wrap.innerHTML = `<div class="empleados-foto-placeholder" id="empleados-foto-placeholder">
+          <i class="fa-solid fa-user" aria-hidden="true"></i>
+          <span>Sin foto</span>
+        </div>`;
+    }
+    const quitar = document.getElementById('btn-empleados-foto-quitar');
+    if (quitar) quitar.disabled = !(this._fotoUrl || this._pendingFotoFile);
+  },
+
+  async loadEmpleadoFoto(codempleado) {
+    this._pendingFotoFile = null;
+    this._fotoUrl = null;
+    if (!codempleado) return;
+    try {
+      const data = await F.fetchJson(this.fotoApiUrl(codempleado, { meta: '1' }), {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      this._fotoUrl = data?.url || null;
+    } catch (_) {
+      this._fotoUrl = null;
+    }
+  },
+
+  async uploadEmpleadoFoto(codempleado, file) {
+    if (!codempleado || !file) return null;
+    const body = new FormData();
+    body.append('foto', file);
+    const res = await fetch(this.fotoApiUrl(codempleado), {
+      method: 'POST',
+      body,
+      credentials: 'same-origin',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'No se pudo guardar la foto');
+    return data;
+  },
+
+  bindFotoEvents(codempleado) {
+    const input = document.getElementById('empleados-foto-input');
+    const label = document.getElementById('empleados-foto-label');
+    const quitar = document.getElementById('btn-empleados-foto-quitar');
+
+    // Evita que el click del file dialog cierre el Swal (click fantasma al overlay).
+    const stop = (e) => e.stopPropagation();
+    label?.addEventListener('mousedown', stop);
+    label?.addEventListener('click', stop);
+    input?.addEventListener('mousedown', stop);
+    input?.addEventListener('click', stop);
+    quitar?.addEventListener('mousedown', stop);
+
+    input?.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(file.type)) {
+        this.setFotoStatus('Formato no válido. Use jpg, png, webp o gif', 'warning');
+        input.value = '';
+        return;
+      }
+      if (codempleado) {
+        this.setFotoStatus('Guardando foto…', 'muted');
+        try {
+          const data = await this.uploadEmpleadoFoto(codempleado, file);
+          this._pendingFotoFile = null;
+          this.setFotoPreview(data.url);
+          this.setFotoStatus('Foto guardada', 'success');
+        } catch (err) {
+          this.setFotoStatus(err.message || 'Error al guardar foto', 'error');
+        } finally {
+          input.value = '';
+        }
+        return;
+      }
+      this._pendingFotoFile = file;
+      this.setFotoPreview(URL.createObjectURL(file));
+      this.setFotoStatus('Foto lista; se subirá al guardar', 'success');
+      input.value = '';
+    });
+
+    quitar?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (codempleado && this._fotoUrl && !this._pendingFotoFile) {
+        // No usar otro Swal aquí: cerraría el formulario del empleado.
+        if (!window.confirm('¿Quitar la foto del empleado?')) return;
+        this.setFotoStatus('Eliminando foto…', 'muted');
+        try {
+          await F.fetchJson(this.fotoApiUrl(codempleado), { method: 'DELETE' });
+          this._pendingFotoFile = null;
+          this.setFotoPreview(null);
+          this.setFotoStatus('Foto eliminada', 'success');
+        } catch (err) {
+          this.setFotoStatus(err.message || 'Error al quitar foto', 'error');
+        }
+        return;
+      }
+      this._pendingFotoFile = null;
+      this.setFotoPreview(null);
+      this.setFotoStatus('', 'muted');
+    });
+  },
+
   buildFormHtml(row = {}, isEdit = false) {
     const r = this.normalizeRowForForm(row);
     const L = this._lookups || {
@@ -561,6 +734,7 @@ const EmpleadosView = {
 
     return `
       <div class="empleados-form-grid">
+        ${this.renderFotoSelectorHtml(isEdit ? r.CODEMPLEADO : null)}
         <div class="row g-2">
           <div class="col-md-6">${colLeft}</div>
           <div class="col-md-6">${colRight}</div>
@@ -613,11 +787,23 @@ const EmpleadosView = {
     }
 
     const view = this;
+    const codempleado = isEdit ? row.CODEMPLEADO : null;
+    this._pendingFotoFile = null;
+    if (isEdit && codempleado) {
+      await this.loadEmpleadoFoto(codempleado);
+    } else {
+      this._fotoUrl = null;
+    }
+
     return CatalogosUI.fireForm({
       title,
       html: view.buildFormHtml(row, isEdit),
       width: 960,
       customClass: { popup: 'modal-catalogo empleados-form-modal' },
+      allowOutsideClick: false,
+      didOpen() {
+        view.bindFotoEvents(codempleado);
+      },
       preConfirm() {
         try {
           const data = view.readFormData();
@@ -633,6 +819,31 @@ const EmpleadosView = {
         }
       },
     });
+  },
+
+  async onNuevo() {
+    const data = await this.showForm('Nuevo empleado');
+    if (!data) return;
+    try {
+      const created = await F.fetchJson(this.apiBase(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const newId = created?.CODEMPLEADO ?? created?.row?.CODEMPLEADO;
+      if (newId && this._pendingFotoFile) {
+        try {
+          await this.uploadEmpleadoFoto(newId, this._pendingFotoFile);
+        } catch (err) {
+          F.toast(err.message || 'Empleado creado, pero no se pudo subir la foto', 'warning');
+        }
+      }
+      this._pendingFotoFile = null;
+      F.toast('Empleado creado', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
   },
 
   async onEditar(id) {
@@ -656,26 +867,22 @@ const EmpleadosView = {
   async onEliminar(id) {
     const row = this.findRow(id);
     const nombre = this.rowLabel(row, id);
-    const confirm = await CatalogosUI.fireConfirm({
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: nombre,
+      tipo: 'empleado',
+      kind: 'registro',
       title: '¿Eliminar empleado?',
       html: `<p class="mb-0">Se intentará eliminar a <strong>${this.escapeHtml(nombre)}</strong>.</p>
         <p class="small text-muted mb-0 mt-2">Si tiene documentos asociados (CODVEN), solo se deshabilitará (ACTIVO = NO).</p>`,
-      icon: 'warning',
-      confirmText: 'Continuar',
-      confirmClass: 'btn-catalogo-eliminar',
+      passText: 'Ingrese la clave de administrador para eliminar o deshabilitar al empleado.',
+      confirmText: 'Eliminar',
     });
-    if (!confirm) return;
-    const pass = await CatalogosUI.solicitarClaveAdmin({
-      title: 'Autorizar eliminación',
-      text: 'Ingrese la clave de administrador para eliminar o deshabilitar al empleado.',
-      confirmText: 'Autorizar',
-    });
-    if (!pass) return;
+    if (!auth) return;
     try {
       const res = await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: String(pass) }),
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
       });
       if (res?.action === 'disabled') {
         F.toast(res.message || 'Empleado deshabilitado (tiene documentos asociados)', 'warning');
@@ -691,6 +898,34 @@ const EmpleadosView = {
   bindRowActions() {
     EmpleadosViewBase.bindRowActions.call(this);
     this.bindActivoButtons();
+    this.bindCarneButtons();
+  },
+
+  bindCarneButtons() {
+    if (!this._container) return;
+    this._container.querySelectorAll('.btn-empleado-carne').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.codempleado;
+        this.onImprimirCarne(id);
+      });
+    });
+  },
+
+  async onImprimirCarne(codempleado) {
+    const row = this.findRow(codempleado);
+    if (!row) {
+      F.toast('Empleado no encontrado', 'warning');
+      return;
+    }
+    if (typeof EmpleadoCarne === 'undefined') {
+      F.alert('Error', 'Módulo de carné no disponible', 'error');
+      return;
+    }
+    try {
+      await EmpleadoCarne.imprimir(row);
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudo imprimir el carné', 'error');
+    }
   },
 
   bindActivoButtons() {

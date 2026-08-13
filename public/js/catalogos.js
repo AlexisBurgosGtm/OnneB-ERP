@@ -167,7 +167,16 @@ const CatalogosUI = {
   },
 
   /** Modal formulario — Guardar a la derecha */
-  async fireForm({ title, html, preConfirm, width = 520, confirmText = 'Guardar', didOpen, customClass } = {}) {
+  async fireForm({
+    title,
+    html,
+    preConfirm,
+    width = 520,
+    confirmText = 'Guardar',
+    didOpen,
+    customClass,
+    allowOutsideClick = true,
+  } = {}) {
     let activePopup = null;
     const result = await Swal.fire({
       ...this.modalBase({ customClass }),
@@ -178,6 +187,7 @@ const CatalogosUI = {
       confirmButtonText: this.guardarButtonHtml(confirmText),
       cancelButtonText: this.cancelButtonHtml('Cancelar'),
       focusConfirm: false,
+      allowOutsideClick,
       preConfirm: () => {
         const popup = activePopup || Swal.getPopup();
         return typeof preConfirm === 'function' ? preConfirm(popup) : undefined;
@@ -338,21 +348,101 @@ const CatalogosUI = {
     return result.isConfirmed ? result.value : null;
   },
 
-  /** Confirmación + clave admin para eliminar documento. @returns {Promise<string|null>} clave o null */
-  async confirmEliminarDocumento({ label, tipo = 'documento' }) {
-    const ok = await this.fireConfirm({
-      title: '¿Eliminar documento?',
-      html: `<p class="mb-0">Se eliminará permanentemente el ${tipo} <strong>${label}</strong>.</p>`,
-      icon: 'warning',
-      confirmText: 'Eliminar',
-      confirmClass: 'btn-catalogo-eliminar',
-    });
-    if (!ok) return null;
-    return this.solicitarClaveAdmin({
+  /**
+   * Gate global para eliminación de registros/documentos clave (no líneas de detalle).
+   * - SOLICITA AUTORIZACIONES = SI → espera autorización (si aplica) → confirmación Sí/No (sin clave)
+   * - SOLICITA AUTORIZACIONES = NO → solicita clave de administrador
+   * @returns {Promise<{ pass: string|null }|null>} null si cancela
+   */
+  async authorizeEliminarRegistro({
+    label = '',
+    tipo = 'registro',
+    kind = 'registro',
+    title = null,
+    html = null,
+    passText = null,
+    confirmText = 'Eliminar',
+    coddoc = '',
+    correlativo = '',
+    tipodoc = '',
+  } = {}) {
+    const authUi = typeof AutorizacionesUI !== 'undefined' ? AutorizacionesUI : null;
+    const solicita = authUi ? await authUi.isEnabled() : false;
+    const labelTxt = String(label || '').trim() || String(tipo || 'registro');
+
+    if (solicita) {
+      let allowed = true;
+      if (kind === 'documento' && authUi) {
+        allowed = await authUi.gateAccionDocumento({
+          accion: 'eliminar',
+          coddoc,
+          correlativo,
+          tipodoc,
+          label: labelTxt,
+        });
+      } else if (authUi) {
+        allowed = await authUi.gateEliminarRegistro({
+          label: labelTxt,
+          tipoEntidad: tipo,
+        });
+      }
+      if (!allowed) return null;
+
+      const ok = await this.fireConfirm({
+        title: title || `¿Eliminar ${tipo}?`,
+        html:
+          html ||
+          `<p class="mb-0">Se eliminará permanentemente el ${tipo} <strong>${labelTxt}</strong>.</p>`,
+        icon: 'warning',
+        confirmText,
+        confirmClass: 'btn-catalogo-eliminar',
+      });
+      if (!ok) return null;
+      return { pass: null };
+    }
+
+    const pass = await this.solicitarClaveAdmin({
       title: 'Autorizar eliminación',
-      text: 'Ingrese la clave para autorizar movimientos.',
-      confirmText: 'Eliminar',
+      text: passText || `Ingrese la clave de administrador para eliminar el ${tipo}.`,
+      confirmText: confirmText === 'Continuar' ? 'Eliminar' : confirmText,
     });
+    if (!pass) return null;
+    return { pass: String(pass) };
+  },
+
+  /**
+   * Eliminación de documento/registro clave.
+   * Compatible con callers antiguos: retorna string de clave o '__AUTORIZADO__' tras wait+confirm.
+   * @returns {Promise<string|null>}
+   */
+  async confirmEliminarDocumento({
+    label,
+    tipo = 'documento',
+    kind = 'documento',
+    title = null,
+    html = null,
+    passText = null,
+    confirmText = 'Eliminar',
+    coddoc = '',
+    correlativo = '',
+    tipodoc = '',
+  } = {}) {
+    const result = await this.authorizeEliminarRegistro({
+      label,
+      tipo,
+      kind,
+      title: title || (kind === 'documento' ? '¿Eliminar documento?' : `¿Eliminar ${tipo}?`),
+      html:
+        html ||
+        `<p class="mb-0">Se eliminará permanentemente el ${tipo} <strong>${String(label || '').trim()}</strong>.</p>`,
+      passText,
+      confirmText,
+      coddoc,
+      correlativo,
+      tipodoc,
+    });
+    if (!result) return null;
+    return result.pass != null && String(result.pass) !== '' ? String(result.pass) : '__AUTORIZADO__';
   },
 };
 
@@ -360,4 +450,6 @@ if (typeof F !== 'undefined') {
   F.solicitarClaveAdmin = (opts) => CatalogosUI.solicitarClaveAdmin(opts);
   F.verifyConfigPass = (pass, configId) => CatalogosUI.verifyConfigPass(pass, configId);
   F.ADMIN_PASS_CONFIG_ID = CatalogosUI.ADMIN_PASS_CONFIG_ID;
+  F.authorizeEliminarRegistro = (opts) => CatalogosUI.authorizeEliminarRegistro(opts);
+  F.confirmEliminarDocumento = (opts) => CatalogosUI.confirmEliminarDocumento(opts);
 }

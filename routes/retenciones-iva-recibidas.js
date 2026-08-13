@@ -12,12 +12,32 @@ const {
   searchClientes,
   parseCorrelativo,
   listFacturasCreditoPendientesCliente,
+  findFacturaPorFel,
   diagnoseFacturasClienteRetencion,
   loadCalcParams,
 } = require('../lib/retenciones-iva-recibidas');
 const { parsePeriod, requireEmpNit } = require('../lib/libro-contable-utils');
 
 const router = express.Router();
+
+router.get('/factura-por-fel', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await findFacturaPorFel(pool, empnit, {
+      serie: req.query.serie || req.query.FEL_SERIE,
+      numero: req.query.numero || req.query.FEL_NUMERO,
+    });
+    res.json({ rows });
+  } catch (err) {
+    const code = err.statusCode || 500;
+    if (code >= 500) console.warn('[API GET /retenciones-iva-recibidas/factura-por-fel]', err.message);
+    res.status(code).json({ error: err.message });
+  }
+});
 
 router.get('/config', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

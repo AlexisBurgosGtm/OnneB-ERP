@@ -126,7 +126,7 @@ const MenuFavoritos = {
     }
   },
 
-  /** Modal rápido con los favoritos guardados (navegación). */
+  /** Modal Asistente: favoritos (izq.) + herramientas (der.). */
   openMenu() {
     const items = this.favoriteItems();
     const modalOpts =
@@ -134,36 +134,69 @@ const MenuFavoritos = {
         ? CatalogosUI.modalBase()
         : { customClass: { popup: 'modal-catalogo' } };
 
-    if (!items.length) {
-      Swal.fire({
-        ...modalOpts,
-        title: 'Favoritos',
-        html: `<p class="small text-muted mb-0">Aún no tiene favoritos. Puede configurarlos desde el menú lateral (Favoritos).</p>`,
-        showConfirmButton: false,
-        showCancelButton: true,
-        cancelButtonText:
-          typeof CatalogosUI !== 'undefined'
-            ? CatalogosUI.cancelButtonHtml('Cerrar')
-            : 'Cerrar',
-      });
-      return;
-    }
-
-    const rows = items
-      .map(
-        (c) => `
+    const favHtml = items.length
+      ? items
+          .map(
+            (c) => `
         <button type="button" class="favoritos-menu-item" data-favorito-nav="${this.escapeHtml(c.key)}">
           <span class="favoritos-config-icon">${c.iconHtml}</span>
           <span class="favoritos-config-label">${this.escapeHtml(c.label)}</span>
         </button>`
-      )
-      .join('');
+          )
+          .join('')
+      : `<p class="small text-muted mb-0">Aún no tiene favoritos. Configúrelos desde el menú lateral (Favoritos).</p>`;
 
     Swal.fire({
       ...modalOpts,
-      title: 'Favoritos',
-      width: 'min(26rem, 96vw)',
-      html: `<div class="favoritos-menu-list text-start">${rows}</div>`,
+      title: 'Asistente',
+      width: 'min(52rem, 96vw)',
+      html: `
+        <div class="asistente-modal-grid text-start">
+          <div class="asistente-modal-col">
+            <div class="asistente-card">
+              <div class="asistente-card-title"><i class="fa-solid fa-star me-1"></i>Favoritos</div>
+              <div class="favoritos-menu-list">${favHtml}</div>
+            </div>
+          </div>
+          <div class="asistente-modal-col">
+            <div class="asistente-card mb-2">
+              <div class="asistente-card-title"><i class="fa-solid fa-calculator me-1"></i>Cálculo de precio</div>
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="asist-costo">Costo</label>
+                  <input type="number" step="0.01" min="0" id="asist-costo" class="form-control form-control-sm" placeholder="0.00">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-0" for="asist-ganancia">% Ganancia</label>
+                  <input type="number" step="0.01" id="asist-ganancia" class="form-control form-control-sm" placeholder="0" value="30">
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-0" for="asist-precio">Precio de venta</label>
+                  <input type="text" id="asist-precio" class="form-control form-control-sm text-danger fw-bold" readonly value="Q 0.00">
+                </div>
+              </div>
+            </div>
+            <div class="asistente-card">
+              <div class="asistente-card-title"><i class="fa-solid fa-file-lines me-1"></i>Buscar Documento</div>
+              <div class="row g-2 align-items-end">
+                <div class="col-5">
+                  <label class="form-label small mb-0" for="asist-coddoc">Serie (CODDOC)</label>
+                  <input type="text" id="asist-coddoc" class="form-control form-control-sm" placeholder="Ej. FAC" autocomplete="off">
+                </div>
+                <div class="col-4">
+                  <label class="form-label small mb-0" for="asist-corr">Correlativo</label>
+                  <input type="number" step="1" min="1" id="asist-corr" class="form-control form-control-sm" placeholder="0">
+                </div>
+                <div class="col-3">
+                  <button type="button" class="btn btn-sm btn-primary w-100" id="asist-doc-buscar">Buscar</button>
+                </div>
+                <div class="col-12">
+                  <div id="asist-doc-result" class="asistente-doc-result small text-muted">Ingrese serie y correlativo para consultar.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText:
@@ -179,7 +212,146 @@ const MenuFavoritos = {
             this.navigateTo(key);
           });
         });
+        this.bindAsistenteTools(popup);
       },
+    });
+  },
+
+  formatMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 'Q 0.00';
+    return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  formatFechaDoc(value) {
+    if (!value) return '—';
+    const s = String(value).slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    return s;
+  },
+
+  bindAsistenteTools(popup) {
+    if (!popup) return;
+    const costoEl = popup.querySelector('#asist-costo');
+    const ganEl = popup.querySelector('#asist-ganancia');
+    const precioEl = popup.querySelector('#asist-precio');
+
+    const updatePrecio = () => {
+      const costo = Number(costoEl?.value);
+      const pct = Number(ganEl?.value);
+      if (!Number.isFinite(costo) || costo < 0 || !Number.isFinite(pct)) {
+        if (precioEl) precioEl.value = 'Q 0.00';
+        return;
+      }
+      if (pct >= 100) {
+        if (precioEl) precioEl.value = '—';
+        return;
+      }
+      const precio = (costo * 100) / (100 - pct);
+      if (precioEl) precioEl.value = this.formatMoney(precio);
+    };
+    costoEl?.addEventListener('input', updatePrecio);
+    ganEl?.addEventListener('input', updatePrecio);
+    updatePrecio();
+
+    const resultEl = popup.querySelector('#asist-doc-result');
+    const buscarBtn = popup.querySelector('#asist-doc-buscar');
+    let lastDoc = null;
+    const runBuscar = async () => {
+      const coddoc = String(popup.querySelector('#asist-coddoc')?.value || '').trim();
+      const corrRaw = popup.querySelector('#asist-corr')?.value;
+      const correlativo = parseInt(corrRaw, 10);
+      lastDoc = null;
+      if (!coddoc) {
+        if (resultEl) {
+          resultEl.className = 'asistente-doc-result small text-danger';
+          resultEl.textContent = 'Indique la serie interna (CODDOC).';
+        }
+        return;
+      }
+      if (!Number.isFinite(correlativo) || correlativo < 0) {
+        if (resultEl) {
+          resultEl.className = 'asistente-doc-result small text-danger';
+          resultEl.textContent = 'Indique un correlativo válido.';
+        }
+        return;
+      }
+      if (typeof F === 'undefined' || !F.getEmpNit()) {
+        if (resultEl) {
+          resultEl.className = 'asistente-doc-result small text-danger';
+          resultEl.textContent = 'No hay empresa activa.';
+        }
+        return;
+      }
+      if (resultEl) {
+        resultEl.className = 'asistente-doc-result small text-muted';
+        resultEl.textContent = 'Buscando…';
+      }
+      if (buscarBtn) buscarBtn.disabled = true;
+      try {
+        const url =
+          `/api/documentos/resumen/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}` +
+          `?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
+        const data = await F.fetchJson(url, { cache: 'no-store' });
+        lastDoc = data;
+        if (resultEl) {
+          resultEl.className = 'asistente-doc-result small';
+          resultEl.innerHTML = `
+            <div class="asistente-doc-ok">
+              <div><strong>${this.escapeHtml(data.CODDOC)} #${this.escapeHtml(data.CORRELATIVO)}</strong></div>
+              <div>Fecha: <strong>${this.escapeHtml(this.formatFechaDoc(data.FECHA))}</strong></div>
+              <div>NIT: <strong>${this.escapeHtml(data.DOC_NIT || '—')}</strong></div>
+              <div>Cliente: <strong>${this.escapeHtml(data.DOC_NOMCLIE || '—')}</strong></div>
+              <div>Importe: <strong>${this.escapeHtml(this.formatMoney(data.TOTALPRECIO))}</strong></div>
+              <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="asist-doc-reimprimir">
+                  <i class="fa-solid fa-print me-1"></i>Reimprimir
+                </button>
+              </div>
+            </div>`;
+          resultEl.querySelector('#asist-doc-reimprimir')?.addEventListener('click', async () => {
+            if (!lastDoc) return;
+            try {
+              if (typeof DocOpciones !== 'undefined' && DocOpciones.imprimir) {
+                await DocOpciones.imprimir(lastDoc.CODDOC, lastDoc.CORRELATIVO, lastDoc);
+              } else if (typeof DocPrint !== 'undefined' && DocPrint.printByKey) {
+                await DocPrint.printByKey({
+                  coddoc: lastDoc.CODDOC,
+                  correlativo: lastDoc.CORRELATIVO,
+                  title: `${lastDoc.CODDOC} #${lastDoc.CORRELATIVO}`,
+                });
+              } else {
+                F.toast('No se pudo reimprimir', 'error');
+              }
+            } catch (err) {
+              F.toast(err.message || 'Error al reimprimir', 'error');
+            }
+          });
+        }
+      } catch (err) {
+        if (resultEl) {
+          resultEl.className = 'asistente-doc-result small text-danger';
+          resultEl.textContent = err.message || 'No se pudo buscar el documento';
+        }
+      } finally {
+        if (buscarBtn) buscarBtn.disabled = false;
+      }
+    };
+    buscarBtn?.addEventListener('click', () => {
+      runBuscar().catch(() => {});
+    });
+    popup.querySelector('#asist-corr')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runBuscar().catch(() => {});
+      }
+    });
+    popup.querySelector('#asist-coddoc')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        popup.querySelector('#asist-corr')?.focus();
+      }
     });
   },
 

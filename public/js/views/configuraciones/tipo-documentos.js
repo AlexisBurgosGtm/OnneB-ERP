@@ -593,25 +593,21 @@ const TipoDocumentosView = {
   async onEliminar(id) {
     const row = this.findRow(id);
     const nombre = this.rowLabel(row, id);
-    const confirm = await CatalogosUI.fireConfirm({
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: `${nombre} (${id})`,
+      tipo: 'tipo documento',
+      kind: 'registro',
       title: '¿Eliminar tipo documento?',
       html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong> (${this.escapeHtml(id)})</p>`,
-      icon: 'warning',
-      confirmText: 'Eliminar',
-      confirmClass: 'btn-catalogo-eliminar',
-    });
-    if (!confirm) return;
-    const pass = await CatalogosUI.solicitarClaveAdmin({
-      title: 'Autorizar eliminación',
-      text: 'Ingrese la clave de administrador para eliminar el tipo de documento.',
+      passText: 'Ingrese la clave de administrador para eliminar el tipo de documento.',
       confirmText: 'Eliminar',
     });
-    if (!pass) return;
+    if (!auth) return;
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: String(pass) }),
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
       });
       F.toast('Tipo documento eliminado', 'success');
       await this.load(this._container);

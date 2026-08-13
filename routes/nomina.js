@@ -8,6 +8,9 @@ const {
   listConceptos,
   upsertConcepto,
   deleteConcepto,
+  listDepartamentos,
+  upsertDepartamento,
+  deleteDepartamento,
   listEmpleadosActivos,
   saveNominaEmpleado,
   listPlanillas,
@@ -115,6 +118,71 @@ router.delete('/conceptos/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.warn('[API DELETE /nomina/conceptos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/departamentos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const soloActivos = String(req.query.activos || '').toLowerCase() === '1' ||
+      String(req.query.activos || '').toLowerCase() === 'si';
+    const rows = await listDepartamentos(pool, empnit, { soloActivos });
+    res.json({ rows });
+  } catch (err) {
+    console.warn('[API GET /nomina/departamentos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/departamentos', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const row = await upsertDepartamento(pool, empnit, req.body || {});
+    res.status(201).json(row);
+  } catch (err) {
+    const code = err.statusCode || 500;
+    if (code >= 500) console.warn('[API POST /nomina/departamentos]', err.message);
+    res.status(code).json({ error: err.message });
+  }
+});
+
+router.put('/departamentos/:id', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const row = await upsertDepartamento(pool, empnit, req.body || {}, id);
+    res.json(row);
+  } catch (err) {
+    const code = err.statusCode || 500;
+    if (code >= 500) console.warn('[API PUT /nomina/departamentos]', err.message);
+    res.status(code).json({ error: err.message });
+  }
+});
+
+router.delete('/departamentos/:id', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await deleteDepartamento(pool, empnit, id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[API DELETE /nomina/departamentos]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

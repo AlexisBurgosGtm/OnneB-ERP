@@ -725,26 +725,22 @@ const ClientesView = {
   async onEliminar(codcliente) {
     const row = this.findRow(codcliente);
     const nombre = row ? row.NOMBRECLIENTE || codcliente : codcliente;
-    const confirm = await CatalogosUI.fireConfirm({
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: nombre,
+      tipo: 'cliente',
+      kind: 'registro',
       title: '¿Eliminar cliente?',
       html: `<p class="mb-0">Se intentará eliminar a <strong>${this.escapeHtml(nombre)}</strong> (código ${this.escapeHtml(codcliente)}).</p>
         <p class="small text-muted mb-0 mt-2">Si tiene documentos asociados, solo se deshabilitará.</p>`,
-      icon: 'warning',
-      confirmText: 'Continuar',
-      confirmClass: 'btn-catalogo-eliminar',
+      passText: 'Ingrese la clave de administrador para eliminar o deshabilitar al cliente.',
+      confirmText: 'Eliminar',
     });
-    if (!confirm) return;
-    const pass = await CatalogosUI.solicitarClaveAdmin({
-      title: 'Autorizar eliminación',
-      text: 'Ingrese la clave de administrador para eliminar o deshabilitar al cliente.',
-      confirmText: 'Autorizar',
-    });
-    if (!pass) return;
+    if (!auth) return;
     try {
       const res = await F.fetchJson(this.apiBase(`/${encodeURIComponent(codcliente)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: String(pass) }),
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
       });
       if (res?.action === 'disabled') {
         F.toast(res.message || 'Cliente deshabilitado (tiene documentos)', 'warning');

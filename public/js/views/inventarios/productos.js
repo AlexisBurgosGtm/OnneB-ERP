@@ -1634,13 +1634,7 @@ const ProductosView = {
 
   async onEliminar(codprod, fromForm = false) {
     const row = this.findRow(codprod) || this._formRow;
-    const ok = await CatalogosUI.fireConfirm({
-      title: '¿Eliminar producto?',
-      html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(row?.DESPROD || codprod)}</strong> y todos sus precios.</p>`,
-      icon: 'warning',
-      confirmText: 'Continuar',
-    });
-    if (!ok) return;
+    const nombre = row?.DESPROD || codprod;
     try {
       const mov = await F.fetchJson(
         `${this.apiBase(`/${encodeURIComponent(codprod)}/movimientos`)}&_=${Date.now()}`,
@@ -1658,17 +1652,21 @@ const ProductosView = {
       F.alert('Error', err.message, 'error');
       return;
     }
-    const pass = await CatalogosUI.solicitarClaveAdmin({
-      title: 'Autorizar eliminación',
-      text: 'Ingrese la clave de administrador para eliminar el producto.',
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: nombre,
+      tipo: 'producto',
+      kind: 'registro',
+      title: '¿Eliminar producto?',
+      html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong> y todos sus precios.</p>`,
+      passText: 'Ingrese la clave de administrador para eliminar el producto.',
       confirmText: 'Eliminar',
     });
-    if (!pass) return;
+    if (!auth) return;
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(codprod)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: String(pass) }),
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
       });
       F.toast('Producto eliminado', 'success');
       if (this._selectedCodprod === codprod) {

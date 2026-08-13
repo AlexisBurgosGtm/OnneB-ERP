@@ -81,6 +81,12 @@ const DocOpciones = {
     return corte !== 'SI';
   },
 
+  /** Solo operado (no anulado). Permite corte y FEL: solo cambia CODDOC/correlativo interno. */
+  puedeCambiarSerieInterna(row) {
+    if (!row) return false;
+    return DocFecha.editableStatus(row.STATUS);
+  },
+
   /** Solo O ↔ I (anular es proceso aparte). */
   puedeCambiarStatus(row) {
     if (!row) return false;
@@ -177,6 +183,38 @@ const DocOpciones = {
     });
     F.toast('Caja del documento actualizada', 'success');
     return true;
+  },
+
+  seriesAlternasUrl(coddoc, correlativo) {
+    return (
+      `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/series-alternas` +
+      `?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`
+    );
+  },
+
+  cambiarSerieUrl(coddoc, correlativo) {
+    return (
+      `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/cambiar-serie` +
+      `?empnit=${encodeURIComponent(F.getEmpNit())}`
+    );
+  },
+
+  async fetchSeriesAlternas(coddoc, correlativo) {
+    return F.fetchJson(this.seriesAlternasUrl(coddoc, correlativo));
+  },
+
+  async cambiarSerieInterna(coddoc, correlativo, nuevoCoddoc) {
+    const data = await F.fetchJson(this.cambiarSerieUrl(coddoc, correlativo), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CODDOC: nuevoCoddoc }),
+    });
+    const dest = data?.DESTINO || {};
+    F.toast(
+      `Serie cambiada a ${dest.CODDOC || nuevoCoddoc} · ${dest.CORRELATIVO ?? ''}`,
+      'success'
+    );
+    return data;
   },
 
   joinFelUrl(baseUrl, felValue) {
@@ -409,18 +447,12 @@ const DocOpciones = {
   },
 
   async eliminar(coddoc, correlativo, label) {
-    if (typeof AutorizacionesUI !== 'undefined') {
-      const allowed = await AutorizacionesUI.gateAccionDocumento({
-        accion: 'eliminar',
-        coddoc,
-        correlativo,
-        label: label || `${coddoc} #${correlativo}`,
-      });
-      if (!allowed) return false;
-    }
     const pass = await CatalogosUI.confirmEliminarDocumento({
-      label,
+      label: label || `${coddoc} #${correlativo}`,
       tipo: 'documento',
+      kind: 'documento',
+      coddoc,
+      correlativo,
     });
     if (!pass) return false;
     await F.fetchJson(this.deleteUrl(coddoc, correlativo), {

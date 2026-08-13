@@ -91,7 +91,10 @@ function createNominaDocView(cfg) {
     },
 
     filteredLines() {
-      const lines = this._doc?.lines || [];
+      let lines = this._doc?.lines || [];
+      if (cfg.requireSalarioBase) {
+        lines = lines.filter((l) => Number(l.SALARIO_BASE) > 0);
+      }
       const q = this._lineFilter.trim().toLowerCase();
       if (!q) return lines;
       return lines.filter((l) => {
@@ -103,9 +106,11 @@ function createNominaDocView(cfg) {
     },
 
     includedLines() {
-      return (this._doc?.lines || []).filter(
-        (l) => String(l.INCLUIDO || 'SI').toUpperCase() === 'SI'
-      );
+      let lines = this._doc?.lines || [];
+      if (cfg.requireSalarioBase) {
+        lines = lines.filter((l) => Number(l.SALARIO_BASE) > 0);
+      }
+      return lines.filter((l) => String(l.INCLUIDO || 'SI').toUpperCase() === 'SI');
     },
 
     renderListCardsHtml() {
@@ -203,10 +208,18 @@ function createNominaDocView(cfg) {
               data-field="INCLUIDO" title="Incluir en planilla">
           </td>
           <td>${this.escapeHtml(line.CODEMPLEADO)}</td>
-          <td>${this.escapeHtml(line.NOMEMPLEADO)}</td>
+          <td>
+            <div>${this.escapeHtml(line.NOMEMPLEADO)}</div>
+            ${
+              line.DEPARTAMENTO
+                ? `<div class="small text-muted">${this.escapeHtml(line.DEPARTAMENTO)}</div>`
+                : ''
+            }
+          </td>
           <td class="nomina-num">${editable ? this.moneyInput(`${id('sal')}-${line.ID}`, line.SALARIO_BASE) : this.escapeHtml(this.formatMoney(line.SALARIO_BASE))}</td>
           <td class="nomina-num">${editable ? `<input type="number" step="0.01" class="form-control form-control-sm" data-field="DIAS_LABORADOS" value="${Number(line.DIAS_LABORADOS ?? 30)}" ${dis}>` : this.escapeHtml(line.DIAS_LABORADOS)}</td>
-          <td class="nomina-num">${editable ? this.moneyInput(`${id('bon')}-${line.ID}`, line.BONIFICACION) : this.escapeHtml(this.formatMoney(line.BONIFICACION))}</td>
+          <td class="nomina-num">${editable ? this.moneyInput(`${id('bonley')}-${line.ID}`, line.BONO_LEY ?? line.BONIFICACION) : this.escapeHtml(this.formatMoney(line.BONO_LEY ?? line.BONIFICACION))}</td>
+          <td class="nomina-num">${editable ? this.moneyInput(`${id('bonadi')}-${line.ID}`, line.BONO_ADICIONAL) : this.escapeHtml(this.formatMoney(line.BONO_ADICIONAL))}</td>
           <td class="nomina-num">${editable ? this.moneyInput(`${id('com')}-${line.ID}`, line.COMISION) : this.escapeHtml(this.formatMoney(line.COMISION))}</td>
           <td class="nomina-num">${editable ? this.moneyInput(`${id('oing')}-${line.ID}`, line.OTROS_INGRESOS) : this.escapeHtml(this.formatMoney(line.OTROS_INGRESOS))}</td>
           <td class="nomina-num text-end">${this.escapeHtml(this.formatMoney(line.IGSS_LABORAL))}</td>
@@ -264,12 +277,12 @@ function createNominaDocView(cfg) {
             <thead>
               <tr>
                 <th>Inc.</th><th>Cód.</th><th>Empleado</th><th>Salario</th><th>Días</th>
-                <th>Bonif.</th><th>Com.</th><th>Otros ing.</th><th>IGSS lab.</th>
+                <th>Bono ley</th><th>Bono adic.</th><th>Com.</th><th>Otros ing.</th><th>IGSS lab.</th>
                 ${cfg.showPatronal ? '<th>IGSS pat.</th>' : ''}
                 <th>Deducc.</th><th>Neto</th><th></th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="${cfg.showPatronal ? 13 : 12}" class="text-center text-muted py-3">Sin líneas</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="${cfg.showPatronal ? 14 : 13}" class="text-center text-muted py-3">Sin líneas</td></tr>`}</tbody>
           </table>
         </div>`;
     },
@@ -332,7 +345,9 @@ function createNominaDocView(cfg) {
         payload: {
           SALARIO_BASE: getNum(`#${id('sal')}-${detalleId}`),
           DIAS_LABORADOS: getNum('[data-field="DIAS_LABORADOS"]'),
-          BONIFICACION: getNum(`#${id('bon')}-${detalleId}`),
+          BONO_LEY: getNum(`#${id('bonley')}-${detalleId}`),
+          BONO_ADICIONAL: getNum(`#${id('bonadi')}-${detalleId}`),
+          BONIFICACION: getNum(`#${id('bonley')}-${detalleId}`),
           COMISION: getNum(`#${id('com')}-${detalleId}`),
           OTROS_INGRESOS: getNum(`#${id('oing')}-${detalleId}`),
           INCLUIDO: inclCheck?.checked ? 'SI' : 'NO',
@@ -471,6 +486,20 @@ function createNominaDocView(cfg) {
 
     async promptNuevaPlanilla() {
       const desc = `${cfg.title} ${LibroContableCommon.mesLabel(this._mes)} ${this._anio}`;
+      const periodoOptions =
+        cfg.periodoOptions ||
+        [
+          { value: 'MENSUAL', label: 'MENSUAL (mes)' },
+          { value: 'QUINCENAL', label: 'QUINCENAL (15 dias)' },
+          { value: 'CATORCENAL', label: 'CATORCENAL (14 dias)' },
+          { value: 'SEMANAL', label: 'SEMANAL (7 dias)' },
+        ];
+      const periodoHtml = periodoOptions
+        .map(
+          (o, i) =>
+            `<option value="${this.escapeHtml(o.value)}"${i === 0 ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+        )
+        .join('');
       const result = await Swal.fire({
         ...CatalogosUI.modalBase(),
         title: 'Nueva planilla',
@@ -479,9 +508,7 @@ function createNominaDocView(cfg) {
           <input type="text" id="swal-nomina-desc" class="form-control form-control-sm mb-2" value="${this.escapeHtml(desc)}">
           <label class="form-label small">Tipo período</label>
           <select id="swal-nomina-periodo" class="form-select form-select-sm">
-            <option value="MENSUAL" selected>Mensual</option>
-            <option value="QUINCENAL">Quincenal</option>
-            <option value="SEMANAL">Semanal</option>
+            ${periodoHtml}
           </select>`,
         showCancelButton: true,
         confirmButtonText: CatalogosUI.guardarButtonHtml('Crear'),

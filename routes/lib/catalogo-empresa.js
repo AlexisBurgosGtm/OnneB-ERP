@@ -58,7 +58,7 @@ function parseValue(field, raw) {
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request) => Promise<string|null|void>} [cfg.validateInsert]
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, data: object, req: import('express').Request, idValue: string|number) => Promise<string|null|void>} [cfg.validateUpdate]
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, idValue: string|number, req: import('express').Request) => Promise<string|null|void>} [cfg.validateDelete]
- * @param {boolean} [cfg.requireAdminPassOnDelete] — exige req.body.pass / PASS válida
+ * @param {boolean} [cfg.requireAdminPassOnDelete=true] — gate eliminación (clave admin o autorización según setting)
  * @param {(pool: import('mssql').ConnectionPool, empnit: string|null, idValue: string|number, req: import('express').Request) => Promise<object>} [cfg.customDelete] — si retorna, sustituye el DELETE por defecto
  */
 function createCatalogoRouter(cfg) {
@@ -286,9 +286,9 @@ function createCatalogoRouter(cfg) {
         const validationErr = await cfg.validateDelete(pool, empnit, idValue, req);
         if (validationErr) return res.status(400).json({ error: validationErr });
       }
-      if (cfg.requireAdminPassOnDelete) {
-        const { assertAdminPass } = require('../../lib/config-auth');
-        await assertAdminPass(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
+      if (cfg.requireAdminPassOnDelete !== false) {
+        const { assertEliminacionRegistro } = require('../../lib/config-auth');
+        await assertEliminacionRegistro(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
       }
       if (typeof cfg.customDelete === 'function') {
         const out = await cfg.customDelete(pool, empnit, idValue, req);

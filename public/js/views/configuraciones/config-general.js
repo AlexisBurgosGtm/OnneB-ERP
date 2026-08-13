@@ -93,7 +93,7 @@ const ConfigGeneralView = {
       title: 'Solicita autorizaciones',
       icon: 'fa-user-lock',
       fallbackDesc:
-        'Exige autorización de un administrador para acciones sensibles (p. ej. cambio de precio). Si está en NO, no se solicita.',
+        'Si está en SI, las eliminaciones de registros/documentos clave piden autorización y luego confirmación Sí/No. Si está en NO, piden la clave de administrador. No aplica a quitar ítems de un documento.',
     },
     {
       opcion: 'CERTIFICA AL FINALIZAR',

@@ -17,7 +17,7 @@ const {
   pickCajaDefault,
   OPCION_SERIES,
 } = require('../lib/empleado-coddoc-preferido');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 
 const router = express.Router();
 
@@ -152,7 +152,7 @@ router.delete('/:novale', async (req, res) => {
   const pass = String(req.body?.pass ?? req.body?.adminPass ?? req.body?.PASS ?? '');
   try {
     const pool = await req.app.locals.getDbPool();
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
     const deleted = await deleteValeCaja(pool, empnit, novale);
     const { mes, anio } = parseMesAnio(req.query.mes ?? deleted.mes, req.query.anio ?? deleted.anio);
     const rows = await listValesCaja(pool, empnit, mes, anio);

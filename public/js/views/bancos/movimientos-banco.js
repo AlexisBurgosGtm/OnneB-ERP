@@ -772,6 +772,10 @@ const MovimientosBancoView = {
     const pass = await CatalogosUI.confirmEliminarDocumento({
       label,
       tipo: 'movimiento bancario',
+      kind: 'documento',
+      coddoc: row?.CODDOC || '',
+      correlativo: row?.CORRELATIVO || '',
+      tipodoc: 'BANCO',
     });
     if (!pass) return;
     try {

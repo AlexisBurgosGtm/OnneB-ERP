@@ -1,6 +1,7 @@
 /**
  * Inventarios → Actualización de costos
  * Edita PRODUCTOS.COSTO y recalcula PRECIOS.COSTO = COSTO × EQUIVALE.
+ * Soporta carga masiva desde Excel (CODPROD, COSTO).
  */
 const ActualizacionCostosView = {
   _container: null,
@@ -10,6 +11,9 @@ const ActualizacionCostosView = {
   _filterQuery: '',
   _loading: false,
   _updatingCodprod: null,
+  _fromExcel: false,
+  _excelSkipped: [],
+  _bulkUpdating: false,
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -43,6 +47,9 @@ const ActualizacionCostosView = {
   badgeText() {
     const shown = this._rows.length;
     const total = this._totalCount;
+    if (this._fromExcel) {
+      return `<i class="fa-solid fa-file-excel me-1"></i>${shown} desde Excel`;
+    }
     const countLabel =
       this._listTruncated && shown < total ? `Mostrando ${shown} de ${total}` : `${total}`;
     return `<i class="fa-solid fa-tags me-1"></i>${countLabel} producto(s)`;
@@ -50,6 +57,8 @@ const ActualizacionCostosView = {
 
   async load(container) {
     this._container = container;
+    this._fromExcel = false;
+    this._excelSkipped = [];
     container.className = 'main-content flex-grow-1 d-flex p-3 align-items-stretch justify-content-start';
     container.innerHTML = `
       <div class="actualizacion-costos-wrap w-100">
@@ -73,20 +82,24 @@ const ActualizacionCostosView = {
     this._rows = data.rows || [];
     this._totalCount = data.total ?? this._rows.length;
     this._listTruncated = Boolean(data.truncated);
+    this._fromExcel = false;
+    this._excelSkipped = [];
     return data;
   },
 
   renderRows() {
     if (!this._rows.length) {
-      const msg = this._filterQuery.trim()
-        ? 'Ningún producto coincide con la búsqueda'
-        : 'Sin productos';
+      const msg = this._fromExcel
+        ? 'El Excel no dejó productos válidos'
+        : this._filterQuery.trim()
+          ? 'Ningún producto coincide con la búsqueda'
+          : 'Sin productos';
       return `<tr><td colspan="5" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return this._rows
       .map((row) => {
         const cod = String(row.CODPROD ?? '').trim();
-        const busy = this._updatingCodprod === cod;
+        const busy = this._updatingCodprod === cod || this._bulkUpdating;
         return `
           <tr data-codprod="${this.escapeHtml(cod)}">
             <td class="font-monospace small">${this.escapeHtml(cod)}</td>
@@ -113,6 +126,38 @@ const ActualizacionCostosView = {
       .join('');
   },
 
+  renderExcelBanner() {
+    if (!this._fromExcel) return '';
+    const skipped = this._excelSkipped || [];
+    const skipHtml =
+      skipped.length > 0
+        ? `<details class="mt-2">
+             <summary class="small text-muted">Omitidos / avisos (${skipped.length})</summary>
+             <ul class="small text-muted mb-0 mt-1">${skipped
+               .slice(0, 40)
+               .map((s) => `<li>${this.escapeHtml(s)}</li>`)
+               .join('')}${
+               skipped.length > 40
+                 ? `<li>… y ${skipped.length - 40} más</li>`
+                 : ''
+             }</ul>
+           </details>`
+        : '';
+    return `
+      <div class="alert alert-info border py-2 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div class="small mb-0">
+            Lista cargada desde Excel (${this._rows.length} producto(s)).
+            Use <strong>Actualizar todos</strong> para aplicar los costos del archivo.
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="ac-excel-clear">
+            Volver al listado normal
+          </button>
+        </div>
+        ${skipHtml}
+      </div>`;
+  },
+
   render() {
     const wrap = this._container?.querySelector('.actualizacion-costos-wrap') || this._container;
     if (!wrap) return;
@@ -131,21 +176,46 @@ const ActualizacionCostosView = {
 
         <div class="card shadow-sm">
           <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-              <div class="input-group input-group-sm" style="max-width: 28rem">
-                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input type="search" class="form-control" id="ac-search"
-                  placeholder="Código o descripción…"
-                  value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
-                <button type="button" class="btn btn-outline-secondary" id="ac-search-clear" title="Limpiar">
-                  <i class="fa-solid fa-xmark"></i>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="input-group input-group-sm" style="max-width: 28rem">
+                  <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                  <input type="search" class="form-control" id="ac-search"
+                    placeholder="Código o descripción…"
+                    value="${this.escapeHtml(this._filterQuery)}" autocomplete="off"
+                    ${this._fromExcel ? 'disabled' : ''}>
+                  <button type="button" class="btn btn-outline-secondary" id="ac-search-clear" title="Limpiar"
+                    ${this._fromExcel ? 'disabled' : ''}>
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="ac-refresh"
+                  ${this._fromExcel ? 'disabled' : ''}>
+                  <i class="fa-solid fa-rotate me-1"></i>Actualizar lista
+                </button>
+                <span class="small text-muted">Sin búsqueda: 50 registros; escriba para buscar.</span>
+              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2">
+                ${
+                  this._fromExcel
+                    ? `<button type="button" class="btn btn-sm btn-success" id="ac-bulk-update"
+                         ${this._bulkUpdating || !this._rows.length ? 'disabled' : ''}>
+                         ${
+                           this._bulkUpdating
+                             ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>Actualizando…'
+                             : '<i class="fa-solid fa-cloud-arrow-up me-1"></i>Actualizar todos'
+                         }
+                       </button>`
+                    : ''
+                }
+                <button type="button" class="btn btn-sm btn-outline-success" id="ac-excel-load"
+                  ${this._bulkUpdating ? 'disabled' : ''}>
+                  <i class="fa-solid fa-file-excel me-1"></i>Cargar desde Excel
                 </button>
               </div>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="ac-refresh">
-                <i class="fa-solid fa-rotate me-1"></i>Actualizar lista
-              </button>
-              <span class="small text-muted">Sin búsqueda: 50 registros; escriba para buscar.</span>
             </div>
+
+            ${this.renderExcelBanner()}
 
             <div class="table-responsive">
               <table class="table table-sm table-hover table-striped align-middle mb-0">
@@ -173,9 +243,9 @@ const ActualizacionCostosView = {
     if (!tr) return;
     const input = tr.querySelector('.ac-costo-input');
     const btn = tr.querySelector('.ac-btn-actualizar');
-    if (input) input.disabled = busy;
+    if (input) input.disabled = busy || this._bulkUpdating;
     if (btn) {
-      btn.disabled = busy;
+      btn.disabled = busy || this._bulkUpdating;
       btn.innerHTML = busy
         ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>Actualizando…'
         : '<i class="fa-solid fa-floppy-disk me-1"></i>Actualizar';
@@ -183,7 +253,7 @@ const ActualizacionCostosView = {
   },
 
   async reloadList() {
-    if (this._loading) return;
+    if (this._loading || this._bulkUpdating) return;
     this._loading = true;
     const tbody = this._container?.querySelector('#ac-tbody');
     if (tbody) {
@@ -240,10 +310,168 @@ const ActualizacionCostosView = {
     }
   },
 
+  syncRowsFromInputs() {
+    const tbody = this._container?.querySelector('#ac-tbody');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr[data-codprod]').forEach((tr) => {
+      const cod = String(tr.getAttribute('data-codprod') || '').trim();
+      const input = tr.querySelector('.ac-costo-input');
+      const row = this._rows.find((r) => String(r.CODPROD).trim() === cod);
+      if (row && input) {
+        const n = Number(input.value);
+        if (Number.isFinite(n) && n >= 0) row.COSTO = n;
+      }
+    });
+  },
+
+  async onCargarExcel() {
+    if (this._bulkUpdating || this._loading) return;
+
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cargar costos desde Excel',
+      width: 480,
+      html: `
+        <div class="text-start">
+          <p class="small text-muted mb-2">
+            Elija un archivo <strong>.xls</strong> o <strong>.xlsx</strong> con encabezados
+            <code>CODPROD</code> y <code>COSTO</code> (costo unitario) en las dos primeras columnas.
+          </p>
+          <input type="file" id="ac-excel-file" class="form-control form-control-sm"
+            accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Cargar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      preConfirm: () => {
+        const input = document.getElementById('ac-excel-file');
+        const file = input?.files?.[0];
+        if (!file) {
+          Swal.showValidationMessage('Seleccione un archivo Excel');
+          return false;
+        }
+        const name = String(file.name || '').toLowerCase();
+        if (!name.endsWith('.xls') && !name.endsWith('.xlsx')) {
+          Swal.showValidationMessage('Solo se permiten archivos .xls o .xlsx');
+          return false;
+        }
+        return file;
+      },
+    });
+
+    if (!result.isConfirmed || !result.value) return;
+    const file = result.value;
+
+    Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Leyendo Excel…',
+      html: '<p class="small text-muted mb-0">Procesando archivo y validando productos.</p>',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    try {
+      const fd = new FormData();
+      fd.append('archivo', file);
+      const emp = encodeURIComponent(F.getEmpNit() || '');
+      const res = await fetch(`/api/actualizacion-costos/import-excel?empnit=${emp}`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudo leer el Excel');
+      }
+      this._rows = data.rows || [];
+      this._totalCount = data.total ?? this._rows.length;
+      this._listTruncated = false;
+      this._fromExcel = true;
+      this._excelSkipped = data.skipped || [];
+      this._filterQuery = '';
+      Swal.close();
+      this.render();
+      F.toast(`Excel cargado: ${this._rows.length} producto(s)`, 'success');
+    } catch (err) {
+      Swal.close();
+      F.alert('Error', err.message || 'No se pudo cargar el Excel', 'error');
+    }
+  },
+
+  async onActualizarMasivo() {
+    if (!this._fromExcel || this._bulkUpdating || !this._rows.length) return;
+    this.syncRowsFromInputs();
+
+    const items = this._rows
+      .map((r) => ({
+        CODPROD: String(r.CODPROD || '').trim(),
+        COSTO: Number(r.COSTO),
+      }))
+      .filter((r) => r.CODPROD && Number.isFinite(r.COSTO) && r.COSTO >= 0);
+
+    if (!items.length) {
+      F.toast('No hay costos válidos para actualizar', 'warning');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Actualizar todos los costos?',
+      html: `<p class="mb-0 text-start">Se actualizarán <strong>${items.length}</strong> producto(s) con los costos cargados desde Excel
+        (PRODUCTOS.COSTO y PRECIOS.COSTO × EQUIVALE). El resto del catálogo no se modifica.</p>`,
+      confirmText: 'Sí, actualizar todos',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
+    this._bulkUpdating = true;
+    this.render();
+
+    Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Actualizando costos…',
+      html: `<p class="small text-muted mb-0">Aplicando ${items.length} producto(s). Espere…</p>`,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    try {
+      const data = await F.fetchJson(this.apiUrl('/bulk'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      Swal.close();
+      const n = data.actualizados ?? 0;
+      const errN = data.errores ?? 0;
+      F.toast(
+        errN
+          ? `Actualizados ${n}. Con error: ${errN}.`
+          : `Se actualizaron ${n} costo(s) correctamente`,
+        errN ? 'warning' : 'success'
+      );
+      this._fromExcel = false;
+      this._excelSkipped = [];
+      await this.reloadList();
+    } catch (err) {
+      Swal.close();
+      F.alert('Error', err.message || 'No se pudo actualizar en masa', 'error');
+      this._bulkUpdating = false;
+      this.render();
+    } finally {
+      this._bulkUpdating = false;
+    }
+  },
+
   bind() {
     const search = this._container?.querySelector('#ac-search');
     let timer = null;
     search?.addEventListener('input', () => {
+      if (this._fromExcel) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
         this._filterQuery = search.value || '';
@@ -251,6 +479,7 @@ const ActualizacionCostosView = {
       }, 350);
     });
     search?.addEventListener('keydown', (e) => {
+      if (this._fromExcel) return;
       if (e.key === 'Enter') {
         e.preventDefault();
         clearTimeout(timer);
@@ -260,12 +489,26 @@ const ActualizacionCostosView = {
     });
 
     this._container?.querySelector('#ac-search-clear')?.addEventListener('click', () => {
+      if (this._fromExcel) return;
       this._filterQuery = '';
       if (search) search.value = '';
       this.reloadList();
     });
 
     this._container?.querySelector('#ac-refresh')?.addEventListener('click', () => {
+      if (this._fromExcel) return;
+      this.reloadList();
+    });
+
+    this._container?.querySelector('#ac-excel-load')?.addEventListener('click', () => {
+      this.onCargarExcel().catch((err) => F.toast(err.message || 'Error', 'error'));
+    });
+
+    this._container?.querySelector('#ac-bulk-update')?.addEventListener('click', () => {
+      this.onActualizarMasivo().catch((err) => F.toast(err.message || 'Error', 'error'));
+    });
+
+    this._container?.querySelector('#ac-excel-clear')?.addEventListener('click', () => {
       this.reloadList();
     });
 

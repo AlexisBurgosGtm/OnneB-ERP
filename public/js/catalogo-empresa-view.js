@@ -285,16 +285,21 @@ function createCatalogoEmpresaView(cfg) {
     async onEliminar(id) {
       const row = this.findRow(id);
       const nombre = this.rowLabel(row, id);
-      const confirm = await CatalogosUI.fireConfirm({
+      const auth = await CatalogosUI.authorizeEliminarRegistro({
+        label: nombre,
+        tipo: cfg.labelSingular,
+        kind: 'registro',
         title: `¿Eliminar ${cfg.labelSingular}?`,
         html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong></p>`,
-        icon: 'warning',
         confirmText: 'Eliminar',
-        confirmClass: 'btn-catalogo-eliminar',
       });
-      if (!confirm) return;
+      if (!auth) return;
       try {
-        await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), { method: 'DELETE' });
+        await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
+        });
         F.toast(`${cfg.labelSingular} eliminado`, 'success');
         await this.load(this._container);
       } catch (err) {

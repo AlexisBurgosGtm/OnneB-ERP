@@ -233,6 +233,56 @@
   gap: 0.25rem;
 }
 
+.asistente-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .asistente-modal-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
+}
+
+.asistente-card {
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-radius: 0.65rem;
+  background: var(--app-surface, #fff);
+  padding: 0.65rem 0.75rem;
+}
+
+.asistente-card-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 0.55rem;
+  color: var(--app-text, #1a1a1a);
+}
+
+.asistente-modal-col .favoritos-menu-list {
+  max-height: min(48vh, 20rem);
+}
+
+.asistente-doc-result {
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bs-secondary-bg, #f8f9fa) 90%, transparent);
+  padding: 0.5rem 0.6rem;
+  min-height: 2.5rem;
+}
+
+.asistente-doc-ok {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--app-text, #1a1a1a);
+}
+
+#asist-precio {
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
 .favoritos-menu-item {
   display: flex;
   align-items: center;

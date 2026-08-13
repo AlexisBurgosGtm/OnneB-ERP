@@ -45,7 +45,7 @@ const ListaPreciosView = {
   },
 
   colCount() {
-    return this.showCosto() ? 11 : 10;
+    return this.showCosto() ? 12 : 11;
   },
 
   apiUrl(path = '', params = {}) {
@@ -151,6 +151,7 @@ const ListaPreciosView = {
         <td class="text-end text-nowrap">${this.escapeHtml(this.formatMoney(row.MAYOREOC))}</td>
         <td class="text-end text-nowrap">${this.escapeHtml(this.formatMoney(row.MAYOREOB))}</td>
         <td class="text-end text-nowrap">${this.escapeHtml(this.formatMoney(row.MAYOREOA))}</td>
+        <td class="text-end text-nowrap">${this.escapeHtml(this.formatNumber(row.EXISTENCIA))}</td>
       </tr>`;
       })
       .join('');
@@ -211,6 +212,7 @@ const ListaPreciosView = {
                     <th scope="col" class="text-end">MAYOREOC</th>
                     <th scope="col" class="text-end">MAYOREOB</th>
                     <th scope="col" class="text-end">MAYOREOA</th>
+                    <th scope="col" class="text-end">EXISTENCIA</th>
                   </tr>
                 </thead>
                 <tbody id="lp-tbody">${this.renderRows()}</tbody>

@@ -16,13 +16,18 @@
   vertical-align: middle;
 }
 
-.repven-resumen {
+.repven-toolbar {
   flex-shrink: 0;
 }
 
+.repven-resumen {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .repven-card {
-  min-width: 9.5rem;
-  padding: 0.55rem 0.75rem;
+  min-width: 8.5rem;
+  padding: 0.4rem 0.65rem;
   border: 1px solid var(--bs-border-color, #dee2e6);
   border-radius: 0.35rem;
   background: var(--bs-body-bg, #fff);
@@ -34,20 +39,20 @@
 }
 
 .repven-card-label {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #6b7280;
 }
 
 .repven-card-value {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .repven-card-sub {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .repven-tabs .nav-link {

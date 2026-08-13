@@ -4,6 +4,7 @@
 const NominaEmpleadosView = {
   _container: null,
   _rows: [],
+  _departamentos: [],
   _filter: '',
 
   escapeHtml(v) {
@@ -21,11 +22,41 @@ const NominaEmpleadosView = {
     return `/api/nomina/empleados?empnit=${encodeURIComponent(F.getEmpNit())}`;
   },
 
+  deptApi() {
+    return `/api/nomina/departamentos?empnit=${encodeURIComponent(F.getEmpNit())}&activos=1`;
+  },
+
+  departamentoOptionsHtml(selected) {
+    const sel = String(selected || '').trim();
+    const activos = (this._departamentos || []).filter(
+      (d) => String(d.ACTIVO || 'SI').toUpperCase() === 'SI'
+    );
+    const options = ['<option value="">— Sin departamento —</option>'];
+    let found = !sel;
+    for (const d of activos) {
+      const nombre = String(d.NOMBRE || '').trim();
+      if (!nombre) continue;
+      const isSel = nombre === sel;
+      if (isSel) found = true;
+      options.push(
+        `<option value="${this.escapeHtml(nombre)}"${isSel ? ' selected' : ''}>${this.escapeHtml(
+          d.CODIGO ? `${d.CODIGO} — ${nombre}` : nombre
+        )}</option>`
+      );
+    }
+    if (sel && !found) {
+      options.push(
+        `<option value="${this.escapeHtml(sel)}" selected>${this.escapeHtml(sel)} (no catálogo)</option>`
+      );
+    }
+    return options.join('');
+  },
+
   filteredRows() {
     const q = this._filter.trim().toLowerCase();
     if (!q) return this._rows;
     return this._rows.filter((r) =>
-      [r.CODEMPLEADO, r.NOMEMPLEADO, r.DPI, r.IGSS]
+      [r.CODEMPLEADO, r.NOMEMPLEADO, r.DPI, r.IGSS, r.DEPARTAMENTO]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ')
         .includes(q)
@@ -46,11 +77,17 @@ const NominaEmpleadosView = {
         <td>${this.escapeHtml(r.DPI || '—')}</td>
         <td>${this.escapeHtml(r.IGSS || '—')}</td>
         <td class="text-end">${this.escapeHtml(this.formatMoney(r.SALARIO_BASE))}</td>
+        <td class="text-end">${this.escapeHtml(this.formatMoney(r.BONO_LEY))}</td>
+        <td class="text-end">${this.escapeHtml(this.formatMoney(r.BONO_ADICIONAL))}</td>
+        <td>${this.escapeHtml(r.DEPARTAMENTO || '—')}</td>
         <td>${this.escapeHtml(r.COD_CENTRO_TRABAJO || '—')}</td>
         <td>${this.escapeHtml(r.CONDICION_LABORAL || 'P')}</td>
-        <td>
-          <button type="button" class="btn btn-sm btn-outline-primary nomina-emp-edit">
+        <td class="text-nowrap">
+          <button type="button" class="btn btn-sm btn-outline-primary nomina-emp-edit" title="Editar">
             <i class="fa-solid fa-pen"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary nomina-emp-carne" title="Generar carné">
+            <i class="fa-solid fa-id-badge"></i>
           </button>
         </td>
       </tr>`
@@ -61,7 +98,10 @@ const NominaEmpleadosView = {
         <table class="table table-sm table-hover align-middle mb-0">
           <thead><tr>
             <th>Cód.</th><th>Empleado</th><th>DPI</th><th>IGSS</th>
-            <th class="text-end">Salario base</th><th>Centro</th><th>Cond.</th><th></th>
+            <th class="text-end">Salario base</th>
+            <th class="text-end">Bono ley</th>
+            <th class="text-end">Bono adic.</th>
+            <th>Departamento</th><th>Centro</th><th>Cond.</th><th></th>
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -97,6 +137,22 @@ const NominaEmpleadosView = {
           <div class="mb-2">
             <label class="form-label small">Salario base</label>
             <input type="number" step="0.001" id="ne-salario" class="form-control form-control-sm" value="${Number(row.SALARIO_BASE) || ''}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Departamento</label>
+            <select id="ne-depto" class="form-select form-select-sm">
+              ${this.departamentoOptionsHtml(row.DEPARTAMENTO)}
+            </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small">Bono ley</label>
+              <input type="number" step="0.001" id="ne-bono-ley" class="form-control form-control-sm" value="${Number(row.BONO_LEY) || ''}">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Bono adicional</label>
+              <input type="number" step="0.001" id="ne-bono-adi" class="form-control form-control-sm" value="${Number(row.BONO_ADICIONAL) || ''}">
+            </div>
           </div>
           <div class="row g-2 mb-2">
             <div class="col-6">
@@ -152,12 +208,28 @@ const NominaEmpleadosView = {
             <label class="form-label small">Observaciones</label>
             <textarea id="ne-obs" class="form-control form-control-sm" rows="2">${this.escapeHtml(row.OBS || '')}</textarea>
           </div>
+          <div class="mt-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="ne-btn-carne">
+              <i class="fa-solid fa-id-badge me-1"></i>Generar carné
+            </button>
+          </div>
         </div>`,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar'),
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      didOpen: () => {
+        document.getElementById('ne-btn-carne')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.generarCarne(row).catch((err) =>
+            F.alert('Error', err.message || 'No se pudo generar el carné', 'error')
+          );
+        });
+      },
       preConfirm: () => ({
         SALARIO_BASE: Number(document.getElementById('ne-salario')?.value) || 0,
+        DEPARTAMENTO: document.getElementById('ne-depto')?.value?.trim() || null,
+        BONO_LEY: Number(document.getElementById('ne-bono-ley')?.value) || 0,
+        BONO_ADICIONAL: Number(document.getElementById('ne-bono-adi')?.value) || 0,
         FECHA_INGRESO: document.getElementById('ne-ingreso')?.value || null,
         FECHA_BAJA: document.getElementById('ne-baja')?.value || null,
         COD_CENTRO_TRABAJO: document.getElementById('ne-centro')?.value?.trim() || null,
@@ -187,14 +259,26 @@ const NominaEmpleadosView = {
     }
   },
 
+  fotoUrl(codempleado) {
+    return EmpleadoCarne.fotoUrl(codempleado);
+  },
+
+  async generarCarne(row) {
+    await EmpleadoCarne.imprimir(row);
+  },
+
   refreshTable() {
     const el = this._container?.querySelector('#nomina-emp-table');
     if (el) el.innerHTML = this.renderTable();
   },
 
   async reloadRows() {
-    const data = await F.fetchJson(`${this.apiUrl()}&_=${Date.now()}`, { cache: 'no-store' });
-    this._rows = data.rows || [];
+    const [empData, deptData] = await Promise.all([
+      F.fetchJson(`${this.apiUrl()}&_=${Date.now()}`, { cache: 'no-store' }),
+      F.fetchJson(`${this.deptApi()}&_=${Date.now()}`, { cache: 'no-store' }).catch(() => ({ rows: [] })),
+    ]);
+    this._rows = empData.rows || [];
+    this._departamentos = deptData.rows || [];
     this.refreshTable();
   },
 
@@ -205,6 +289,18 @@ const NominaEmpleadosView = {
       this.refreshTable();
     });
     this._container?.querySelector('#nomina-emp-table')?.addEventListener('click', (e) => {
+      const carneBtn = e.target.closest('.nomina-emp-carne');
+      if (carneBtn) {
+        const tr = carneBtn.closest('tr');
+        const cod = tr?.dataset.cod;
+        const row = this._rows.find((r) => String(r.CODEMPLEADO) === String(cod));
+        if (row) {
+          this.generarCarne(row).catch((err) =>
+            F.alert('Error', err.message || 'No se pudo generar el carné', 'error')
+          );
+        }
+        return;
+      }
       const btn = e.target.closest('.nomina-emp-edit');
       if (!btn) return;
       const tr = btn.closest('tr');

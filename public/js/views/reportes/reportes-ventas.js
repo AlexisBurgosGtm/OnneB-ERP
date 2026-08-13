@@ -98,7 +98,7 @@ const ReportesVentasView = {
   renderResumenCards() {
     const r = this.resumen();
     return `
-      <div class="repven-resumen d-flex flex-wrap gap-2 mb-3">
+      <div class="repven-resumen d-flex flex-wrap justify-content-end gap-2">
         <div class="repven-card">
           <div class="repven-card-label">Ventas</div>
           <div class="repven-card-value">${this.escapeHtml(this.formatMoney(r.ventas))}</div>
@@ -295,21 +295,22 @@ const ReportesVentasView = {
           </div>
         </div>
 
-        <div class="d-flex flex-wrap align-items-end gap-2 mb-3 mt-2">
-          <div>
-            <label class="form-label form-label-sm mb-0" for="repven-desde">Fecha inicial</label>
-            <input type="date" id="repven-desde" class="form-control form-control-sm" value="${this.escapeHtml(this._desde)}">
+        <div class="repven-toolbar d-flex flex-wrap align-items-end justify-content-between gap-2 mb-3 mt-2">
+          <div class="d-flex flex-wrap align-items-end gap-2">
+            <div>
+              <label class="form-label form-label-sm mb-0" for="repven-desde">Fecha inicial</label>
+              <input type="date" id="repven-desde" class="form-control form-control-sm" value="${this.escapeHtml(this._desde)}">
+            </div>
+            <div>
+              <label class="form-label form-label-sm mb-0" for="repven-hasta">Fecha final</label>
+              <input type="date" id="repven-hasta" class="form-control form-control-sm" value="${this.escapeHtml(this._hasta)}">
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" id="repven-consultar">
+              <i class="fa-solid fa-magnifying-glass me-1"></i>Consultar
+            </button>
           </div>
-          <div>
-            <label class="form-label form-label-sm mb-0" for="repven-hasta">Fecha final</label>
-            <input type="date" id="repven-hasta" class="form-control form-control-sm" value="${this.escapeHtml(this._hasta)}">
-          </div>
-          <button type="button" class="btn btn-sm btn-primary" id="repven-consultar">
-            <i class="fa-solid fa-magnifying-glass me-1"></i>Consultar
-          </button>
+          ${this._data ? this.renderResumenCards() : '<div class="repven-resumen"></div>'}
         </div>
-
-        ${this._data ? this.renderResumenCards() : ''}
 
         <ul class="nav nav-tabs repven-tabs mb-2">
           <li class="nav-item">

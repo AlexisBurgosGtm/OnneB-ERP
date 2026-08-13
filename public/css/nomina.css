@@ -5,6 +5,26 @@
   max-width: 100%;
 }
 
+.nomina-config-params-card .form-label,
+.nomina-config-dept-card .form-label {
+  font-size: 0.72rem;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.nomina-dept-table {
+  max-height: min(420px, calc(100vh - 260px));
+  overflow: auto;
+}
+
+.nomina-dept-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bs-body-bg, #fff);
+  z-index: 1;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .nomina-lines-table {
   max-height: calc(100vh - 280px);
   overflow: auto;
@@ -34,4 +54,45 @@
 
 .nomina-doc-card .pos-pedido-card-total {
   font-size: 0.95rem;
+}
+
+.empleados-foto-card .empleados-foto-preview {
+  width: 96px;
+  height: 120px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empleados-foto-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.empleados-foto-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  width: 100%;
+  height: 100%;
+}
+
+.empleados-foto-placeholder i {
+  font-size: 1.75rem;
+}
+
+.asistencia-buscar-list .list-group-item.active {
+  background-color: var(--bs-primary);
+  border-color: var(--bs-primary);
 }

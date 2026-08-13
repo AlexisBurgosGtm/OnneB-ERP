@@ -345,25 +345,21 @@ const NomenclaturaContableView = {
   async onEliminar(id) {
     const row = this.findRow(id);
     const nombre = this.rowLabel(row, id);
-    const confirm = await CatalogosUI.fireConfirm({
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: nombre,
+      tipo: 'cuenta contable',
+      kind: 'registro',
       title: '¿Eliminar cuenta contable?',
       html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong></p>`,
-      icon: 'warning',
-      confirmText: 'Eliminar',
-      confirmClass: 'btn-catalogo-eliminar',
-    });
-    if (!confirm) return;
-    const pass = await CatalogosUI.solicitarClaveAdmin({
-      title: 'Autorizar eliminación',
-      text: 'Ingrese la clave de administrador para eliminar la cuenta.',
+      passText: 'Ingrese la clave de administrador para eliminar la cuenta.',
       confirmText: 'Eliminar',
     });
-    if (!pass) return;
+    if (!auth) return;
     try {
       await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pass: String(pass) }),
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
       });
       F.toast('Cuenta contable eliminada', 'success');
       await this.load(this._container);

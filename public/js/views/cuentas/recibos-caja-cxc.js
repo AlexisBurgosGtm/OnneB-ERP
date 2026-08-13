@@ -993,17 +993,6 @@ const RecibosCajaCxcView = {
     if (!h) return;
     const label = `${h.CODDOC} #${h.CORRELATIVO}`;
 
-    if (typeof AutorizacionesUI !== 'undefined') {
-      const allowed = await AutorizacionesUI.gateAccionDocumento({
-        accion: 'eliminar',
-        coddoc: h.CODDOC,
-        correlativo: h.CORRELATIVO,
-        tipodoc: h.TIPODOC || 'PRC',
-        label,
-      });
-      if (!allowed) return;
-    }
-
     if (typeof CatalogosUI === 'undefined') {
       F.toast('No se puede autorizar la eliminación', 'error');
       return;
@@ -1011,6 +1000,10 @@ const RecibosCajaCxcView = {
     const pass = await CatalogosUI.confirmEliminarDocumento({
       label,
       tipo: h.FINALIZADO ? 'recibo finalizado' : 'recibo',
+      kind: 'documento',
+      coddoc: h.CODDOC,
+      correlativo: h.CORRELATIVO,
+      tipodoc: h.TIPODOC || 'PRC',
     });
     if (!pass) return;
 

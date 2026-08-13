@@ -511,6 +511,13 @@ function createRetencionesDocView(cfg) {
                 </div>
               </div>
             </div>
+            ${
+              editable
+                ? `<button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2" id="btn-${P}-buscar-factura">
+                    <i class="fa-solid fa-file-invoice me-1"></i>Buscar Factura
+                  </button>`
+                : ''
+            }
           </div>
         </div>
         <div class="prc-editor-main ret-doc-dual mb-0">
@@ -909,6 +916,9 @@ function createRetencionesDocView(cfg) {
       c?.querySelector(`#btn-${P}-finalizar`)?.addEventListener('click', () => {
         this.onFinalizar().catch((err) => F.toast(err.message, 'error'));
       });
+      c?.querySelector(`#btn-${P}-buscar-factura`)?.addEventListener('click', () => {
+        this.onBuscarFactura().catch((err) => F.toast(err.message, 'error'));
+      });
 
       const provSearch = c?.querySelector(`#${id('prov-search')}`);
       const provList = c?.querySelector(`#${id('prov-results')}`);
@@ -998,6 +1008,135 @@ function createRetencionesDocView(cfg) {
       } catch (err) {
         F.toast(err.message, 'error');
       }
+    },
+
+    async onBuscarFactura() {
+      if (!this.docEditable(this._doc)) return;
+      if (typeof Swal === 'undefined') {
+        F.toast('No se pudo abrir el diálogo de búsqueda', 'error');
+        return;
+      }
+      const serieId = `${P}-fel-serie`;
+      const numeroId = `${P}-fel-numero`;
+      const { isConfirmed, value } = await Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        title: 'Buscar Factura',
+        html: `
+          <p class="small text-muted text-start mb-2">Indique FEL_SERIE y FEL_NUMERO de la factura.</p>
+          <label class="form-label small mb-0 text-start d-block" for="${serieId}">FEL_SERIE</label>
+          <input id="${serieId}" class="form-control form-control-sm mb-2" autocomplete="off">
+          <label class="form-label small mb-0 text-start d-block" for="${numeroId}">FEL_NUMERO</label>
+          <input id="${numeroId}" class="form-control form-control-sm" autocomplete="off">
+        `,
+        showCancelButton: true,
+        confirmButtonText:
+          typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Buscar') : 'Buscar',
+        cancelButtonText:
+          typeof CatalogosUI !== 'undefined' ? CatalogosUI.cancelButtonHtml('Cancelar') : 'Cancelar',
+        focusConfirm: false,
+        preConfirm: () => {
+          const serie = String(document.getElementById(serieId)?.value || '').trim();
+          const numero = String(document.getElementById(numeroId)?.value || '').trim();
+          if (!serie) {
+            Swal.showValidationMessage('Indique FEL_SERIE');
+            return false;
+          }
+          if (!numero) {
+            Swal.showValidationMessage('Indique FEL_NUMERO');
+            return false;
+          }
+          return { serie, numero };
+        },
+      });
+      if (!isConfirmed || !value) return;
+
+      const params = new URLSearchParams({
+        empnit: F.getEmpNit(),
+        serie: value.serie,
+        numero: value.numero,
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(`${cfg.apiPath}/factura-por-fel?${params}`, { cache: 'no-store' });
+      const rows = data.rows || [];
+      if (!rows.length) {
+        F.toast('No se encontró factura con esos datos FEL', 'info');
+        return;
+      }
+
+      const pickHtml = rows
+        .map((r, idx) => {
+          const partyCode = isRecibida ? r.CODCLIENTE : r.CODPROV;
+          const partyName = isRecibida
+            ? String(r.NOMBRECLIENTE || r.DOC_NOMCLIE || '').trim()
+            : String(r.EMPRESA || r.DOC_NOMCLIE || '').trim();
+          const nit = String(r.NIT || r.DOC_NIT || '').trim();
+          const serie = String(r.FEL_SERIE || r.SERIEFAC || '').trim();
+          const numero = String(r.FEL_NUMERO || r.NOFAC || '').trim();
+          const doc = `${r.CODDOC || ''} #${r.CORRELATIVO || ''}`;
+          return `
+            <button type="button" class="list-group-item list-group-item-action text-start py-2"
+              data-pick-idx="${idx}">
+              <div class="fw-semibold">${this.escapeHtml(partyName || `${partyLabel} ${partyCode || ''}`)}</div>
+              <div class="small text-muted">
+                NIT ${this.escapeHtml(nit || '—')} · ${this.escapeHtml(doc)} ·
+                FEL ${this.escapeHtml(serie)}-${this.escapeHtml(numero)} ·
+                ${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}
+              </div>
+            </button>`;
+        })
+        .join('');
+
+      let selectedIdx = null;
+      await Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        title: `Seleccionar ${partyLabelLower}`,
+        html: `<div class="list-group text-start" id="${P}-fel-pick-list">${pickHtml}</div>`,
+        showCancelButton: true,
+        showConfirmButton: false,
+        cancelButtonText:
+          typeof CatalogosUI !== 'undefined' ? CatalogosUI.cancelButtonHtml('Cancelar') : 'Cancelar',
+        didOpen: () => {
+          document.getElementById(`${P}-fel-pick-list`)?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-pick-idx]');
+            if (!btn) return;
+            selectedIdx = Number(btn.getAttribute('data-pick-idx'));
+            Swal.close();
+          });
+        },
+      });
+
+      if (selectedIdx == null || Number.isNaN(selectedIdx)) return;
+      const row = rows[selectedIdx];
+      if (!row) return;
+
+      const code = isRecibida ? row.CODCLIENTE : row.CODPROV;
+      if (!code) {
+        F.toast(`La factura no tiene ${partyLabelLower} asociado`, 'error');
+        return;
+      }
+
+      const party = isRecibida
+        ? {
+            CODCLIENTE: code,
+            NOMBRECLIENTE: String(row.NOMBRECLIENTE || row.DOC_NOMCLIE || '').trim(),
+            NEGOCIO: String(row.NEGOCIO || '').trim(),
+            NIT: String(row.NIT || row.DOC_NIT || '').trim(),
+          }
+        : {
+            CODPROV: code,
+            EMPRESA: String(row.EMPRESA || row.DOC_NOMCLIE || '').trim(),
+            RAZONSOCIAL: String(row.RAZONSOCIAL || '').trim(),
+            NIT: String(row.NIT || row.DOC_NIT || '').trim(),
+          };
+
+      const existing = (this._parties || []).find(
+        (x) => String(x[partyCodeField] ?? x.CODCLIENTE ?? x.CODPROV) === String(code)
+      );
+      if (!existing) this._parties = [party, ...(this._parties || [])];
+      else Object.assign(existing, party);
+
+      await this.onSelectParty(code);
+      F.toast(`${partyLabel} cargado desde factura`, 'success');
     },
 
     async load(container) {

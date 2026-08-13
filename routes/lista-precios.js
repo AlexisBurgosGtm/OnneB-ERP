@@ -2,6 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
+const { SQL_INVSALDO_JOIN, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 
 const router = express.Router();
 
@@ -52,6 +53,7 @@ const LIST_FROM = `
     ON pr.EMPNIT = p.EMPNIT AND pr.CODPROD = p.CODPROD
   LEFT JOIN dbo.Marcas m
     ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
+  ${SQL_INVSALDO_JOIN}
 `;
 
 const LIST_SELECT = `
@@ -65,7 +67,8 @@ const LIST_SELECT = `
   pr.PRECIO,
   pr.MAYOREOC,
   pr.MAYOREOB,
-  pr.MAYOREOA
+  pr.MAYOREOA,
+  ${sqlExistenciaMedidaExpr('pr.EQUIVALE')}
 `;
 
 const SEARCH_WHERE = `
@@ -185,7 +188,8 @@ router.get('/export', async (req, res) => {
       { header: 'PRECIO', key: 'PRECIO', width: 14 },
       { header: 'MAYOREOC', key: 'MAYOREOC', width: 14 },
       { header: 'MAYOREOB', key: 'MAYOREOB', width: 14 },
-      { header: 'MAYOREOA', key: 'MAYOREOA', width: 14 }
+      { header: 'MAYOREOA', key: 'MAYOREOA', width: 14 },
+      { header: 'EXISTENCIA', key: 'EXISTENCIA', width: 14 }
     );
     sheet.columns = columns;
     sheet.getRow(1).font = { bold: true };
@@ -202,14 +206,15 @@ router.get('/export', async (req, res) => {
         MAYOREOC: Number(row.MAYOREOC) || 0,
         MAYOREOB: Number(row.MAYOREOB) || 0,
         MAYOREOA: Number(row.MAYOREOA) || 0,
+        EXISTENCIA: Number(row.EXISTENCIA) || 0,
       };
       if (includeCosto) out.COSTO = Number(row.COSTO) || 0;
       sheet.addRow(out);
     }
 
     const moneyCols = includeCosto
-      ? ['EQUIVALE', 'COSTO', 'PRECIO', 'MAYOREOC', 'MAYOREOB', 'MAYOREOA']
-      : ['EQUIVALE', 'PRECIO', 'MAYOREOC', 'MAYOREOB', 'MAYOREOA'];
+      ? ['EQUIVALE', 'COSTO', 'PRECIO', 'MAYOREOC', 'MAYOREOB', 'MAYOREOA', 'EXISTENCIA']
+      : ['EQUIVALE', 'PRECIO', 'MAYOREOC', 'MAYOREOB', 'MAYOREOA', 'EXISTENCIA'];
     for (const col of moneyCols) {
       sheet.getColumn(col).numFmt = '#,##0.00';
     }

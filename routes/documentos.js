@@ -1,11 +1,16 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { deleteDocumentoOperado, DocumentoDeleteError } = require('../lib/documento-delete');
 const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { InventarioError } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, fechaIsoFromRow } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, fechaIsoFromRow, fechaIsoFromValue } = require('../lib/documento-fecha');
+const {
+  listSeriesAlternas,
+  cambiarSerieInterna,
+  DocumentoSerieError,
+} = require('../lib/documento-cambiar-serie');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -305,6 +310,55 @@ function assertSinCorte(meta) {
   }
 }
 
+router.get('/resumen/:coddoc/:correlativo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Indique CODDOC (serie interna) y correlativo válidos' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .query(`
+        SELECT TOP 1
+          d.CODDOC, d.CORRELATIVO, d.FECHA, d.STATUS,
+          ISNULL(d.DOC_NIT, '') AS DOC_NIT,
+          ISNULL(d.DOC_NOMCLIE, '') AS DOC_NOMCLIE,
+          ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO
+        FROM dbo.DOCUMENTOS d
+        WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+      `);
+    if (!result.recordset.length) {
+      return res.status(404).json({ error: 'Documento no encontrado' });
+    }
+    const row = result.recordset[0];
+    res.json({
+      CODDOC: row.CODDOC,
+      CORRELATIVO: row.CORRELATIVO,
+      FECHA: fechaIsoFromRow(row) || fechaIsoFromValue(row.FECHA) || null,
+      DOC_NIT: String(row.DOC_NIT || '').trim() || null,
+      DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim() || null,
+      TOTALPRECIO: Number(row.TOTALPRECIO) || 0,
+      STATUS: row.STATUS ?? null,
+    });
+  } catch (err) {
+    console.warn('[API GET /documentos/resumen]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/detalle/:coddoc/:correlativo', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {
@@ -546,6 +600,60 @@ router.patch('/:coddoc/:correlativo/status', async (req, res) => {
   }
 });
 
+router.get('/:coddoc/:correlativo/series-alternas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listSeriesAlternas(pool, empnit, coddoc, correlativo);
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /documentos/series-alternas]', err.message);
+    const status = err instanceof DocumentoSerieError ? err.statusCode : 500;
+    res.status(status || 500).json({ error: err.message });
+  }
+});
+
+router.post('/:coddoc/:correlativo/cambiar-serie', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const nuevoCoddoc = String(req.body?.CODDOC ?? req.body?.coddoc ?? '').trim();
+  if (!nuevoCoddoc) {
+    return res.status(400).json({ error: 'Indique la nueva serie (CODDOC)' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await cambiarSerieInterna(pool, empnit, coddoc, correlativo, nuevoCoddoc);
+    res.json(result);
+  } catch (err) {
+    console.warn('[API POST /documentos/cambiar-serie]', err.message);
+    const status = err instanceof DocumentoSerieError ? err.statusCode : err.statusCode || 500;
+    res.status(status || 500).json({ error: err.message });
+  }
+});
+
 router.get('/:coddoc/:correlativo/trazabilidad', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {
@@ -618,7 +726,7 @@ router.delete('/:coddoc/:correlativo', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
     const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
       usuario: usuarioFromReq(req),
       motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,

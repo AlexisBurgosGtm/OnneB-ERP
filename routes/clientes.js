@@ -579,8 +579,8 @@ router.delete('/:codcliente', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
-    const { assertAdminPass } = require('../lib/config-auth');
-    await assertAdminPass(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
+    const { assertEliminacionRegistro } = require('../lib/config-auth');
+    await assertEliminacionRegistro(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
 
     const exists = await pool
       .request()

@@ -7,11 +7,13 @@ const ListaFacturasView = {
   _rows: [],
   _fecha: '',
   _filterQuery: '',
+  _docKind: 'facturas', // facturas | recibos
   _loading: false,
   _searchTimer: null,
   _urlFel: '',
 
   FEL_TIPOS: ['FEF', 'FEC', 'FES'],
+  RECIBO_TIPOS: ['RCC', 'PRC'],
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -61,11 +63,16 @@ const ListaFacturasView = {
   listApiUrl() {
     const params = {
       fecha: this._fecha || this.todayIsoDate(),
+      kind: this._docKind === 'recibos' ? 'recibos' : 'facturas',
       _: String(Date.now()),
     };
     const q = String(this._filterQuery || '').trim();
     if (q) params.q = q;
     return this.apiUrl('', params);
+  },
+
+  isRecibos() {
+    return this._docKind === 'recibos';
   },
 
   tipodocOf(row) {
@@ -95,10 +102,12 @@ const ListaFacturasView = {
   },
 
   puedeAnular(row) {
+    if (this.isRecibos()) return false;
     return this.puedeAnularFel(row) || this.puedeAnularLocal(row);
   },
 
   formatFelCell(row) {
+    if (this.isRecibos()) return '—';
     const v = this.felUudiValue(row);
     if (!v) return '—';
     const label =
@@ -109,6 +118,9 @@ const ListaFacturasView = {
   },
 
   badgeText() {
+    if (this.isRecibos()) {
+      return `<i class="fa-solid fa-receipt me-1"></i>${this._rows.length} recibo(s)`;
+    }
     return `<i class="fa-solid fa-file-invoice me-1"></i>${this._rows.length} factura(s)`;
   },
 
@@ -116,11 +128,12 @@ const ListaFacturasView = {
     this._container = container;
     this._fecha = this.todayIsoDate();
     this._filterQuery = '';
+    this._docKind = 'facturas';
     container.className = 'main-content flex-grow-1 d-flex p-3 align-items-stretch justify-content-start';
     container.innerHTML = `
       <div class="lista-facturas-wrap w-100">
         <div class="text-muted small py-4 text-center">
-          <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando facturas…
+          <i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…
         </div>
       </div>`;
     try {
@@ -180,8 +193,12 @@ const ListaFacturasView = {
   renderRows() {
     if (!this._rows.length) {
       const msg = this._filterQuery.trim()
-        ? 'Ninguna factura coincide con la búsqueda'
-        : 'Sin facturas en la fecha seleccionada';
+        ? this.isRecibos()
+          ? 'Ningún recibo coincide con la búsqueda'
+          : 'Ninguna factura coincide con la búsqueda'
+        : this.isRecibos()
+          ? 'Sin recibos RCC/PRC en la fecha seleccionada'
+          : 'Sin facturas en la fecha seleccionada';
       return `<tr><td colspan="11" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return this._rows
@@ -191,6 +208,7 @@ const ListaFacturasView = {
         const statusHtml = anulado
           ? `<span class="text-danger fw-semibold">${this.escapeHtml(status)}</span>`
           : this.escapeHtml(status);
+        const tipodoc = this.tipodocOf(row);
         const anularBtn = this.puedeAnular(row)
           ? `<button type="button" class="btn btn-sm btn-outline-danger" data-action="anular"
               data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
@@ -199,7 +217,9 @@ const ListaFacturasView = {
         return `
       <tr class="${anulado ? 'lista-facturas-row-anulado' : ''}"
         data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}">
-        <td class="font-monospace small">${this.escapeHtml(row.CODDOC ?? '')}</td>
+        <td class="font-monospace small">${this.escapeHtml(row.CODDOC ?? '')}${
+          tipodoc ? ` <span class="text-muted">(${this.escapeHtml(tipodoc)})</span>` : ''
+        }</td>
         <td class="text-end">${this.escapeHtml(row.CORRELATIVO ?? '')}</td>
         <td>${this.escapeHtml(row.NIT ?? '') || '—'}</td>
         <td>${this.escapeHtml(row.DOC_NOMCLIE ?? '') || '—'}</td>
@@ -226,12 +246,15 @@ const ListaFacturasView = {
   render() {
     const wrap = this._container?.querySelector('.lista-facturas-wrap') || this._container;
     if (!wrap) return;
+    const subtitle = this.isRecibos()
+      ? 'Recibos de pago RCC y PRC del día seleccionado.'
+      : 'FAC, FEF, FEC y FES del día seleccionado.';
     wrap.innerHTML = `
       <div class="w-100">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
           <div>
             <h2 class="h5 mb-1">Lista Facturas</h2>
-            <p class="text-muted small mb-0">FAC, FEF, FEC y FES del día seleccionado.</p>
+            <p class="text-muted small mb-0">${subtitle}</p>
           </div>
           <span class="badge text-bg-light border" id="lf-count">${this.badgeText()}</span>
         </div>
@@ -240,6 +263,13 @@ const ListaFacturasView = {
           <div class="card-body">
             <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
               <div>
+                <label class="form-label small mb-1" for="lf-kind">Documentos</label>
+                <select class="form-select form-select-sm" id="lf-kind" style="min-width: 11rem">
+                  <option value="facturas"${this._docKind !== 'recibos' ? ' selected' : ''}>Facturas</option>
+                  <option value="recibos"${this._docKind === 'recibos' ? ' selected' : ''}>Recibos de pago</option>
+                </select>
+              </div>
+              <div>
                 <label class="form-label small mb-1" for="lf-fecha">Fecha</label>
                 <input type="date" class="form-control form-control-sm" id="lf-fecha"
                   value="${this.escapeHtml(this._fecha || this.todayIsoDate())}">
@@ -247,7 +277,7 @@ const ListaFacturasView = {
               <div class="input-group input-group-sm" style="max-width: 26rem">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control" id="lf-search"
-                  placeholder="Serie, número, NIT, cliente, FEL…"
+                  placeholder="Serie, número, NIT, cliente…"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
                 <button type="button" class="btn btn-outline-secondary" id="lf-search-clear" title="Limpiar">
                   <i class="fa-solid fa-xmark"></i>
@@ -292,6 +322,13 @@ const ListaFacturasView = {
   },
 
   bindEvents() {
+    const kindSel = this._container?.querySelector('#lf-kind');
+    kindSel?.addEventListener('change', () => {
+      this._docKind = kindSel.value === 'recibos' ? 'recibos' : 'facturas';
+      this.reloadList().then(() => this.render()).catch((err) => {
+        F.toast(err.message || 'Error al cargar', 'error');
+      });
+    });
     const fecha = this._container?.querySelector('#lf-fecha');
     fecha?.addEventListener('change', () => {
       this._fecha = String(fecha.value || '').trim() || this.todayIsoDate();
@@ -426,6 +463,10 @@ const ListaFacturasView = {
   },
 
   async anular(coddoc, correlativo) {
+    if (this.isRecibos()) {
+      F.toast('Los recibos de pago no se anulan desde esta lista', 'warning');
+      return;
+    }
     const row = this.findRow(coddoc, correlativo);
     if (!row || !this.puedeAnular(row)) {
       F.toast('Esta factura no se puede anular', 'warning');

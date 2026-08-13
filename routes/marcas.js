@@ -126,6 +126,8 @@ router.delete('/:codmarca', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const { assertEliminacionRegistro } = require('../lib/config-auth');
+    await assertEliminacionRegistro(pool, String(req.body?.pass ?? req.body?.PASS ?? ''));
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -136,6 +138,9 @@ router.delete('/:codmarca', async (req, res) => {
     }
     res.json({ ok: true });
   } catch (err) {
+    if (err.statusCode === 401) {
+      return res.status(401).json({ error: err.message });
+    }
     console.warn('[API DELETE /marcas]', err.message);
     res.status(500).json({ error: err.message });
   }

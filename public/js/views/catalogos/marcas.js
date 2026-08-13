@@ -220,16 +220,21 @@ const MarcasView = {
   async onEliminar(codmarca) {
     const row = this.findRow(codmarca);
     const nombre = row ? row.DESMARCA || codmarca : codmarca;
-    const confirm = await CatalogosUI.fireConfirm({
+    const auth = await CatalogosUI.authorizeEliminarRegistro({
+      label: nombre,
+      tipo: 'marca',
+      kind: 'registro',
       title: '¿Eliminar marca?',
       html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong> (código ${this.escapeHtml(codmarca)})</p>`,
-      icon: 'warning',
       confirmText: 'Eliminar',
-      confirmClass: 'btn-catalogo-eliminar',
     });
-    if (!confirm) return;
+    if (!auth) return;
     try {
-      await F.fetchJson(this.apiBase(`/${encodeURIComponent(codmarca)}`), { method: 'DELETE' });
+      await F.fetchJson(this.apiBase(`/${encodeURIComponent(codmarca)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pass: auth.pass != null ? String(auth.pass) : '__AUTORIZADO__' }),
+      });
       F.toast('Marca eliminada', 'success');
       await this.load(this._container);
     } catch (err) {

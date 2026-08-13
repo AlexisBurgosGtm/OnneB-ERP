@@ -9,7 +9,7 @@ const {
   revertirMovimientoInventarioLinea,
 } = require('../lib/inventario');
 const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse, normalizeDocumentoRows } = require('../lib/documento-fecha');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, normalizePreciosField } = require('../lib/doc-producto-linea');
@@ -1142,7 +1142,7 @@ router.delete('/pedidos/:coddoc/:correlativo', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
     let mesaCode = null;
     try {
       const emb = await pool

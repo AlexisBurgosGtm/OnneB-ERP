@@ -17,7 +17,7 @@ const {
   isStatusEditable,
   SQL_STATUS_EDITABLE,
 } = require('../lib/documento-status');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { DocumentoDeleteError, deleteDocumentoOperado } = require('../lib/documento-delete');
 const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { lineProductMeta, getPrecioFromPreciosRow, DEFAULT_PRECIOS_FIELD } = require('../lib/doc-producto-linea');
@@ -1274,7 +1274,7 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
 
     try {
       const pool = await req.app.locals.getDbPool();
-      await assertAdminPass(pool, pass);
+      await assertEliminacionRegistro(pool, pass);
       const result = await deleteDocumentoOperado(pool, empnit, coddoc, correlativo, {
         usuario: usuarioFromReq(req),
         motivo: String(req.body?.motivo || req.body?.MOTIVO || '').trim() || null,

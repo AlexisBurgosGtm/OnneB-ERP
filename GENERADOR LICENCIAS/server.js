@@ -115,9 +115,10 @@ app.get('/api/catalog', (_req, res) => {
   const modules = licenseModulesCatalog();
   res.json({
     modules,
-    coreMenus: ['inicio', 'licencia'],
+    coreMenus: [...new Set(['inicio', ...(CORE_MENUS || [])])],
     source: 'lib/roles-usuarios.js → MENU_GROUPS',
     integrity,
+    note: 'Generador completo (tokens + nube + plantillas): Mariandre → Generador de licencias',
     moduleCount: modules.length,
     menuCount: modules.reduce((n, m) => n + (m.menus?.length || 0), 0),
   });

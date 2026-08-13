@@ -45,7 +45,9 @@ const SubirCatalogoView = {
         <div class="card border-0 shadow-sm" style="max-width:36rem">
           <div class="card-body">
             <p class="mb-3 text-muted small">
-              Se enviarán <strong>PRODUCTOS</strong>, <strong>PRECIOS</strong> e <strong>INVSALDO</strong>
+              Se enviarán maestros (<strong>Marcas</strong>, <strong>Medidas</strong>,
+              <strong>Clasificación 1</strong>, <strong>Proveedores</strong>→nube Clasificación 3)
+              más <strong>PRODUCTOS</strong>, <strong>PRECIOS</strong> e <strong>INVSALDO</strong>
               (inventario en cero) a la nube con <code>EMPNIT = GENERAL</code> y el TOKEN de esta instalación.
             </p>
             <button type="button" class="btn btn-primary" id="os-subir-catalogo-btn">
@@ -81,9 +83,9 @@ const SubirCatalogoView = {
     const ok = await CatalogosUI.fireConfirm({
       title: '¿Subir catálogo a la nube?',
       html: `<p class="mb-0 text-start">Se <strong>eliminarán</strong> primero los registros existentes en la nube
-        (<code>COMMUNITY_PRODUCTOS</code>, <code>COMMUNITY_PRECIOS</code>, <code>COMMUNITY_INVSALDO</code>)
+        (marcas, medidas, clasificaciones, productos, precios e inventarios)
         con este TOKEN y <code>EMPNIT = GENERAL</code>, y luego se subirán los datos de la empresa actual
-        (INVSALDO en cero).</p>`,
+        (proveedores como Clasificación 3; INVSALDO en cero).</p>`,
       icon: 'warning',
       confirmText: 'Subir',
       confirmClass: 'btn-modal-guardar',
@@ -112,7 +114,7 @@ const SubirCatalogoView = {
       Swal.close();
       const el = data.eliminados || {};
       F.toast(
-        `Catálogo actualizado. Eliminados: ${el.productos ?? 0}/${el.precios ?? 0}/${el.invsaldo ?? 0}. Subidos: ${data.productos ?? 0} productos, ${data.precios ?? 0} precios, ${data.invsaldo ?? 0} saldos`,
+        `Catálogo actualizado. Subidos: ${data.marcas ?? 0} marcas, ${data.medidas ?? 0} medidas, ${data.clasificacionuno ?? 0} clasif.1, ${data.proveedores ?? 0} prov., ${data.productos ?? 0} productos, ${data.precios ?? 0} precios, ${data.invsaldo ?? 0} saldos (elim. nube prod/pre/inv ${el.productos ?? 0}/${el.precios ?? 0}/${el.invsaldo ?? 0})`,
         'success'
       );
     } catch (err) {

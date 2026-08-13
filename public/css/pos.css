@@ -234,6 +234,10 @@
   background: #0f172a;
 }
 
+.barcode-scanner-region--qr {
+  min-height: 280px;
+}
+
 .barcode-scanner-region video {
   border-radius: var(--app-radius-sm, 0.55rem);
 }

@@ -1,7 +1,7 @@
 const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
-const { assertAdminPass } = require('../lib/config-auth');
+const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -19,7 +19,15 @@ const {
 const router = express.Router();
 
 const TIPODOCS_FACTURA = ['FAC', 'FEF', 'FEC', 'FES'];
-const TIPODOC_SQL_IN = TIPODOCS_FACTURA.map((t) => `'${t}'`).join(', ');
+const TIPODOCS_RECIBO = ['RCC', 'PRC'];
+
+function tipodocsForKind(kind) {
+  return String(kind || '').trim().toLowerCase() === 'recibos' ? TIPODOCS_RECIBO : TIPODOCS_FACTURA;
+}
+
+function tipodocSqlIn(tipodocs) {
+  return tipodocs.map((t) => `'${t}'`).join(', ');
+}
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -39,7 +47,7 @@ function parseCorrelativo(raw) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Lista facturas FAC/FEF/FEC/FES por día (fecha por defecto = hoy). */
+/** Lista facturas FAC/FEF/FEC/FES o recibos RCC/PRC por día (fecha por defecto = hoy). */
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -53,6 +61,9 @@ router.get('/', async (req, res) => {
   }
   const q = String(req.query.q || '').trim();
   const qLike = q ? `%${q}%` : null;
+  const kind = String(req.query.kind || 'facturas').trim().toLowerCase() === 'recibos' ? 'recibos' : 'facturas';
+  const tipodocs = tipodocsForKind(kind);
+  const tipodocSql = tipodocSqlIn(tipodocs);
 
   try {
     const pool = await req.app.locals.getDbPool();
@@ -82,7 +93,7 @@ router.get('/', async (req, res) => {
       JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.CLIENTES c ON c.EMPNIT = d.EMPNIT AND c.CODCLIENTE = d.CODCLIENTE
       WHERE d.EMPNIT = @EMPNIT
-        AND t.TIPODOC IN (${TIPODOC_SQL_IN})
+        AND t.TIPODOC IN (${tipodocSql})
         AND ${sqlDocumentoFechaDiaWhere('d')}
         AND (
           @q IS NULL OR @q = ''
@@ -104,7 +115,8 @@ router.get('/', async (req, res) => {
     res.json({
       rows: normalizeDocumentoRows(result.recordset),
       fecha,
-      tipodocs: TIPODOCS_FACTURA,
+      kind,
+      tipodocs,
       empnit,
       q: q || null,
     });
@@ -131,7 +143,7 @@ router.post('/:coddoc/:correlativo/anular-local', async (req, res) => {
 
   try {
     const pool = await req.app.locals.getDbPool();
-    await assertAdminPass(pool, pass);
+    await assertEliminacionRegistro(pool, pass);
 
     const meta = await pool
       .request()

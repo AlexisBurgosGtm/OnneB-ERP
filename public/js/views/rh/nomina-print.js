@@ -74,7 +74,9 @@ const NominaPrint = {
       })}
       <table class="table table-sm">
         <tr><td>Salario base</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.SALARIO_BASE))}</td></tr>
-        <tr><td>Bonificación</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.BONIFICACION))}</td></tr>
+        <tr><td>Departamento</td><td class="text-end">${PrintReport.escapeHtml(line.DEPARTAMENTO || '—')}</td></tr>
+        <tr><td>Bono ley</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.BONO_LEY ?? line.BONIFICACION))}</td></tr>
+        <tr><td>Bono adicional</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.BONO_ADICIONAL))}</td></tr>
         <tr><td>Comisión</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.COMISION))}</td></tr>
         <tr><td>Otros ingresos</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.OTROS_INGRESOS))}</td></tr>
         <tr class="fw-semibold"><td>Total ingresos</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.TOTAL_INGRESOS))}</td></tr>

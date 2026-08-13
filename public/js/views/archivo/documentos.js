@@ -198,6 +198,14 @@ const DocumentosView = {
         className: 'documentos-menu-item-secondary',
       });
     }
+    if (DocOpciones.puedeCambiarSerieInterna(row)) {
+      items.push({
+        id: 'cambiar-serie',
+        label: 'Cambiar serie interna',
+        icon: 'fa-right-left',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
     if (DocOpciones.puedeCambiarStatus(row)) {
       items.push({
         id: 'cambiar-status',
@@ -338,6 +346,10 @@ const DocumentosView = {
       }
       if (action === 'cambiar-caja') {
         await this.cambiarCajaDocumento(row);
+        return;
+      }
+      if (action === 'cambiar-serie') {
+        await this.cambiarSerieInternaDocumento(row);
         return;
       }
       if (action === 'cambiar-status') {
@@ -572,6 +584,93 @@ const DocumentosView = {
     });
     if (!result.isConfirmed) return;
     await DocOpciones.cambiarCaja(coddoc, correlativo, result.value);
+    await this.reload();
+  },
+
+  async cambiarSerieInternaDocumento(row) {
+    const coddoc = String(row.CODDOC || '').trim();
+    const correlativo = row.CORRELATIVO;
+    let data;
+    try {
+      data = await DocOpciones.fetchSeriesAlternas(coddoc, correlativo);
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudieron cargar las series', 'error');
+      return;
+    }
+    const series = data?.rows || [];
+    if (!series.length) {
+      F.toast('No hay otras series habilitadas del mismo tipo de documento', 'warning');
+      return;
+    }
+    const tipodoc = String(data?.origen?.TIPODOC || row.TIPODOC || '').trim().toUpperCase();
+    const opts = series
+      .map((s, i) => {
+        const cod = String(s.CODDOC || '').trim();
+        const des = String(s.DESDOC || '').trim() || cod;
+        const next = s.SIGUIENTE_CORRELATIVO ?? '';
+        const sel = i === 0 ? ' selected' : '';
+        return `<option value="${this.escapeHtml(cod)}" data-next="${this.escapeHtml(String(next))}"${sel}>${this.escapeHtml(cod)} — ${this.escapeHtml(des)}</option>`;
+      })
+      .join('');
+    const firstNext = series[0]?.SIGUIENTE_CORRELATIVO ?? '—';
+
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cambiar serie interna',
+      html: `
+        <form class="catalogo-form text-start" autocomplete="off" novalidate onsubmit="return false">
+          <p class="small text-muted mb-2">Tipo: <strong>${this.escapeHtml(tipodoc || '—')}</strong></p>
+          <label class="form-label small mb-0">Serie actual (CODDOC)</label>
+          <input type="text" class="form-control form-control-sm mb-2" value="${this.escapeHtml(coddoc)}" disabled>
+          <label class="form-label small mb-0">Correlativo actual</label>
+          <input type="text" class="form-control form-control-sm mb-3" value="${this.escapeHtml(String(correlativo ?? ''))}" disabled>
+          <label for="documentos-serie-nueva" class="form-label small mb-0">Nueva serie</label>
+          <select class="form-select form-select-sm mb-2" id="documentos-serie-nueva">${opts}</select>
+          <p class="small text-muted mb-0">Nuevo correlativo: <strong id="documentos-serie-next">${this.escapeHtml(String(firstNext))}</strong></p>
+          <p class="small text-muted mt-2 mb-0">También se actualizarán documentos asociados (SERIEFAC / NOFAC) y abonos vinculados.</p>
+        </form>
+      `,
+      width: 440,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Cambiar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        const sel = document.getElementById('documentos-serie-nueva');
+        const nextEl = document.getElementById('documentos-serie-next');
+        const syncNext = () => {
+          const opt = sel?.selectedOptions?.[0];
+          if (nextEl) nextEl.textContent = opt?.getAttribute('data-next') || '—';
+        };
+        sel?.addEventListener('change', syncNext);
+        sel?.focus();
+      },
+      preConfirm: () => {
+        const val = String(document.getElementById('documentos-serie-nueva')?.value ?? '').trim();
+        if (!val) {
+          Swal.showValidationMessage('Seleccione una serie destino');
+          return false;
+        }
+        if (val.toUpperCase() === coddoc.toUpperCase()) {
+          Swal.showValidationMessage('Seleccione una serie distinta a la actual');
+          return false;
+        }
+        return val;
+      },
+    });
+    if (!result.isConfirmed) return;
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Cambiar serie interna?',
+      html: `<p class="mb-0">El documento <strong>${this.escapeHtml(coddoc)} · ${this.escapeHtml(String(correlativo ?? ''))}</strong>
+        pasará a la serie <strong>${this.escapeHtml(result.value)}</strong> con el siguiente correlativo disponible.
+        Los documentos asociados también se actualizarán.</p>`,
+      icon: 'warning',
+      confirmText: 'Cambiar',
+    });
+    if (!ok) return;
+
+    await DocOpciones.cambiarSerieInterna(coddoc, correlativo, result.value);
     await this.reload();
   },
 

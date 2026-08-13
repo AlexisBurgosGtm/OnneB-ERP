@@ -1493,17 +1493,14 @@ const FacturacionView = {
 
   async eliminarPedido(coddoc, correlativo) {
     const label = `${coddoc} #${correlativo}`;
-    if (typeof AutorizacionesUI !== 'undefined') {
-      const allowed = await AutorizacionesUI.gateAccionDocumento({
-        accion: 'eliminar',
-        coddoc,
-        correlativo,
-        tipodoc: this._grupo === 'fel' ? 'FEL' : this._grupo === 'mixto' ? 'FAC/FEL' : 'FAC',
-        label,
-      });
-      if (!allowed) return;
-    }
-    const pass = await CatalogosUI.confirmEliminarDocumento({ label, tipo: 'pedido' });
+    const pass = await CatalogosUI.confirmEliminarDocumento({
+      label,
+      tipo: 'pedido',
+      kind: 'documento',
+      coddoc,
+      correlativo,
+      tipodoc: this._grupo === 'fel' ? 'FEL' : this._grupo === 'mixto' ? 'FAC/FEL' : 'FAC',
+    });
     if (!pass) return;
     const url = this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`);
     await F.fetchJson(url, {

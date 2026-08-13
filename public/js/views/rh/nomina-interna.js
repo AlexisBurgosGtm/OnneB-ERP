@@ -6,6 +6,13 @@ const NominaInternaView = createNominaDocView({
   reciboTitle: 'Recibo de nómina interna',
   showIgssExport: false,
   showPatronal: false,
+  requireSalarioBase: true,
+  periodoOptions: [
+    { value: 'MENSUAL', label: 'MENSUAL (mes)' },
+    { value: 'QUINCENAL', label: 'QUINCENAL (15 dias)' },
+    { value: 'CATORCENAL', label: 'CATORCENAL (14 dias)' },
+    { value: 'SEMANAL', label: 'SEMANAL (7 dias)' },
+  ],
 });
 
 const NominaIgssView = createNominaDocView({

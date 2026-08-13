@@ -1,7 +1,25 @@
 const sql = require('mssql');
+const multer = require('multer');
 const { createCatalogoRouter } = require('./lib/catalogo-empresa');
 const { isDbConfigured } = require('../config/database');
 const { assertAccesoUnico, normalizeUsuario, normalizeClave } = require('../lib/empleado-acceso');
+const {
+  resolveEmpleadoFoto,
+  readEmpleadoFotoBuffer,
+  saveEmpleadoFoto,
+  removeEmpleadoFotos,
+} = require('../lib/empleado-fotos');
+
+const uploadFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!/^image\/(jpeg|jpg|png|webp|gif)$/i.test(file.mimetype || '')) {
+      return cb(new Error('Formato de imagen no permitido'));
+    }
+    cb(null, true);
+  },
+});
 
 async function validateEmpleadoAcceso(pool, data, exclude) {
   const usuario = normalizeUsuario(data.USUARIO);
@@ -254,6 +272,88 @@ router.patch('/:codempleado/activo', async (req, res) => {
   } catch (err) {
     console.warn('[API PATCH /empleados/:codempleado/activo]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:codempleado/foto', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = getEmpNitFromReq(req);
+  if (!empnit) return res.status(400).json({ error: 'EMPNIT requerido (empresa de la sesión)' });
+  const codempleado = parseInt(req.params.codempleado, 10);
+  if (Number.isNaN(codempleado)) return res.status(400).json({ error: 'CODEMPLEADO inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const wantMeta =
+      String(req.query.meta || '') === '1' || String(req.headers.accept || '').includes('application/json');
+    if (wantMeta) {
+      const meta = await resolveEmpleadoFoto(pool, empnit, codempleado);
+      if (!meta) return res.status(404).json({ error: 'Sin foto', url: null });
+      return res.json({ ok: true, url: meta.url, filename: meta.filename, modo: meta.modo });
+    }
+    const file = await readEmpleadoFotoBuffer(pool, empnit, codempleado);
+    if (!file) return res.status(404).json({ error: 'Sin foto', url: null });
+    const ext = String(file.filename || '').toLowerCase();
+    const type =
+      ext.endsWith('.png')
+        ? 'image/png'
+        : ext.endsWith('.webp')
+          ? 'image/webp'
+          : ext.endsWith('.gif')
+            ? 'image/gif'
+            : 'image/jpeg';
+    res.setHeader('Content-Type', type);
+    res.send(file.buffer);
+  } catch (err) {
+    console.warn('[API GET /empleados/:codempleado/foto]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.post('/:codempleado/foto', (req, res) => {
+  uploadFoto.single('foto')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message || 'Error al subir imagen' });
+    }
+    if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+    const empnit = getEmpNitFromReq(req);
+    if (!empnit) return res.status(400).json({ error: 'EMPNIT requerido (empresa de la sesión)' });
+    const codempleado = parseInt(req.params.codempleado, 10);
+    if (Number.isNaN(codempleado)) return res.status(400).json({ error: 'CODEMPLEADO inválido' });
+    if (!req.file) return res.status(400).json({ error: 'Seleccione una imagen' });
+    try {
+      const pool = await req.app.locals.getDbPool();
+      const exists = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('CODEMPLEADO', sql.Int, codempleado)
+        .query(`
+          SELECT TOP 1 CODEMPLEADO FROM dbo.Empleados
+          WHERE EMPNIT = @EMPNIT AND CODEMPLEADO = @CODEMPLEADO
+        `);
+      if (!exists.recordset.length) return res.status(404).json({ error: 'Empleado no encontrado' });
+      const saved = await saveEmpleadoFoto(pool, empnit, codempleado, req.file);
+      res.json({ ok: true, url: saved.url, filename: saved.filename, modo: saved.modo });
+    } catch (err) {
+      console.warn('[API POST /empleados/:codempleado/foto]', err.message);
+      res.status(err.statusCode || 500).json({ error: err.message });
+    }
+  });
+});
+
+router.delete('/:codempleado/foto', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = getEmpNitFromReq(req);
+  if (!empnit) return res.status(400).json({ error: 'EMPNIT requerido (empresa de la sesión)' });
+  const codempleado = parseInt(req.params.codempleado, 10);
+  if (Number.isNaN(codempleado)) return res.status(400).json({ error: 'CODEMPLEADO inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await removeEmpleadoFotos(pool, empnit, codempleado);
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('[API DELETE /empleados/:codempleado/foto]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
