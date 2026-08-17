@@ -110,6 +110,9 @@ function validatePartidaBody(body) {
     return `HABER inválido (${MONTO_TOKENS.join(', ')})`;
   }
   if (!debe && !haber) return 'Indique DEBE o HABER';
+  if (debe && haber) {
+    return 'Una línea no puede tener DEBE y HABER. Agregue la cuenta otra vez en una segunda línea';
+  }
   const centro = String(body?.CENTRO_COSTO ?? '1').trim() || '1';
   if (centro.length > 3) return 'CENTRO_COSTO máximo 3 caracteres';
   return {
@@ -231,7 +234,9 @@ router.get('/:id/partidas', async (req, res) => {
         LEFT JOIN dbo.CONTA_CUENTAS c
           ON c.EMPNIT = p.EMPNIT AND c.CODCUENTA = p.CODCUENTA
         WHERE p.EMPNIT = @EMPNIT AND p.CODFORMATO = @CODFORMATO
-        ORDER BY p.ID
+        ORDER BY
+          CASE WHEN LTRIM(RTRIM(ISNULL(p.DEBE, ''))) <> '' THEN 0 ELSE 1 END,
+          p.ID
       `);
     res.json({ header: meta, rows: result.recordset });
   } catch (err) {

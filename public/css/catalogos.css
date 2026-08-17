@@ -62,6 +62,163 @@
   max-width: 22rem;
 }
 
+.embarques-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.embarques-filter-estado {
+  flex: 0 0 12rem;
+  width: 12rem;
+  max-width: 12rem;
+}
+
+.embarques-filters .embarques-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.asignacion-pedidos-tabs .nav-link {
+  cursor: pointer;
+}
+
+.asignacion-pedidos-params-card .card-header {
+  background: color-mix(in srgb, var(--app-bg, #f5f5f5) 70%, var(--app-surface, #fff));
+  font-size: 0.9rem;
+}
+
+.asignacion-pedidos-params-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 0.65rem 0.75rem;
+  overflow-x: auto;
+}
+
+.asignacion-pedidos-params-row .asignacion-pedidos-filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 9rem;
+  flex: 0 0 auto;
+}
+
+.asignacion-pedidos-params-row .asignacion-pedidos-filter-embarque {
+  min-width: 14rem;
+  flex: 1 1 14rem;
+}
+
+.asignacion-pedidos-params-row .asignacion-pedidos-filter-embarque .form-select {
+  min-width: 12rem;
+  width: 100%;
+}
+
+.asignacion-pedidos-params-row .asignacion-pedidos-filter-print {
+  flex: 0 0 auto;
+}
+
+.asig-ped-print-cards {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+  justify-content: stretch;
+}
+
+.asig-ped-print-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.85rem 0.5rem;
+  border: 1px solid var(--app-border, #e0e0e0);
+  border-radius: 0.55rem;
+  background: var(--app-surface, #fff);
+  color: var(--app-text, #1a1a1a);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.asig-ped-print-card:hover {
+  border-color: var(--onneb-color-primary, #1a1a1a);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.asig-ped-print-card i {
+  font-size: 1.25rem;
+  color: var(--onneb-color-primary, #1a1a1a);
+}
+
+.asig-ped-print-card span {
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.asig-ped-print-card small {
+  font-size: 0.7rem;
+  color: var(--app-text-muted, #6c757d);
+  line-height: 1.2;
+}
+
+.asignacion-pedidos-totales {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+}
+
+.asignacion-pedidos-total-importe {
+  color: #c62828;
+  font-weight: 700;
+}
+
+.asignacion-pedidos-emb-cell {
+  min-width: 11rem;
+  max-width: 16rem;
+}
+
+.asignacion-pedidos-emb-cell .asig-ped-row-embarque {
+  min-width: 10rem;
+  max-width: 15rem;
+}
+
+.asignacion-pedidos-table-wrap,
+.asignacion-pedidos-exist-table-wrap {
+  max-height: calc(100vh - 18rem);
+  overflow: auto;
+}
+
+.asig-ped-edit-lines-wrap {
+  max-height: min(50vh, 28rem);
+  overflow: auto;
+}
+
+.asig-ped-edit-prod-results {
+  max-height: min(45vh, 24rem);
+  overflow: auto;
+}
+
+.asig-ped-edit-prod-list .list-group-item {
+  border-left: 0;
+  border-right: 0;
+}
+
+/* Modal montado en body: por encima del layout con transform */
+#asig-ped-edit-fac-modal {
+  z-index: 1065;
+}
+body.modal-open .modal-backdrop {
+  z-index: 1060;
+}
+
 .tipo-documentos-wrap .tipo-documentos-filters {
   display: flex;
   flex-wrap: nowrap;

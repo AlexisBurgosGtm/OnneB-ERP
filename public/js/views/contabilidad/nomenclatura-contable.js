@@ -88,7 +88,7 @@ function nomenclaturaMapFormToApi(data, isEdit) {
   return payload;
 }
 
-function validateContaCuentaForm(data, isEdit, existingRows) {
+function validateContaCuentaForm(data, isEdit = false, existingRows = []) {
   if (!isEdit && !String(data.CODCUENTA ?? '').trim()) {
     return 'El código de cuenta es obligatorio';
   }
@@ -101,9 +101,10 @@ function validateContaCuentaForm(data, isEdit, existingRows) {
   if (!data.PD) return 'Seleccione si es cuenta padre o detalle (PD)';
   if (!data.ESTFIN) return 'Seleccione el estado financiero';
   if (!data.TIPOEF) return 'Seleccione el tipo de estado financiero';
+  const rows = Array.isArray(existingRows) ? existingRows : [];
   if (!isEdit && data.CODCUENTA) {
     const cod = String(data.CODCUENTA).trim().toUpperCase();
-    const dup = (existingRows || []).some(
+    const dup = rows.some(
       (r) => String(r.CODCUENTA ?? '').trim().toUpperCase() === cod
     );
     if (dup) return `Ya existe la cuenta "${data.CODCUENTA.trim()}"`;
@@ -171,6 +172,7 @@ const NomenclaturaContableView = {
 
     const parts = [
       this.ncFormRow2(field(byKey.CODCUENTA), field(byKey.NIVEL)),
+      `<div class="nc-parent-hint small mb-2" id="nc-parent-hint" aria-live="polite"></div>`,
       `<div class="mb-2 nc-form-field">${fieldHtml(byKey.DESCRIPCION)}</div>`,
       this.ncFormRow2(field(byKey.DA), field(byKey.PD)),
       this.ncFormRow2(field(byKey.ESTFIN), field(byKey.TIPOEF)),
@@ -240,9 +242,14 @@ const NomenclaturaContableView = {
       <div class="catalogo-empresa-panel catalogo-vista-wrap nomenclatura-contable-wrap">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 px-1">
           <span class="catalogo-empresa-badge" id="nomenclatura-contable-count">${this.badgeText(filtered.length, this._rows.length)}</span>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-nomenclatura-contable-refresh">
-            <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
-          </button>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-nomenclatura-contable-refresh">
+              <i class="fa-solid fa-rotate-right me-1"></i>Actualizar
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" id="btn-nomenclatura-contable-nuevo-bar">
+              <i class="fa-solid fa-plus me-1"></i>Nueva cuenta
+            </button>
+          </div>
         </div>
         <div class="d-flex flex-wrap align-items-end gap-2 px-1 mb-2">
           <div class="nc-filter-tipoef">
@@ -282,13 +289,99 @@ const NomenclaturaContableView = {
     `;
   },
 
+  parentAccountsForCode(code) {
+    const typed = String(code ?? '').trim();
+    if (!typed) return [];
+    return (this._rows || [])
+      .filter((r) => {
+        const cod = String(r.CODCUENTA ?? '').trim();
+        return Boolean(cod) && typed.startsWith(cod);
+      })
+      .sort(
+        (a, b) =>
+          String(a.CODCUENTA ?? '').trim().length - String(b.CODCUENTA ?? '').trim().length
+      );
+  },
+
+  parentHintHtml(code) {
+    const typed = String(code ?? '').trim();
+    if (!typed) {
+      return '<span class="text-muted">Escriba el código para ver las cuentas padre (ej. 1 → ACTIVO, 11 → ACTIVO — ACTIVO CORRIENTE).</span>';
+    }
+    const chain = this.parentAccountsForCode(typed);
+    if (!chain.length) {
+      return '<span class="text-muted">No hay cuentas padre con ese prefijo.</span>';
+    }
+    const parts = chain.map((c) => {
+      const cod = this.escapeHtml(String(c.CODCUENTA ?? '').trim());
+      const desc = this.escapeHtml(String(c.DESCRIPCION ?? '').trim() || '—');
+      const isExact = String(c.CODCUENTA ?? '').trim() === typed;
+      return `<span class="nc-parent-chip${isExact ? ' nc-parent-chip-exact' : ''}"><strong>${cod}</strong> ${desc}</span>`;
+    });
+    return `<span class="nc-parent-label">Cuentas padre:</span> ${parts.join('<span class="nc-parent-sep">—</span>')}`;
+  },
+
+  applyParentDefaults(popup, code, { isEdit = false } = {}) {
+    const hint = popup?.querySelector('#nc-parent-hint');
+    if (hint) hint.innerHTML = this.parentHintHtml(code);
+    if (isEdit) return;
+    const chain = this.parentAccountsForCode(code);
+    if (!chain.length) return;
+    const typed = String(code ?? '').trim();
+    const deepest = chain[chain.length - 1];
+    const deepestCod = String(deepest.CODCUENTA ?? '').trim();
+    const nivelEl = popup?.querySelector('[name="NIVEL"]');
+    if (nivelEl) {
+      const parentNivel = Number(deepest.NIVEL) || 1;
+      const nextNivel =
+        deepestCod === typed ? parentNivel : Math.min(9, parentNivel + 1);
+      nivelEl.value = String(nextNivel);
+    }
+    const copySelect = (name, value) => {
+      const el = popup?.querySelector(`[name="${name}"]`);
+      const v = String(value ?? '').trim().toUpperCase();
+      if (el && v) el.value = v;
+    };
+    copySelect('DA', deepest.DA);
+    copySelect('ESTFIN', deepest.ESTFIN);
+    copySelect('TIPOEF', deepest.TIPOEF);
+  },
+
+  bindParentHint(popup, isEdit) {
+    const input = popup?.querySelector('[name="CODCUENTA"]');
+    if (!input) return;
+    const run = () => this.applyParentDefaults(popup, input.value, { isEdit });
+    input.addEventListener('input', run);
+    input.addEventListener('keyup', run);
+    run();
+    if (!isEdit) input.focus();
+  },
+
+  async showForm(title, row = {}, isEdit = false) {
+    return CatalogosUI.fireForm({
+      title,
+      html: this.buildFormHtml(row, isEdit),
+      width: 680,
+      didOpen: (popup) => this.bindParentHint(popup, isEdit),
+      preConfirm: (popup) => {
+        const data = this.readFormData('full', popup);
+        const err = validateContaCuentaForm(data, isEdit, this._rows);
+        if (err) {
+          Swal.showValidationMessage(err);
+          return false;
+        }
+        return nomenclaturaMapFormToApi(data, isEdit);
+      },
+    });
+  },
+
   bindEvents() {
     NomenclaturaContableViewBase.bindEvents.call(this);
     this._container?.querySelector('#nc-filter-tipoef')?.addEventListener('change', (e) => {
       this._filterTipoef = e.target.value;
       this.updateTableView();
     });
-    const refreshBtn = document.getElementById('btn-nomenclatura-contable-refresh');
+    const refreshBtn = this._container?.querySelector('#btn-nomenclatura-contable-refresh');
     if (refreshBtn) {
       const clone = refreshBtn.cloneNode(true);
       refreshBtn.replaceWith(clone);
@@ -298,6 +391,16 @@ const NomenclaturaContableView = {
         this.load(this._container);
       });
     }
+    const openNuevo = () => {
+      this.onNuevo().catch((err) => F.toast(err.message || 'No se pudo abrir el formulario', 'error'));
+    };
+    const fab = this._container?.querySelector('#btn-nomenclatura-contable-nuevo');
+    if (fab) {
+      const clone = fab.cloneNode(true);
+      fab.replaceWith(clone);
+      clone.addEventListener('click', openNuevo);
+    }
+    this._container?.querySelector('#btn-nomenclatura-contable-nuevo-bar')?.addEventListener('click', openNuevo);
   },
 
   async onNuevo() {

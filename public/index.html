@@ -69,6 +69,20 @@
       }
     })();
   </script>
+  <!-- paceOptions debe ir ANTES de pace.min.js -->
+  <script>
+    window.paceOptions = {
+      ajax: {
+        trackMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        trackWebSockets: false,
+        ignoreURLs: [/socket\.io/i, /\/socket\.io\//i],
+      },
+      document: true,
+      eventLag: false,
+      restartOnPushState: false,
+      restartOnRequestAfter: false,
+    };
+  </script>
   <script src="/vendor/pace/pace.min.js"></script>
   <script src="/js/pace-init.js"></script>
   <div id="app" class="app-shell">
@@ -188,6 +202,20 @@
                   <li><a href="#" class="sidebar-link" data-menu="vales-caja"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Vales de Caja</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="corte-caja"><i class="fa-solid fa-money-check" aria-hidden="true"></i> Corte de Caja</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="tareas"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Tareas</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDistribuidoras" aria-expanded="false" aria-controls="collapseDistribuidoras">
+                  <i class="fa-solid fa-truck-ramp-box sidebar-icon" aria-hidden="true"></i>
+                  <span>DISTRIBUIDORAS</span>
+                </button>
+              </h2>
+              <div id="collapseDistribuidoras" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="embarques"><i class="fa-solid fa-boxes-packing" aria-hidden="true"></i> Embarques (picking)</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="asignacion-pedidos"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Asignación de Facturas</a></li>
                 </ul>
               </div>
             </div>
@@ -597,6 +625,8 @@
   <script src="/js/views/inicio/transporte-inicio.js"></script>
   <script src="/js/views/inicio/inicio-empleado.js"></script>
   <script src="/js/views/operaciones/tareas.js"></script>
+  <script src="/js/views/distribuidoras/embarques.js"></script>
+  <script src="/js/views/distribuidoras/asignacion-pedidos.js"></script>
   <script src="/js/db.js"></script>
   <script src="/js/manifest.js"></script>
   <script src="/js/webauthn-client.js"></script>

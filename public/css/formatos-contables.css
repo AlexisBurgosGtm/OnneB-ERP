@@ -97,6 +97,29 @@
   font-size: 0.95rem;
 }
 
+.fc-cuenta-combo {
+  position: relative;
+}
+
+.fc-cuenta-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 2px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.swal2-popup.fc-partida-modal {
+  overflow: visible;
+}
+
+.swal2-popup.fc-partida-modal .swal2-html-container {
+  overflow: visible !important;
+}
+
 @media (max-width: 991.98px) {
   .fc-split-panels {
     grid-template-columns: 1fr;

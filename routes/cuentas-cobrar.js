@@ -13,9 +13,13 @@ const {
   loadFacturaCxc,
   fetchAbonosFactura,
   crearAbonoRcc,
+  crearAbonoRar,
   corregirSaldosCxc,
   listTiposDocRcc,
   previewSiguienteRcc,
+  listTiposDocRar,
+  previewSiguienteRar,
+  listRetencionesFelDeFac,
 } = require('../lib/cuentas-abono');
 const { fetchEstadoCuentaCliente } = require('../lib/cuentas-estado-cliente');
 const { fetchSaldoMesesCxc } = require('../lib/cuentas-saldo-meses');
@@ -378,6 +382,79 @@ router.post('/facturas/:coddoc/:correlativo/abonos', async (req, res) => {
     res.status(201).json(result);
   } catch (err) {
     console.warn('[API POST /cuentas-cobrar/facturas/abonos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/rar/tipos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listTiposDocRar(pool, sql, empnit);
+    res.json({ rows, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/rar/tipos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/rar/siguiente', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.query.coddoc || '').trim() || null;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rar = await previewSiguienteRar(pool, sql, empnit, coddoc);
+    if (!rar) {
+      return res.status(404).json({
+        error: coddoc
+          ? `No hay documento RAR activo con código ${coddoc}`
+          : 'No hay tipo de documento RAR activo. Créelo en Tipo Documentos (TIPODOC = RAR).',
+      });
+    }
+    res.json({ rar, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/rar/siguiente]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/facturas/:coddoc/:correlativo/retenciones-fel', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listRetencionesFelDeFac(pool, sql, empnit, coddoc, correlativo);
+    res.json({ ...data, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/facturas/retenciones-fel]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.post('/facturas/:coddoc/:correlativo/abono-rar', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await crearAbonoRar(pool, sql, empnit, coddoc, correlativo, req.body);
+    res.status(201).json(result);
+  } catch (err) {
+    console.warn('[API POST /cuentas-cobrar/facturas/abono-rar]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

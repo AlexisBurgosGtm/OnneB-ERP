@@ -204,11 +204,11 @@ const DashboardAdminView = {
         <div class="col-12 col-xl-4">
           <div class="card dashboard-chart-card dashboard-chart-card--compact shadow-sm h-100">
             <div class="card-header py-1 px-3">
-              <h3 class="h6 mb-0">Inventario por marca</h3>
-              <p class="small text-muted mb-0">Valor a costo</p>
+              <h3 class="h6 mb-0">Ventas vs compras</h3>
+              <p class="small text-muted mb-0">FAC/FEL vs COM/COP del mes</p>
             </div>
-            <div class="card-body py-2 d-flex align-items-center justify-content-center">
-              <canvas id="dashboard-chart-inventario-marca" class="dashboard-chart-canvas dashboard-chart-canvas--donut" aria-label="Inventario por marca"></canvas>
+            <div class="card-body py-2">
+              <canvas id="dashboard-chart-ventas-compras" class="dashboard-chart-canvas" aria-label="Ventas vs compras del mes"></canvas>
             </div>
           </div>
         </div>
@@ -336,25 +336,25 @@ const DashboardAdminView = {
     this._charts.push(chart);
   },
 
-  buildInventarioMarcaChart() {
+  buildVentasComprasChart() {
     if (typeof Chart === 'undefined') return;
-    const canvas = document.getElementById('dashboard-chart-inventario-marca');
+    const canvas = document.getElementById('dashboard-chart-ventas-compras');
     if (!canvas) return;
-    const rows = (this._data?.inventarioPorMarca || []).filter((m) => m.valorCosto > 0).slice(0, 12);
-    if (!rows.length) {
-      canvas.parentElement.innerHTML = '<p class="text-muted small text-center mb-0">Sin datos de inventario</p>';
-      return;
-    }
-    const palette = ['#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545', '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0', '#6c757d', '#343a40'];
+    const vc = this._data?.ventasVsCompras || {};
+    const ventas = Number(vc.ventas) || 0;
+    const compras = Number(vc.compras) || 0;
+    const colors = this.chartColors();
     const chart = new Chart(canvas, {
-      type: 'doughnut',
+      type: 'bar',
       data: {
-        labels: rows.map((m) => m.DESMARCA),
+        labels: ['Ventas', 'Compras'],
         datasets: [
           {
-            data: rows.map((m) => m.valorCosto),
-            backgroundColor: palette.slice(0, rows.length),
-            borderWidth: 1,
+            label: 'Monto',
+            data: [ventas, compras],
+            backgroundColor: [colors.primary || '#0d6efd', colors.warning || '#fd7e14'],
+            borderRadius: 6,
+            maxBarThickness: 64,
           },
         ],
       },
@@ -362,12 +362,33 @@ const DashboardAdminView = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+          legend: { display: false },
           tooltip: {
             callbacks: {
               label(ctx) {
                 const v = ctx.raw;
-                return ` ${ctx.label}: ${Number(v).toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' })}`;
+                const docs =
+                  ctx.dataIndex === 0
+                    ? Number(vc.documentosVenta) || 0
+                    : Number(vc.documentosCompra) || 0;
+                return ` ${Number(v).toLocaleString('es-GT', {
+                  style: 'currency',
+                  currency: 'GTQ',
+                })} · ${docs} doc(s)`;
+              },
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback(v) {
+                return Number(v).toLocaleString('es-GT', {
+                  style: 'currency',
+                  currency: 'GTQ',
+                  maximumFractionDigits: 0,
+                });
               },
             },
           },
@@ -533,7 +554,7 @@ const DashboardAdminView = {
   renderChartsAll() {
     this.destroyCharts();
     this.buildVentasDiaChart();
-    this.buildInventarioMarcaChart();
+    this.buildVentasComprasChart();
     this.buildProyeccionChart();
     this.buildVendedorChart();
   },

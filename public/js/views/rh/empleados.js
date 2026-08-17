@@ -2,14 +2,8 @@
  * Vista Empleados — formulario con combos (tipos, municipios, departamentos, rutas).
  */
 
-function empleadosValidateForm(data, isEdit = false) {
+function empleadosValidateForm(data) {
   if (!data.NOMEMPLEADO) return 'El nombre es obligatorio';
-  const usuario = String(data.USUARIO || '').trim();
-  const clave = String(data.CLAVE || '').trim();
-  // Ambos vacíos: empleado sin acceso al sistema (permitido en alta y edición).
-  if (!usuario && !clave) return null;
-  if (!usuario) return 'El usuario es obligatorio si indica clave';
-  if (!clave) return 'La clave es obligatoria si indica usuario';
   return null;
 }
 
@@ -36,8 +30,8 @@ function empleadosMapFormToApi(data, isEdit = false) {
     TELEFONOS: data.TELEFONOS || null,
     WHATSAPP: data.WHATSAPP || null,
     EMAIL: data.EMAIL || null,
-    USUARIO: String(data.USUARIO || '').trim() || null,
-    CLAVE: data.CLAVE || null,
+    USUARIO: null,
+    CLAVE: null,
     LATITUD: data.LATITUD || null,
     LONGITUD: data.LONGITUD || null,
     CODRUTA: n('CODRUTA'),
@@ -46,14 +40,15 @@ function empleadosMapFormToApi(data, isEdit = false) {
         ? String(data.CODCATALOGO)
         : null,
     CODDOC_REC: data.CODDOC_REC || null,
-    PRIMER_NOMBRE: data.PRIMER_NOMBRE || null,
-    SEGUNDO_NOMBRE: data.SEGUNDO_NOMBRE || null,
-    PRIMER_APELLIDO: data.PRIMER_APELLIDO || null,
-    SEGUNDO_APELLIDO: data.SEGUNDO_APELLIDO || null,
-    APELLIDO_CASADA: data.APELLIDO_CASADA || null,
     NIT: data.NIT || null,
     FECHA_INICIO: data.FECHA_INICIO || null,
   };
+  const usuario = String(data.USUARIO || '').trim();
+  const clave = String(data.CLAVE || '').trim();
+  if (usuario && clave) {
+    payload.USUARIO = usuario;
+    payload.CLAVE = clave;
+  }
   if (!isEdit) {
     payload.ACTIVO = 'SI';
   }
@@ -147,11 +142,6 @@ const EmpleadosView = {
       CLAVE: row.CLAVE ?? '',
       CODCATALOGO: catStr,
       CODDOC_REC: row.CODDOC_REC ?? '',
-      PRIMER_NOMBRE: row.PRIMER_NOMBRE ?? '',
-      SEGUNDO_NOMBRE: row.SEGUNDO_NOMBRE ?? '',
-      PRIMER_APELLIDO: row.PRIMER_APELLIDO ?? '',
-      SEGUNDO_APELLIDO: row.SEGUNDO_APELLIDO ?? '',
-      APELLIDO_CASADA: row.APELLIDO_CASADA ?? '',
       NIT: row.NIT ?? '',
       FECHA_INICIO: fechaInicio,
     };
@@ -462,13 +452,14 @@ const EmpleadosView = {
   },
 
   inputField(name, label, value, opts = {}) {
-    const { type = 'text', readonly = false, step = '' } = opts;
+    const { type = 'text', readonly = false, step = '', autocomplete = '' } = opts;
     const ro = readonly ? 'readonly' : '';
     const stepAttr = step ? `step="${step}"` : '';
+    const acAttr = autocomplete ? `autocomplete="${this.escapeHtml(autocomplete)}"` : '';
     return `
       <label class="form-label small mb-0">${this.escapeHtml(label)}</label>
       <input type="${type}" class="form-control form-control-sm" name="${name}"
-        value="${this.escapeHtml(value ?? '')}" ${ro} ${stepAttr}>
+        value="${this.escapeHtml(value ?? '')}" ${ro} ${stepAttr} ${acAttr}>
     `;
   },
 
@@ -494,9 +485,13 @@ const EmpleadosView = {
             Acceso al inicio de sesión
           </p>
           <p class="small text-muted mb-2">Deje usuario y clave vacíos si el empleado no usará el sistema.</p>
+          <div class="empleados-autofill-trap" aria-hidden="true">
+            <input type="text" name="fake-username" autocomplete="username" tabindex="-1">
+            <input type="password" name="fake-password" autocomplete="current-password" tabindex="-1">
+          </div>
           ${this.row2(
-            this.inputField('USUARIO', 'Usuario', r.USUARIO),
-            this.inputField('CLAVE', 'Clave', r.CLAVE)
+            this.inputField('EMP_ACCESO_USUARIO', 'Usuario', r.USUARIO, { autocomplete: 'off' }),
+            this.inputField('EMP_ACCESO_CLAVE', 'Clave', r.CLAVE, { type: 'password', autocomplete: 'new-password' })
           )}
         </div>
       </div>
@@ -512,11 +507,6 @@ const EmpleadosView = {
             Datos de nómina
           </p>
           <div class="row g-2">
-            <div class="col-md-4">${this.inputField('PRIMER_NOMBRE', 'Primer nombre', r.PRIMER_NOMBRE)}</div>
-            <div class="col-md-4">${this.inputField('SEGUNDO_NOMBRE', 'Segundo nombre', r.SEGUNDO_NOMBRE)}</div>
-            <div class="col-md-4">${this.inputField('PRIMER_APELLIDO', 'Primer apellido', r.PRIMER_APELLIDO)}</div>
-            <div class="col-md-4">${this.inputField('SEGUNDO_APELLIDO', 'Segundo apellido', r.SEGUNDO_APELLIDO)}</div>
-            <div class="col-md-4">${this.inputField('APELLIDO_CASADA', 'Apellido de casada', r.APELLIDO_CASADA)}</div>
             <div class="col-md-4">${this.inputField('NIT', 'NIT', r.NIT)}</div>
             <div class="col-md-4">${this.inputField('DPI', 'DPI', r.DPI)}</div>
             <div class="col-md-4">${this.inputField('IGSS', 'IGSS', r.IGSS)}</div>
@@ -756,16 +746,11 @@ const EmpleadosView = {
       'TELEFONOS',
       'WHATSAPP',
       'EMAIL',
-      'USUARIO',
+      'EMP_ACCESO_USUARIO',
       'CODRUTA',
-      'CLAVE',
+      'EMP_ACCESO_CLAVE',
       'CODCATALOGO',
       'CODDOC_REC',
-      'PRIMER_NOMBRE',
-      'SEGUNDO_NOMBRE',
-      'PRIMER_APELLIDO',
-      'SEGUNDO_APELLIDO',
-      'APELLIDO_CASADA',
       'NIT',
       'FECHA_INICIO',
     ];
@@ -775,6 +760,8 @@ const EmpleadosView = {
       if (!input) return;
       data[name] = input.value.trim();
     });
+    data.USUARIO = data.EMP_ACCESO_USUARIO || '';
+    data.CLAVE = data.EMP_ACCESO_CLAVE || '';
     return data;
   },
 
@@ -807,7 +794,7 @@ const EmpleadosView = {
       preConfirm() {
         try {
           const data = view.readFormData();
-          const err = empleadosValidateForm(data, isEdit);
+          const err = empleadosValidateForm(data);
           if (err) {
             Swal.showValidationMessage(err);
             return false;

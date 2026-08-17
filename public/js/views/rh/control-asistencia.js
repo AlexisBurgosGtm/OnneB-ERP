@@ -64,7 +64,7 @@ const ControlAsistenciaView = {
       <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
         <div>
           <h5 class="mb-0">Control de Asistencia</h5>
-          <p class="small text-muted mb-0">Registre entrada y salida con el QR del carné o buscando al empleado.</p>
+          <p class="small text-muted mb-0">Registre entrada y salida con el QR o el código de barras del carné, o buscando al empleado.</p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
           <input type="date" class="form-control form-control-sm" id="asistencia-fecha" value="${this.escapeHtml(this._fecha)}" style="width:auto">
@@ -170,6 +170,16 @@ const ControlAsistenciaView = {
     });
   },
 
+  looksLikeCarne(raw) {
+    const text = String(raw || '').trim();
+    if (!text.includes('-')) return false;
+    const parts = text.split('-');
+    if (parts.length < 2) return false;
+    const cod = parseInt(parts[parts.length - 1], 10);
+    const empnit = parts.slice(0, -1).join('-').trim();
+    return Boolean(empnit && Number.isFinite(cod) && cod > 0);
+  },
+
   async openBusquedaManual() {
     const result = await Swal.fire({
       ...CatalogosUI.modalBase(),
@@ -177,10 +187,12 @@ const ControlAsistenciaView = {
       width: 480,
       html: `
         <div class="text-start">
-          <label class="form-label small mb-0" for="asistencia-buscar-q">Nombre o código</label>
-          <input type="search" id="asistencia-buscar-q" class="form-control form-control-sm mb-2" placeholder="Escriba al menos 2 caracteres…" autocomplete="off">
+          <label class="form-label small mb-0" for="asistencia-buscar-q">Nombre, código o carné</label>
+          <input type="search" id="asistencia-buscar-q" class="form-control form-control-sm mb-2"
+            placeholder="Nombre, código o empnit-codempleado" autocomplete="off">
           <div id="asistencia-buscar-list" class="list-group asistencia-buscar-list" style="max-height:280px;overflow:auto"></div>
           <input type="hidden" id="asistencia-buscar-cod" value="">
+          <input type="hidden" id="asistencia-buscar-carne" value="">
         </div>
       `,
       showCancelButton: true,
@@ -191,7 +203,16 @@ const ControlAsistenciaView = {
         const input = document.getElementById('asistencia-buscar-q');
         const list = document.getElementById('asistencia-buscar-list');
         const hidden = document.getElementById('asistencia-buscar-cod');
+        const hiddenCarne = document.getElementById('asistencia-buscar-carne');
         let timer = null;
+        const clearPick = () => {
+          if (hidden) hidden.value = '';
+          if (hiddenCarne) hiddenCarne.value = '';
+        };
+        const pick = (cod, carne = '') => {
+          if (hidden) hidden.value = String(cod || '');
+          if (hiddenCarne) hiddenCarne.value = String(carne || '');
+        };
         const render = (rows) => {
           if (!list) return;
           if (!rows.length) {
@@ -201,18 +222,24 @@ const ControlAsistenciaView = {
           list.innerHTML = rows
             .map(
               (r) => `<button type="button" class="list-group-item list-group-item-action py-2"
-                data-cod="${this.escapeHtml(r.CODEMPLEADO)}">
+                data-cod="${this.escapeHtml(r.CODEMPLEADO)}"
+                data-carne="${this.escapeHtml(r.CARNE || `${F.getEmpNit()}-${r.CODEMPLEADO}`)}">
                 <div class="fw-semibold">${this.escapeHtml(r.NOMEMPLEADO)}</div>
                 <div class="small text-muted">Cód. ${this.escapeHtml(r.CODEMPLEADO)}
                   ${r.DEPARTAMENTO ? ` · ${this.escapeHtml(r.DEPARTAMENTO)}` : ''}</div>
               </button>`
             )
             .join('');
+          if (rows.length === 1) {
+            const only = list.querySelector('[data-cod]');
+            only?.classList.add('active');
+            pick(only?.getAttribute('data-cod'), only?.getAttribute('data-carne'));
+          }
         };
         const search = async () => {
           const q = String(input?.value || '').trim();
-          if (q.length < 2) {
-            list.innerHTML = '<div class="list-group-item small text-muted">Escriba para buscar…</div>';
+          if (q.length < 2 && !this.looksLikeCarne(q)) {
+            list.innerHTML = '<div class="list-group-item small text-muted">Escriba para buscar o lea el código de barras…</div>';
             return;
           }
           try {
@@ -224,32 +251,71 @@ const ControlAsistenciaView = {
             list.innerHTML = `<div class="list-group-item small text-danger">${this.escapeHtml(err.message || 'Error')}</div>`;
           }
         };
+        const confirmIfReady = () => {
+          const q = String(input?.value || '').trim();
+          if (this.looksLikeCarne(q)) {
+            if (hiddenCarne) hiddenCarne.value = q;
+            Swal.clickConfirm();
+            return true;
+          }
+          const items = list?.querySelectorAll('[data-cod]') || [];
+          if (items.length === 1) {
+            pick(items[0].getAttribute('data-cod'), items[0].getAttribute('data-carne'));
+            Swal.clickConfirm();
+            return true;
+          }
+          if (hidden?.value) {
+            Swal.clickConfirm();
+            return true;
+          }
+          return false;
+        };
         input?.addEventListener('input', () => {
-          if (hidden) hidden.value = '';
+          clearPick();
           clearTimeout(timer);
-          timer = setTimeout(search, 280);
+          timer = setTimeout(search, 180);
+        });
+        input?.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          confirmIfReady();
         });
         list?.addEventListener('click', (e) => {
           const btn = e.target.closest('[data-cod]');
           if (!btn) return;
           list.querySelectorAll('.active').forEach((el) => el.classList.remove('active'));
           btn.classList.add('active');
-          if (hidden) hidden.value = btn.getAttribute('data-cod') || '';
+          pick(btn.getAttribute('data-cod'), btn.getAttribute('data-carne'));
+        });
+        list?.addEventListener('dblclick', (e) => {
+          const btn = e.target.closest('[data-cod]');
+          if (!btn) return;
+          pick(btn.getAttribute('data-cod'), btn.getAttribute('data-carne'));
+          Swal.clickConfirm();
         });
         input?.focus();
       },
       preConfirm: () => {
+        const carne = String(document.getElementById('asistencia-buscar-carne')?.value || '').trim();
+        const typed = String(document.getElementById('asistencia-buscar-q')?.value || '').trim();
+        if (this.looksLikeCarne(carne) || this.looksLikeCarne(typed)) {
+          return { carne: this.looksLikeCarne(carne) ? carne : typed };
+        }
         const cod = String(document.getElementById('asistencia-buscar-cod')?.value || '').trim();
         if (!cod) {
-          Swal.showValidationMessage('Seleccione un empleado de la lista');
+          Swal.showValidationMessage('Seleccione un empleado o lea el código de barras del carné');
           return false;
         }
-        return cod;
+        return { CODEMPLEADO: cod };
       },
     });
     if (!result.isConfirmed) return;
     try {
-      await this.procesarCodigoEmpleado(result.value);
+      if (result.value?.carne) {
+        await this.procesarQr(result.value.carne);
+      } else {
+        await this.procesarCodigoEmpleado(result.value.CODEMPLEADO);
+      }
     } catch (err) {
       F.alert('Error', err.message || 'No se pudo registrar', 'error');
     }

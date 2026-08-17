@@ -91,7 +91,30 @@ function createRetencionesDocView(cfg) {
       // ISR: % sobre base gravada. IVA: % sobre el IVA (total − base).
       const montoBase = kind === 'iva' ? this.roundMoney(Math.max(0, total - base)) : base;
       const retencion = this.roundMoney((montoBase * pct) / 100);
-      return { base, retencion };
+      return { base, iva: this.roundMoney(Math.max(0, total - base)), montoBase, retencion, pct, factor };
+    },
+
+    calcLineaRetencion(a) {
+      const total = Number(a?.FAC_TOTALPRECIO) || 0;
+      const fromTotal = this.calcRetencion(total);
+      const baseStored = Number(a?.BASE) || 0;
+      const baseInv = Number(a?.FAC_TOTALSINIVA) || 0;
+      const ivaInv = Number(a?.FAC_TOTALIVA) || 0;
+      const base = baseStored > 0 ? this.roundMoney(baseStored) : baseInv > 0 ? this.roundMoney(baseInv) : fromTotal.base;
+      const iva = ivaInv > 0 ? this.roundMoney(ivaInv) : this.roundMoney(Math.max(0, total - base));
+      const montoBase = kind === 'iva' ? iva : base;
+      const pct = fromTotal.pct;
+      const calculado = this.roundMoney((montoBase * pct) / 100);
+      return {
+        total,
+        base,
+        iva,
+        montoBase,
+        pct,
+        factor: fromTotal.factor,
+        calculado,
+        aplicado: this.roundMoney(Number(a?.ABONO) || 0),
+      };
     },
 
     async fetchList() {
@@ -538,6 +561,9 @@ function createRetencionesDocView(cfg) {
               </button>
               <span class="pos-header-doc-label fw-semibold">${this.escapeHtml(cfg.title)} · ${this.escapeHtml(d?.CODDOC || '')} #${this.escapeHtml(d?.CORRELATIVO || '')}</span>
               ${d?.FINALIZADO ? '<span class="badge text-bg-success ms-auto">Finalizada</span>' : ''}
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="btn-${P}-imprimir">
+                <i class="fa-solid fa-print me-1"></i>Imprimir
+              </button>
             </div>
           </div>
           <div class="ret-doc-editor-scroll mx-2" id="${id('editor-body')}">${this.renderEditorForm()}</div>
@@ -709,7 +735,7 @@ function createRetencionesDocView(cfg) {
             body: JSON.stringify(payload),
           }
         );
-        this._doc = { ...doc, abonos: this._doc.abonos };
+        this._doc = { ...doc, abonos: doc.abonos || this._abonos };
         F.toast('Retención guardada', 'success');
       } finally {
         this._saving = false;
@@ -773,47 +799,130 @@ function createRetencionesDocView(cfg) {
     },
 
     async imprimirRetencion(coddoc, correlativo) {
+      const sameEditor =
+        this._doc &&
+        String(this._doc.CODDOC) === String(coddoc) &&
+        Number(this._doc.CORRELATIVO) === Number(correlativo);
+      if (sameEditor && this.docEditable(this._doc) && this._abonos.length) {
+        try {
+          await this.onGuardar();
+        } catch (err) {
+          F.toast(err.message || 'No se pudieron guardar las facturas antes de imprimir', 'warning');
+        }
+      }
       const doc = await F.fetchJson(this.apiBase(`/${encodeURIComponent(coddoc)}/${correlativo}`), {
         cache: 'no-store',
       });
-      const base = Number(doc.TOTALSINIVA) || 0;
-      const ret = Number(doc.TOTALIVA) || Number(doc.TOTALPRECIO) || 0;
-      const abonosHtml = (doc.abonos || [])
-        .map(
-          (a) =>
-            `<tr>
-              <td>${PrintReport.escapeHtml(a.CODDOC_FAC)} #${PrintReport.escapeHtml(a.CORRELATIVO_FAC)}</td>
-              <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(a.ABONO))}</td>
-            </tr>`
-        )
+      if (doc.calc) this._calc = { ...this._calc, ...doc.calc };
+      const abonosApi = Array.isArray(doc.abonos)
+        ? doc.abonos
+        : Array.isArray(doc.ABONOS)
+          ? doc.ABONOS
+          : [];
+      const abonos =
+        abonosApi.length > 0
+          ? abonosApi
+          : sameEditor && this._abonos.length
+            ? this._abonos
+            : [];
+      const lineas = abonos.map((a) => ({ a, c: this.calcLineaRetencion(a) }));
+      const totTotal = this.roundMoney(lineas.reduce((s, x) => s + x.c.total, 0));
+      const totBase = this.roundMoney(lineas.reduce((s, x) => s + x.c.base, 0));
+      const totIva = this.roundMoney(lineas.reduce((s, x) => s + x.c.iva, 0));
+      const totRet = this.roundMoney(lineas.reduce((s, x) => s + x.c.aplicado, 0));
+      const pct = Number(this._calc?.retencionPorcentaje) || 0;
+      const factor = Number(this._calc?.ivaFactor) > 0 ? Number(this._calc.ivaFactor) : 1.12;
+      const formula =
+        kind === 'iva'
+          ? `Retención IVA = (Total − Total/${factor}) × ${pct}%`
+          : `Retención ISR = (Total / ${factor}) × ${pct}%`;
+      const headerCols = kind === 'iva'
+        ? `<th>${docColLabel}</th><th>Serie</th><th>Número</th><th>Fecha</th>
+           <th class="text-end">Total</th><th class="text-end">Base gravada</th>
+           <th class="text-end">IVA</th><th class="text-end">%</th><th class="text-end">Retención</th>`
+        : `<th>${docColLabel}</th><th>Serie</th><th>Número</th><th>Fecha</th>
+           <th class="text-end">Total</th><th class="text-end">Base gravada</th>
+           <th class="text-end">%</th><th class="text-end">Retención</th>`;
+      const colCount = kind === 'iva' ? 9 : 8;
+      const money = (n) => PrintReport.escapeHtml(this.formatMoney(n));
+      const abonosHtml = lineas
+        .map(({ a, c }) => {
+          const docLbl = `${a.CODDOC_FAC || ''} #${a.CORRELATIVO_FAC ?? ''}`;
+          const ivaCols =
+            kind === 'iva' ? `<td class="text-end">${money(c.iva)}</td>` : '';
+          return `<tr>
+            <td>${PrintReport.escapeHtml(docLbl)}</td>
+            <td>${PrintReport.escapeHtml(a.FAC_SERIEFAC || '—')}</td>
+            <td>${PrintReport.escapeHtml(a.FAC_NOFAC || '—')}</td>
+            <td>${PrintReport.escapeHtml(this.formatDate(a.FAC_FECHA))}</td>
+            <td class="text-end">${money(c.total)}</td>
+            <td class="text-end">${money(c.base)}</td>
+            ${ivaCols}
+            <td class="text-end">${PrintReport.escapeHtml(String(c.pct))}%</td>
+            <td class="text-end fw-semibold">${money(c.aplicado)}</td>
+          </tr>`;
+        })
         .join('');
+      const ivaFoot = kind === 'iva' ? `<td class="text-end">${money(totIva)}</td>` : '';
+      const tfoot = lineas.length
+        ? `<tfoot>
+            <tr>
+              <td colspan="4"><strong>Totales</strong></td>
+              <td class="text-end"><strong>${money(totTotal)}</strong></td>
+              <td class="text-end"><strong>${money(totBase)}</strong></td>
+              ${ivaFoot}
+              <td></td>
+              <td class="text-end"><strong>${money(totRet)}</strong></td>
+            </tr>
+          </tfoot>`
+        : '';
+      const headerRet = Number(doc.TOTALIVA) || Number(doc.TOTALPRECIO) || totRet;
+      const headerBase = Number(doc.TOTALSINIVA) || totBase;
+      if (typeof PrintReport.ensureLogo === 'function') {
+        await PrintReport.ensureLogo();
+      }
       await PrintReport.openAndPrint(
         () =>
           PrintReport.wrapDocument({
             title: cfg.title,
+            extraStyles: `
+              .ret-print-table{font-size:11px;width:100%;border-collapse:collapse;margin-top:.5rem}
+              .ret-print-table th,.ret-print-table td{padding:5px 6px;border:1px solid #ccc}
+              .ret-print-table thead th{background:#f3f3f3}
+              .ret-print-table tfoot td{background:#f0f0f0;border-top:2px solid #999}
+              .ret-print-formula{font-size:11px;color:#444;margin:.4rem 0 .8rem}
+            `,
             bodyHtml: `
               ${PrintReport.reportHeaderHtml({
                 title: cfg.title,
                 subtitleHtml: `
-                  <p><strong>${PrintReport.escapeHtml(doc.CODDOC)} #${doc.CORRELATIVO}</strong> · ${PrintReport.escapeHtml(this.formatDate(doc.FECHA))}</p>
-                  <p><strong>${partyLabel}:</strong> ${PrintReport.escapeHtml(doc.DOC_NOMCLIE || '—')} · NIT ${PrintReport.escapeHtml(doc.DOC_NIT || '—')}</p>
-                  <p><strong>Pago:</strong> ${doc.CONCRE === 'CRE' ? 'Crédito' : 'Contado'}</p>
+                  <p><strong>${PrintReport.escapeHtml(doc.CODDOC)} #${doc.CORRELATIVO}</strong>
+                    · ${PrintReport.escapeHtml(this.formatDate(doc.FECHA))}
+                    · ${doc.CONCRE === 'CRE' ? 'Crédito' : 'Contado'}</p>
+                  <p><strong>${partyLabel}:</strong> ${PrintReport.escapeHtml(doc.DOC_NOMCLIE || '—')}
+                    · NIT ${PrintReport.escapeHtml(doc.DOC_NIT || '—')}</p>
                 `,
               })}
-              <table class="table table-sm">
-                <thead><tr><th>${docColLabel}</th><th class="text-end">Retención</th></tr></thead>
-                <tbody>${abonosHtml || `<tr><td colspan="2" class="text-muted">Sin ${docsLabel}</td></tr>`}</tbody>
+              <p class="ret-print-formula"><strong>Cálculo:</strong> ${PrintReport.escapeHtml(formula)}</p>
+              <table class="table table-sm ret-print-table">
+                <thead><tr>${headerCols}</tr></thead>
+                <tbody>${
+                  abonosHtml ||
+                  `<tr><td colspan="${colCount}" class="text-muted">Sin ${docsLabel} en esta retención</td></tr>`
+                }</tbody>
+                ${tfoot}
               </table>
-              <table class="table table-sm">
+              <table class="table table-sm mt-3" style="max-width:22rem;margin-left:auto">
                 <tbody>
-                  <tr><td>${PrintReport.escapeHtml(cfg.baseLabel)}</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(base))}</td></tr>
-                  <tr><td>${PrintReport.escapeHtml(cfg.retencionLabel)}</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(ret))}</td></tr>
+                  <tr><td>${PrintReport.escapeHtml(cfg.baseLabel)}</td><td class="text-end">${money(headerBase)}</td></tr>
+                  <tr><td>${PrintReport.escapeHtml(cfg.retencionLabel)}</td>
+                    <td class="text-end fw-bold">${money(headerRet)}</td></tr>
                 </tbody>
               </table>
               ${doc.OBS ? `<p><em>${PrintReport.escapeHtml(doc.OBS)}</em></p>` : ''}
             `,
           }),
-        'width=720,height=640'
+        'width=900,height=700'
       );
     },
 
@@ -910,6 +1019,11 @@ function createRetencionesDocView(cfg) {
     bindEditorEvents() {
       const c = this._container;
       c?.querySelector(`#btn-${P}-atras`)?.addEventListener('click', () => this.showList());
+      c?.querySelector(`#btn-${P}-imprimir`)?.addEventListener('click', () => {
+        const d = this._doc;
+        if (!d?.CODDOC) return;
+        this.imprimirRetencion(d.CODDOC, d.CORRELATIVO).catch((err) => F.toast(err.message, 'error'));
+      });
       c?.querySelector(`#btn-${P}-guardar`)?.addEventListener('click', () => {
         this.onGuardar().catch((err) => F.toast(err.message, 'error'));
       });

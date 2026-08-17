@@ -613,7 +613,7 @@ const CuentasPorPagarView = {
               <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control" id="cxp-search"
-                  placeholder="Buscar documento, proveedor, empleado, NIT…"
+                  placeholder="Buscar documento, proveedor, empleado, NIT… (Enter)"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
                 <div></div>
                 <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
@@ -1312,22 +1312,30 @@ const CuentasPorPagarView = {
 
   bindEvents() {
     const search = this._container?.querySelector('#cxp-search');
-    let searchTimer = null;
-    search?.addEventListener('input', () => {
-      this._filterQuery = search.value;
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(async () => {
-        try {
-          this._loading = true;
-          await this.fetchDocumentos();
-          this._container.innerHTML = this.renderShell();
-          this.bindEvents();
-        } catch (err) {
-          F.toast(err.message || 'Error al buscar', 'error');
-        } finally {
-          this._loading = false;
-        }
-      }, 350);
+    const applySearch = async () => {
+      if (!search) return;
+      const next = search.value;
+      if (next === this._filterQuery && !this._loading) return;
+      this._filterQuery = next;
+      try {
+        this._loading = true;
+        await this.fetchDocumentos();
+        this._container.innerHTML = this.renderShell();
+        this.bindEvents();
+        this._container?.querySelector('#cxp-search')?.focus();
+      } catch (err) {
+        F.toast(err.message || 'Error al buscar', 'error');
+      } finally {
+        this._loading = false;
+      }
+    };
+    search?.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      applySearch();
+    });
+    search?.addEventListener('search', () => {
+      if (!String(search.value || '').trim()) applySearch();
     });
 
     const switchVista = async (value) => {

@@ -27,7 +27,7 @@ const INV_FISCAL_ANIOS = [];
 const InventarioFiscalView = {
   _container: null,
   _rows: [],
-  _totals: { SALDO: 0, TOTALCOSTO: 0 },
+  _totals: { INICIAL: 0, COMPRAS: 0, VENTAS: 0, SALDO: 0, TOTALCOSTO: 0, TOTALCOSTO_SIN_IVA: 0 },
   _mes: null,
   _anio: null,
   _filterQuery: '',
@@ -39,9 +39,14 @@ const InventarioFiscalView = {
     { key: 'DESPROD', label: 'Descripción' },
     { key: 'DESMARCA', label: 'Marca' },
     { key: 'TIPOPROD', label: 'Tipo' },
+    { key: 'INICIAL', label: 'Inicial', type: 'qty' },
+    { key: 'COMPRAS', label: 'Compras', type: 'qty' },
+    { key: 'VENTAS', label: 'Ventas', type: 'qty' },
     { key: 'SALDO', label: 'Saldo fiscal', type: 'qty' },
     { key: 'COSTO', label: 'Costo', type: 'money' },
+    { key: 'COSTO_SIN_IVA', label: 'Costo sin IVA', type: 'money' },
     { key: 'TOTALCOSTO', label: 'Total costo', type: 'money' },
+    { key: 'TOTALCOSTO_SIN_IVA', label: 'Total costo sin IVA', type: 'money' },
   ],
 
   escapeHtml(value) {
@@ -65,6 +70,23 @@ const InventarioFiscalView = {
     return n.toLocaleString('es-GT', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
   },
 
+  formatDate(value) {
+    if (!value) return '—';
+    if (typeof value === 'string') {
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+      return `${day}/${mo}/${d.getUTCFullYear()}`;
+    } catch {
+      return '—';
+    }
+  },
+
   currentPeriod() {
     const now = new Date();
     return { mes: now.getMonth() + 1, anio: now.getFullYear() };
@@ -85,8 +107,12 @@ const InventarioFiscalView = {
     const parts = [
       `${this._rows.length} producto(s)`,
       `al ${this.mesLabel(this._mes)} ${this._anio}`,
+      `Inicial: ${this.formatQty(this._totals.INICIAL)}`,
+      `Compras: ${this.formatQty(this._totals.COMPRAS)}`,
+      `Ventas: ${this.formatQty(this._totals.VENTAS)}`,
       `Saldo: ${this.formatQty(this._totals.SALDO)}`,
       `Costo: ${this.formatMoney(this._totals.TOTALCOSTO)}`,
+      `Costo s/IVA: ${this.formatMoney(this._totals.TOTALCOSTO_SIN_IVA)}`,
     ];
     if (this._truncated) parts.push('lista truncada');
     return parts.join(' · ');
@@ -136,13 +162,16 @@ const InventarioFiscalView = {
             <button type="button" class="btn btn-sm btn-outline-primary" id="btn-inv-fiscal-recargar">
               <i class="fa-solid fa-rotate me-1"></i>Actualizar
             </button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="btn-inv-fiscal-export">
+              <i class="fa-solid fa-file-excel me-1"></i>Exportar Excel
+            </button>
           </div>
           <div class="small text-muted mt-2" id="inv-fiscal-count">${this.escapeHtml(this.badgeText())}</div>
           <div class="small text-muted mt-1">
             Saldo acumulado hasta el mes seleccionado, solo con documentos cuyo tipo tiene
             <strong>CONTABLE = SI</strong>. Para el reporte: FEF/FEC/FES siempre restan;
             FNC/FNA y COM/COP siempre suman (aunque TIPOM=0). Demás tipos usan TIPOM.
-            Se excluyen anulados y servicios.
+            Haga clic en un producto para ver los movimientos del mes.
           </div>
         </div>
       </div>`;
@@ -164,7 +193,9 @@ const InventarioFiscalView = {
                   return `<td class="small${align}">${this.formatCell(row[c.key], c)}</td>`;
                 })
                 .join('');
-              return `<tr>${cells}</tr>`;
+              return `<tr class="inventario-fiscal-row" data-codprod="${this.escapeHtml(row.CODPROD)}" title="Ver movimientos del mes">
+                ${cells}
+              </tr>`;
             })
             .join('');
 
@@ -214,6 +245,16 @@ const InventarioFiscalView = {
     this._container?.querySelector('#btn-inv-fiscal-recargar')?.addEventListener('click', () => {
       this.reload().catch((err) => F.toast(err.message, 'error'));
     });
+    this._container?.querySelector('#btn-inv-fiscal-export')?.addEventListener('click', () => {
+      this.exportExcel().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#inv-fiscal-table-root')?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-codprod]');
+      if (!tr) return;
+      const codprod = tr.getAttribute('data-codprod');
+      if (!codprod) return;
+      this.showMovimientos(codprod).catch((err) => F.toast(err.message, 'error'));
+    });
     const search = this._container?.querySelector('#inv-fiscal-search');
     if (search) {
       const run = F.debounce(() => {
@@ -222,6 +263,102 @@ const InventarioFiscalView = {
       }, 350);
       search.addEventListener('input', run);
     }
+  },
+
+  async exportExcel() {
+    const btn = this._container?.querySelector('#btn-inv-fiscal-export');
+    const emp = F.getEmpNit();
+    if (!emp) throw new Error('No hay empresa activa');
+    const params = new URLSearchParams({
+      empnit: emp,
+      mes: String(this._mes),
+      anio: String(this._anio),
+      _: String(Date.now()),
+    });
+    const url = `/api/inventario-fiscal/export?${params}`;
+    if (typeof LibroContableCommon !== 'undefined') {
+      await LibroContableCommon.downloadExport(
+        url,
+        btn,
+        `inventario_fiscal_${this._mes}_${this._anio}.xlsx`
+      );
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText);
+      }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `inventario_fiscal_${this._mes}_${this._anio}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      F.toast('Excel exportado', 'success');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  async showMovimientos(codprod) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      mes: String(this._mes),
+      anio: String(this._anio),
+      codprod: String(codprod),
+      _: String(Date.now()),
+    });
+    const data = await F.fetchJson(`/api/inventario-fiscal/movimientos?${params}`, { cache: 'no-store' });
+    const prod = data.producto || {};
+    const rows = data.rows || [];
+    const body = rows.length
+      ? rows
+          .map(
+            (r) => `<tr>
+              <td class="small">${this.escapeHtml(this.formatDate(r.FECHA))}</td>
+              <td class="small">${this.escapeHtml(r.CODDOC || '')}-${this.escapeHtml(r.CORRELATIVO ?? '')}</td>
+              <td class="small">${this.escapeHtml(r.DOC_FISCAL || '—')}</td>
+              <td class="small">${this.escapeHtml(r.TIPODOC || '')}</td>
+              <td class="small text-end">${this.escapeHtml(this.formatQty(r.CANTIDAD))}</td>
+              <td class="small text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+              <td class="small text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            </tr>`
+          )
+          .join('')
+      : '<tr><td colspan="7" class="text-center text-muted py-3">Sin movimientos en este mes</td></tr>';
+
+    await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: `${prod.CODPROD || codprod} · ${prod.DESPROD || ''}`,
+      width: 860,
+      html: `
+        <p class="small text-muted text-start mb-2">
+          Movimientos fiscales de ${this.escapeHtml(this.mesLabel(this._mes))} ${this.escapeHtml(this._anio)}
+        </p>
+        <div class="table-responsive inventario-fiscal-mov-wrap">
+          <table class="table table-sm table-hover align-middle mb-0 text-start">
+            <thead class="table-light">
+              <tr>
+                <th class="small">Fecha</th>
+                <th class="small">Doc. interno</th>
+                <th class="small">Doc. fiscal</th>
+                <th class="small">Tipo</th>
+                <th class="small text-end">Cantidad</th>
+                <th class="small text-end">Costo</th>
+                <th class="small text-end">Precio</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      `,
+      showCancelButton: false,
+      confirmButtonText: CatalogosUI.aceptarButtonHtml('Cerrar'),
+    });
   },
 
   async reload() {
@@ -236,7 +373,14 @@ const InventarioFiscalView = {
     try {
       const data = await F.fetchJson(this.apiUrl(), { cache: 'no-store' });
       this._rows = data.rows || [];
-      this._totals = data.totals || { SALDO: 0, TOTALCOSTO: 0 };
+      this._totals = data.totals || {
+        INICIAL: 0,
+        COMPRAS: 0,
+        VENTAS: 0,
+        SALDO: 0,
+        TOTALCOSTO: 0,
+        TOTALCOSTO_SIN_IVA: 0,
+      };
       this._truncated = Boolean(data.truncated);
       if (countEl) countEl.textContent = this.badgeText();
       if (root) root.innerHTML = this.renderTable();

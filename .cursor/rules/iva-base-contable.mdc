@@ -1,0 +1,34 @@
+---
+description: Desglose de IVA y base gravada en cálculos contables (Monto / factor CONFIGURACION IVA)
+globs: lib/**/*.js,routes/**/*.js,public/js/views/contabilidad/**/*.js
+alwaysApply: false
+---
+
+# IVA y base en cálculos contables
+
+En Guatemala el **monto incluye IVA**. No inventar otra fórmula ni usar 12% fijo en código.
+
+## Fórmula (regla general)
+
+- **Monto** = importe con IVA (el valor normal en dinero).
+- **Factor** = `SETTINGS.CONFIGURACION IVA` (se guarda como `1.12` si el IVA es 12%).
+- **Base** = Monto / factor
+- **IVA** = Monto − Base
+
+Ejemplo: `112 / 1.12 = 100` de base; IVA `112 − 100 = 12`.
+
+## Cómo implementarlo
+
+Usar `lib/impuestos.js`:
+
+- `getIvaFactor(pool)` — lee el factor de configuración (no hardcodear 1.12 salvo fallback).
+- `desgloseIvaDeMonto(monto, ivaFactor)` → `{ monto, base, iva }`
+- `splitIvaFromTotal(total, hasIva, ivaFactor)` — mismo desglose; `gravable` = base.
+- `desgloseIvaIncluyente(total, exento, ivaFactor)` — si hay parte exenta: gravado = total − exento, luego la misma fórmula.
+
+Redondear con `roundMoney` de `libro-contable-utils`.
+
+## No hacer
+
+- Calcular IVA como `monto * 0.12` sobre el total (eso no es el desglose SAT).
+- Duplicar la fórmula en vistas o rutas; importar `lib/impuestos.js`.

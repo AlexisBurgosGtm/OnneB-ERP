@@ -1,15 +1,9 @@
 /**
- * Pace.js — barra de carga y porcentaje visible
+ * Pace.js — barra de carga y porcentaje visible.
+ * Opciones en index.html (antes de pace.min.js): sin trackWebSockets ni /socket.io
+ * para que un reinicio del servidor no muestre el overlay de “Cargando”.
  */
 (function initPace() {
-  window.paceOptions = {
-    ajax: true,
-    document: true,
-    eventLag: true,
-    restartOnPushState: false,
-    restartOnRequestAfter: false,
-  };
-
   const overlay = document.createElement('div');
   overlay.id = 'onneb-pace-overlay';
   overlay.className = 'onneb-pace-overlay';
@@ -36,6 +30,18 @@
   function hideOverlay() {
     overlay.classList.remove('is-active');
     overlay.setAttribute('aria-busy', 'false');
+  }
+
+  function stopAll() {
+    if (typeof Pace !== 'undefined') {
+      try {
+        Pace.stop();
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    hideOverlay();
+    setPercent(0);
   }
 
   function bindPaceEvents() {
@@ -82,7 +88,7 @@
       if (typeof Pace !== 'undefined') Pace.restart();
     },
     stop() {
-      if (typeof Pace !== 'undefined') Pace.stop();
+      stopAll();
     },
   };
 })();

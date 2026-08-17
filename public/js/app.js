@@ -302,7 +302,21 @@
     });
     socket.on('disconnect', () => {
       console.log('[Socket.IO] Desconectado');
+      // Evita overlay de Pace atrapado por reconexión / polling de socket.io
+      stopLoadingOverlays();
     });
+    socket.on('connect_error', () => {
+      stopLoadingOverlays();
+    });
+    if (socket.io) {
+      socket.io.on('reconnect_attempt', () => {
+        stopLoadingOverlays();
+      });
+      socket.io.on('reconnect', () => {
+        stopLoadingOverlays();
+        registerSocketSession();
+      });
+    }
     socket.on('build:updated', () => {
       loadBuildCounter();
     });
@@ -654,6 +668,8 @@
     cotizaciones: 'Cotizaciones',
     'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
+    embarques: 'Embarques (picking)',
+    'asignacion-pedidos': 'Asignación de Facturas',
     'pendientes-entrega': 'Pendientes Entrega',
     'cuentas-cobrar': 'Cuentas por Cobrar',
     'recibos-caja-cxc': 'Recibos de Caja CXC',
@@ -801,6 +817,10 @@
       FraccionamientoFacView.load(mainContent);
     } else if (key === 'tareas' && typeof TareasView !== 'undefined') {
       TareasView.load(mainContent);
+    } else if (key === 'embarques' && typeof EmbarquesView !== 'undefined') {
+      EmbarquesView.load(mainContent);
+    } else if (key === 'asignacion-pedidos' && typeof AsignacionPedidosView !== 'undefined') {
+      AsignacionPedidosView.load(mainContent);
     } else if (key === 'cuentas-cobrar' && typeof CuentasPorCobrarView !== 'undefined') {
       CuentasPorCobrarView.load(mainContent);
     } else if (key === 'recibos-caja-cxc' && typeof RecibosCajaCxcView !== 'undefined') {

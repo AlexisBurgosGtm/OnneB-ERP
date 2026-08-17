@@ -12,6 +12,7 @@ const ResumenDelDiaView = {
   _data: null,
   _loading: false,
   _filterClase: '',
+  _filterConcre: '',
   _filterQ: '',
 
   escapeHtml(value) {
@@ -89,6 +90,7 @@ const ResumenDelDiaView = {
     this._selectedFecha = null;
     this._data = null;
     this._filterClase = '';
+    this._filterConcre = '';
     this._filterQ = '';
     this.initCalMonth();
     container.className = 'main-content flex-grow-1 d-flex p-3 align-items-stretch justify-content-start';
@@ -110,16 +112,41 @@ const ResumenDelDiaView = {
     return this._data?.rows || [];
   },
 
+  amountsForFilter(r) {
+    const mode = String(this._filterConcre || '').trim().toUpperCase();
+    if (mode === 'CON') {
+      return {
+        totalunidades: Number(r.totalunidadesCon) || 0,
+        totalprecio: Number(r.totalprecioCon) || 0,
+      };
+    }
+    if (mode === 'CRE') {
+      return {
+        totalunidades: Number(r.totalunidadesCre) || 0,
+        totalprecio: Number(r.totalprecioCre) || 0,
+      };
+    }
+    return {
+      totalunidades: Number(r.totalunidades) || 0,
+      totalprecio: Number(r.totalprecio) || 0,
+    };
+  },
+
   filteredRows() {
     const clase = String(this._filterClase ?? '').trim();
     const q = String(this._filterQ ?? '').trim().toLowerCase();
-    return this.allRows().filter((r) => {
-      if (clase !== '' && String(r.CODCLATRES) !== clase) return false;
-      if (!q) return true;
-      return String(r.desprod ?? '')
-        .toLowerCase()
-        .includes(q);
-    });
+    const mode = String(this._filterConcre || '').trim().toUpperCase();
+    return this.allRows()
+      .filter((r) => {
+        if (clase !== '' && String(r.CODCLATRES) !== clase) return false;
+        if (q && !String(r.desprod ?? '').toLowerCase().includes(q)) return false;
+        if (mode === 'CON' || mode === 'CRE') {
+          const amt = this.amountsForFilter(r);
+          return Math.abs(amt.totalunidades) > 0.0001 || Math.abs(amt.totalprecio) > 0.0001;
+        }
+        return true;
+      })
+      .map((r) => ({ ...r, ...this.amountsForFilter(r) }));
   },
 
   filteredTotales(rows) {
@@ -139,6 +166,7 @@ const ResumenDelDiaView = {
     this._selectedFecha = iso;
     this._screen = 'detalle';
     this._filterClase = '';
+    this._filterConcre = '';
     this._filterQ = '';
     this._loading = true;
     this._data = null;
@@ -160,6 +188,7 @@ const ResumenDelDiaView = {
     this._selectedFecha = null;
     this._data = null;
     this._filterClase = '';
+    this._filterConcre = '';
     this._filterQ = '';
     this.render();
   },
@@ -308,11 +337,19 @@ const ResumenDelDiaView = {
         </div>
 
         <div class="resumen-dia-filters row g-2 align-items-end mb-3">
-          <div class="col-md-5 col-lg-4">
+          <div class="col-md-4 col-lg-3">
             <label class="form-label small mb-1" for="resumen-dia-filtro-clase">Clasificación</label>
             <select class="form-select form-select-sm" id="resumen-dia-filtro-clase">${claseOpts}</select>
           </div>
-          <div class="col-md-7 col-lg-8">
+          <div class="col-md-3 col-lg-3">
+            <label class="form-label small mb-1" for="resumen-dia-filtro-concre">Forma de pago</label>
+            <select class="form-select form-select-sm" id="resumen-dia-filtro-concre">
+              <option value=""${this._filterConcre === '' ? ' selected' : ''}>TODOS</option>
+              <option value="CON"${this._filterConcre === 'CON' ? ' selected' : ''}>CONTADO</option>
+              <option value="CRE"${this._filterConcre === 'CRE' ? ' selected' : ''}>CREDITO</option>
+            </select>
+          </div>
+          <div class="col-md-5 col-lg-6">
             <label class="form-label small mb-1" for="resumen-dia-filtro-q">Buscar</label>
             <input type="search" class="form-control form-control-sm" id="resumen-dia-filtro-q"
               placeholder="Buscar por descripción…"
@@ -424,6 +461,12 @@ const ResumenDelDiaView = {
     const claseEl = this._container?.querySelector('#resumen-dia-filtro-clase');
     claseEl?.addEventListener('change', () => {
       this._filterClase = claseEl.value || '';
+      this.refreshFilteredTable();
+    });
+
+    const concreEl = this._container?.querySelector('#resumen-dia-filtro-concre');
+    concreEl?.addEventListener('change', () => {
+      this._filterConcre = String(concreEl.value || '').trim().toUpperCase();
       this.refreshFilteredTable();
     });
 

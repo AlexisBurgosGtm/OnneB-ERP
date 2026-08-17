@@ -13,6 +13,14 @@ const {
   samplePrintContext,
 } = require('../lib/formato-impresion-engine');
 
+const {
+  loadAbonosRetencion,
+  loadCalcParams,
+  calcRetencionSobreBase,
+} = require('../lib/retenciones-facturas');
+
+const TIPODOC_RETENCION_PRINT = ['RTV', 'RTI', 'RVR', 'RIR'];
+
 const router = express.Router();
 
 const CREATE_TABLE_SQL = `
@@ -169,20 +177,50 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
   const header = normalizeDocumentoRows(headerRes.recordset)[0];
   header.FECHA_ISO = fechaIsoFromRow(header);
 
-  const linesRes = await pool
-    .request()
-    .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODDOC', sql.VarChar, coddoc)
-    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-    .query(`
+  const tipodoc = String(header.TIPODOC || '').trim().toUpperCase();
+  let lines = [];
+  if (TIPODOC_RETENCION_PRINT.includes(tipodoc)) {
+    const abonos = await loadAbonosRetencion(pool, empnit, coddoc, correlativo);
+    const kind = tipodoc === 'RTI' || tipodoc === 'RIR' ? 'isr' : 'iva';
+    const calc = await loadCalcParams(pool, kind);
+    lines = (abonos || []).map((a) => {
+      const total = Number(a.FAC_TOTALPRECIO) || 0;
+      const des = calcRetencionSobreBase(total, calc.ivaFactor, calc.retencionPorcentaje, kind);
+      const base = Number(a.FAC_TOTALSINIVA) > 0 ? Number(a.FAC_TOTALSINIVA) : des.base;
+      const iva = Number(a.FAC_TOTALIVA) > 0 ? Number(a.FAC_TOTALIVA) : des.iva;
+      const serieNum = [a.FAC_SERIEFAC, a.FAC_NOFAC].filter(Boolean).join('-') || '—';
+      const detalle =
+        kind === 'iva'
+          ? `${serieNum} · Base ${base.toFixed(2)} · IVA ${iva.toFixed(2)} · ${des.pct}%`
+          : `${serieNum} · Base ${base.toFixed(2)} · ${des.pct}%`;
+      return {
+        CODPROD: `${a.CODDOC_FAC || ''} #${a.CORRELATIVO_FAC ?? ''}`.trim(),
+        DESPROD: detalle,
+        CODMEDIDA: '',
+        CANTIDAD: 1,
+        PRECIO: total,
+        TOTALPRECIO: Number(a.ABONO) || 0,
+        EQUIVALE: 1,
+        TOTALUNIDADES: 1,
+      };
+    });
+  } else {
+    const linesRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .query(`
       SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
         TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
       FROM dbo.DOCPRODUCTOS
       WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
       ORDER BY Id
     `);
+    lines = linesRes.recordset || [];
+  }
 
-  return { header, lines: linesRes.recordset || [] };
+  return { header, lines };
 }
 
 async function findFormato(pool, empnit, tipodoc, papel) {

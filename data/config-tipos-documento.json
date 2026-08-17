@@ -18,6 +18,7 @@
     { "TIPODOC": "DVP", "DESCRIPCION": "Nota de crédito proveedor" },
     { "TIPODOC": "PRC", "DESCRIPCION": "Pre Recibo de cobro (abono CXC)" },
     { "TIPODOC": "RCC", "DESCRIPCION": "Recibo de cobro (abono CXC)" },
+    { "TIPODOC": "RAR", "DESCRIPCION": "Abono por Retención en Factura FEL Cliente(cxc)" },
     { "TIPODOC": "RCP", "DESCRIPCION": "Recibo de pago (abono CXP)" },
     { "TIPODOC": "RTV", "DESCRIPCION": "Retenciones Emitidas IVA" },
     { "TIPODOC": "RTI", "DESCRIPCION": "Retenciones Emitidas ISR" },

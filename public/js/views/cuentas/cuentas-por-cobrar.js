@@ -20,10 +20,12 @@ const CuentasPorCobrarView = {
   _consolidadoTotales: null,
   _loading: false,
   _guardandoRecibo: false,
+  _guardandoRar: false,
   _corregiendoSaldos: false,
 
   MENU_OPCIONES: [
     { action: 'nuevo-abono', label: 'NUEVO ABONO', icon: 'fa-solid fa-money-bill-transfer', className: 'btn-success text-white' },
+    { action: 'abono-retenciones', label: 'ABONO RETENCIONES', icon: 'fa-solid fa-percent', className: 'btn-outline-warning', soloFac: true },
     { action: 'historial', label: 'HISTORIAL', icon: 'fa-solid fa-clock-rotate-left', className: 'btn-outline-primary' },
     { action: 'estado-cuenta', label: 'ESTADO CUENTA', icon: 'fa-solid fa-file-invoice', className: 'btn-outline-secondary' },
     { action: 'reimprimir', label: 'REIMPRIMIR', icon: 'fa-solid fa-print', className: 'btn-outline-secondary' },
@@ -70,6 +72,30 @@ const CuentasPorCobrarView = {
     return F.fetchJson(`/api/cuentas-cobrar/rcc/siguiente?${params}`, { cache: 'no-store' });
   },
 
+  async fetchRarTipos() {
+    const emp = F.getEmpNit();
+    return F.fetchJson(`/api/cuentas-cobrar/rar/tipos?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
+  async fetchSiguienteRar(coddoc) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({ empnit: emp, _: String(Date.now()) });
+    if (coddoc) params.set('coddoc', coddoc);
+    return F.fetchJson(`/api/cuentas-cobrar/rar/siguiente?${params}`, { cache: 'no-store' });
+  },
+
+  retencionesFelUrl(coddoc, correlativo) {
+    const emp = F.getEmpNit();
+    return `/api/cuentas-cobrar/facturas/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/retenciones-fel?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`;
+  },
+
+  abonoRarUrl(coddoc, correlativo) {
+    const emp = F.getEmpNit();
+    return `/api/cuentas-cobrar/facturas/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/abono-rar?empnit=${encodeURIComponent(emp)}`;
+  },
+
   async fetchCajasAbiertas() {
     const emp = F.getEmpNit();
     const codempleado = F.sessionCodEmpleado();
@@ -110,6 +136,24 @@ const CuentasPorCobrarView = {
       .join('');
     return `
       <select id="cxp-abono-coddoc" class="form-select form-select-sm fw-semibold">
+        ${options}
+      </select>`;
+  },
+
+  renderRarCoddocSelectHtml(tipos, selectedCoddoc) {
+    if (!tipos?.length) {
+      return '<p class="small text-danger mb-0">No hay documentos RAR activos</p>';
+    }
+    const options = tipos
+      .map((t) => {
+        const cod = t.CODDOC;
+        const label = t.DESDOC ? `${cod} — ${t.DESDOC}` : cod;
+        const sel = String(cod) === String(selectedCoddoc) ? ' selected' : '';
+        return `<option value="${this.escapeHtml(cod)}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <select id="cxp-rar-coddoc" class="form-select form-select-sm fw-semibold">
         ${options}
       </select>`;
   },
@@ -888,7 +932,7 @@ const CuentasPorCobrarView = {
               <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
                 <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
                 <input type="search" class="form-control" id="cxp-search"
-                  placeholder="Buscar documento, cliente, empleado, NIT…"
+                  placeholder="Buscar documento, cliente, empleado, NIT… (Enter)"
                   value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
               </div>
               <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
@@ -905,16 +949,20 @@ const CuentasPorCobrarView = {
       </div>`;
   },
 
-  renderMenuOpcionesHtml() {
+  renderMenuOpcionesHtml(row = null) {
+    const tipodoc = String(row?.TIPODOC || '').trim().toUpperCase();
+    const opciones = this.MENU_OPCIONES.filter((opt) => !opt.soloFac || tipodoc === 'FAC');
     return `
       <div class="cxp-menu-grid">
-        ${this.MENU_OPCIONES.map(
-          (opt) => `
+        ${opciones
+          .map(
+            (opt) => `
           <button type="button" class="btn cxp-menu-btn ${opt.className}" data-cxp-action="${opt.action}">
             <i class="${opt.icon}"></i>
             <span>${this.escapeHtml(opt.label)}</span>
           </button>`
-        ).join('')}
+          )
+          .join('')}
       </div>`;
   },
 
@@ -1351,7 +1399,7 @@ const CuentasPorCobrarView = {
       title: 'Opciones del documento',
       html: `
         <p class="small text-muted text-start mb-2">${this.escapeHtml(label)} · ${this.escapeHtml(row.DOC_NOMCLIE || '')}</p>
-        ${this.renderMenuOpcionesHtml()}
+        ${this.renderMenuOpcionesHtml(row)}
       `,
       width: 580,
       showConfirmButton: false,
@@ -1375,6 +1423,10 @@ const CuentasPorCobrarView = {
     try {
       if (action === 'nuevo-abono') {
         await this.nuevoAbono(row);
+        return;
+      }
+      if (action === 'abono-retenciones') {
+        await this.abonoPorRetenciones(row);
         return;
       }
       if (action === 'historial') {
@@ -1586,6 +1638,239 @@ const CuentasPorCobrarView = {
     this.bindEvents();
   },
 
+  async wireCoddocRarChange() {
+    const select = document.getElementById('cxp-rar-coddoc');
+    const corrInp = document.getElementById('cxp-rar-correlativo');
+    if (!select || !corrInp) return;
+    const loadCorrelativo = async (coddoc) => {
+      corrInp.value = '…';
+      try {
+        const data = await this.fetchSiguienteRar(coddoc);
+        corrInp.value = String(data.rar?.CORRELATIVO ?? '');
+      } catch (err) {
+        corrInp.value = '';
+        F.toast(err.message || 'No se pudo cargar el correlativo RAR', 'error');
+      }
+    };
+    select.addEventListener('change', () => {
+      loadCorrelativo(select.value).catch(() => {});
+    });
+  },
+
+  refreshRarTotalSeleccionado(saldo) {
+    const checks = [...document.querySelectorAll('.cxp-rar-check')];
+    const total = checks.reduce((s, el) => {
+      if (!el.checked) return s;
+      return s + (Number(el.getAttribute('data-abono')) || 0);
+    }, 0);
+    const el = document.getElementById('cxp-rar-total');
+    if (el) el.textContent = this.formatMoney(total);
+    const warn = document.getElementById('cxp-rar-saldo-warn');
+    if (warn) {
+      warn.classList.toggle('d-none', total <= saldo + 0.001);
+    }
+    const master = document.getElementById('cxp-rar-check-all');
+    if (master && checks.length) {
+      master.checked = checks.every((c) => c.checked);
+      master.indeterminate = checks.some((c) => c.checked) && !master.checked;
+    }
+    return total;
+  },
+
+  async abonoPorRetenciones(row) {
+    if (this._guardandoRar) return;
+    const tipodoc = String(row.TIPODOC || '').trim().toUpperCase();
+    if (tipodoc !== 'FAC') {
+      F.alert('No aplica', 'El abono por retenciones solo se usa en facturas internas FAC.', 'info');
+      return;
+    }
+    const coddoc = row.CODDOC;
+    const correlativo = row.CORRELATIVO;
+    const saldo = Number(row.SALDO_PENDIENTE ?? row.DOC_SALDO) || 0;
+    const cliente = String(row.DOC_NOMCLIE || row.NEGOCIO || '—');
+
+    let rarTipos;
+    let rarPreview;
+    let dataRet;
+    try {
+      const tiposData = await this.fetchRarTipos();
+      rarTipos = tiposData.rows || [];
+      if (!rarTipos.length) {
+        F.alert(
+          'Tipo RAR requerido',
+          'Cree un tipo de documento activo con TIPODOC = RAR en Configuración → Tipo Documentos.',
+          'warning'
+        );
+        return;
+      }
+      const prevData = await this.fetchSiguienteRar(rarTipos[0].CODDOC);
+      rarPreview = prevData.rar;
+      dataRet = await F.fetchJson(this.retencionesFelUrl(coddoc, correlativo), { cache: 'no-store' });
+    } catch (err) {
+      F.alert('Error', err.message || 'No se pudieron cargar las retenciones', 'error');
+      return;
+    }
+    if (!rarPreview?.CODDOC) {
+      F.alert('Error', 'No hay tipo de documento RAR activo', 'error');
+      return;
+    }
+    const retenciones = dataRet.retenciones || [];
+    if (!retenciones.length) {
+      F.alert(
+        'Sin retenciones pendientes',
+        'No hay retenciones IVA/ISR (RVR/RIR) de FEL ligadas a esta FAC, o ya fueron aplicadas con un RAR.',
+        'info'
+      );
+      return;
+    }
+
+    const { isConfirmed, value } = await Swal.fire({
+      ...CatalogosUI.modalBase({ customClass: { popup: 'modal-catalogo fac-finalizar-modal' } }),
+      title: 'Abono por retenciones',
+      width: '52rem',
+      html: `
+        <div class="text-start">
+          <p class="small text-muted mb-2">
+            FAC <strong>${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</strong>
+            · ${this.escapeHtml(cliente)}
+          </p>
+          <p class="small mb-2">
+            Retenciones aplicadas a la FEL de esta venta. Márquelas para abonar el saldo de la FAC (no es recibo de caja).
+          </p>
+          <div class="row g-2 mb-2">
+            <div class="col-md-4">
+              <label class="form-label small mb-0" for="cxp-rar-coddoc">Documento RAR</label>
+              ${this.renderRarCoddocSelectHtml(rarTipos, rarPreview.CODDOC)}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-0" for="cxp-rar-correlativo">Correlativo</label>
+              <input type="text" id="cxp-rar-correlativo" class="form-control form-control-sm bg-light fw-semibold text-end" value="${this.escapeHtml(rarPreview.CORRELATIVO)}" readonly>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small mb-0">Saldo FAC</label>
+              <input type="text" class="form-control form-control-sm bg-light text-end" value="${this.escapeHtml(this.formatMoney(saldo))}" readonly>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height:18rem">
+            <table class="table table-sm table-hover mb-0 align-middle">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th class="text-center" style="width:2.2rem">
+                    <input type="checkbox" id="cxp-rar-check-all" title="Seleccionar todas">
+                  </th>
+                  <th>Clase</th>
+                  <th>Retención</th>
+                  <th>FEL</th>
+                  <th>Fecha</th>
+                  <th class="text-end">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${retenciones
+                  .map((r) => {
+                    const felLbl = r.FEL_SERIE && r.FEL_NUMERO
+                      ? `${r.FEL_SERIE}-${r.FEL_NUMERO}`
+                      : `${r.FEL_CODDOC} #${r.FEL_CORRELATIVO}`;
+                    return `
+                  <tr>
+                    <td class="text-center">
+                      <input type="checkbox" class="cxp-rar-check" checked
+                        data-ret-cod="${this.escapeHtml(r.CODDOC_RET)}"
+                        data-ret-corr="${this.escapeHtml(r.CORRELATIVO_RET)}"
+                        data-fel-cod="${this.escapeHtml(r.FEL_CODDOC)}"
+                        data-fel-corr="${this.escapeHtml(r.FEL_CORRELATIVO)}"
+                        data-abono="${this.escapeHtml(r.ABONO)}">
+                    </td>
+                    <td><span class="badge text-bg-secondary">${this.escapeHtml(r.CLASE || r.TIPODOC_RET)}</span></td>
+                    <td class="small">${this.escapeHtml(r.CODDOC_RET)} #${this.escapeHtml(r.CORRELATIVO_RET)}</td>
+                    <td class="small">${this.escapeHtml(r.FEL_TIPODOC || '')} ${this.escapeHtml(felLbl)}</td>
+                    <td class="small">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+                    <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.ABONO))}</td>
+                  </tr>`;
+                  })
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <p class="small text-danger mb-0 d-none" id="cxp-rar-saldo-warn">La suma supera el saldo de la FAC.</p>
+            <p class="mb-0 small ms-auto">Total a abonar: <strong id="cxp-rar-total">${this.escapeHtml(this.formatMoney(0))}</strong></p>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Aplicar abono'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      focusConfirm: false,
+      didOpen: () => {
+        this.wireCoddocRarChange();
+        const sync = () => this.refreshRarTotalSeleccionado(saldo);
+        document.getElementById('cxp-rar-check-all')?.addEventListener('change', (ev) => {
+          document.querySelectorAll('.cxp-rar-check').forEach((c) => {
+            c.checked = ev.target.checked;
+          });
+          sync();
+        });
+        document.querySelectorAll('.cxp-rar-check').forEach((c) => c.addEventListener('change', sync));
+        sync();
+      },
+      preConfirm: async () => {
+        if (this._guardandoRar) return false;
+        const lineas = [...document.querySelectorAll('.cxp-rar-check')]
+          .filter((el) => el.checked)
+          .map((el) => ({
+            CODDOC_RET: el.getAttribute('data-ret-cod'),
+            CORRELATIVO_RET: el.getAttribute('data-ret-corr'),
+            FEL_CODDOC: el.getAttribute('data-fel-cod'),
+            FEL_CORRELATIVO: el.getAttribute('data-fel-corr'),
+          }));
+        if (!lineas.length) {
+          Swal.showValidationMessage('Seleccione al menos una retención');
+          return false;
+        }
+        const total = this.refreshRarTotalSeleccionado(saldo);
+        if (total > saldo + 0.001) {
+          Swal.showValidationMessage(`La suma no puede superar el saldo (${this.formatMoney(saldo)})`);
+          return false;
+        }
+        const coddocRar = document.getElementById('cxp-rar-coddoc')?.value?.trim();
+        if (!coddocRar) {
+          Swal.showValidationMessage('Seleccione el documento RAR');
+          return false;
+        }
+        this._guardandoRar = true;
+        Swal.getCancelButton()?.setAttribute('disabled', 'true');
+        Swal.getConfirmButton()?.setAttribute('disabled', 'true');
+        Swal.showLoading();
+        try {
+          return await F.fetchJson(this.abonoRarUrl(coddoc, correlativo), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              CODDOC_RAR: coddocRar,
+              USUARIO: this.usuario(),
+              lineas,
+            }),
+          });
+        } catch (e) {
+          this._guardandoRar = false;
+          Swal.hideLoading();
+          Swal.getCancelButton()?.removeAttribute('disabled');
+          Swal.getConfirmButton()?.removeAttribute('disabled');
+          Swal.showValidationMessage(e.message || 'Error al guardar el RAR');
+          return false;
+        }
+      },
+    });
+
+    this._guardandoRar = false;
+    if (!isConfirmed || !value) return;
+    F.toast(`Abono ${value.abono?.CODDOC}-${value.abono?.CORRELATIVO} registrado`, 'success');
+    await this.fetchDocumentos();
+    this._container.innerHTML = this.renderShell();
+    this.bindEvents();
+  },
+
   async mostrarHistorial(row) {
     const data = await this.fetchFacturaDetalle(row.CODDOC, row.CORRELATIVO);
     const abonos = data.abonos || [];
@@ -1598,7 +1883,7 @@ const CuentasPorCobrarView = {
           Factura <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
           · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
         </p>
-        <p class="small text-muted text-start mb-2">RCC, DEV y FNC vinculados por SERIEFAC / NOFAC</p>
+        <p class="small text-muted text-start mb-2">RCC, RAR, DEV y FNC vinculados por SERIEFAC / NOFAC</p>
         ${this.renderAbonosTableHtml(abonos, row)}
         <p class="text-end mt-2 mb-0 small"><strong>Total: ${this.escapeHtml(this.formatMoney(totalMov))}</strong></p>
       `,
@@ -1674,22 +1959,30 @@ const CuentasPorCobrarView = {
 
   bindEvents() {
     const search = this._container?.querySelector('#cxp-search');
-    let searchTimer = null;
-    search?.addEventListener('input', () => {
-      this._filterQuery = search.value;
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(async () => {
-        try {
-          this._loading = true;
-          await this.fetchDocumentos();
-          this._container.innerHTML = this.renderShell();
-          this.bindEvents();
-        } catch (err) {
-          F.toast(err.message || 'Error al buscar', 'error');
-        } finally {
-          this._loading = false;
-        }
-      }, 350);
+    const applySearch = async () => {
+      if (!search) return;
+      const next = search.value;
+      if (next === this._filterQuery && !this._loading) return;
+      this._filterQuery = next;
+      try {
+        this._loading = true;
+        await this.fetchDocumentos();
+        this._container.innerHTML = this.renderShell();
+        this.bindEvents();
+        this._container?.querySelector('#cxp-search')?.focus();
+      } catch (err) {
+        F.toast(err.message || 'Error al buscar', 'error');
+      } finally {
+        this._loading = false;
+      }
+    };
+    search?.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      applySearch();
+    });
+    search?.addEventListener('search', () => {
+      if (!String(search.value || '').trim()) applySearch();
     });
 
     const reloadShell = () => {

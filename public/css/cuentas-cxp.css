@@ -159,7 +159,7 @@
 
 .swal2-popup .cxp-menu-grid {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: center;
 }

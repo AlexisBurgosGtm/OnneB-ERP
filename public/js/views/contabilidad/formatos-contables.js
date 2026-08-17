@@ -60,20 +60,115 @@ const FormatosContablesView = {
       .join('');
   },
 
-  cuentaOptionsHtml(selected) {
+  cuentaLabel(c) {
+    const cod = String(c?.CODCUENTA ?? '').trim();
+    const desc = String(c?.DESCRIPCION ?? '').trim();
+    const pd = String(c?.PD ?? '').trim().toUpperCase() === 'P' ? ' · Padre' : '';
+    return desc ? `${cod} — ${desc}${pd}` : `${cod}${pd}`;
+  },
+
+  filterCuentas(q) {
+    const term = String(q || '').trim().toLowerCase();
+    const rows = this._cuentas || [];
+    if (!term) return rows.slice(0, 80);
+    return rows
+      .filter((c) => {
+        const hay = `${c.CODCUENTA || ''} ${c.DESCRIPCION || ''}`.toLowerCase();
+        return hay.includes(term);
+      })
+      .slice(0, 80);
+  },
+
+  cuentaComboHtml(selected) {
     const sel = String(selected ?? '').trim();
-    const opts = this._cuentas.map((c) => {
-      const cod = String(c.CODCUENTA ?? '').trim();
-      const desc = String(c.DESCRIPCION ?? '').trim();
-      const label = desc ? `${cod} — ${desc}` : cod;
-      return { value: cod, label };
+    const found = (this._cuentas || []).find(
+      (c) => String(c.CODCUENTA ?? '').trim() === sel
+    );
+    const display = found ? this.cuentaLabel(found) : sel;
+    return `
+      <div class="fc-cuenta-combo">
+        <input type="search" id="fc-part-cuenta-q" class="form-control form-control-sm"
+          placeholder="Buscar por código o nombre…" value="${this.escapeHtml(display)}"
+          autocomplete="off" spellcheck="false">
+        <input type="hidden" id="fc-part-codcuenta" value="${this.escapeHtml(sel)}">
+        <div id="fc-part-cuenta-list" class="list-group fc-cuenta-list" hidden></div>
+      </div>
+    `;
+  },
+
+  bindCuentaCombo(popup) {
+    const q = popup?.querySelector('#fc-part-cuenta-q');
+    const hidden = popup?.querySelector('#fc-part-codcuenta');
+    const list = popup?.querySelector('#fc-part-cuenta-list');
+    if (!q || !hidden || !list) return;
+
+    const render = (rows) => {
+      if (!rows.length) {
+        list.hidden = false;
+        list.innerHTML = '<div class="list-group-item small text-muted">Sin coincidencias</div>';
+        return;
+      }
+      list.hidden = false;
+      list.innerHTML = rows
+        .map((c) => {
+          const cod = this.escapeHtml(String(c.CODCUENTA ?? '').trim());
+          const active = hidden.value === String(c.CODCUENTA ?? '').trim() ? ' active' : '';
+          return `<button type="button" class="list-group-item list-group-item-action py-1${active}" data-cod="${cod}">
+            <div class="small fw-semibold">${cod}</div>
+            <div class="small text-muted">${this.escapeHtml(c.DESCRIPCION || '')}</div>
+          </button>`;
+        })
+        .join('');
+    };
+
+    const pick = (cod) => {
+      const found = (this._cuentas || []).find(
+        (c) => String(c.CODCUENTA ?? '').trim() === String(cod).trim()
+      );
+      hidden.value = found ? String(found.CODCUENTA).trim() : '';
+      q.value = found ? this.cuentaLabel(found) : '';
+      list.hidden = true;
+    };
+
+    q.addEventListener('focus', () => render(this.filterCuentas(q.value)));
+    q.addEventListener('input', () => {
+      hidden.value = '';
+      render(this.filterCuentas(q.value));
     });
-    return `<option value="">— Seleccione cuenta —</option>${opts
-      .map(
-        (o) =>
-          `<option value="${this.escapeHtml(o.value)}"${sel === o.value ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
-      )
-      .join('')}`;
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        list.hidden = true;
+        return;
+      }
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const first = list.querySelector('[data-cod]');
+      if (first) pick(first.getAttribute('data-cod'));
+    });
+    list.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest('[data-cod]');
+      if (!btn) return;
+      e.preventDefault();
+      pick(btn.getAttribute('data-cod'));
+    });
+    q.addEventListener('blur', () => {
+      setTimeout(() => {
+        list.hidden = true;
+      }, 180);
+    });
+  },
+
+  bindDebeHaberExclusive(popup) {
+    const debeEl = popup?.querySelector('#fc-part-debe');
+    const haberEl = popup?.querySelector('#fc-part-haber');
+    if (!debeEl || !haberEl) return;
+    debeEl.addEventListener('change', () => {
+      if (debeEl.value) haberEl.value = '';
+    });
+    haberEl.addEventListener('change', () => {
+      if (haberEl.value) debeEl.value = '';
+    });
+    if (debeEl.value && haberEl.value) haberEl.value = '';
   },
 
   async fetchCuentasLookup() {
@@ -465,12 +560,10 @@ const FormatosContablesView = {
     const html = `
       <div class="fc-form-grid text-start">
         <div class="mb-2">
-          <label class="form-label small mb-0" for="fc-part-codcuenta">Cuenta contable</label>
-          <select id="fc-part-codcuenta" class="form-select form-select-sm" required>
-            ${this.cuentaOptionsHtml(row.CODCUENTA)}
-          </select>
+          <label class="form-label small mb-0" for="fc-part-cuenta-q">Cuenta contable</label>
+          ${this.cuentaComboHtml(row.CODCUENTA)}
         </div>
-        <div class="row g-2 mb-2">
+        <div class="row g-2 mb-1">
           <div class="col-sm-6">
             <label class="form-label small mb-0" for="fc-part-debe">Debe</label>
             <select id="fc-part-debe" class="form-select form-select-sm">
@@ -484,6 +577,7 @@ const FormatosContablesView = {
             </select>
           </div>
         </div>
+        <p class="small text-muted mb-2">Solo un lado por línea. Si la cuenta va en Debe y Haber, agréguela dos veces.</p>
         <div class="mb-0">
           <label class="form-label small mb-0" for="fc-part-centro">Centro de costo</label>
           <input type="text" id="fc-part-centro" class="form-control form-control-sm" maxlength="3"
@@ -495,6 +589,11 @@ const FormatosContablesView = {
       title,
       html,
       width: 560,
+      customClass: { popup: 'modal-catalogo fc-partida-modal' },
+      didOpen: (popup) => {
+        this.bindCuentaCombo(popup);
+        this.bindDebeHaberExclusive(popup);
+      },
       preConfirm: () => {
         const codcuenta = document.getElementById('fc-part-codcuenta')?.value?.trim() || '';
         const debe = document.getElementById('fc-part-debe')?.value?.trim() || '';
@@ -506,6 +605,12 @@ const FormatosContablesView = {
         }
         if (!debe && !haber) {
           Swal.showValidationMessage('Indique Debe o Haber');
+          return false;
+        }
+        if (debe && haber) {
+          Swal.showValidationMessage(
+            'Una línea no puede tener Debe y Haber. Agregue la cuenta otra vez en una segunda línea'
+          );
           return false;
         }
         return { CODCUENTA: codcuenta, DEBE: debe, HABER: haber, CENTRO_COSTO: centro };

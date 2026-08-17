@@ -11,3 +11,16 @@
   max-height: calc(100vh - 18rem);
   overflow: auto;
 }
+
+.inventario-fiscal-row {
+  cursor: pointer;
+}
+
+.inventario-fiscal-row:hover {
+  background-color: rgba(13, 110, 253, 0.06);
+}
+
+.inventario-fiscal-mov-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}

@@ -1,6 +1,13 @@
 const express = require('express');
 const { isDbConfigured } = require('../config/database');
-const { listInventarioFiscal } = require('../lib/inventario-fiscal');
+const {
+  listInventarioFiscal,
+  listMovimientosFiscal,
+  listMovimientosFiscalMes,
+  buildInventarioFiscalXlsx,
+  sendLibroXlsx,
+  safeFilenamePart,
+} = require('../lib/inventario-fiscal');
 
 const router = express.Router();
 
@@ -16,6 +23,55 @@ function requireEmpNit(req, res) {
   }
   return empnit;
 }
+
+router.get('/movimientos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listMovimientosFiscal(pool, {
+      empnit,
+      mes: parseInt(req.query.mes, 10),
+      anio: parseInt(req.query.anio, 10),
+      codprod: req.query.codprod,
+    });
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /inventario-fiscal/movimientos]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/export', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const mes = parseInt(req.query.mes, 10);
+  const anio = parseInt(req.query.anio, 10);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const [data, movimientos] = await Promise.all([
+      listInventarioFiscal(pool, { empnit, mes, anio, unfiltered: true }),
+      listMovimientosFiscalMes(pool, { empnit, mes, anio }),
+    ]);
+    const buffer = await buildInventarioFiscalXlsx(data, { empnit, mes, anio, movimientos });
+    const filename = `inventario_fiscal_${safeFilenamePart(empnit)}_${mes}_${anio}.xlsx`;
+    sendLibroXlsx(res, buffer, filename);
+  } catch (err) {
+    console.warn('[API GET /inventario-fiscal/export]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
 
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

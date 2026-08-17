@@ -2,7 +2,12 @@ const sql = require('mssql');
 const multer = require('multer');
 const { createCatalogoRouter } = require('./lib/catalogo-empresa');
 const { isDbConfigured } = require('../config/database');
-const { assertAccesoUnico, normalizeUsuario, normalizeClave } = require('../lib/empleado-acceso');
+const {
+  assertAccesoUnico,
+  normalizeUsuario,
+  normalizeClave,
+  tieneAccesoSistema,
+} = require('../lib/empleado-acceso');
 const {
   resolveEmpleadoFoto,
   readEmpleadoFotoBuffer,
@@ -24,14 +29,12 @@ const uploadFoto = multer({
 async function validateEmpleadoAcceso(pool, data, exclude) {
   const usuario = normalizeUsuario(data.USUARIO);
   const clave = normalizeClave(data.CLAVE);
-  // Empleados sin acceso al sistema: ambos vacíos → guardar sin validar unicidad.
-  if (!usuario && clave === '') {
+  // Sin usuario y clave: no accede al sistema; no validar duplicados.
+  if (!tieneAccesoSistema(usuario, clave)) {
     data.USUARIO = null;
     data.CLAVE = null;
     return null;
   }
-  if (!usuario) return 'USUARIO es obligatorio si se indica clave';
-  if (clave === '') return 'CLAVE es obligatoria si se indica usuario';
   data.USUARIO = usuario;
   data.CLAVE = clave;
   try {
@@ -86,11 +89,6 @@ const router = createCatalogoRouter({
     'CODRUTA',
     'CODCATALOGO',
     'CODDOC_REC',
-    'PRIMER_NOMBRE',
-    'SEGUNDO_NOMBRE',
-    'PRIMER_APELLIDO',
-    'SEGUNDO_APELLIDO',
-    'APELLIDO_CASADA',
     'NIT',
     'FECHA_INICIO',
   ],
@@ -113,11 +111,6 @@ const router = createCatalogoRouter({
     { name: 'CODRUTA', type: 'int' },
     { name: 'CODCATALOGO', type: 'varchar' },
     { name: 'CODDOC_REC', type: 'varchar' },
-    { name: 'PRIMER_NOMBRE', type: 'varchar' },
-    { name: 'SEGUNDO_NOMBRE', type: 'varchar' },
-    { name: 'PRIMER_APELLIDO', type: 'varchar' },
-    { name: 'SEGUNDO_APELLIDO', type: 'varchar' },
-    { name: 'APELLIDO_CASADA', type: 'varchar' },
     { name: 'NIT', type: 'varchar' },
     { name: 'FECHA_INICIO', type: 'date' },
   ],
@@ -140,11 +133,6 @@ const router = createCatalogoRouter({
     'CODRUTA',
     'CODCATALOGO',
     'CODDOC_REC',
-    'PRIMER_NOMBRE',
-    'SEGUNDO_NOMBRE',
-    'PRIMER_APELLIDO',
-    'SEGUNDO_APELLIDO',
-    'APELLIDO_CASADA',
     'NIT',
     'FECHA_INICIO',
   ],
@@ -166,11 +154,6 @@ const router = createCatalogoRouter({
     'CODRUTA',
     'CODCATALOGO',
     'CODDOC_REC',
-    'PRIMER_NOMBRE',
-    'SEGUNDO_NOMBRE',
-    'PRIMER_APELLIDO',
-    'SEGUNDO_APELLIDO',
-    'APELLIDO_CASADA',
     'NIT',
     'FECHA_INICIO',
   ],
