@@ -44,6 +44,7 @@ const LibroVentasView = {
   _anio: null,
   _loading: false,
   _exporting: false,
+  _filterQuery: '',
   _comparing: false,
   _satCompare: null,
 
@@ -130,16 +131,55 @@ const LibroVentasView = {
   },
 
   badgeText() {
-    const total = this._rows.length;
-    const t = this._totals || {};
+    const all = this._rows.length;
+    const rows = this.filteredRows();
+    const t = this.footerTotals();
+    const filtering = Boolean(String(this._filterQuery || '').trim());
     const parts = [
-      `${total} registro(s)`,
+      filtering ? `${rows.length} de ${all} registro(s)` : `${all} registro(s)`,
       `${this.mesLabel(this._mes)} ${this._anio}`,
       `Ventas: ${t.ventas ?? 0}`,
       `Notas crédito: ${t.notasCredito ?? 0}`,
     ];
     if ((t.anulados ?? 0) > 0) parts.push(`Anulados: ${t.anulados}`);
     return parts.join(' · ');
+  },
+
+  filteredRows() {
+    const q = this._filterQuery;
+    if (!String(q || '').trim()) return this._rows;
+    return this._rows.filter((row) =>
+      LibroContableCommon.rowMatchesSearch(row, q, [this.fechaDisplay(row)])
+    );
+  },
+
+  footerTotals() {
+    const filtering = Boolean(String(this._filterQuery || '').trim());
+    const rows = filtering ? this.filteredRows() : this._rows;
+    if (!filtering && this._totals) return this._totals;
+    const t = {
+      exento: 0,
+      gravado: 0,
+      iva: 0,
+      total: 0,
+      documentos: rows.length,
+      anulados: 0,
+      ventas: 0,
+      notasCredito: 0,
+    };
+    rows.forEach((r) => {
+      if (r.ANULADO) {
+        t.anulados += 1;
+        return;
+      }
+      if (r.ES_NOTA_CREDITO) t.notasCredito += 1;
+      else t.ventas += 1;
+      t.exento += Number(r.TOTALEXENTO) || 0;
+      t.gravado += Number(r.TOTALSINIVA) || 0;
+      t.iva += Number(r.TOTALIVA) || 0;
+      t.total += Number(r.TOTALPRECIO) || 0;
+    });
+    return t;
   },
 
   renderFiltersCard() {
@@ -168,6 +208,11 @@ const LibroVentasView = {
                 ${anioOpts}
               </select>
             </div>
+            ${LibroContableCommon.searchInputHtml(
+              'libro-ventas',
+              this._filterQuery,
+              'NIT, cliente, serie, número, tipo…'
+            )}
             <div class="libro-ventas-actions d-flex gap-2">
               <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-ventas-recargar">
                 <i class="fa-solid fa-rotate me-1"></i>Actualizar
@@ -355,7 +400,10 @@ const LibroVentasView = {
 
   renderTableBodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay registros para este período</td></tr>`;
+      const msg = String(this._filterQuery || '').trim()
+        ? 'Sin coincidencias para la búsqueda'
+        : 'No hay registros para este período';
+      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((row) => {
@@ -373,12 +421,16 @@ const LibroVentasView = {
   },
 
   renderTableFooterHtml() {
-    const t = this._totals;
-    if (!t || !this._rows.length) return '';
+    const rows = this.filteredRows();
+    const t = this.footerTotals();
+    if (!rows.length) return '';
+    const label = String(this._filterQuery || '').trim()
+      ? 'Totales (filtro, sin anulados):'
+      : 'Totales (sin anulados):';
     return `
       <tfoot>
         <tr>
-          <td colspan="7" class="text-end">Totales (sin anulados):</td>
+          <td colspan="7" class="text-end">${label}</td>
           <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.exento))}</td>
           <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.gravado))}</td>
           <td class="text-end libro-ventas-money">${this.escapeHtml(this.formatMoney(t.iva))}</td>
@@ -404,7 +456,7 @@ const LibroVentasView = {
             <thead class="table-light sticky-top">
               <tr>${headers}</tr>
             </thead>
-            <tbody id="libro-ventas-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            <tbody id="libro-ventas-tbody">${this.renderTableBodyHtml(this.filteredRows())}</tbody>
             ${this.renderTableFooterHtml()}
           </table>
         </div>
@@ -509,7 +561,7 @@ const LibroVentasView = {
     const countEl = this._container?.querySelector('#libro-ventas-count');
     if (countEl) countEl.textContent = this.badgeText();
     const tbody = this._container?.querySelector('#libro-ventas-tbody');
-    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
+    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this.filteredRows());
     const table = this._container?.querySelector('.libro-ventas-table-card table');
     if (table) {
       table.querySelector('tfoot')?.remove();
@@ -551,6 +603,7 @@ const LibroVentasView = {
     });
     this.bindSatCompareClose();
     this.bindSatCompareRowActions();
+    LibroContableCommon.bindSearch(this._container, 'libro-ventas', this);
   },
 
   async compararSat(file) {
@@ -678,6 +731,7 @@ const LibroVentasView = {
     this._anio = period.anio;
     this._rows = [];
     this._totals = null;
+    this._filterQuery = '';
     this._satCompare = null;
     this._satActionsBound = false;
     this._urlFel = null;

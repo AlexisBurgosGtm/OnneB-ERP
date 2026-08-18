@@ -139,6 +139,8 @@ body {
 .main-content > .mb-wrap,
 .main-content > .cxp-wrap,
 .main-content > .formatos-impresion-wrap,
+.main-content > .actualizacion-costos-wrap,
+.main-content > .nomina-empleados-view,
 .main-content.productos-view-root {
   flex: 1;
   min-height: 0;

@@ -332,7 +332,7 @@ const DocumentosView = {
         return;
       }
       if (action === 'eliminar') {
-        const deleted = await DocOpciones.eliminar(coddoc, correlativo, label);
+        const deleted = await DocOpciones.eliminar(coddoc, correlativo, label, row);
         if (deleted) await this.reload();
         return;
       }

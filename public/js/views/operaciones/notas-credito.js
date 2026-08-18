@@ -161,6 +161,21 @@ const NotasCreditoView = {
     );
   },
 
+  async guardarFechaDocumento(fecha) {
+    const key = this.docKey();
+    if (!key || !this.docEditable(this._pedido?.header)) return;
+    const actual = DocFecha.inputValueFromHeader(this._pedido.header);
+    if (fecha === actual) return;
+    const url = this.apiUrl(`/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}`);
+    this._pedido = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ FECHA: fecha }),
+    });
+    this._listFecha = String(fecha).slice(0, 10);
+    F.toast('Fecha actualizada', 'success');
+  },
+
   felUudiValue(row) {
     return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
   },
@@ -341,11 +356,13 @@ const NotasCreditoView = {
   },
 
   async crearPedidoDesdeFactura(referencia, coddocDestino) {
+    const fecha = String(referencia?.FECHA || this.todayIsoDate()).slice(0, 10);
     const body = {
       SERIEFAC: referencia.SERIEFAC,
       NOFAC: referencia.NOFAC,
       CODDOC: coddocDestino,
       USUARIO: this.usuario(),
+      FECHA: fecha,
     };
     const pedido = await F.fetchJson(this.apiUrl('/pedidos'), {
       method: 'POST',
@@ -353,6 +370,7 @@ const NotasCreditoView = {
       body: JSON.stringify(body),
     });
     this._pedido = pedido;
+    this._listFecha = fecha;
     return pedido;
   },
 
@@ -1116,7 +1134,10 @@ const NotasCreditoView = {
                 ${typeof EmpresaLogo !== 'undefined' ? EmpresaLogo.posHeaderLogoHtml() : '<img src="/icons/icon-72.png" width="40" height="40" alt="OnneB" class="pos-header-logo">'}
               </div>
               <div class="pos-header-doc-label small fw-semibold" id="nc-header-doc">${this.escapeHtml(this.docLabel())}</div>
-              ${this.renderCajaField()}
+              <div class="d-flex flex-wrap align-items-end gap-2">
+                ${this.renderCajaField()}
+                ${DocFecha.renderField('nc-doc-fecha', this._pedido?.header)}
+              </div>
               <div class="ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="nc-header-total">Q 0.00</h3>
                 <div class="pos-header-items" id="nc-header-items">0 items</div>
@@ -1346,6 +1367,15 @@ const NotasCreditoView = {
       if (e.target.disabled) return;
       this._selectedCodcaja = e.target.value?.trim() || '';
     });
+    const fechaInp = this._container?.querySelector('#nc-doc-fecha');
+    if (fechaInp) {
+      fechaInp.addEventListener('change', () => {
+        if (fechaInp.disabled) return;
+        const val = fechaInp.value?.trim();
+        if (!val) return;
+        this.guardarFechaDocumento(val).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
     this._container?.querySelector('#btn-nc-finalizar')?.addEventListener('click', () => {
       this.finalizarPedido().catch((err) => F.toast(err.message || 'Error al finalizar', 'error'));
     });

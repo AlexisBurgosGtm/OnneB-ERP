@@ -25,6 +25,32 @@ function clientesTodayIso() {
   return `${y}-${m}-${day}`;
 }
 
+function clientesStripDiacritics(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function clientesBindNombreSinTildes(popup) {
+  const input = popup?.querySelector('[name="NOMBRECLIENTE"]');
+  if (!input) return;
+  const apply = () => {
+    const next = clientesStripDiacritics(input.value);
+    if (next === input.value) return;
+    const before = clientesStripDiacritics(input.value.slice(0, input.selectionStart || 0));
+    input.value = next;
+    const pos = Math.min(before.length, next.length);
+    try {
+      input.setSelectionRange(pos, pos);
+    } catch (_err) {
+      /* ignore */
+    }
+  };
+  input.addEventListener('input', apply);
+  input.addEventListener('paste', () => setTimeout(apply, 0));
+}
+
 function clientesDateInputValue(value) {
   if (!value) return '';
   const s = String(value);
@@ -441,7 +467,7 @@ const ClientesView = {
     };
     const payload = {
       NIT: data.NIT || null,
-      NOMBRECLIENTE: data.NOMBRECLIENTE,
+      NOMBRECLIENTE: clientesStripDiacritics(data.NOMBRECLIENTE || '').trim(),
       DIRCLIENTE: data.DIRCLIENTE || null,
       CODMUNICIPIO: n('CODMUNICIPIO'),
       CODDEPARTAMENTO: n('CODDEPARTAMENTO'),
@@ -520,6 +546,7 @@ const ClientesView = {
       html: view.buildFormHtml(row, isEdit, profile),
       width: 620,
       didOpen: (popup) => {
+        clientesBindNombreSinTildes(popup);
         if (profile === 'facturacion' && !isEdit && typeof DocNitSatLookup !== 'undefined') {
           DocNitSatLookup.bindEnterLookup({
             popup,

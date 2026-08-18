@@ -123,25 +123,15 @@ const DocOpciones = {
     return this.estaCertificadoFel(row);
   },
 
-  /** Tipos que usan CORTE=SI al finalizar (inventario) sin ser corte de caja real. */
-  TIPOS_ELIMINABLES_IGNORA_CORTE: ['ENV', 'COT', 'RCC', 'CRS'],
-
+  /**
+   * Muestra Eliminar en Archivo → Documentos para todo documento no FEL y no anulado.
+   * El servidor aplica corte de caja, documentos relacionados y política de eliminación.
+   */
   puedeEliminar(row) {
     if (!row) return false;
     if (this.estaCertificadoFel(row)) return false;
-    const tipodoc = String(row.TIPODOC || '').trim().toUpperCase();
     const status = String(row.STATUS || '').trim().toUpperCase();
-    if (status === 'A') return false;
-
-    const ignoraCorte = this.TIPOS_ELIMINABLES_IGNORA_CORTE.includes(tipodoc);
-    if (ignoraCorte) {
-      // Pedidos/cotizaciones/recibos: operados o bloqueados, aunque CORTE=SI.
-      return status === 'O' || status === 'I';
-    }
-
-    const corte = String(row.CORTE || 'NO').trim().toUpperCase();
-    if (corte === 'SI') return false;
-    return DocFecha.editableStatus(status);
+    return status !== 'A';
   },
 
   fechaInputFromRow(row) {
@@ -446,13 +436,14 @@ const DocOpciones = {
     });
   },
 
-  async eliminar(coddoc, correlativo, label) {
+  async eliminar(coddoc, correlativo, label, row) {
     const pass = await CatalogosUI.confirmEliminarDocumento({
       label: label || `${coddoc} #${correlativo}`,
       tipo: 'documento',
       kind: 'documento',
       coddoc,
       correlativo,
+      tipodoc: row?.TIPODOC || '',
     });
     if (!pass) return false;
     await F.fetchJson(this.deleteUrl(coddoc, correlativo), {

@@ -708,8 +708,16 @@ router.post('/pedidos', async (req, res) => {
       return res.status(404).json({ error: 'Factura de referencia no encontrada, no operada o no permitida para esta serie' });
     }
     assertFacturaReferenciaPermitida(tipo.TIPODOC, facturaRef.TIPODOC);
+    const now = nowParts();
+    let parts = now;
+    if (req.body?.FECHA !== undefined && String(req.body.FECHA).trim() !== '') {
+      const fechaParts = parseFechaInput(req.body.FECHA);
+      if (!fechaParts) {
+        return res.status(400).json({ error: 'Fecha inválida (use YYYY-MM-DD)' });
+      }
+      parts = { ...now, ...fechaParts };
+    }
     const coddoc = tipo.CODDOC;
-    const parts = nowParts();
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {

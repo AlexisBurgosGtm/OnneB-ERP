@@ -261,15 +261,15 @@ function createInventarioMovView(cfg) {
           <tr class="inv-doc-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="small fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
             <td class="small text-nowrap">${this.escapeHtml(this.formatFecha(r))}</td>
-            <td class="small">${this.escapeHtml(r.USUARIO || '—')}</td>
+            <td class="small doc-list-col-optional">${this.escapeHtml(r.USUARIO || '—')}</td>
             ${
               cfg.showDestinoCol
-                ? `<td class="small">${this.escapeHtml(this.docDestinoLabel(r))}</td>`
+                ? `<td class="small doc-list-col-optional">${this.escapeHtml(this.docDestinoLabel(r))}</td>`
                 : ''
             }
-            <td class="small text-end">${Number(r.LINEAS) || 0}</td>
-            <td class="small text-truncate" style="max-width:12rem" title="${this.escapeHtml(r.OBS || '')}">${this.escapeHtml(r.OBS || '—')}</td>
-            <td class="text-end text-nowrap inv-card-actions">
+            <td class="small text-end doc-list-col-optional">${Number(r.LINEAS) || 0}</td>
+            <td class="small text-truncate doc-list-col-optional" style="max-width:12rem" title="${this.escapeHtml(r.OBS || '')}">${this.escapeHtml(r.OBS || '—')}</td>
+            <td class="text-end text-nowrap fac-list-actions inv-card-actions">
               <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar" title="Editar">
                 <i class="fa-solid fa-pen"></i>
               </button>
@@ -1773,15 +1773,15 @@ function createInventarioMovView(cfg) {
       const listBody = cfg.listAsTable
         ? `<div class="table-responsive inv-docs-table-wrap">
             <table class="table table-sm table-hover align-middle mb-0 inv-docs-table">
-              <thead class="table-light">
+              <thead class="table-light sticky-top">
                 <tr>
                   <th>Documento</th>
                   <th>Fecha</th>
-                  <th>Usuario</th>
-                  ${cfg.showDestinoCol ? `<th>${this.escapeHtml(this.destinoColTitle())}</th>` : ''}
-                  <th class="text-end">Líneas</th>
-                  <th>Obs.</th>
-                  <th class="text-end">Acciones</th>
+                  <th class="doc-list-col-optional">Usuario</th>
+                  ${cfg.showDestinoCol ? `<th class="doc-list-col-optional">${this.escapeHtml(this.destinoColTitle())}</th>` : ''}
+                  <th class="text-end doc-list-col-optional">Líneas</th>
+                  <th class="doc-list-col-optional">Obs.</th>
+                  <th class="text-end fac-list-actions">Acciones</th>
                 </tr>
               </thead>
               <tbody id="${NS}-doc-cards">${this.renderListCardsHtml()}</tbody>

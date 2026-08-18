@@ -269,6 +269,7 @@ const CuentasPorPagarView = {
   renderVistaToggleHtml() {
     const listaActive = this._vistaTipo === 'lista';
     const calActive = this._vistaTipo === 'calendario';
+    const resumenActive = this._vistaTipo === 'resumen';
     const consActive = this._vistaTipo === 'consolidado-productos';
     return `
       <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
@@ -280,7 +281,7 @@ const CuentasPorPagarView = {
           title="Calendario de pagos">
           <i class="fa-solid fa-calendar-days me-1"></i>Calendario
         </button>
-        <button type="button" class="btn btn-outline-secondary" id="cxp-vista-resumen"
+        <button type="button" class="btn ${resumenActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-resumen"
           title="Resumen por proveedor">
           <i class="fa-solid fa-table-cells me-1"></i>Resumen
         </button>
@@ -291,71 +292,158 @@ const CuentasPorPagarView = {
       </div>`;
   },
 
+  proveedorCodigo(r) {
+    if (r.CODPROV != null && r.CODPROV !== '') return String(r.CODPROV);
+    if (r.CODCLIENTE != null && r.CODCLIENTE !== '') return String(r.CODCLIENTE);
+    return '—';
+  },
+
   buildResumenPorProveedor() {
     const map = new Map();
     for (const r of this.filteredRows()) {
-      const cod =
-        r.CODPROV != null && r.CODPROV !== ''
-          ? String(r.CODPROV)
-          : r.CODCLIENTE != null && r.CODCLIENTE !== ''
-            ? String(r.CODCLIENTE)
-            : '—';
+      const cod = this.proveedorCodigo(r);
       const nombre = r.DOC_NOMCLIE || r.NEGOCIO || '—';
       const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
-      const cur = map.get(cod) || { codigo: cod, nombre, documentos: 0, saldo: 0 };
+      const abono = Number(r.DOC_ABONO) || 0;
+      const cur = map.get(cod) || { codigo: cod, nombre, documentos: 0, saldo: 0, abono: 0 };
       if ((!cur.nombre || cur.nombre === '—') && nombre && nombre !== '—') cur.nombre = nombre;
       cur.documentos += 1;
       cur.saldo += saldo;
+      cur.abono += abono;
       map.set(cod, cur);
     }
     return [...map.values()].sort((a, b) => b.saldo - a.saldo || String(a.nombre).localeCompare(String(b.nombre)));
   },
 
-  async mostrarResumen() {
+  docsForProveedor(codigo) {
+    const key = String(codigo ?? '');
+    return this.filteredRows().filter((r) => this.proveedorCodigo(r) === key);
+  },
+
+  renderResumenHtml() {
     const rows = this.buildResumenPorProveedor();
     const totalDocs = rows.reduce((s, r) => s + r.documentos, 0);
     const totalSaldo = rows.reduce((s, r) => s + r.saldo, 0);
+    const totalAbono = rows.reduce((s, r) => s + r.abono, 0);
     const body = rows.length
       ? rows
           .map(
             (r) => `
-        <tr>
+        <tr class="cxp-resumen-row" data-codigo="${this.escapeHtml(r.codigo)}" role="button" tabindex="0">
           <td class="text-nowrap">${this.escapeHtml(r.codigo)}</td>
           <td>${this.escapeHtml(r.nombre)}</td>
           <td class="text-end">${r.documentos}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(r.abono))}</td>
           <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.saldo))}</td>
         </tr>`
           )
           .join('')
-      : `<tr><td colspan="4" class="text-center text-muted py-3">Sin documentos</td></tr>`;
+      : `<tr><td colspan="5" class="text-center text-muted py-4">Sin proveedores con saldo pendiente</td></tr>`;
+    return `
+        <div class="card shadow-sm">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover table-striped mb-0 cxp-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Cód. proveedor</th>
+                  <th>Proveedor</th>
+                  <th class="text-end">Documentos</th>
+                  <th class="text-end">Pagos</th>
+                  <th class="text-end">Saldo total</th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+              <tfoot class="table-light fw-semibold">
+                <tr>
+                  <td colspan="2" class="text-end">${rows.length} proveedor(es)</td>
+                  <td class="text-end">${totalDocs}</td>
+                  <td class="text-end text-success">${this.escapeHtml(this.formatMoney(totalAbono))}</td>
+                  <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Clic en un proveedor para ver sus documentos con saldo y pago pendientes.</p>`;
+  },
+
+  renderResumenDocsTableHtml(rows) {
+    if (!rows.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin documentos pendientes</p>';
+    }
+    const body = rows
+      .map((r) => {
+        const vencido = this.isVencido(r);
+        const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
+        const abono = Number(r.DOC_ABONO) || 0;
+        return `<tr class="cxp-cal-day-row${vencido ? ' cxp-row-vencido' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}" role="button" tabindex="0">
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-nowrap${vencido ? ' text-danger fw-semibold' : ''}">${this.escapeHtml(this.formatFecha(r.VENCIMIENTO))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(abono))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(saldo))}</td>
+        </tr>`;
+      })
+      .join('');
+    const totalAbono = rows.reduce((s, r) => s + (Number(r.DOC_ABONO) || 0), 0);
+    const totalSaldo = rows.reduce((s, r) => s + (Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0), 0);
+    return `
+      <div class="table-responsive" style="max-height: 420px">
+        <table class="table table-sm table-hover table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Fecha</th>
+              <th>Vence</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Pago</th>
+              <th class="text-end">Saldo pendiente</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="4" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(totalAbono))}</td>
+              <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="small text-muted mt-2 mb-0 text-start">Clic en un documento para ver opciones.</p>`;
+  },
+
+  async mostrarDocsDeProveedor(codigo) {
+    const rows = this.docsForProveedor(codigo);
+    if (!rows.length) return;
+    const nombre = rows[0].DOC_NOMCLIE || rows[0].NEGOCIO || codigo;
     await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Resumen por proveedor',
-      width: 720,
-      html: `
-        <div class="table-responsive" style="max-height: 420px">
-          <table class="table table-sm table-hover table-striped mb-0">
-            <thead class="table-light sticky-top">
-              <tr>
-                <th>Cód. proveedor</th>
-                <th>Proveedor</th>
-                <th class="text-end">Documentos</th>
-                <th class="text-end">Saldo total</th>
-              </tr>
-            </thead>
-            <tbody>${body}</tbody>
-            <tfoot class="table-light fw-semibold">
-              <tr>
-                <td colspan="2" class="text-end">Totales</td>
-                <td class="text-end">${totalDocs}</td>
-                <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>`,
+      title: `${nombre}`,
+      html: `<p class="small text-muted text-start mb-2">Cód. ${this.escapeHtml(String(codigo))} · documentos con saldo pendiente</p>${this.renderResumenDocsTableHtml(rows)}`,
+      width: 860,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const onRowPick = (row) => {
+          const coddoc = row.getAttribute('data-coddoc');
+          const correlativo = row.getAttribute('data-correlativo');
+          if (!coddoc || !correlativo) return;
+          Swal.close();
+          this.onRowAction(coddoc, correlativo).catch((err) => F.toast(err.message || 'Error', 'error'));
+        };
+        Swal.getPopup()?.querySelectorAll('.cxp-cal-day-row').forEach((row) => {
+          row.addEventListener('click', () => onRowPick(row));
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onRowPick(row);
+            }
+          });
+        });
+      },
     });
   },
 
@@ -578,9 +666,11 @@ const CuentasPorPagarView = {
     const truncHint = this._truncated
       ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
       : '';
-    const showListaTools = this._vistaTipo === 'lista' || this._vistaTipo === 'calendario';
+    const showListaTools =
+      this._vistaTipo === 'lista' || this._vistaTipo === 'calendario' || this._vistaTipo === 'resumen';
     let contentHtml = this.renderListaHtml();
     if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
+    if (this._vistaTipo === 'resumen') contentHtml = this.renderResumenHtml();
     if (this._vistaTipo === 'consolidado-productos') contentHtml = this.renderConsolidadoProductosHtml();
 
     return `
@@ -1363,7 +1453,7 @@ const CuentasPorPagarView = {
     });
 
     this._container?.querySelector('#cxp-vista-resumen')?.addEventListener('click', () => {
-      this.mostrarResumen().catch((err) => F.toast(err.message || 'Error', 'error'));
+      switchVista('resumen');
     });
 
     this._container?.querySelector('#cxp-vista-consolidado')?.addEventListener('click', () => {
@@ -1425,6 +1515,21 @@ const CuentasPorPagarView = {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onRowPick(row);
+        }
+      });
+    });
+
+    const onResumenPick = (row) => {
+      const codigo = row.getAttribute('data-codigo');
+      if (!codigo) return;
+      this.mostrarDocsDeProveedor(codigo).catch((err) => F.toast(err.message || 'Error', 'error'));
+    };
+    this._container?.querySelectorAll('.cxp-resumen-row').forEach((row) => {
+      row.addEventListener('click', () => onResumenPick(row));
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onResumenPick(row);
         }
       });
     });

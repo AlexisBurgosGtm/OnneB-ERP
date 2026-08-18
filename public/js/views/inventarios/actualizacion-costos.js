@@ -148,7 +148,7 @@ const ActualizacionCostosView = {
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div class="small mb-0">
             Lista cargada desde Excel (${this._rows.length} producto(s)).
-            Use <strong>Actualizar todos</strong> para aplicar los costos del archivo.
+            Use <strong>Actualizar todo</strong> para aplicar los costos del archivo.
           </div>
           <button type="button" class="btn btn-sm btn-outline-secondary" id="ac-excel-clear">
             Volver al listado normal
@@ -193,21 +193,17 @@ const ActualizacionCostosView = {
                   ${this._fromExcel ? 'disabled' : ''}>
                   <i class="fa-solid fa-rotate me-1"></i>Actualizar lista
                 </button>
-                <span class="small text-muted">Sin búsqueda: 50 registros; escriba para buscar.</span>
+                <span class="small text-muted">Sin búsqueda: 50 registros; escriba para buscar. <strong>Actualizar todo</strong> aplica a todo el catálogo.</span>
               </div>
               <div class="d-flex flex-wrap align-items-center gap-2">
-                ${
-                  this._fromExcel
-                    ? `<button type="button" class="btn btn-sm btn-success" id="ac-bulk-update"
-                         ${this._bulkUpdating || !this._rows.length ? 'disabled' : ''}>
-                         ${
-                           this._bulkUpdating
-                             ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>Actualizando…'
-                             : '<i class="fa-solid fa-cloud-arrow-up me-1"></i>Actualizar todos'
-                         }
-                       </button>`
-                    : ''
-                }
+                <button type="button" class="btn btn-sm btn-success" id="ac-bulk-update"
+                  ${this._bulkUpdating || (this._fromExcel ? !this._rows.length : this._totalCount <= 0 && !this._rows.length) ? 'disabled' : ''}>
+                  ${
+                    this._bulkUpdating
+                      ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>Actualizando…'
+                      : '<i class="fa-solid fa-cloud-arrow-up me-1"></i>Actualizar todo'
+                  }
+                </button>
                 <button type="button" class="btn btn-sm btn-outline-success" id="ac-excel-load"
                   ${this._bulkUpdating ? 'disabled' : ''}>
                   <i class="fa-solid fa-file-excel me-1"></i>Cargar desde Excel
@@ -401,38 +397,118 @@ const ActualizacionCostosView = {
     }
   },
 
-  async onActualizarMasivo() {
-    if (!this._fromExcel || this._bulkUpdating || !this._rows.length) return;
+  collectScreenItems() {
     this.syncRowsFromInputs();
+    const all = this._rows.map((r) => ({
+      CODPROD: String(r.CODPROD || '').trim(),
+      COSTO: Number(r.COSTO),
+      DESPROD: r.DESPROD || '',
+    }));
+    const items = all.filter((r) => r.CODPROD && Number.isFinite(r.COSTO) && r.COSTO > 0);
+    const skippedZero = all.filter((r) => r.CODPROD && Number.isFinite(r.COSTO) && r.COSTO === 0).length;
+    return { items, skippedZero };
+  },
 
-    const items = this._rows
-      .map((r) => ({
-        CODPROD: String(r.CODPROD || '').trim(),
-        COSTO: Number(r.COSTO),
-      }))
-      .filter((r) => r.CODPROD && Number.isFinite(r.COSTO) && r.COSTO >= 0);
+  async onActualizarMasivo() {
+    if (this._bulkUpdating) return;
 
-    if (!items.length) {
-      F.toast('No hay costos válidos para actualizar', 'warning');
+    if (this._fromExcel) {
+      await this.onActualizarMasivoLista({
+        confirmHtml: (n, skipHtml) =>
+          `<p class="mb-0 text-start">Se actualizarán <strong>${n}</strong> producto(s) del Excel
+            (PRODUCTOS.COSTO y PRECIOS.COSTO × EQUIVALE).</p>${skipHtml}`,
+        endpoint: '/bulk',
+        requireItems: true,
+      });
       return;
     }
 
+    const { items, skippedZero } = this.collectScreenItems();
+    const total = this._totalCount || 0;
+    if (!total && !items.length) {
+      F.toast('No hay productos para actualizar', 'warning');
+      return;
+    }
+
+    const skipHtml = skippedZero
+      ? `<p class="small text-muted mb-0 mt-2 text-start">En pantalla se omitirán <strong>${skippedZero}</strong> producto(s) con costo cero (el resto del catálogo sí se recalcula).</p>`
+      : '';
+    const shown = this._rows.length;
+    const filterOn = Boolean(String(this._filterQuery || '').trim());
+    const totalLabel = !filterOn && total
+      ? ` (<strong>${total}</strong>)`
+      : '';
     const ok = await CatalogosUI.fireConfirm({
       title: '¿Actualizar todos los costos?',
-      html: `<p class="mb-0 text-start">Se actualizarán <strong>${items.length}</strong> producto(s) con los costos cargados desde Excel
-        (PRODUCTOS.COSTO y PRECIOS.COSTO × EQUIVALE). El resto del catálogo no se modifica.</p>`,
-      confirmText: 'Sí, actualizar todos',
+      html: `<p class="mb-0 text-start">Se actualizarán los costos de <strong>todos los productos</strong> de la empresa${totalLabel},
+        no solo los ${shown} de esta pantalla.
+        Los valores editados aquí se guardan primero; en el resto se usa el costo ya registrado
+        (<code>PRECIOS.COSTO = PRODUCTOS.COSTO × EQUIVALE</code>).</p>${skipHtml}`,
+      confirmText: 'Sí, actualizar todo',
       cancelText: 'Cancelar',
     });
     if (!ok) return;
 
+    await this.runBulkRequest('/all', items, skippedZero, {
+      successMessage: (data) => {
+        const nProd = data.productos ?? total;
+        const nPrecios = data.preciosActualizados ?? 0;
+        const nEdit = data.actualizados ?? 0;
+        const errN = data.errores ?? 0;
+        const omitMsg = skippedZero ? ` Omitidos con costo 0 en pantalla: ${skippedZero}.` : '';
+        const extra = nEdit ? ` Guardados desde pantalla: ${nEdit}.` : '';
+        return errN
+          ? `Catálogo: ${nProd} producto(s), ${nPrecios} precio(s). Con error: ${errN}.${extra}${omitMsg}`
+          : `Se actualizaron los costos de todo el catálogo (${nProd} producto(s), ${nPrecios} medida(s)).${extra}${omitMsg}`;
+      },
+    });
+  },
+
+  async onActualizarMasivoLista({ confirmHtml, endpoint, requireItems }) {
+    if (this._bulkUpdating || !this._rows.length) return;
+    const { items, skippedZero } = this.collectScreenItems();
+
+    if (requireItems && !items.length) {
+      F.toast(
+        skippedZero
+          ? 'No hay productos con costo mayor a cero para actualizar'
+          : 'No hay costos válidos para actualizar',
+        'warning'
+      );
+      return;
+    }
+
+    const skipHtml = skippedZero
+      ? `<p class="small text-muted mb-0 mt-2 text-start">Se omitirán <strong>${skippedZero}</strong> producto(s) con costo cero.</p>`
+      : '';
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Actualizar todos los costos?',
+      html: confirmHtml(items.length, skipHtml),
+      confirmText: 'Sí, actualizar todo',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
+    await this.runBulkRequest(endpoint, items, skippedZero, {
+      successMessage: (data) => {
+        const n = data.actualizados ?? 0;
+        const errN = data.errores ?? 0;
+        const omitMsg = skippedZero ? ` Omitidos con costo 0: ${skippedZero}.` : '';
+        return errN
+          ? `Actualizados ${n}. Con error: ${errN}.${omitMsg}`
+          : `Se actualizaron ${n} costo(s) correctamente.${omitMsg}`;
+      },
+    });
+  },
+
+  async runBulkRequest(endpoint, items, skippedZero, { successMessage }) {
     this._bulkUpdating = true;
     this.render();
 
     Swal.fire({
       ...CatalogosUI.modalBase(),
       title: 'Actualizando costos…',
-      html: `<p class="small text-muted mb-0">Aplicando ${items.length} producto(s). Espere…</p>`,
+      html: '<p class="small text-muted mb-0">Aplicando costos de todo el catálogo. Espere…</p>',
       allowOutsideClick: false,
       allowEscapeKey: false,
       showConfirmButton: false,
@@ -440,22 +516,17 @@ const ActualizacionCostosView = {
     });
 
     try {
-      const data = await F.fetchJson(this.apiUrl('/bulk'), {
+      const data = await F.fetchJson(this.apiUrl(endpoint), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items }),
       });
       Swal.close();
-      const n = data.actualizados ?? 0;
       const errN = data.errores ?? 0;
-      F.toast(
-        errN
-          ? `Actualizados ${n}. Con error: ${errN}.`
-          : `Se actualizaron ${n} costo(s) correctamente`,
-        errN ? 'warning' : 'success'
-      );
+      F.toast(successMessage(data), errN ? 'warning' : 'success');
       this._fromExcel = false;
       this._excelSkipped = [];
+      this._bulkUpdating = false;
       await this.reloadList();
     } catch (err) {
       Swal.close();

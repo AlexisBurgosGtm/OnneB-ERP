@@ -237,6 +237,8 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.75rem;
+  max-height: min(70vh, 38rem);
+  overflow: auto;
 }
 
 @media (min-width: 640px) {
@@ -276,6 +278,63 @@
   flex-direction: column;
   gap: 0.15rem;
   color: var(--app-text, #1a1a1a);
+}
+
+.asistente-prod-result {
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bs-secondary-bg, #f8f9fa) 90%, transparent);
+  padding: 0.45rem 0.55rem;
+  min-height: 2.35rem;
+}
+
+.asistente-prod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 14.5rem;
+  overflow: auto;
+}
+
+.asistente-prod-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.35rem 0.1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border, #e5e7eb) 85%, transparent);
+}
+
+.asistente-prod-item:last-child {
+  border-bottom: none;
+}
+
+.asistente-prod-info {
+  min-width: 0;
+}
+
+.asistente-prod-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--app-text-muted, #6c757d);
+}
+
+.asistente-prod-name {
+  font-weight: 600;
+  color: var(--app-text, #1a1a1a);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.asistente-prod-med {
+  font-size: 0.72rem;
+  color: var(--app-text-muted, #6c757d);
+}
+
+.asistente-prod-precio {
+  flex: 0 0 auto;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--bs-primary, #0d6efd);
 }
 
 #asist-precio {

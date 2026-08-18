@@ -12,6 +12,26 @@ const NominaEmpleadosView = {
     return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   },
 
+  formatFecha(value) {
+    if (!value) return '—';
+    const s = String(value);
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) {
+      return `${String(dmy[1]).padStart(2, '0')}/${String(dmy[2]).padStart(2, '0')}/${dmy[3]}`;
+    }
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '—';
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}/${d.getUTCFullYear()}`;
+    } catch {
+      return '—';
+    }
+  },
+
   formatMoney(v) {
     const n = Number(v);
     if (Number.isNaN(n)) return '—';
@@ -56,7 +76,7 @@ const NominaEmpleadosView = {
     const q = this._filter.trim().toLowerCase();
     if (!q) return this._rows;
     return this._rows.filter((r) =>
-      [r.CODEMPLEADO, r.NOMEMPLEADO, r.DPI, r.IGSS, r.DEPARTAMENTO]
+      [r.CODEMPLEADO, r.NOMEMPLEADO, r.DPI, r.IGSS, r.DEPARTAMENTO, r.FECHA_NACIMIENTO]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ')
         .includes(q)
@@ -74,6 +94,7 @@ const NominaEmpleadosView = {
       <tr data-cod="${this.escapeHtml(r.CODEMPLEADO)}">
         <td>${this.escapeHtml(r.CODEMPLEADO)}</td>
         <td>${this.escapeHtml(r.NOMEMPLEADO)}</td>
+        <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA_NACIMIENTO))}</td>
         <td>${this.escapeHtml(r.DPI || '—')}</td>
         <td>${this.escapeHtml(r.IGSS || '—')}</td>
         <td class="text-end">${this.escapeHtml(this.formatMoney(r.SALARIO_BASE))}</td>
@@ -97,7 +118,7 @@ const NominaEmpleadosView = {
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead><tr>
-            <th>Cód.</th><th>Empleado</th><th>DPI</th><th>IGSS</th>
+            <th>Cód.</th><th>Empleado</th><th>Nacimiento</th><th>DPI</th><th>IGSS</th>
             <th class="text-end">Salario base</th>
             <th class="text-end">Bono ley</th>
             <th class="text-end">Bono adic.</th>
@@ -312,7 +333,7 @@ const NominaEmpleadosView = {
 
   async load(container) {
     this._container = container;
-    container.className = 'main-content flex-grow-1 d-flex p-3';
+    container.className = 'main-content flex-grow-1 d-flex p-3 align-items-stretch justify-content-start';
     container.innerHTML = '<p class="text-muted">Cargando empleados…</p>';
     try {
       await this.reloadRows();

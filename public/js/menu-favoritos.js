@@ -176,7 +176,7 @@ const MenuFavoritos = {
                 </div>
               </div>
             </div>
-            <div class="asistente-card">
+            <div class="asistente-card mb-2">
               <div class="asistente-card-title"><i class="fa-solid fa-file-lines me-1"></i>Buscar Documento</div>
               <div class="row g-2 align-items-end">
                 <div class="col-5">
@@ -194,6 +194,15 @@ const MenuFavoritos = {
                   <div id="asist-doc-result" class="asistente-doc-result small text-muted">Ingrese serie y correlativo para consultar.</div>
                 </div>
               </div>
+            </div>
+            <div class="asistente-card">
+              <div class="asistente-card-title"><i class="fa-solid fa-tags me-1"></i>Consultar precios</div>
+              <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                <input type="search" id="asist-prod-q" class="form-control" placeholder="Código o descripción…" autocomplete="off">
+                <button type="button" class="btn btn-primary" id="asist-prod-buscar">Buscar</button>
+              </div>
+              <div id="asist-prod-result" class="asistente-prod-result small text-muted">Escriba y pulse Buscar o Enter (máx. 6).</div>
             </div>
           </div>
         </div>`,
@@ -352,6 +361,105 @@ const MenuFavoritos = {
         e.preventDefault();
         popup.querySelector('#asist-corr')?.focus();
       }
+    });
+
+    this.bindAsistenteProductos(popup);
+  },
+
+  renderAsistenteProductosHtml(rows) {
+    if (!rows.length) {
+      return '<p class="small text-muted mb-0">No se encontraron productos.</p>';
+    }
+    return `
+      <div class="asistente-prod-list">
+        ${rows
+          .map((r) => {
+            const nombre = [r.DESPROD, r.DESPROD2].filter(Boolean).join(' · ') || '—';
+            const med = String(r.CODMEDIDA || '').trim();
+            return `
+          <div class="asistente-prod-item">
+            <div class="asistente-prod-info">
+              <div class="asistente-prod-code">${this.escapeHtml(r.CODPROD)}</div>
+              <div class="asistente-prod-name">${this.escapeHtml(nombre)}</div>
+              ${med ? `<div class="asistente-prod-med">${this.escapeHtml(med)}</div>` : ''}
+            </div>
+            <div class="asistente-prod-precio">${this.escapeHtml(this.formatMoney(r.PRECIO))}</div>
+          </div>`;
+          })
+          .join('')}
+      </div>`;
+  },
+
+  bindAsistenteProductos(popup) {
+    if (!popup) return;
+    const qEl = popup.querySelector('#asist-prod-q');
+    const btn = popup.querySelector('#asist-prod-buscar');
+    const resultEl = popup.querySelector('#asist-prod-result');
+    let timer = null;
+
+    const runBuscar = async () => {
+      const q = String(qEl?.value || '').trim();
+      if (!q) {
+        if (resultEl) {
+          resultEl.className = 'asistente-prod-result small text-muted';
+          resultEl.textContent = 'Escriba y pulse Buscar o Enter (máx. 6).';
+        }
+        return;
+      }
+      if (typeof F === 'undefined' || !F.getEmpNit()) {
+        if (resultEl) {
+          resultEl.className = 'asistente-prod-result small text-danger';
+          resultEl.textContent = 'No hay empresa activa.';
+        }
+        return;
+      }
+      if (resultEl) {
+        resultEl.className = 'asistente-prod-result small text-muted';
+        resultEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Buscando…';
+      }
+      if (btn) btn.disabled = true;
+      try {
+        const url =
+          `/api/asistente/productos?empnit=${encodeURIComponent(F.getEmpNit())}` +
+          `&q=${encodeURIComponent(q)}&limit=6&_=${Date.now()}`;
+        const data = await F.fetchJson(url, { cache: 'no-store' });
+        const rows = (data.rows || []).slice(0, 6);
+        if (resultEl) {
+          resultEl.className = 'asistente-prod-result small';
+          resultEl.innerHTML = this.renderAsistenteProductosHtml(rows);
+        }
+      } catch (err) {
+        if (resultEl) {
+          resultEl.className = 'asistente-prod-result small text-danger';
+          resultEl.textContent = err.message || 'No se pudo buscar productos';
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+
+    btn?.addEventListener('click', () => {
+      runBuscar().catch(() => {});
+    });
+    qEl?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      clearTimeout(timer);
+      runBuscar().catch(() => {});
+    });
+    qEl?.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = String(qEl.value || '').trim();
+      if (!q) {
+        if (resultEl) {
+          resultEl.className = 'asistente-prod-result small text-muted';
+          resultEl.textContent = 'Escriba y pulse Buscar o Enter (máx. 6).';
+        }
+        return;
+      }
+      timer = setTimeout(() => {
+        runBuscar().catch(() => {});
+      }, 400);
     });
   },
 

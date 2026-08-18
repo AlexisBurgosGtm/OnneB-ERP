@@ -229,12 +229,12 @@ const FacturacionView = {
   renderListActionsHtml(row) {
     const certBtn = this.needsCertificar(row)
       ? `<button type="button" class="btn btn-sm btn-outline-success inv-card-btn" data-action="certificar" title="Certificar FEL">
-          <i class="fa-solid fa-certificate me-1"></i>CERTIFICAR
+          <i class="fa-solid fa-certificate"></i><span class="fac-list-action-text">CERTIFICAR</span>
         </button>`
       : '';
     const fraccionarBtn = this.puedeFraccionar(row)
       ? `<button type="button" class="btn btn-sm btn-outline-warning inv-card-btn" data-action="fraccionar" title="Fraccionar factura">
-          <i class="fa-solid fa-scissors me-1"></i>Fraccionar factura
+          <i class="fa-solid fa-scissors"></i><span class="fac-list-action-text">Fraccionar factura</span>
         </button>`
       : '';
     return `
@@ -1583,15 +1583,15 @@ const FacturacionView = {
           <tr class="fac-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
             <td>${this.escapeHtml(cliente)}</td>
-            <td class="small text-muted">${this.escapeHtml(negocio)}</td>
-            <td class="small">${this.escapeHtml(vendedor)}</td>
-            <td class="small text-nowrap">${this.escapeHtml(caja)}</td>
-            <td class="small fw-semibold ${pagoClass}">${this.escapeHtml(pago)}</td>
-            <td class="small">${this.escapeHtml(entrega || '—')}</td>
-            <td class="fac-fel-col">${this.formatFelCell(r)}</td>
-            <td class="text-center">${Number(r.LINEAS) || 0}</td>
+            <td class="small text-muted doc-list-col-optional">${this.escapeHtml(negocio)}</td>
+            <td class="small doc-list-col-optional">${this.escapeHtml(vendedor)}</td>
+            <td class="small text-nowrap doc-list-col-optional">${this.escapeHtml(caja)}</td>
+            <td class="small fw-semibold doc-list-col-optional ${pagoClass}">${this.escapeHtml(pago)}</td>
+            <td class="small doc-list-col-optional">${this.escapeHtml(entrega || '—')}</td>
+            <td class="fac-fel-col doc-list-col-optional">${this.formatFelCell(r)}</td>
+            <td class="text-center doc-list-col-optional">${Number(r.LINEAS) || 0}</td>
             <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
-            <td class="text-nowrap">${this.escapeHtml(this.formatHoraPedido(r))}</td>
+            <td class="text-nowrap doc-list-col-optional">${this.escapeHtml(this.formatHoraPedido(r))}</td>
             <td class="text-end text-nowrap fac-list-actions">${this.renderListActionsHtml(r)}</td>
           </tr>`;
       })
@@ -1607,16 +1607,16 @@ const FacturacionView = {
               <tr>
                 <th scope="col">Documento</th>
                 <th scope="col">Cliente</th>
-                <th scope="col">Negocio</th>
-                <th scope="col">Vendedor</th>
-                <th scope="col">Caja</th>
-                <th scope="col">Pago</th>
-                <th scope="col">Entrega</th>
-                <th scope="col">FEL</th>
-                <th scope="col" class="text-center">Líneas</th>
+                <th scope="col" class="doc-list-col-optional">Negocio</th>
+                <th scope="col" class="doc-list-col-optional">Vendedor</th>
+                <th scope="col" class="doc-list-col-optional">Caja</th>
+                <th scope="col" class="doc-list-col-optional">Pago</th>
+                <th scope="col" class="doc-list-col-optional">Entrega</th>
+                <th scope="col" class="doc-list-col-optional">FEL</th>
+                <th scope="col" class="text-center doc-list-col-optional">Líneas</th>
                 <th scope="col" class="text-end">Total</th>
-                <th scope="col">Hora</th>
-                <th scope="col" class="text-end">Acciones</th>
+                <th scope="col" class="doc-list-col-optional">Hora</th>
+                <th scope="col" class="text-end fac-list-actions">Acciones</th>
               </tr>
             </thead>
             <tbody id="fac-list-tbody">${this.renderListTableBodyHtml()}</tbody>

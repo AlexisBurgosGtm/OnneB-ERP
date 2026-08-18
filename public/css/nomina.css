@@ -5,6 +5,18 @@
   max-width: 100%;
 }
 
+.nomina-empleados-view {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1.5rem;
+}
+
 .nomina-config-params-card .form-label,
 .nomina-config-dept-card .form-label {
   font-size: 0.72rem;

@@ -29,7 +29,7 @@ const uploadFoto = multer({
 async function validateEmpleadoAcceso(pool, data, exclude) {
   const usuario = normalizeUsuario(data.USUARIO);
   const clave = normalizeClave(data.CLAVE);
-  // Sin usuario y clave: no accede al sistema; no validar duplicados.
+  // Sin usuario o sin clave (null/vacío): no accede al sistema; no validar duplicados.
   if (!tieneAccesoSistema(usuario, clave)) {
     data.USUARIO = null;
     data.CLAVE = null;
@@ -91,6 +91,7 @@ const router = createCatalogoRouter({
     'CODDOC_REC',
     'NIT',
     'FECHA_INICIO',
+    'FECHA_NACIMIENTO',
   ],
   fields: [
     { name: 'NOMEMPLEADO', type: 'varchar', required: true },
@@ -113,6 +114,7 @@ const router = createCatalogoRouter({
     { name: 'CODDOC_REC', type: 'varchar' },
     { name: 'NIT', type: 'varchar' },
     { name: 'FECHA_INICIO', type: 'date' },
+    { name: 'FECHA_NACIMIENTO', type: 'date' },
   ],
   insertFields: [
     'NOMEMPLEADO',
@@ -135,6 +137,7 @@ const router = createCatalogoRouter({
     'CODDOC_REC',
     'NIT',
     'FECHA_INICIO',
+    'FECHA_NACIMIENTO',
   ],
   updateFields: [
     'NOMEMPLEADO',
@@ -156,6 +159,7 @@ const router = createCatalogoRouter({
     'CODDOC_REC',
     'NIT',
     'FECHA_INICIO',
+    'FECHA_NACIMIENTO',
   ],
   async validateInsert(pool, empnit, data) {
     return validateEmpleadoAcceso(pool, data);

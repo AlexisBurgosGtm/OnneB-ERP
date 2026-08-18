@@ -19,6 +19,70 @@ const PosDocSearchUI = {
     return window.matchMedia(`(max-width: ${this.breakpoint - 0.02}px)`).matches;
   },
 
+  layoutMobileSearchFab(container, prefix) {
+    const search = container?.querySelector(`#${prefix}-fab-add-product`);
+    if (!search) return;
+    if (!this.isMobileView()) {
+      search.style.left = '';
+      search.style.bottom = '';
+      search.style.zIndex = '';
+      return;
+    }
+    const menu = document.getElementById('btn-menu-fab');
+    const camera = container.querySelector(`#${prefix}-fab-barcode`);
+    const menuBox =
+      menu && menu.classList.contains('is-visible') && menu.getClientRects().length
+        ? menu.getBoundingClientRect()
+        : null;
+    const cameraVisible =
+      camera &&
+      camera.style.display !== 'none' &&
+      !camera.disabled &&
+      camera.getClientRects().length;
+    const cameraBox = cameraVisible ? camera.getBoundingClientRect() : null;
+    const searchW = search.getBoundingClientRect().width || 54;
+    let centerX;
+    if (menuBox && cameraBox) {
+      centerX = (menuBox.right + cameraBox.left) / 2;
+    } else if (menuBox) {
+      centerX = menuBox.right + 12 + searchW / 2;
+    } else if (cameraBox) {
+      centerX = cameraBox.left - 12 - searchW / 2;
+    } else {
+      centerX = window.innerWidth * 0.32;
+    }
+    const minLeft = menuBox ? menuBox.right + 8 : 12;
+    const maxLeft = cameraBox
+      ? cameraBox.left - 8 - searchW
+      : window.innerWidth - searchW - 12;
+    let left = centerX - searchW / 2;
+    if (maxLeft >= minLeft) {
+      left = Math.min(Math.max(left, minLeft), maxLeft);
+    } else {
+      left = (minLeft + Math.max(maxLeft, minLeft)) / 2;
+    }
+    search.style.left = `${Math.round(left)}px`;
+    search.style.bottom = '1.25rem';
+    search.style.zIndex = '1052';
+  },
+
+  bindMobileSearchFabLayout(container, prefix) {
+    this._searchFabLayouts = (this._searchFabLayouts || []).filter((x) => x.prefix !== prefix);
+    this._searchFabLayouts.push({ container, prefix });
+    const runAll = () => {
+      (this._searchFabLayouts || []).forEach((x) => this.layoutMobileSearchFab(x.container, x.prefix));
+    };
+    window.requestAnimationFrame(runAll);
+    window.setTimeout(runAll, 80);
+    window.setTimeout(runAll, 240);
+    if (this._searchFabResizeBound) return;
+    this._searchFabResizeBound = true;
+    window.addEventListener('resize', () => {
+      window.clearTimeout(this._searchFabResizeTimer);
+      this._searchFabResizeTimer = window.setTimeout(runAll, 60);
+    });
+  },
+
   listTargets(container, prefix) {
     const lists = [];
     const desktop = container?.querySelector(`#${prefix}-product-list`);
@@ -341,6 +405,8 @@ const PosDocSearchUI = {
       this.openBarcodeScanner(view, prefix, { getEditable, buscarProductos });
     });
 
+    this.bindMobileSearchFabLayout(container, prefix);
+
     sheetEl.querySelector(`#${prefix}-product-sheet-close`)?.addEventListener('click', () => {
       this.hideSheet(sheetEl);
     });
@@ -390,5 +456,6 @@ const PosDocSearchUI = {
       barcodeFab.disabled = !editable;
       barcodeFab.style.display = editable ? '' : 'none';
     }
+    this.layoutMobileSearchFab(container, prefix);
   },
 };

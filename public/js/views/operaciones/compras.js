@@ -1295,12 +1295,12 @@ const ComprasView = {
             data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
             <td>${this.escapeHtml(proveedor)}</td>
-            <td class="small text-muted">${this.escapeHtml(meta)}</td>
-            <td class="fac-fel-col">${this.formatFelCell(r)}</td>
-            <td class="text-center">${Number(r.LINEAS) || 0}</td>
+            <td class="small text-muted doc-list-col-optional">${this.escapeHtml(meta)}</td>
+            <td class="fac-fel-col doc-list-col-optional">${this.formatFelCell(r)}</td>
+            <td class="text-center doc-list-col-optional">${Number(r.LINEAS) || 0}</td>
             <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
-            <td class="text-nowrap">${this.escapeHtml(this.formatFechaCompra(r))}</td>
-            <td class="text-nowrap">${this.escapeHtml(this.formatHoraCompra(r))}</td>
+            <td class="text-nowrap doc-list-col-optional">${this.escapeHtml(this.formatFechaCompra(r))}</td>
+            <td class="text-nowrap doc-list-col-optional">${this.escapeHtml(this.formatHoraCompra(r))}</td>
             <td class="text-end text-nowrap fac-list-actions">${this.renderListActionsHtml(r)}</td>
           </tr>`;
       })
@@ -1316,13 +1316,13 @@ const ComprasView = {
               <tr>
                 <th scope="col">Documento</th>
                 <th scope="col">Proveedor</th>
-                <th scope="col">Empresa</th>
-                <th scope="col">FEL</th>
-                <th scope="col" class="text-center">Líneas</th>
+                <th scope="col" class="doc-list-col-optional">Empresa</th>
+                <th scope="col" class="doc-list-col-optional">FEL</th>
+                <th scope="col" class="text-center doc-list-col-optional">Líneas</th>
                 <th scope="col" class="text-end">Total</th>
-                <th scope="col">Fecha</th>
-                <th scope="col">Hora</th>
-                <th scope="col" class="text-end">Acciones</th>
+                <th scope="col" class="doc-list-col-optional">Fecha</th>
+                <th scope="col" class="doc-list-col-optional">Hora</th>
+                <th scope="col" class="text-end fac-list-actions">Acciones</th>
               </tr>
             </thead>
             <tbody id="compras-list-tbody">${this.renderListTableBodyHtml()}</tbody>

@@ -11,6 +11,7 @@ const {
   finishAuthentication,
 } = require('../lib/webauthn');
 const { getSettingSino, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
+const { assertEmpnitAllowed } = require('../lib/default-empnit');
 
 const router = express.Router();
 
@@ -68,6 +69,11 @@ router.post('/login', async (req, res) => {
 
   if (!empnit) {
     return res.status(400).json({ error: 'Empresa obligatoria' });
+  }
+  try {
+    assertEmpnitAllowed(empnit);
+  } catch (err) {
+    return res.status(err.statusCode || 403).json({ error: err.message });
   }
   if (!usuario) {
     return res.status(400).json({ error: 'Usuario obligatorio' });
@@ -223,6 +229,7 @@ router.post('/webauthn/login-options', async (req, res) => {
     return res.status(400).json({ error: 'Empresa es obligatoria' });
   }
   try {
+    assertEmpnitAllowed(empnit);
     const pool = await req.app.locals.getDbPool();
     await assertBiometricoPermitido(pool);
     await ensurePasskeyColumn(pool);

@@ -25,7 +25,8 @@ function sqlTypeFor(field) {
 }
 
 function parseValue(field, raw) {
-  if (raw === undefined || raw === '') {
+  // JSON null no es lo mismo que el texto "null": String(null) === "null"
+  if (raw === undefined || raw === null || raw === '') {
     if (field.type === 'int' || field.type === 'float' || field.type === 'numeric') return null;
     return null;
   }
@@ -37,7 +38,8 @@ function parseValue(field, raw) {
     if (!m) return null;
     return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   }
-  return String(raw).trim();
+  const text = String(raw).trim();
+  return text || null;
 }
 
 /**

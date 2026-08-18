@@ -4,6 +4,7 @@ const { isDbConfigured } = require('../config/database');
 const { verifySettingPass, SETTING_OPCION } = require('../lib/settings');
 const { cambiarEmpnitEnTodasLasTablas } = require('../lib/cambiar-empnit');
 const { scanEmpnitDataSummary, deleteEmpnitData } = require('../lib/eliminar-empnit');
+const { getDefaultEmpnit } = require('../lib/default-empnit');
 
 const router = express.Router();
 
@@ -125,8 +126,10 @@ router.get('/combo', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const defaultEmpnit = getDefaultEmpnit();
     const result = await pool
       .request()
+      .input('DEFAULT_EMPNIT', sql.VarChar, defaultEmpnit || null)
       .query(`
         SELECT
           EMPNIT,
@@ -134,6 +137,10 @@ router.get('/combo', async (req, res) => {
           CODTIPOEMPRESA
         FROM dbo.Empresas
         WHERE EMPNIT IS NOT NULL AND LTRIM(RTRIM(EMPNIT)) <> ''
+          AND (
+            @DEFAULT_EMPNIT IS NULL
+            OR UPPER(LTRIM(RTRIM(EMPNIT))) = UPPER(LTRIM(RTRIM(@DEFAULT_EMPNIT)))
+          )
         ORDER BY EMPNOMBRE
       `);
     res.json({ rows: result.recordset, total: result.recordset.length });

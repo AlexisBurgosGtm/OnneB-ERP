@@ -134,3 +134,19 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+.actualizacion-costos-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1.5rem;
+}
+
+.actualizacion-costos-wrap .table-responsive {
+  max-width: 100%;
+}

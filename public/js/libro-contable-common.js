@@ -78,6 +78,77 @@ const LibroContableCommon = {
     `;
   },
 
+  escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
+  searchInputHtml(prefix, value = '', placeholder = 'NIT, nombre, serie, número…') {
+    const val = this.escapeHtml(value);
+    return `
+      <div class="${prefix}-filter-search flex-grow-1">
+        <label for="${prefix}-search" class="form-label small mb-1">Buscar</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
+          <input type="search" class="form-control" id="${prefix}-search"
+            placeholder="${placeholder}"
+            value="${val}" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-outline-secondary" id="btn-${prefix}-search-clear"
+            title="Limpiar búsqueda" aria-label="Limpiar búsqueda">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  normalizeSearch(q) {
+    return String(q || '').trim().toLowerCase();
+  },
+
+  rowMatchesSearch(row, q, extraValues = []) {
+    const nq = this.normalizeSearch(q);
+    if (!nq) return true;
+    const parts = [
+      row?.LINEA,
+      row?.TIPODOC,
+      row?.FEL_SERIE,
+      row?.FEL_NUMERO,
+      row?.DOC_NIT,
+      row?.DOC_NOMCLIE,
+      row?.CODDOC,
+      row?.CORRELATIVO,
+      row?.STATUS,
+      ...extraValues,
+    ];
+    const hay = parts
+      .map((v) => String(v ?? '').trim().toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+    return hay.includes(nq);
+  },
+
+  bindSearch(container, prefix, view) {
+    const search = container?.querySelector(`#${prefix}-search`);
+    const clearBtn = container?.querySelector(`#btn-${prefix}-search-clear`);
+    if (!search) return;
+    const apply = () => {
+      view._filterQuery = search.value;
+      view.refreshDom();
+    };
+    search.addEventListener('input', apply);
+    search.addEventListener('search', apply);
+    clearBtn?.addEventListener('click', () => {
+      search.value = '';
+      view._filterQuery = '';
+      view.refreshDom();
+      search.focus();
+    });
+  },
+
   actionButtonsHtml(prefix) {
     return `
       <button type="button" class="btn btn-sm btn-outline-primary" id="btn-${prefix}-recargar">

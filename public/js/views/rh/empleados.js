@@ -42,12 +42,16 @@ function empleadosMapFormToApi(data, isEdit = false) {
     CODDOC_REC: data.CODDOC_REC || null,
     NIT: data.NIT || null,
     FECHA_INICIO: data.FECHA_INICIO || null,
+    FECHA_NACIMIENTO: data.FECHA_NACIMIENTO || null,
   };
   const usuario = String(data.USUARIO || '').trim();
   const clave = String(data.CLAVE || '').trim();
-  if (usuario && clave) {
+  if (usuario && clave && !/^null$/i.test(usuario) && !/^null$/i.test(clave)) {
     payload.USUARIO = usuario;
     payload.CLAVE = clave;
+  } else {
+    payload.USUARIO = null;
+    payload.CLAVE = null;
   }
   if (!isEdit) {
     payload.ACTIVO = 'SI';
@@ -106,8 +110,7 @@ const EmpleadosView = {
   normalizeRowForForm(row = {}) {
     const cat = row.CODCATALOGO;
     const catStr = cat !== null && cat !== undefined && cat !== '' ? String(cat) : '';
-    const fechaInicio = (() => {
-      const v = row.FECHA_INICIO;
+    const isoDate = (v) => {
       if (!v) return '';
       if (typeof v === 'string') {
         const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -116,14 +119,14 @@ const EmpleadosView = {
       try {
         const d = new Date(v);
         if (Number.isNaN(d.getTime())) return '';
-        const y = d.getFullYear();
-        const mo = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
+        const y = d.getUTCFullYear();
+        const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
         return `${y}-${mo}-${day}`;
       } catch {
         return '';
       }
-    })();
+    };
     return {
       ...row,
       CODEMPLEADO: row.CODEMPLEADO ?? '',
@@ -143,7 +146,8 @@ const EmpleadosView = {
       CODCATALOGO: catStr,
       CODDOC_REC: row.CODDOC_REC ?? '',
       NIT: row.NIT ?? '',
-      FECHA_INICIO: fechaInicio,
+      FECHA_INICIO: isoDate(row.FECHA_INICIO),
+      FECHA_NACIMIENTO: isoDate(row.FECHA_NACIMIENTO),
     };
   },
 
@@ -476,6 +480,32 @@ const EmpleadosView = {
     return `<div class="mb-2">${html}</div>`;
   },
 
+  prepareAccesoFields(isEdit, row) {
+    const usuario = document.querySelector('.swal2-html-container [name="EMP_ACCESO_USUARIO"]');
+    const clave = document.querySelector('.swal2-html-container [name="EMP_ACCESO_CLAVE"]');
+    if (!usuario || !clave) return;
+
+    const unlock = (el) => {
+      el.removeAttribute('readonly');
+    };
+    clave.addEventListener('focus', () => unlock(clave), { once: true });
+    usuario.addEventListener('focus', () => unlock(clave), { once: true });
+
+    const applyValues = () => {
+      const blankLiteral = (v) => (/^(null|undefined)$/i.test(String(v || '').trim()) ? '' : String(v || '').trim());
+      if (isEdit) {
+        usuario.value = blankLiteral(row?.USUARIO);
+        clave.value = blankLiteral(row?.CLAVE);
+        return;
+      }
+      usuario.value = '';
+      clave.value = '';
+    };
+    applyValues();
+    setTimeout(applyValues, 50);
+    setTimeout(applyValues, 300);
+  },
+
   accesoCardHtml(r) {
     return `
       <div class="card empleados-acceso-card mb-2">
@@ -491,7 +521,11 @@ const EmpleadosView = {
           </div>
           ${this.row2(
             this.inputField('EMP_ACCESO_USUARIO', 'Usuario', r.USUARIO, { autocomplete: 'off' }),
-            this.inputField('EMP_ACCESO_CLAVE', 'Clave', r.CLAVE, { type: 'password', autocomplete: 'new-password' })
+            this.inputField('EMP_ACCESO_CLAVE', 'Clave', r.CLAVE, {
+              type: 'password',
+              autocomplete: 'new-password',
+              readonly: true,
+            })
           )}
         </div>
       </div>
@@ -511,6 +545,7 @@ const EmpleadosView = {
             <div class="col-md-4">${this.inputField('DPI', 'DPI', r.DPI)}</div>
             <div class="col-md-4">${this.inputField('IGSS', 'IGSS', r.IGSS)}</div>
             <div class="col-md-4">${this.inputField('FECHA_INICIO', 'Fecha inicio', r.FECHA_INICIO, { type: 'date' })}</div>
+            <div class="col-md-4">${this.inputField('FECHA_NACIMIENTO', 'Fecha nacimiento', r.FECHA_NACIMIENTO, { type: 'date' })}</div>
           </div>
         </div>
       </div>
@@ -753,6 +788,7 @@ const EmpleadosView = {
       'CODDOC_REC',
       'NIT',
       'FECHA_INICIO',
+      'FECHA_NACIMIENTO',
     ];
     const data = {};
     names.forEach((name) => {
@@ -760,8 +796,8 @@ const EmpleadosView = {
       if (!input) return;
       data[name] = input.value.trim();
     });
-    data.USUARIO = data.EMP_ACCESO_USUARIO || '';
-    data.CLAVE = data.EMP_ACCESO_CLAVE || '';
+    data.USUARIO = String(data.EMP_ACCESO_USUARIO || '').trim();
+    data.CLAVE = String(data.EMP_ACCESO_CLAVE || '').trim();
     return data;
   },
 
@@ -790,6 +826,7 @@ const EmpleadosView = {
       allowOutsideClick: false,
       didOpen() {
         view.bindFotoEvents(codempleado);
+        view.prepareAccesoFields(isEdit, row);
       },
       preConfirm() {
         try {

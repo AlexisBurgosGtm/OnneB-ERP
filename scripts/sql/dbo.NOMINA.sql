@@ -182,6 +182,8 @@ IF COL_LENGTH('dbo.Empleados', 'NIT') IS NULL
   ALTER TABLE dbo.Empleados ADD NIT VARCHAR(20) NULL;
 IF COL_LENGTH('dbo.Empleados', 'FECHA_INICIO') IS NULL
   ALTER TABLE dbo.Empleados ADD FECHA_INICIO DATE NULL;
+IF COL_LENGTH('dbo.Empleados', 'FECHA_NACIMIENTO') IS NULL
+  ALTER TABLE dbo.Empleados ADD FECHA_NACIMIENTO DATE NULL;
 
 -- Campos extras en empleados / detalle de nómina (instalaciones previas)
 IF COL_LENGTH('dbo.NOMINA_EMPLEADO', 'DEPARTAMENTO') IS NULL

@@ -236,6 +236,94 @@ router.post('/import-excel', excelUpload.single('archivo'), async (req, res) => 
   }
 });
 
+function parseCostoItems(itemsRaw) {
+  const items = [];
+  for (const raw of itemsRaw || []) {
+    const codprod = String(raw?.CODPROD ?? raw?.codprod ?? '').trim();
+    const costo = Number(raw?.COSTO ?? raw?.costo);
+    if (!codprod || !Number.isFinite(costo) || costo <= 0) continue;
+    items.push({ CODPROD: codprod, COSTO: costo });
+  }
+  return items;
+}
+
+async function applyCostoItems(transaction, empnit, items) {
+  const updated = [];
+  const errors = [];
+  for (const item of items) {
+    const result = await updateProductoCosto(transaction, empnit, item.CODPROD, item.COSTO);
+    if (!result.ok) {
+      errors.push({ CODPROD: item.CODPROD, error: 'Producto no encontrado' });
+      continue;
+    }
+    updated.push(result);
+  }
+  return { updated, errors };
+}
+
+async function recalcAllPreciosCosto(transaction, empnit) {
+  const result = await new sql.Request(transaction).input('EMPNIT', sql.VarChar, empnit).query(`
+    UPDATE pr
+    SET pr.COSTO = ISNULL(p.COSTO, 0) * ISNULL(NULLIF(pr.EQUIVALE, 0), 1)
+    FROM dbo.PRECIOS pr
+    INNER JOIN dbo.PRODUCTOS p
+      ON p.EMPNIT = pr.EMPNIT
+     AND LTRIM(RTRIM(p.CODPROD)) = LTRIM(RTRIM(pr.CODPROD))
+    WHERE pr.EMPNIT = @EMPNIT
+  `);
+  return result.rowsAffected?.[0] || 0;
+}
+
+/**
+ * Recalcula PRECIOS.COSTO de todos los productos de la empresa
+ * (PRODUCTOS.COSTO × EQUIVALE). Opcionalmente aplica primero items editados en pantalla.
+ */
+router.put('/all', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const itemsRaw = Array.isArray(req.body?.items)
+    ? req.body.items
+    : Array.isArray(req.body?.rows)
+      ? req.body.rows
+      : [];
+  if (itemsRaw.length > BULK_MAX) {
+    return res.status(400).json({ error: `Máximo ${BULK_MAX} productos editados por lote` });
+  }
+  const items = parseCostoItems(itemsRaw);
+
+  const transaction = new sql.Transaction(await req.app.locals.getDbPool());
+  try {
+    await transaction.begin();
+    const applied = await applyCostoItems(transaction, empnit, items);
+    const preciosActualizados = await recalcAllPreciosCosto(transaction, empnit);
+    const productosRes = await new sql.Request(transaction)
+      .input('EMPNIT', sql.VarChar, empnit)
+      .query(`SELECT COUNT(*) AS total FROM dbo.PRODUCTOS WHERE EMPNIT = @EMPNIT`);
+    await transaction.commit();
+    res.json({
+      ok: true,
+      all: true,
+      productos: productosRes.recordset[0]?.total || 0,
+      preciosActualizados,
+      actualizados: applied.updated.length,
+      errores: applied.errors.length,
+      updated: applied.updated,
+      errors: applied.errors,
+    });
+  } catch (err) {
+    try {
+      await transaction.rollback();
+    } catch {
+      /* ignore */
+    }
+    console.warn('[API PUT /actualizacion-costos/all]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
  * Actualización masiva: [{ CODPROD, COSTO }, ...]
  */
@@ -257,30 +345,15 @@ router.put('/bulk', async (req, res) => {
     return res.status(400).json({ error: `Máximo ${BULK_MAX} productos por lote` });
   }
 
-  const items = [];
-  for (const raw of itemsRaw) {
-    const codprod = String(raw?.CODPROD ?? raw?.codprod ?? '').trim();
-    const costo = Number(raw?.COSTO ?? raw?.costo);
-    if (!codprod || !Number.isFinite(costo) || costo < 0) continue;
-    items.push({ CODPROD: codprod, COSTO: costo });
-  }
+  const items = parseCostoItems(itemsRaw);
   if (!items.length) {
     return res.status(400).json({ error: 'No hay ítems válidos para actualizar' });
   }
 
   const transaction = new sql.Transaction(await req.app.locals.getDbPool());
-  const updated = [];
-  const errors = [];
   try {
     await transaction.begin();
-    for (const item of items) {
-      const result = await updateProductoCosto(transaction, empnit, item.CODPROD, item.COSTO);
-      if (!result.ok) {
-        errors.push({ CODPROD: item.CODPROD, error: 'Producto no encontrado' });
-        continue;
-      }
-      updated.push(result);
-    }
+    const { updated, errors } = await applyCostoItems(transaction, empnit, items);
     await transaction.commit();
     res.json({
       ok: true,

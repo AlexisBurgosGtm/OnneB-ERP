@@ -2,6 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const ExcelJS = require('exceljs');
 const { isDbConfigured } = require('../config/database');
+const { stripDiacritics } = require('../lib/clean-text');
 
 const router = express.Router();
 
@@ -201,6 +202,9 @@ function readClienteBody(req, { defaultFechaInicio = false } = {}) {
     } else {
       data[name] = parseStrOrNull(req.body[name]);
     }
+  }
+  if (data.NOMBRECLIENTE) {
+    data.NOMBRECLIENTE = stripDiacritics(data.NOMBRECLIENTE).trim() || null;
   }
   if (defaultFechaInicio && !data.FECHAINICIO) {
     data.FECHAINICIO = parseDateOrNull(todayDateOnly());

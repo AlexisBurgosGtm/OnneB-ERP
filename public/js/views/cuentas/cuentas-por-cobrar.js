@@ -434,6 +434,7 @@ const CuentasPorCobrarView = {
   renderVistaToggleHtml() {
     const listaActive = this._vistaTipo === 'lista';
     const calActive = this._vistaTipo === 'calendario';
+    const resumenActive = this._vistaTipo === 'resumen';
     const saldoActive = this._vistaTipo === 'saldo-meses';
     const consActive = this._vistaTipo === 'consolidado-productos';
     return `
@@ -446,7 +447,7 @@ const CuentasPorCobrarView = {
           title="Calendario de vencimientos">
           <i class="fa-solid fa-calendar-days me-1"></i>Calendario
         </button>
-        <button type="button" class="btn btn-outline-secondary" id="cxp-vista-resumen"
+        <button type="button" class="btn ${resumenActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-resumen"
           title="Resumen por cliente">
           <i class="fa-solid fa-table-cells me-1"></i>Resumen
         </button>
@@ -461,66 +462,156 @@ const CuentasPorCobrarView = {
       </div>`;
   },
 
+  clienteCodigo(r) {
+    return r.CODCLIENTE != null && r.CODCLIENTE !== '' ? String(r.CODCLIENTE) : '—';
+  },
+
   buildResumenPorCliente() {
     const map = new Map();
     for (const r of this.filteredRows()) {
-      const cod = r.CODCLIENTE != null && r.CODCLIENTE !== '' ? String(r.CODCLIENTE) : '—';
+      const cod = this.clienteCodigo(r);
       const nombre = r.DOC_NOMCLIE || r.NEGOCIO || '—';
       const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
-      const cur = map.get(cod) || { codigo: cod, nombre, documentos: 0, saldo: 0 };
+      const abono = Number(r.DOC_ABONO) || 0;
+      const cur = map.get(cod) || { codigo: cod, nombre, documentos: 0, saldo: 0, abono: 0 };
       if ((!cur.nombre || cur.nombre === '—') && nombre && nombre !== '—') cur.nombre = nombre;
       cur.documentos += 1;
       cur.saldo += saldo;
+      cur.abono += abono;
       map.set(cod, cur);
     }
     return [...map.values()].sort((a, b) => b.saldo - a.saldo || String(a.nombre).localeCompare(String(b.nombre)));
   },
 
-  async mostrarResumen() {
+  docsForCliente(codigo) {
+    const key = String(codigo ?? '');
+    return this.filteredRows().filter((r) => this.clienteCodigo(r) === key);
+  },
+
+  renderResumenHtml() {
     const rows = this.buildResumenPorCliente();
     const totalDocs = rows.reduce((s, r) => s + r.documentos, 0);
     const totalSaldo = rows.reduce((s, r) => s + r.saldo, 0);
+    const totalAbono = rows.reduce((s, r) => s + r.abono, 0);
     const body = rows.length
       ? rows
           .map(
             (r) => `
-        <tr>
+        <tr class="cxp-resumen-row" data-codigo="${this.escapeHtml(r.codigo)}" role="button" tabindex="0">
           <td class="text-nowrap">${this.escapeHtml(r.codigo)}</td>
           <td>${this.escapeHtml(r.nombre)}</td>
           <td class="text-end">${r.documentos}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(r.abono))}</td>
           <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.saldo))}</td>
         </tr>`
           )
           .join('')
-      : `<tr><td colspan="4" class="text-center text-muted py-3">Sin documentos</td></tr>`;
+      : `<tr><td colspan="5" class="text-center text-muted py-4">Sin clientes con saldo pendiente</td></tr>`;
+    return `
+        <div class="card shadow-sm">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover table-striped mb-0 cxp-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th>Cód. cliente</th>
+                  <th>Cliente</th>
+                  <th class="text-end">Documentos</th>
+                  <th class="text-end">Abonos</th>
+                  <th class="text-end">Saldo total</th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+              <tfoot class="table-light fw-semibold">
+                <tr>
+                  <td colspan="2" class="text-end">${rows.length} cliente(s)</td>
+                  <td class="text-end">${totalDocs}</td>
+                  <td class="text-end text-success">${this.escapeHtml(this.formatMoney(totalAbono))}</td>
+                  <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Clic en un cliente para ver sus documentos con saldo y abono pendientes.</p>`;
+  },
+
+  renderResumenDocsTableHtml(rows) {
+    if (!rows.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin documentos pendientes</p>';
+    }
+    const body = rows
+      .map((r) => {
+        const vencido = this.isVencido(r);
+        const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
+        const abono = Number(r.DOC_ABONO) || 0;
+        return `<tr class="cxp-cal-day-row${vencido ? ' cxp-row-vencido' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}" role="button" tabindex="0">
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-nowrap${vencido ? ' text-danger fw-semibold' : ''}">${this.escapeHtml(this.formatFecha(r.VENCIMIENTO))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(abono))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(saldo))}</td>
+        </tr>`;
+      })
+      .join('');
+    const totalAbono = rows.reduce((s, r) => s + (Number(r.DOC_ABONO) || 0), 0);
+    const totalSaldo = rows.reduce((s, r) => s + (Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0), 0);
+    return `
+      <div class="table-responsive" style="max-height: 420px">
+        <table class="table table-sm table-hover table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Documento</th>
+              <th>Fecha</th>
+              <th>Vence</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Abono</th>
+              <th class="text-end">Saldo pendiente</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="4" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(totalAbono))}</td>
+              <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="small text-muted mt-2 mb-0 text-start">Clic en un documento para ver opciones.</p>`;
+  },
+
+  async mostrarDocsDeCliente(codigo) {
+    const rows = this.docsForCliente(codigo);
+    if (!rows.length) return;
+    const nombre = rows[0].DOC_NOMCLIE || rows[0].NEGOCIO || codigo;
     await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: 'Resumen por cliente',
-      width: 720,
-      html: `
-        <div class="table-responsive" style="max-height: 420px">
-          <table class="table table-sm table-hover table-striped mb-0">
-            <thead class="table-light sticky-top">
-              <tr>
-                <th>Cód. cliente</th>
-                <th>Cliente</th>
-                <th class="text-end">Documentos</th>
-                <th class="text-end">Saldo total</th>
-              </tr>
-            </thead>
-            <tbody>${body}</tbody>
-            <tfoot class="table-light fw-semibold">
-              <tr>
-                <td colspan="2" class="text-end">Totales</td>
-                <td class="text-end">${totalDocs}</td>
-                <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>`,
+      title: `${nombre}`,
+      html: `<p class="small text-muted text-start mb-2">Cód. ${this.escapeHtml(String(codigo))} · documentos con saldo pendiente</p>${this.renderResumenDocsTableHtml(rows)}`,
+      width: 860,
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        const onRowPick = (row) => {
+          const coddoc = row.getAttribute('data-coddoc');
+          const correlativo = row.getAttribute('data-correlativo');
+          if (!coddoc || !correlativo) return;
+          Swal.close();
+          this.onRowAction(coddoc, correlativo).catch((err) => F.toast(err.message || 'Error', 'error'));
+        };
+        Swal.getPopup()?.querySelectorAll('.cxp-cal-day-row').forEach((row) => {
+          row.addEventListener('click', () => onRowPick(row));
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onRowPick(row);
+            }
+          });
+        });
+      },
     });
   },
 
@@ -896,9 +987,11 @@ const CuentasPorCobrarView = {
     const truncHint = this._truncated
       ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
       : '';
-    const showListaTools = this._vistaTipo === 'lista' || this._vistaTipo === 'calendario';
+    const showListaTools =
+      this._vistaTipo === 'lista' || this._vistaTipo === 'calendario' || this._vistaTipo === 'resumen';
     let contentHtml = this.renderListaHtml();
     if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
+    if (this._vistaTipo === 'resumen') contentHtml = this.renderResumenHtml();
     if (this._vistaTipo === 'saldo-meses') contentHtml = this.renderSaldoMesesHtml();
     if (this._vistaTipo === 'consolidado-productos') contentHtml = this.renderConsolidadoProductosHtml();
 
@@ -1714,11 +1807,17 @@ const CuentasPorCobrarView = {
       F.alert('Error', 'No hay tipo de documento RAR activo', 'error');
       return;
     }
-    const retenciones = dataRet.retenciones || [];
+    const seenRet = new Set();
+    const retenciones = (dataRet.retenciones || []).filter((r) => {
+      const k = `${String(r.CODDOC_RET || '').trim()}|${Number(r.CORRELATIVO_RET)}`;
+      if (seenRet.has(k)) return false;
+      seenRet.add(k);
+      return true;
+    });
     if (!retenciones.length) {
       F.alert(
-        'Sin retenciones pendientes',
-        'No hay retenciones IVA/ISR (RVR/RIR) de FEL ligadas a esta FAC, o ya fueron aplicadas con un RAR.',
+        'Sin referencias pendientes',
+        'No hay retenciones IVA/ISR (RVR/RIR) ni notas de crédito FEL (FNC/FNA) ligadas a esta FAC, o ya fueron aplicadas con un RAR.',
         'info'
       );
       return;
@@ -1735,7 +1834,9 @@ const CuentasPorCobrarView = {
             · ${this.escapeHtml(cliente)}
           </p>
           <p class="small mb-2">
-            Retenciones aplicadas a la FEL de esta venta. Márquelas para abonar el saldo de la FAC (no es recibo de caja).
+            Solo la FEL de esta FAC
+            (<strong>${this.escapeHtml(coddoc)} #${this.escapeHtml(correlativo)}</strong>)
+            y el monto retenido en esa FEL. Una línea por retención.
           </p>
           <div class="row g-2 mb-2">
             <div class="col-md-4">
@@ -1759,7 +1860,7 @@ const CuentasPorCobrarView = {
                     <input type="checkbox" id="cxp-rar-check-all" title="Seleccionar todas">
                   </th>
                   <th>Clase</th>
-                  <th>Retención</th>
+                  <th>Documento</th>
                   <th>FEL</th>
                   <th>Fecha</th>
                   <th class="text-end">Monto</th>
@@ -1770,7 +1871,14 @@ const CuentasPorCobrarView = {
                   .map((r) => {
                     const felLbl = r.FEL_SERIE && r.FEL_NUMERO
                       ? `${r.FEL_SERIE}-${r.FEL_NUMERO}`
-                      : `${r.FEL_CODDOC} #${r.FEL_CORRELATIVO}`;
+                      : `${r.FEL_CODDOC || ''} #${r.FEL_CORRELATIVO ?? ''}`;
+                    const clase = String(r.CLASE || r.TIPODOC_RET || '').toUpperCase();
+                    const badgeClass =
+                      clase === 'FNC' || clase === 'FNA'
+                        ? 'text-bg-warning text-dark'
+                        : clase === 'ISR' || clase === 'RIR'
+                          ? 'text-bg-info'
+                          : 'text-bg-secondary';
                     return `
                   <tr>
                     <td class="text-center">
@@ -1781,7 +1889,7 @@ const CuentasPorCobrarView = {
                         data-fel-corr="${this.escapeHtml(r.FEL_CORRELATIVO)}"
                         data-abono="${this.escapeHtml(r.ABONO)}">
                     </td>
-                    <td><span class="badge text-bg-secondary">${this.escapeHtml(r.CLASE || r.TIPODOC_RET)}</span></td>
+                    <td><span class="badge ${badgeClass}">${this.escapeHtml(r.CLASE || r.TIPODOC_RET)}</span></td>
                     <td class="small">${this.escapeHtml(r.CODDOC_RET)} #${this.escapeHtml(r.CORRELATIVO_RET)}</td>
                     <td class="small">${this.escapeHtml(r.FEL_TIPODOC || '')} ${this.escapeHtml(felLbl)}</td>
                     <td class="small">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
@@ -1825,7 +1933,7 @@ const CuentasPorCobrarView = {
             FEL_CORRELATIVO: el.getAttribute('data-fel-corr'),
           }));
         if (!lineas.length) {
-          Swal.showValidationMessage('Seleccione al menos una retención');
+          Swal.showValidationMessage('Seleccione al menos una retención o nota de crédito FEL');
           return false;
         }
         const total = this.refreshRarTotalSeleccionado(saldo);
@@ -2021,7 +2129,7 @@ const CuentasPorCobrarView = {
       switchVista('calendario');
     });
     this._container?.querySelector('#cxp-vista-resumen')?.addEventListener('click', () => {
-      this.mostrarResumen().catch((err) => F.toast(err.message || 'Error', 'error'));
+      switchVista('resumen');
     });
     this._container?.querySelector('#cxp-vista-saldo-meses')?.addEventListener('click', () => {
       switchVista('saldo-meses');
@@ -2110,6 +2218,21 @@ const CuentasPorCobrarView = {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onRowPick(row);
+        }
+      });
+    });
+
+    const onResumenPick = (row) => {
+      const codigo = row.getAttribute('data-codigo');
+      if (!codigo) return;
+      this.mostrarDocsDeCliente(codigo).catch((err) => F.toast(err.message || 'Error', 'error'));
+    };
+    this._container?.querySelectorAll('.cxp-resumen-row').forEach((row) => {
+      row.addEventListener('click', () => onResumenPick(row));
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onResumenPick(row);
         }
       });
     });

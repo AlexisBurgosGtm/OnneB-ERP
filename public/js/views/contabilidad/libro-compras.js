@@ -44,6 +44,7 @@ const LibroComprasView = {
   _anio: null,
   _loading: false,
   _exporting: false,
+  _filterQuery: '',
 
   tableColumns: [
     { key: 'LINEA', label: 'No.', align: 'center' },
@@ -129,10 +130,12 @@ const LibroComprasView = {
   },
 
   badgeText() {
-    const total = this._rows.length;
-    const t = this._totals || {};
+    const all = this._rows.length;
+    const rows = this.filteredRows();
+    const t = this.footerTotals();
+    const filtering = Boolean(String(this._filterQuery || '').trim());
     const parts = [
-      `${total} registro(s)`,
+      filtering ? `${rows.length} de ${all} registro(s)` : `${all} registro(s)`,
       `${this.mesLabel(this._mes)} ${this._anio}`,
       `COM: ${t.compras ?? 0}`,
       `COP: ${t.peqContribuyente ?? 0}`,
@@ -140,6 +143,46 @@ const LibroComprasView = {
     ];
     if ((t.anulados ?? 0) > 0) parts.push(`Anulados: ${t.anulados}`);
     return parts.join(' · ');
+  },
+
+  filteredRows() {
+    const q = this._filterQuery;
+    if (!String(q || '').trim()) return this._rows;
+    return this._rows.filter((row) =>
+      LibroContableCommon.rowMatchesSearch(row, q, [this.fechaDisplay(row)])
+    );
+  },
+
+  footerTotals() {
+    const filtering = Boolean(String(this._filterQuery || '').trim());
+    const rows = filtering ? this.filteredRows() : this._rows;
+    if (!filtering && this._totals) return this._totals;
+    const t = {
+      exento: 0,
+      gravado: 0,
+      iva: 0,
+      total: 0,
+      documentos: rows.length,
+      anulados: 0,
+      compras: 0,
+      peqContribuyente: 0,
+      notasCredito: 0,
+    };
+    rows.forEach((r) => {
+      if (r.ANULADO) {
+        t.anulados += 1;
+        return;
+      }
+      const tipo = String(r.TIPODOC || '').trim().toUpperCase();
+      if (tipo === 'COP') t.peqContribuyente += 1;
+      else if (tipo === 'DVP' || r.ES_NOTA_CREDITO) t.notasCredito += 1;
+      else t.compras += 1;
+      t.exento += Number(r.TOTALEXENTO) || 0;
+      t.gravado += Number(r.TOTALSINIVA) || 0;
+      t.iva += Number(r.TOTALIVA) || 0;
+      t.total += Number(r.TOTAL) || 0;
+    });
+    return t;
   },
 
   renderFiltersCard() {
@@ -168,6 +211,11 @@ const LibroComprasView = {
                 ${anioOpts}
               </select>
             </div>
+            ${LibroContableCommon.searchInputHtml(
+              'libro-compras',
+              this._filterQuery,
+              'NIT, proveedor, serie, número, tipo…'
+            )}
             <div class="libro-compras-actions d-flex gap-2">
               <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-compras-recargar">
                 <i class="fa-solid fa-rotate me-1"></i>Actualizar
@@ -195,7 +243,10 @@ const LibroComprasView = {
 
   renderTableBodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay registros para este período</td></tr>`;
+      const msg = String(this._filterQuery || '').trim()
+        ? 'Sin coincidencias para la búsqueda'
+        : 'No hay registros para este período';
+      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((row) => {
@@ -213,12 +264,16 @@ const LibroComprasView = {
   },
 
   renderTableFooterHtml() {
-    const t = this._totals;
-    if (!t || !this._rows.length) return '';
+    const rows = this.filteredRows();
+    const t = this.footerTotals();
+    if (!rows.length) return '';
+    const label = String(this._filterQuery || '').trim()
+      ? 'Totales (filtro, sin anulados):'
+      : 'Totales (sin anulados):';
     return `
       <tfoot>
         <tr>
-          <td colspan="7" class="text-end">Totales (sin anulados):</td>
+          <td colspan="7" class="text-end">${label}</td>
           <td class="text-end libro-compras-money">${this.escapeHtml(this.formatMoney(t.exento))}</td>
           <td class="text-end libro-compras-money">${this.escapeHtml(this.formatMoney(t.gravado))}</td>
           <td class="text-end libro-compras-money">${this.escapeHtml(this.formatMoney(t.iva))}</td>
@@ -244,7 +299,7 @@ const LibroComprasView = {
             <thead class="table-light sticky-top">
               <tr>${headers}</tr>
             </thead>
-            <tbody id="libro-compras-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            <tbody id="libro-compras-tbody">${this.renderTableBodyHtml(this.filteredRows())}</tbody>
             ${this.renderTableFooterHtml()}
           </table>
         </div>
@@ -265,7 +320,7 @@ const LibroComprasView = {
     const countEl = this._container?.querySelector('#libro-compras-count');
     if (countEl) countEl.textContent = this.badgeText();
     const tbody = this._container?.querySelector('#libro-compras-tbody');
-    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
+    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this.filteredRows());
     const table = this._container?.querySelector('.libro-compras-table-card table');
     if (table) {
       table.querySelector('tfoot')?.remove();
@@ -292,6 +347,7 @@ const LibroComprasView = {
     this._container?.querySelector('#btn-libro-compras-export')?.addEventListener('click', () => {
       this.exportExcel().catch((err) => F.toast(err.message, 'error'));
     });
+    LibroContableCommon.bindSearch(this._container, 'libro-compras', this);
   },
 
   async exportExcel() {
@@ -377,6 +433,7 @@ const LibroComprasView = {
     this._anio = period.anio;
     this._rows = [];
     this._totals = null;
+    this._filterQuery = '';
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start');
     container.innerHTML = this.render();

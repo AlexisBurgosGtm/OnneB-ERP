@@ -19,6 +19,10 @@
   min-width: 5.5rem;
 }
 
+.libro-ventas-filter-search {
+  min-width: 12rem;
+}
+
 .libro-ventas-money {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

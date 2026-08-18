@@ -1062,11 +1062,11 @@ const CotizacionesView = {
           <tr class="pos-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
             <td>${this.escapeHtml(cliente)}</td>
-            <td class="small text-muted">${this.escapeHtml(negocio)}</td>
-            <td class="small">${this.escapeHtml(entrega || '—')}</td>
-            <td class="text-center">${Number(r.LINEAS) || 0}</td>
+            <td class="small text-muted doc-list-col-optional">${this.escapeHtml(negocio)}</td>
+            <td class="small doc-list-col-optional">${this.escapeHtml(entrega || '—')}</td>
+            <td class="text-center doc-list-col-optional">${Number(r.LINEAS) || 0}</td>
             <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
-            <td class="text-nowrap small">${this.escapeHtml(this.formatFechaPedido(r))}</td>
+            <td class="text-nowrap small doc-list-col-optional">${this.escapeHtml(this.formatFechaPedido(r))}</td>
             <td class="text-end text-nowrap fac-list-actions">${this.renderListActionsHtml(r)}</td>
           </tr>`;
       })
@@ -1082,12 +1082,12 @@ const CotizacionesView = {
               <tr>
                 <th scope="col">Documento</th>
                 <th scope="col">Cliente</th>
-                <th scope="col">Negocio</th>
-                <th scope="col">Entrega</th>
-                <th scope="col" class="text-center">Líneas</th>
+                <th scope="col" class="doc-list-col-optional">Negocio</th>
+                <th scope="col" class="doc-list-col-optional">Entrega</th>
+                <th scope="col" class="text-center doc-list-col-optional">Líneas</th>
                 <th scope="col" class="text-end">Total</th>
-                <th scope="col">Fecha</th>
-                <th scope="col" class="text-end">Acciones</th>
+                <th scope="col" class="doc-list-col-optional">Fecha</th>
+                <th scope="col" class="text-end fac-list-actions">Acciones</th>
               </tr>
             </thead>
             <tbody id="pos-list-tbody">${this.renderListTableBodyHtml()}</tbody>
