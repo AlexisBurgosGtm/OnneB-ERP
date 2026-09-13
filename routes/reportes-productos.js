@@ -88,7 +88,8 @@ router.get('/', async (req, res) => {
           LTRIM(RTRIM(dp.CODPROD)) AS CODPROD,
           MAX(LTRIM(RTRIM(ISNULL(dp.DESPROD, '')))) AS DESPROD,
           SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS TOTALUNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO
+          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO,
+          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
         ${SQL_JOIN_DOC}
         WHERE ${SQL_DOC_WHERE}
@@ -96,16 +97,26 @@ router.get('/', async (req, res) => {
         ORDER BY SUM(ISNULL(dp.TOTALPRECIO, 0)) DESC, LTRIM(RTRIM(dp.CODPROD))
       `);
 
-    const productos = (result.recordset || []).map((row) => ({
-      CODPROD: String(row.CODPROD || '').trim(),
-      DESPROD: String(row.DESPROD || '').trim(),
-      TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
-      TOTALPRECIO: roundMoney(row.TOTALPRECIO),
-    }));
+    const productos = (result.recordset || []).map((row) => {
+      const totalPrecio = roundMoney(row.TOTALPRECIO);
+      const totalCosto = roundMoney(row.TOTALCOSTO);
+      return {
+        CODPROD: String(row.CODPROD || '').trim(),
+        DESPROD: String(row.DESPROD || '').trim(),
+        TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
+        TOTALPRECIO: totalPrecio,
+        TOTALCOSTO: totalCosto,
+        UTILIDAD: roundMoney(totalPrecio - totalCosto),
+      };
+    });
 
+    const precio = roundMoney(productos.reduce((s, p) => s + (Number(p.TOTALPRECIO) || 0), 0));
+    const costo = roundMoney(productos.reduce((s, p) => s + (Number(p.TOTALCOSTO) || 0), 0));
     const totales = {
       unidades: roundQty(productos.reduce((s, p) => s + (Number(p.TOTALUNIDADES) || 0), 0)),
-      precio: roundMoney(productos.reduce((s, p) => s + (Number(p.TOTALPRECIO) || 0), 0)),
+      precio,
+      costo,
+      utilidad: roundMoney(precio - costo),
     };
 
     res.json({ desde, hasta, productos, totales });
@@ -148,7 +159,8 @@ router.get('/detalle', async (req, res) => {
         SELECT
           CAST(d.FECHA AS DATE) AS FECHA,
           SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS UNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS MONTO
+          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS MONTO,
+          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
         ${SQL_JOIN_DOC}
         WHERE ${prodWhere}
@@ -166,7 +178,8 @@ router.get('/detalle', async (req, res) => {
           ISNULL(t.DESDOC, '') AS DESDOC,
           LTRIM(RTRIM(ISNULL(d.DOC_NOMCLIE, ''))) AS DOC_NOMCLIE,
           SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS LINE_UNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS LINE_PRECIO
+          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS LINE_PRECIO,
+          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS LINE_COSTO
         FROM dbo.DOCPRODUCTOS dp
         ${SQL_JOIN_DOC}
         WHERE ${prodWhere}
@@ -182,7 +195,8 @@ router.get('/detalle', async (req, res) => {
           LTRIM(RTRIM(ISNULL(d.DOC_NIT, ''))) AS DOC_NIT,
           MAX(LTRIM(RTRIM(ISNULL(d.DOC_NOMCLIE, '')))) AS DOC_NOMCLIE,
           SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS TOTALUNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO
+          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO,
+          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
         ${SQL_JOIN_DOC}
         WHERE ${prodWhere}
@@ -203,33 +217,48 @@ router.get('/detalle', async (req, res) => {
       FECHA: row.FECHA ? String(row.FECHA).slice(0, 10) : null,
       UNIDADES: roundQty(row.UNIDADES),
       MONTO: roundMoney(row.MONTO),
+      TOTALCOSTO: roundMoney(row.TOTALCOSTO),
     }));
 
-    const documentos = normalizeDocumentoRows(docsRes.recordset || []).map((row) => ({
-      CODDOC: row.CODDOC,
-      CORRELATIVO: row.CORRELATIVO,
-      FECHA: fechaIsoFromRow(row) || null,
-      TOTALPRECIO: roundMoney(row.TOTALPRECIO),
-      TIPODOC: String(row.TIPODOC || '').trim().toUpperCase(),
-      DESDOC: row.DESDOC || '',
-      DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
-      FEL_SERIE: String(row.FEL_SERIE || '').trim(),
-      FEL_NUMERO: String(row.FEL_NUMERO || '').trim(),
-      LINE_UNIDADES: roundQty(row.LINE_UNIDADES),
-      LINE_PRECIO: roundMoney(row.LINE_PRECIO),
-    }));
+    const documentos = normalizeDocumentoRows(docsRes.recordset || []).map((row) => {
+      const linePrecio = roundMoney(row.LINE_PRECIO);
+      const lineCosto = roundMoney(row.LINE_COSTO);
+      return {
+        CODDOC: row.CODDOC,
+        CORRELATIVO: row.CORRELATIVO,
+        FECHA: fechaIsoFromRow(row) || null,
+        TOTALPRECIO: roundMoney(row.TOTALPRECIO),
+        TIPODOC: String(row.TIPODOC || '').trim().toUpperCase(),
+        DESDOC: row.DESDOC || '',
+        DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
+        FEL_SERIE: String(row.FEL_SERIE || '').trim(),
+        FEL_NUMERO: String(row.FEL_NUMERO || '').trim(),
+        LINE_UNIDADES: roundQty(row.LINE_UNIDADES),
+        LINE_PRECIO: linePrecio,
+        LINE_COSTO: lineCosto,
+        UTILIDAD: roundMoney(linePrecio - lineCosto),
+      };
+    });
 
-    const clientes = (clientesRes.recordset || []).map((row) => ({
-      CODCLIENTE: Number(row.CODCLIENTE) || 0,
-      DOC_NIT: String(row.DOC_NIT || '').trim(),
-      DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
-      TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
-      TOTALPRECIO: roundMoney(row.TOTALPRECIO),
-    }));
+    const clientes = (clientesRes.recordset || []).map((row) => {
+      const totalPrecio = roundMoney(row.TOTALPRECIO);
+      const totalCosto = roundMoney(row.TOTALCOSTO);
+      return {
+        CODCLIENTE: Number(row.CODCLIENTE) || 0,
+        DOC_NIT: String(row.DOC_NIT || '').trim(),
+        DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
+        TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
+        TOTALPRECIO: totalPrecio,
+        TOTALCOSTO: totalCosto,
+        UTILIDAD: roundMoney(totalPrecio - totalCosto),
+      };
+    });
 
     const info = prodInfoRes.recordset?.[0];
     const totalUnidades = roundQty(serie.reduce((s, r) => s + (Number(r.UNIDADES) || 0), 0));
     const totalPrecio = roundMoney(serie.reduce((s, r) => s + (Number(r.MONTO) || 0), 0));
+    const totalCosto = roundMoney(serie.reduce((s, r) => s + (Number(r.TOTALCOSTO) || 0), 0));
+    const utilidad = roundMoney(totalPrecio - totalCosto);
 
     res.json({
       desde,
@@ -239,6 +268,9 @@ router.get('/detalle', async (req, res) => {
       resumen: {
         unidades: totalUnidades,
         precio: totalPrecio,
+        costo: totalCosto,
+        utilidad,
+        margenPct: totalPrecio > 0 ? roundMoney((utilidad / totalPrecio) * 100) : 0,
         precioPromedio: totalUnidades > 0 ? roundMoney(totalPrecio / totalUnidades) : 0,
         numClientes: clientes.length,
         numDocumentos: documentos.length,

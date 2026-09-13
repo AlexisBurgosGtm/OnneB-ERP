@@ -1458,7 +1458,11 @@ const ProductosView = {
           <td>${this.escapeHtml(p.CODMEDIDA)}</td>
           <td class="text-end">${this.escapeHtml(p.EQUIVALE)}</td>
           <td class="text-end">${this.escapeHtml(this.formatMoney(p.COSTO))}</td>
-          <td class="text-end productos-money">${this.escapeHtml(this.formatMoney(p.PRECIO))}${this.precioUnitarioLabelHtml(p.PRECIO, p.EQUIVALE)}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(p.PRECIO))}${this.precioUnitarioLabelHtml(p.PRECIO, p.EQUIVALE)}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(p.MAYOREOC))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(p.MAYOREOB))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(p.MAYOREOA))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatQty(p.PESO))}</td>
           <td class="text-end">
             <button type="button" class="btn btn-sm btn-outline-primary btn-precio-edit" data-id="${p.ID}" title="Editar">
               <i class="fa-solid fa-pen"></i>
@@ -1470,7 +1474,7 @@ const ProductosView = {
         </tr>`
           )
           .join('')
-      : `<tr><td colspan="5" class="text-center text-muted py-3">Sin precios — agregue uno</td></tr>`;
+      : `<tr><td colspan="10" class="text-center text-muted py-3">Sin precios — agregue uno</td></tr>`;
 
     panel.innerHTML = `
       <div class="productos-precios-panel-header d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
@@ -1487,6 +1491,10 @@ const ProductosView = {
               <th class="text-end">Eq.</th>
               <th class="text-end">Costo</th>
               <th class="text-end">Precio</th>
+              <th class="text-end">May. C</th>
+              <th class="text-end">May. B</th>
+              <th class="text-end">May. A</th>
+              <th class="text-end">Peso</th>
               <th class="text-end">Acciones</th>
             </tr>
           </thead>

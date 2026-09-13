@@ -267,6 +267,98 @@ router.get('/lista', async (req, res) => {
   }
 });
 
+const EXPORT_LIMIT = 20000;
+
+router.get('/export', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  // Exporta todos los registros del mes/año/tipo (sin filtro de búsqueda q).
+  const filters = parseListFilters(req, res);
+  if (!filters) return;
+  const { empnit, mes, anio, tipodoc } = filters;
+
+  try {
+    const ExcelJS = require('exceljs');
+    const { excelDateCellValue, EXCEL_DATE_NUMFMT } = require('../lib/excel-export');
+    const pool = await req.app.locals.getDbPool();
+
+    const listReq = pool.request();
+    bindListFilters(listReq, { empnit, mes, anio, tipodoc, q: '' });
+    listReq.input('limit', sql.Int, EXPORT_LIMIT);
+    const listResult = await listReq.query(`
+      SELECT TOP (@limit) ${LIST_SELECT}
+      ${LIST_FROM}
+      ${LIST_WHERE}
+      ORDER BY d.FECHA DESC, d.CORRELATIVO DESC
+    `);
+    const rows = listResult.recordset.map(mapDocumentoRow);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Documentos');
+    sheet.columns = [
+      { header: 'Fecha doc.', key: 'FECHA', width: 12 },
+      { header: 'Correlativo', key: 'CORRELATIVO', width: 12 },
+      { header: 'Cod. doc.', key: 'CODDOC', width: 12 },
+      { header: 'Descripción', key: 'DESDOC', width: 28 },
+      { header: 'Cliente', key: 'DOC_NOMCLIE', width: 32 },
+      { header: 'Negocio', key: 'NEGOCIO', width: 24 },
+      { header: 'Vendedor', key: 'VENDEDOR', width: 22 },
+      { header: 'Total', key: 'TOTALPRECIO', width: 12 },
+      { header: 'Estado', key: 'STATUS', width: 10 },
+      { header: 'FEL serie', key: 'FEL_SERIE', width: 12 },
+      { header: 'FEL número', key: 'FEL_NUMERO', width: 12 },
+      { header: 'FEL UUID', key: 'FEL_UUDI', width: 38 },
+      { header: 'Pago', key: 'CONCRE', width: 10 },
+      { header: 'ColaTrabajo', key: 'ID_COLA_TRABAJO', width: 14 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+
+    for (const r of rows) {
+      sheet.addRow({
+        FECHA: excelDateCellValue(r.FECHA),
+        CORRELATIVO: r.CORRELATIVO,
+        CODDOC: r.CODDOC || '',
+        DESDOC: r.DESDOC || '',
+        DOC_NOMCLIE: r.DOC_NOMCLIE || '',
+        NEGOCIO: r.NEGOCIO || '',
+        VENDEDOR: r.VENDEDOR || '',
+        TOTALPRECIO: r.TOTALPRECIO,
+        STATUS: r.STATUS || '',
+        FEL_SERIE: r.FEL_SERIE || '',
+        FEL_NUMERO: r.FEL_NUMERO || '',
+        FEL_UUDI: r.FEL_UUDI || '',
+        CONCRE: r.CONCRE || '',
+        ID_COLA_TRABAJO: r.ID_COLA_TRABAJO ?? '',
+      });
+    }
+
+    sheet.getColumn('FECHA').numFmt = EXCEL_DATE_NUMFMT;
+    for (let r = 2; r <= sheet.rowCount; r += 1) {
+      const cell = sheet.getRow(r).getCell('FECHA');
+      if (cell.value instanceof Date) cell.numFmt = EXCEL_DATE_NUMFMT;
+    }
+    sheet.getColumn('TOTALPRECIO').numFmt = '#,##0.00';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const safeEmp = empnit.replace(/[^\w-]+/g, '_');
+    const stamp = `${anio}${String(mes).padStart(2, '0')}_${tipodoc}`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="documentos_${safeEmp}_${stamp}.xlsx"`
+    );
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.warn('[API GET /documentos/export]', err.message);
+    res.status(500).json({ error: err.message || 'Error al exportar' });
+  }
+});
+
 function parseCorrelativo(raw) {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;

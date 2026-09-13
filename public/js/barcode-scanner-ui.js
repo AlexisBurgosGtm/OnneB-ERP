@@ -138,7 +138,15 @@ const BarcodeScannerUI = {
     throw lastErr || new Error('No se pudo iniciar la cámara');
   },
 
-  async open({ onScan, title, hint, formatsToSupport, mode = 'barcode' } = {}) {
+  async open({
+    onScan,
+    title,
+    hint,
+    formatsToSupport,
+    mode = 'barcode',
+    manualNumeric = false,
+    manualInputLabel = 'Código',
+  } = {}) {
     await this.loadLibrary();
     await this.stop();
 
@@ -151,8 +159,17 @@ const BarcodeScannerUI = {
           ? this.qrFormats()
           : this.barcodeFormats();
     const scanConfig = mode === 'qr' ? this.qrScanConfig() : this.barcodeScanConfig();
+    const manualBlock = manualNumeric
+      ? `
+        <div class="barcode-scanner-manual mt-3 pt-2 border-top">
+          <label class="form-label small mb-1" for="barcode-scanner-manual-code">${manualInputLabel}</label>
+          <input type="number" class="form-control form-control-sm" id="barcode-scanner-manual-code"
+            placeholder="Escriba el código" min="0" step="1" autocomplete="off">
+          <p class="small text-muted mb-0 mt-1">O escriba el código y pulse Registrar</p>
+        </div>`
+      : '';
 
-    await Swal.fire({
+    const result = await Swal.fire({
       ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
       title: title || (mode === 'qr' ? 'Escanear código QR' : 'Escanear código de barras'),
       html: `
@@ -166,18 +183,42 @@ const BarcodeScannerUI = {
           <div id="barcode-scanner-reader"></div>
         </div>
         <p class="small text-muted mb-0 mt-2" id="barcode-scanner-status">Iniciando cámara…</p>
+        ${manualBlock}
       `,
       width: 'min(100%, 480px)',
-      showConfirmButton: false,
+      showConfirmButton: manualNumeric,
+      confirmButtonText:
+        manualNumeric && typeof CatalogosUI !== 'undefined'
+          ? CatalogosUI.guardarButtonHtml('Registrar')
+          : 'Registrar',
       showCancelButton: true,
       cancelButtonText:
         typeof CatalogosUI !== 'undefined'
           ? CatalogosUI.cancelButtonHtml('Cerrar')
           : 'Cerrar',
       focusConfirm: false,
+      preConfirm: manualNumeric
+        ? () => {
+            const val = String(document.getElementById('barcode-scanner-manual-code')?.value ?? '').trim();
+            if (!val || !/^\d+$/.test(val)) {
+              Swal.showValidationMessage('Ingrese un código numérico válido');
+              return false;
+            }
+            return val;
+          }
+        : undefined,
       didOpen: async () => {
         const statusEl = document.getElementById('barcode-scanner-status');
         const readerEl = document.getElementById('barcode-scanner-reader');
+        const manualInp = document.getElementById('barcode-scanner-manual-code');
+        if (manualInp) {
+          manualInp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              Swal.clickConfirm();
+            }
+          });
+        }
         try {
           if (!readerEl) throw new Error('No se pudo preparar el visor de cámara');
           readerEl.innerHTML = '';
@@ -201,6 +242,7 @@ const BarcodeScannerUI = {
             if (statusEl) {
               statusEl.textContent = 'Este navegador no permite acceso a la cámara.';
             }
+            if (manualInp) manualInp.focus();
             return;
           }
 
@@ -227,12 +269,17 @@ const BarcodeScannerUI = {
         } catch (err) {
           console.warn('[BarcodeScannerUI] start', err);
           if (statusEl) statusEl.textContent = this.cameraErrorMessage(err);
+          if (manualInp) manualInp.focus();
         }
       },
       willClose: async () => {
         await this.stop();
       },
     });
+
+    if (manualNumeric && result.isConfirmed && result.value) {
+      if (typeof onScan === 'function') onScan(result.value);
+    }
   },
 
   /** Escáner orientado a QR (asistencia, carné, etc.). */

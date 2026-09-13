@@ -42,6 +42,14 @@ const SQL_SIGNO_VENTA_UNIDADES = `
   END
 `;
 
+const SQL_SIGNO_VENTA_COSTO = `
+  CASE
+    WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(dp.TOTALCOSTO, 0)
+    WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN -ISNULL(dp.TOTALCOSTO, 0)
+    ELSE 0
+  END
+`;
+
 const SQL_COMPRA_IMPORTE = `
   CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_COMPRA_IN}) THEN ISNULL(dp.TOTALPRECIO, 0) ELSE 0 END
 `;
@@ -215,6 +223,7 @@ router.get('/detalle', async (req, res) => {
           MAX(LTRIM(RTRIM(ISNULL(dp.DESPROD, '')))) AS DESPROD,
           SUM(${SQL_SIGNO_VENTA_UNIDADES}) AS UNIDADES_VENTA,
           SUM(${SQL_SIGNO_VENTA_IMPORTE}) AS VENTAS,
+          SUM(${SQL_SIGNO_VENTA_COSTO}) AS TOTALCOSTO,
           SUM(${SQL_COMPRA_UNIDADES}) AS UNIDADES_COMPRA,
           SUM(${SQL_COMPRA_IMPORTE}) AS COMPRAS
         FROM dbo.DOCUMENTOS d
@@ -231,7 +240,8 @@ router.get('/detalle', async (req, res) => {
           LTRIM(RTRIM(ISNULL(d.DOC_NIT, ''))) AS DOC_NIT,
           MAX(LTRIM(RTRIM(ISNULL(d.DOC_NOMCLIE, '')))) AS DOC_NOMCLIE,
           SUM(${SQL_SIGNO_VENTA_UNIDADES}) AS UNIDADES_VENTA,
-          SUM(${SQL_SIGNO_VENTA_IMPORTE}) AS VENTAS
+          SUM(${SQL_SIGNO_VENTA_IMPORTE}) AS VENTAS,
+          SUM(${SQL_SIGNO_VENTA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCUMENTOS d
         INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
         ${SQL_JOIN_LINES}
@@ -275,22 +285,34 @@ router.get('/detalle', async (req, res) => {
       COMPRAS: roundMoney(row.COMPRAS),
     }));
 
-    const productos = (prodsRes.recordset || []).map((row) => ({
-      CODPROD: row.CODPROD,
-      DESPROD: row.DESPROD || '',
-      UNIDADES_VENTA: roundQty(row.UNIDADES_VENTA),
-      VENTAS: roundMoney(row.VENTAS),
-      UNIDADES_COMPRA: roundQty(row.UNIDADES_COMPRA),
-      COMPRAS: roundMoney(row.COMPRAS),
-    }));
+    const productos = (prodsRes.recordset || []).map((row) => {
+      const ventas = roundMoney(row.VENTAS);
+      const totalCosto = roundMoney(row.TOTALCOSTO);
+      return {
+        CODPROD: row.CODPROD,
+        DESPROD: row.DESPROD || '',
+        UNIDADES_VENTA: roundQty(row.UNIDADES_VENTA),
+        VENTAS: ventas,
+        TOTALCOSTO: totalCosto,
+        UTILIDAD: roundMoney(ventas - totalCosto),
+        UNIDADES_COMPRA: roundQty(row.UNIDADES_COMPRA),
+        COMPRAS: roundMoney(row.COMPRAS),
+      };
+    });
 
-    const clientes = (clientesRes.recordset || []).map((row) => ({
-      CODCLIENTE: Number(row.CODCLIENTE) || 0,
-      DOC_NIT: String(row.DOC_NIT || '').trim(),
-      DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
-      UNIDADES_VENTA: roundQty(row.UNIDADES_VENTA),
-      VENTAS: roundMoney(row.VENTAS),
-    }));
+    const clientes = (clientesRes.recordset || []).map((row) => {
+      const ventas = roundMoney(row.VENTAS);
+      const totalCosto = roundMoney(row.TOTALCOSTO);
+      return {
+        CODCLIENTE: Number(row.CODCLIENTE) || 0,
+        DOC_NIT: String(row.DOC_NIT || '').trim(),
+        DOC_NOMCLIE: String(row.DOC_NOMCLIE || '').trim(),
+        UNIDADES_VENTA: roundQty(row.UNIDADES_VENTA),
+        VENTAS: ventas,
+        TOTALCOSTO: totalCosto,
+        UTILIDAD: roundMoney(ventas - totalCosto),
+      };
+    });
 
     const proveedores = (proveedoresRes.recordset || []).map((row) => ({
       CODPROVEEDOR: Number(row.CODPROVEEDOR) || 0,
@@ -302,6 +324,8 @@ router.get('/detalle', async (req, res) => {
 
     const ventas = roundMoney(serie.reduce((s, r) => s + (Number(r.VENTAS) || 0), 0));
     const compras = roundMoney(serie.reduce((s, r) => s + (Number(r.COMPRAS) || 0), 0));
+    const costo = roundMoney(productos.reduce((s, p) => s + (Number(p.TOTALCOSTO) || 0), 0));
+    const utilidad = roundMoney(ventas - costo);
     const unidadesVenta = roundQty(serie.reduce((s, r) => s + (Number(r.UNIDADES_VENTA) || 0), 0));
     const unidadesCompra = roundQty(
       productos.reduce((s, p) => s + (Number(p.UNIDADES_COMPRA) || 0), 0)
@@ -316,6 +340,9 @@ router.get('/detalle', async (req, res) => {
         ventas,
         compras,
         margen: roundMoney(ventas - compras),
+        costo,
+        utilidad,
+        margenPct: ventas > 0 ? roundMoney((utilidad / ventas) * 100) : 0,
         unidadesVenta,
         unidadesCompra,
         numProductos: productos.length,

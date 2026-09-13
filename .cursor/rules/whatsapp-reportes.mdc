@@ -1,0 +1,43 @@
+---
+description: Envío de reportes por WhatsApp (Baileys + fallback wa.me)
+alwaysApply: true
+---
+
+# WhatsApp — reportes (Los ERP)
+
+Al crear o modificar un **botón/acción que envíe un reporte por WhatsApp**, usar el helper unificado:
+
+`DocOpciones.enviarReporteWhatsapp({ kind, text, … })`
+
+## Flujo obligatorio
+
+1. **Pedir teléfono** primero (`solicitarTelefonoWhatsapp`) con prefijo del producto:
+   - **OnneB** → `502`
+   - **FS-SV** → `503`
+2. Consultar sesión Baileys (`/api/whatsapp/status`).
+3. **Si Baileys `state === 'ready'`** → enviar por API Baileys según `kind`.
+4. **Si no hay sesión activa** → **siempre** abrir `wa.me` con **texto** (`opts.text`). No exigir Configuraciones ni fallar solo por falta de sesión.
+
+## `kind` (lo define cada botón)
+
+| `kind` | Con Baileys | Sin Baileys (wa.me) |
+|--------|-------------|---------------------|
+| `text` | `POST /api/whatsapp/send` | texto |
+| `pdf` | `POST /api/whatsapp/send-pdf` (`html` del imprimible → PDF si viene; si no, `report` tabular) | texto (`opts.text` obligatorio) |
+| `image` | `POST /api/whatsapp/send-image` | texto (`opts.text` obligatorio) |
+
+## Checklist al agregar un botón
+
+- [ ] Llamar `DocOpciones.enviarReporteWhatsapp` (no inventar otro flujo).
+- [ ] Pasar `kind: 'text' | 'pdf' | 'image'` explícito.
+- [ ] Pasar siempre `text` usable en fallback `wa.me` (resumen legible).
+- [ ] Para `pdf`: `report` (+ `html` / `fileName` / `caption` si aplica).
+- [ ] Para `image`: `imageBase64` (+ `caption` / `mimetype` / `fileName`).
+- [ ] Prefijo vía `DocOpciones.WHATSAPP_DIAL_CODE` (no hardcodear 502/503 en la vista).
+- [ ] Aplicar en **Los ERP** (OnneB + FS-SV) salvo que el usuario acote uno.
+
+## No hacer
+
+- No exigir sesión Baileys para poder enviar (debe existir fallback `wa.me`).
+- No enviar PDF/imagen por `wa.me` (solo texto).
+- No pedir el teléfono *después* de generar el PDF/imagen si el usuario puede cancelar: pedir teléfono primero.

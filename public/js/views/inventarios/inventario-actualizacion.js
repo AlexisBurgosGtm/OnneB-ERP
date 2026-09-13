@@ -87,7 +87,8 @@ const InventarioActualizacionView = {
           </h6>
           <p class="small text-muted mb-3">
             Se consideran líneas de <strong>DOCPRODUCTOS</strong> cuyo documento <strong>no</strong> está anulado (STATUS ≠ A).
-            Movimiento = TOTALUNIDADES × <strong>DOCPRODUCTOS.TIPOM</strong>. Solo se actualiza el registro principal de <strong>INVSALDO</strong> por producto (no se crean filas nuevas).
+            Existencia = TOTALUNIDADES × <strong>TIPOM</strong>; físico = ENTREGADOS_TOTALUNIDADES × <strong>TIPOM</strong>.
+            Solo se actualiza el registro principal de <strong>INVSALDO</strong> por producto (no se crean filas nuevas).
           </p>
           <div class="inventario-recalc-stats">
             ${this.renderStat('Líneas consideradas', this.formatQty(p.lineas))}
@@ -97,6 +98,7 @@ const InventarioActualizacionView = {
             ${this.renderStat('Total entradas', this.formatQty(p.totalEntradas), 'text-success')}
             ${this.renderStat('Total salidas', this.formatQty(p.totalSalidas), 'text-danger')}
             ${this.renderStat('Saldo neto', this.formatQty(p.saldoNeto))}
+            ${p.fisicoNeto != null ? this.renderStat('Físico neto', this.formatQty(p.fisicoNeto)) : ''}
             ${this.renderStat('Discrepancias', this.formatQty(p.discrepancias), hayCambios ? 'text-warning' : '')}
           </div>
           <div class="alert ${alertClass} small mb-0 mt-3 py-2" role="status">${this.escapeHtml(alertText)}</div>
@@ -113,8 +115,11 @@ const InventarioActualizacionView = {
               <i class="fa-solid fa-arrows-rotate me-1 text-primary"></i>Actualización de inventario
             </h5>
             <p class="card-text mb-2">
-              Recalcula <strong>INVSALDO.SALDO</strong> y <strong>PRODUCTOS.EXISTENCIA</strong> a partir de todos
-              los movimientos registrados en documentos (excepto anulados). Actualiza el registro existente de cada producto; no crea filas nuevas.
+              Recalcula <strong>INVSALDO.SALDO</strong> / <strong>INVSALDO.FISICO</strong> y
+              <strong>PRODUCTOS.EXISTENCIA</strong> / <strong>PRODUCTOS.FISICO</strong> a partir de todos
+              los movimientos registrados en documentos (excepto anulados).
+              Existencia = TOTALUNIDADES × TIPOM; físico = ENTREGADOS_TOTALUNIDADES × TIPOM.
+              Actualiza el registro existente de cada producto; no crea filas nuevas.
             </p>
             <p class="small text-muted mb-0">
               Use esta herramienta para corregir inconsistencias cuando la lógica normal de inventario haya fallado.
@@ -266,7 +271,11 @@ const InventarioActualizacionView = {
           a partir de <strong>${this.escapeHtml(this.formatQty(lineas))}</strong> línea(s).</p>
           <p class="small text-muted mb-0">Entradas: ${this.escapeHtml(this.formatQty(p.totalEntradas))} ·
           Salidas: ${this.escapeHtml(this.formatQty(p.totalSalidas))} ·
-          Neto: ${this.escapeHtml(this.formatQty(p.saldoNeto))}</p>`,
+          Neto: ${this.escapeHtml(this.formatQty(p.saldoNeto))}${
+            p.fisicoNeto != null
+              ? ` · Físico: ${this.escapeHtml(this.formatQty(p.fisicoNeto))}`
+              : ''
+          }</p>`,
         icon: 'warning',
         confirmText: 'Sí, actualizar',
       });

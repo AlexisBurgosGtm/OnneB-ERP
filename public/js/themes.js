@@ -6,18 +6,34 @@ const OnnebThemes = {
   DEFAULT: 'purple',
 
   themes: [
-    { id: 'purple', label: 'Estilo Onne B', swatchClass: 'theme-swatch-purple' },
-    { id: 'carbon', label: 'Carbono', swatchClass: 'theme-swatch-carbon' },
-    { id: 'blue', label: 'Blanco · Azul', swatchClass: 'theme-swatch-blue' },
-    { id: 'bw', label: 'Blanco y negro', swatchClass: 'theme-swatch-bw' },
-    { id: 'mustard', label: 'Blanco · Mostaza', swatchClass: 'theme-swatch-mustard' },
-    { id: 'fire', label: 'Fuego', swatchClass: 'theme-swatch-fire' },
-    { id: 'winter', label: 'Invierno', swatchClass: 'theme-swatch-winter' },
-    { id: 'summer', label: 'Verano', swatchClass: 'theme-swatch-summer' },
-    { id: 'autumn', label: 'Otoño', swatchClass: 'theme-swatch-autumn' },
-    { id: 'valentine', label: 'Día del cariño', swatchClass: 'theme-swatch-valentine' },
-    { id: 'nature', label: 'Naturaleza', swatchClass: 'theme-swatch-nature' },
-    { id: 'fs', label: 'FS', swatchClass: 'theme-swatch-fs' },
+    { id: 'purple', label: 'Estilo Onne B', swatchClass: 'theme-swatch-purple', markIcon: 'fa-gem' },
+    { id: 'carbon', label: 'Carbono', swatchClass: 'theme-swatch-carbon', markIcon: 'fa-circle-nodes' },
+    { id: 'blue', label: 'Blanco · Azul', swatchClass: 'theme-swatch-blue', markIcon: 'fa-water' },
+    { id: 'bw', label: 'Blanco y negro', swatchClass: 'theme-swatch-bw', markIcon: 'fa-circle-half-stroke' },
+    { id: 'mustard', label: 'Blanco · Mostaza', swatchClass: 'theme-swatch-mustard', markIcon: 'fa-sun' },
+    { id: 'fire', label: 'Fuego', swatchClass: 'theme-swatch-fire', markIcon: 'fa-fire' },
+    { id: 'winter', label: 'Invierno', swatchClass: 'theme-swatch-winter', markIcon: 'fa-snowflake' },
+    { id: 'summer', label: 'Verano', swatchClass: 'theme-swatch-summer', markIcon: 'fa-umbrella-beach' },
+    { id: 'autumn', label: 'Otoño', swatchClass: 'theme-swatch-autumn', markIcon: 'fa-leaf' },
+    { id: 'valentine', label: 'Día del cariño', swatchClass: 'theme-swatch-valentine', markIcon: 'fa-heart' },
+    { id: 'nature', label: 'Naturaleza', swatchClass: 'theme-swatch-nature', markIcon: 'fa-seedling' },
+    { id: 'fs', label: 'FS', swatchClass: 'theme-swatch-fs', markIcon: 'fa-briefcase' },
+    { id: 'barca', label: 'Barça', swatchClass: 'theme-swatch-barca', markIcon: 'fa-futbol' },
+    { id: 'realmadrid', label: 'Real Madrid', swatchClass: 'theme-swatch-realmadrid', markIcon: 'fa-crown' },
+    { id: 'manutd', label: 'Manchester United', swatchClass: 'theme-swatch-manutd', markIcon: 'fa-shield-halved' },
+    { id: 'boca', label: 'Boca Juniors', swatchClass: 'theme-swatch-boca', markIcon: 'fa-flag' },
+    { id: 'mancity', label: 'Manchester City', swatchClass: 'theme-swatch-mancity', markIcon: 'fa-futbol' },
+    { id: 'arsenal', label: 'Arsenal', swatchClass: 'theme-swatch-arsenal', markIcon: 'fa-shield' },
+    { id: 'psg', label: 'PSG', swatchClass: 'theme-swatch-psg', markIcon: 'fa-tower-eiffel' },
+    { id: 'chelsea', label: 'Chelsea', swatchClass: 'theme-swatch-chelsea', markIcon: 'fa-anchor' },
+    { id: 'ferrari', label: 'Ferrari', swatchClass: 'theme-swatch-ferrari', markIcon: 'fa-flag-checkered' },
+    { id: 'porsche', label: 'Porsche', swatchClass: 'theme-swatch-porsche', markIcon: 'fa-car' },
+    { id: 'lamborghini', label: 'Lamborghini', swatchClass: 'theme-swatch-lamborghini', markIcon: 'fa-car-side' },
+    { id: 'formula1', label: 'Fórmula 1', swatchClass: 'theme-swatch-formula1', markIcon: 'fa-gauge-high' },
+    { id: 'ktmduke', label: 'KTM Duke', swatchClass: 'theme-swatch-ktmduke', markIcon: 'fa-motorcycle' },
+    { id: 'ducatimonster', label: 'Ducati Monster', swatchClass: 'theme-swatch-ducatimonster', markIcon: 'fa-motorcycle' },
+    { id: 'hondacrf', label: 'Honda CRF', swatchClass: 'theme-swatch-hondacrf', markIcon: 'fa-motorcycle' },
+    { id: 'suzukigsxs', label: 'Suzuki GSX-S', swatchClass: 'theme-swatch-suzukigsxs', markIcon: 'fa-motorcycle' },
   ],
 
   pickerTargets: [
@@ -117,11 +133,39 @@ const OnnebThemes = {
         valentine: '#ec4899',
         nature: '#16a34a',
         fs: '#ea580c',
+        barca: '#A50044',
+        realmadrid: '#00529F',
+        manutd: '#DA291C',
+        boca: '#003087',
+        mancity: '#6CABDD',
+        arsenal: '#EF0107',
+        psg: '#004170',
+        chelsea: '#034694',
+        ferrari: '#FF2800',
+        porsche: '#D5001C',
+        lamborghini: '#DDB511',
+        formula1: '#E10600',
+        ktmduke: '#FF6600',
+        ducatimonster: '#CC0000',
+        hondacrf: '#E4002B',
+        suzukigsxs: '#0033A0',
       };
-      meta.setAttribute('content', colors[id] || colors.purple);
+      meta.setAttribute('content', colors[id] || colors[this.DEFAULT] || '#7c3aed');
     }
+    this.syncLoginThemeMark(id);
     requestAnimationFrame(() => this._updateContrastVars());
     this.syncPickerUI();
+  },
+
+  syncLoginThemeMark(themeId) {
+    const el = document.getElementById('login-theme-mark');
+    if (!el) return;
+    const id = themeId || this.getCurrent();
+    const theme = this.themes.find((t) => t.id === id) || this.themes[0];
+    const icon = theme?.markIcon || 'fa-circle';
+    el.className = `login-theme-mark login-theme-mark--${theme.id}`;
+    el.setAttribute('data-theme-mark', theme.id);
+    el.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
   },
 
   loadSaved() {

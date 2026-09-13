@@ -27,6 +27,10 @@ function tareasMapFormToApi(data) {
     const n = parseInt(v, 10);
     return Number.isNaN(n) ? null : n;
   };
+  const cod =
+    typeof F !== 'undefined' && typeof F.sessionCodEmpleado === 'function'
+      ? F.sessionCodEmpleado()
+      : null;
   return {
     TAREA: String(data.TAREA || '').trim() || null,
     RESPONSABLE: String(data.RESPONSABLE || '').trim() || null,
@@ -34,6 +38,7 @@ function tareasMapFormToApi(data) {
     ST: String(data.ST || 'PENDIENTE').trim().toUpperCase(),
     HORA: num(data.HORA),
     MINUTO: num(data.MINUTO),
+    CODEMPLEADO: Number.isFinite(cod) && cod > 0 ? cod : null,
   };
 }
 
@@ -79,9 +84,24 @@ const TareasView = {
   ...TareasViewBase,
   _filterEstado: '',
 
+  sessionCodEmpleado() {
+    if (typeof F !== 'undefined' && typeof F.sessionCodEmpleado === 'function') {
+      return F.sessionCodEmpleado();
+    }
+    return null;
+  },
+
   sessionResponsable() {
     const user = F.session('user') || {};
     return String(user.username || user.nomempleado || '').trim();
+  },
+
+  apiBase(path = '') {
+    const base = TareasViewBase.apiBase.call(this, path);
+    const cod = this.sessionCodEmpleado();
+    if (!cod) return base;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}codempleado=${encodeURIComponent(cod)}`;
   },
 
   normalizeEstado(value) {
@@ -127,7 +147,7 @@ const TareasView = {
     const now = new Date();
     return {
       TAREA: '',
-      RESPONSABLE: this.sessionResponsable(),
+      RESPONSABLE: '',
       PRIORIDAD: 'BAJA',
       ST: 'PENDIENTE',
       HORA: now.getHours(),
@@ -477,7 +497,7 @@ const TareasView = {
   buildFormHtml(row = {}) {
     const r = {
       TAREA: row.TAREA ?? '',
-      RESPONSABLE: row.RESPONSABLE ?? this.sessionResponsable(),
+      RESPONSABLE: row.RESPONSABLE ?? '',
       PRIORIDAD: row.PRIORIDAD ?? 'BAJA',
       ST: row.ST ?? 'PENDIENTE',
       HORA: row.HORA ?? '',
@@ -543,6 +563,30 @@ const TareasView = {
         body: JSON.stringify(data),
       });
       F.toast('Tarea creada', 'success');
+      await this.load(this._container);
+    } catch (err) {
+      F.alert('Error', err.message, 'error');
+    }
+  },
+
+  async onEliminar(id) {
+    const row = this.findRow(id);
+    const nombre = this.rowLabel(row, id);
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Eliminar tarea?',
+      html: `<p class="mb-0">Se eliminará <strong>${this.escapeHtml(nombre)}</strong></p>`,
+      icon: 'warning',
+      confirmText: 'Eliminar',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!ok) return;
+    try {
+      await F.fetchJson(this.apiBase(`/${encodeURIComponent(id)}`), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      F.toast('Tarea eliminada', 'success');
       await this.load(this._container);
     } catch (err) {
       F.alert('Error', err.message, 'error');

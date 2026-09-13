@@ -48,6 +48,7 @@ const InventarioRetroactivoView = {
     { key: 'TIPOPROD', label: 'Tipo' },
     { key: 'SALDO', label: 'Saldo', type: 'qty' },
     { key: 'EXISTENCIA', label: 'Existencia', type: 'qty' },
+    { key: 'FISICO', label: 'Físico', type: 'qty' },
     { key: 'COSTO', label: 'Costo', type: 'money', ventasHidden: true },
     { key: 'TOTALCOSTO', label: 'Total costo', type: 'money', ventasHidden: true },
     { key: 'HABILITADO', label: 'Habilitado' },

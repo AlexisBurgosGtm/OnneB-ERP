@@ -5,7 +5,12 @@ const { fechaIsoFromRow, normalizeDocumentoRows } = require('../lib/documento-fe
 const {
   SQL_TIPODOC_FACTURA_IN,
   SQL_TIPODOC_DEVOLUCION_IN,
+  buildResumenFromRows,
 } = require('../lib/corte-caja-docs');
+const { assertAdminPass } = require('../lib/config-auth');
+const { STATUS_OPERADO, STATUS_ANULADO, STATUS_BLOQUEADO, normalizeStatus } = require('../lib/documento-status');
+const { revertirMovimientoInventarioDocumento, InventarioError } = require('../lib/inventario');
+const { anularDocumentoFel } = require('../lib/fel/anular');
 
 const router = express.Router();
 
@@ -561,6 +566,292 @@ router.get('/cortes/:id', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /auditoria-cajas/cortes/:id]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Anula un documento del corte: STATUS=A (+ FEL si aplica), devuelve inventario
+ * y recalcula totales del corte (mantiene TOTALREPORTADO / reportados).
+ */
+router.post('/cortes/:id/documentos/:coddoc/:correlativo/anular', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const corteId = parseInt(req.params.id, 10);
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseInt(req.params.correlativo, 10);
+  if (!Number.isFinite(corteId) || corteId <= 0) {
+    return res.status(400).json({ error: 'ID de corte inválido' });
+  }
+  if (!coddoc || !Number.isFinite(correlativo)) {
+    return res.status(400).json({ error: 'Documento inválido' });
+  }
+
+  const motivo = String(req.body?.motivo ?? req.body?.MOTIVO ?? '').trim();
+  const adminPass = String(req.body?.adminPass ?? req.body?.pass ?? req.body?.PASS ?? '');
+  if (!motivo) {
+    return res.status(400).json({ error: 'El motivo de anulación es obligatorio' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await assertAdminPass(pool, adminPass);
+
+    const corteRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('ID', sql.Int, corteId)
+      .query(`
+        SELECT
+          c.ID, c.CORRELATIVO, c.CODCAJA,
+          ISNULL(c.TOTALREPORTADO, 0) AS TOTALREPORTADO,
+          ISNULL(c.FALTANTE, 0) AS FALTANTE,
+          ISNULL(c.SOBRANTE, 0) AS SOBRANTE,
+          ISNULL(c.FPAGO_EFECTIVO, 0) AS FPAGO_EFECTIVO,
+          ISNULL(c.TOTALGASTOS, 0) AS TOTALGASTOS,
+          ISNULL(c.REPORTADOTARJETA, 0) AS REPORTADOTARJETA,
+          ISNULL(c.REPORTADOCHEQUES, 0) AS REPORTADOCHEQUES,
+          ISNULL(c.REPORTADO_DEPOSITO, 0) AS REPORTADO_DEPOSITO
+        FROM dbo.CORTES c
+        WHERE c.EMPNIT = @EMPNIT AND c.ID = @ID
+      `);
+    const corteRow = corteRes.recordset[0];
+    if (!corteRow) return res.status(404).json({ error: 'Corte no encontrado' });
+    const nocorte = Number(corteRow.CORRELATIVO);
+
+    const docRes = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, coddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+      .input('NOCORTE', sql.Int, nocorte)
+      .query(`
+        SELECT
+          d.STATUS, d.FEL_UUDI, d.NOCORTE, d.CORTE,
+          t.TIPODOC
+        FROM dbo.DOCUMENTOS d
+        INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+        WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+          AND d.NOCORTE = @NOCORTE
+      `);
+    const doc = docRes.recordset[0];
+    if (!doc) {
+      return res.status(404).json({
+        error: 'Documento no encontrado en este corte',
+      });
+    }
+    const status = normalizeStatus(doc.STATUS);
+    if (status === STATUS_ANULADO) {
+      return res.status(409).json({ error: 'El documento ya está anulado' });
+    }
+    if (status !== STATUS_OPERADO && status !== STATUS_BLOQUEADO) {
+      return res.status(400).json({ error: 'Estado del documento no permite anulación' });
+    }
+
+    const hasFel = Boolean(String(doc.FEL_UUDI || '').trim());
+    let felResult = null;
+    if (hasFel) {
+      felResult = await anularDocumentoFel(pool, empnit, coddoc, correlativo, {
+        motivo,
+        adminPass,
+      });
+    }
+
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    try {
+      if (!hasFel) {
+        const obsExtra = ` | Anulado auditoría corte #${nocorte}: ${motivo}`;
+        const upd = await transaction
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODDOC', sql.VarChar, coddoc)
+          .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+          .input('STATUS', sql.VarChar, STATUS_ANULADO)
+          .input('OBS_EXTRA', sql.VarChar, obsExtra)
+          .query(`
+            UPDATE dbo.DOCUMENTOS
+            SET STATUS = @STATUS,
+                OBS = LEFT(CONCAT(ISNULL(OBS, ''), @OBS_EXTRA), 255)
+            WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+              AND UPPER(LTRIM(RTRIM(ISNULL(STATUS, '')))) IN ('${STATUS_OPERADO}', '${STATUS_BLOQUEADO}')
+          `);
+        if (!(upd.rowsAffected?.[0] > 0)) {
+          throw Object.assign(new Error('No se pudo anular el documento'), { statusCode: 409 });
+        }
+      }
+
+      const inv = await revertirMovimientoInventarioDocumento(transaction, {
+        empnit,
+        coddoc,
+        correlativo,
+      });
+
+      const docsActivos = await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('NOCORTE', sql.Int, nocorte)
+        .query(`
+          SELECT
+            d.ID, d.CODDOC, d.CORRELATIVO, d.HORA, d.MINUTO,
+            ISNULL(d.TOTALCOSTO, 0) AS TOTALCOSTO,
+            ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
+            ISNULL(d.FPAGO_EFECTIVO, 0) AS FPAGO_EFECTIVO,
+            ISNULL(d.FPAGO_TARJETA, 0) AS FPAGO_TARJETA,
+            ISNULL(d.FPAGO_DEPOSITO, 0) AS FPAGO_DEPOSITO,
+            ISNULL(d.FPAGO_CHEQUE, 0) AS FPAGO_CHEQUE,
+            ISNULL(d.CONCRE, 'CON') AS CONCRE,
+            UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) AS TIPODOC
+          FROM dbo.DOCUMENTOS d
+          INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+          WHERE d.EMPNIT = @EMPNIT
+            AND d.NOCORTE = @NOCORTE
+            AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
+          ORDER BY d.ID ASC
+        `);
+
+      const retirosRes = await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('NOCORTE', sql.Int, nocorte)
+        .query(`
+          SELECT ISNULL(SUM(ISNULL(b.IMPORTE, 0)), 0) AS TOTAL
+          FROM dbo.DOCUMENTOS_BANCO b
+          WHERE b.EMPNIT = @EMPNIT
+            AND b.NOCORTE = @NOCORTE
+            AND b.TIPO = 'E'
+            AND UPPER(LTRIM(RTRIM(ISNULL(b.CATEGORIA, '')))) = 'DEPOSITO'
+        `);
+      const valesRes = await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('NOCORTE', sql.Float, nocorte)
+        .query(`
+          SELECT ISNULL(SUM(ISNULL(v.IMPORTE, 0)), 0) AS TOTAL
+          FROM dbo.DOCUMENTOS_VALES_CAJA v
+          WHERE v.EMPNIT = @EMPNIT AND ISNULL(v.NOCORTE, 0) = @NOCORTE
+        `);
+
+      const totalRetiros = Number(retirosRes.recordset?.[0]?.TOTAL) || 0;
+      const totalVales = Number(valesRes.recordset?.[0]?.TOTAL) || 0;
+
+      const totalReportado = roundMoney(corteRow.TOTALREPORTADO);
+      const faltanteOld = roundMoney(corteRow.FALTANTE);
+      const sobranteOld = roundMoney(corteRow.SOBRANTE);
+      const efectivoEsperadoOld = roundMoney(totalReportado - sobranteOld + faltanteOld);
+      const efectivoInicial = roundMoney(
+        efectivoEsperadoOld - roundMoney(corteRow.FPAGO_EFECTIVO) + roundMoney(corteRow.TOTALGASTOS)
+      );
+
+      const resumen = buildResumenFromRows(
+        docsActivos.recordset || [],
+        efectivoInicial,
+        totalRetiros,
+        totalVales
+      );
+      const diff = roundMoney(totalReportado - resumen.efectivoEsperado);
+      const faltante = diff < 0 ? roundMoney(Math.abs(diff)) : 0;
+      const sobrante = diff > 0 ? diff : 0;
+      const ini = resumen.docInicial;
+      const fin = resumen.docFinal;
+
+      await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ID', sql.Int, corteId)
+        .input('TOTALMOVIMIENTOS', sql.Int, resumen.totalMovimientos)
+        .input('TOTALCOSTO', sql.Decimal(18, 3), resumen.totalCosto)
+        .input('TOTALVENTA', sql.Decimal(18, 3), resumen.totalVenta)
+        .input('TOTALUTILIDAD', sql.Decimal(18, 3), resumen.totalUtilidad)
+        .input('MARGEN', sql.Decimal(18, 3), resumen.margen)
+        .input('FALTANTE', sql.Decimal(18, 3), faltante)
+        .input('SOBRANTE', sql.Decimal(18, 3), sobrante)
+        .input('TOTALGASTOS', sql.Decimal(18, 3), resumen.totalGastos)
+        .input('TOTALRECIBOS', sql.Decimal(18, 3), resumen.totalRecibos || 0)
+        .input('TOTALTARJETA', sql.Decimal(18, 3), resumen.fpTarjeta)
+        .input('TOTALCHEQUES', sql.Decimal(18, 3), resumen.fpCheque)
+        .input('TOTALDEVOLUCIONES', sql.Decimal(18, 3), resumen.totalDevoluciones)
+        .input('TOTALVENTASCREDITO', sql.Decimal(18, 3), resumen.totalCredito)
+        .input('FPAGO_EFECTIVO', sql.Decimal(18, 3), resumen.fpEfectivo)
+        .input('FPAGO_TARJETA', sql.Decimal(18, 3), resumen.fpTarjeta)
+        .input('FPAGO_DEPOSITO', sql.Decimal(18, 3), resumen.fpDeposito)
+        .input('FPAGO_CHEQUE', sql.Decimal(18, 3), resumen.fpCheque)
+        .input('IDINICIAL', sql.Int, ini?.ID ?? 0)
+        .input('CODDOCINICIAL', sql.VarChar, ini?.CODDOC ?? 'SN')
+        .input('CORRELATIVOINICIAL', sql.Decimal(18, 0), ini?.CORRELATIVO ?? 0)
+        .input('HORAINICIAL', sql.Int, ini?.HORA ?? 0)
+        .input('MINUTOINICIAL', sql.Int, ini?.MINUTO ?? 0)
+        .input('IDFINAL', sql.Int, fin?.ID ?? 0)
+        .input('CODDOCFINAL', sql.VarChar, fin?.CODDOC ?? 'SN')
+        .input('CORRELATIVOFINAL', sql.Decimal(18, 0), fin?.CORRELATIVO ?? 0)
+        .input('HORAFINAL', sql.Int, fin?.HORA ?? 0)
+        .input('MINUTOFINAL', sql.Int, fin?.MINUTO ?? 0)
+        .query(`
+          UPDATE dbo.CORTES
+          SET TOTALMOVIMIENTOS = @TOTALMOVIMIENTOS,
+              TOTALCOSTO = @TOTALCOSTO,
+              TOTALVENTA = @TOTALVENTA,
+              TOTALUTILIDAD = @TOTALUTILIDAD,
+              MARGEN = @MARGEN,
+              FALTANTE = @FALTANTE,
+              SOBRANTE = @SOBRANTE,
+              TOTALGASTOS = @TOTALGASTOS,
+              TOTALRECIBOS = @TOTALRECIBOS,
+              TOTALTARJETA = @TOTALTARJETA,
+              TOTALCHEQUES = @TOTALCHEQUES,
+              TOTALDEVOLUCIONES = @TOTALDEVOLUCIONES,
+              TOTALVENTASCREDITO = @TOTALVENTASCREDITO,
+              FPAGO_EFECTIVO = @FPAGO_EFECTIVO,
+              FPAGO_TARJETA = @FPAGO_TARJETA,
+              FPAGO_DEPOSITO = @FPAGO_DEPOSITO,
+              FPAGO_CHEQUE = @FPAGO_CHEQUE,
+              IDINICIAL = @IDINICIAL,
+              CODDOCINICIAL = @CODDOCINICIAL,
+              CORRELATIVOINICIAL = @CORRELATIVOINICIAL,
+              HORAINICIAL = @HORAINICIAL,
+              MINUTOINICIAL = @MINUTOINICIAL,
+              IDFINAL = @IDFINAL,
+              CODDOCFINAL = @CODDOCFINAL,
+              CORRELATIVOFINAL = @CORRELATIVOFINAL,
+              HORAFINAL = @HORAFINAL,
+              MINUTOFINAL = @MINUTOFINAL
+          WHERE EMPNIT = @EMPNIT AND ID = @ID
+        `);
+
+      await transaction.commit();
+
+      res.json({
+        ok: true,
+        CODDOC: coddoc,
+        CORRELATIVO: correlativo,
+        STATUS: STATUS_ANULADO,
+        inventario: inv,
+        fel: felResult?.fel || null,
+        corte: {
+          ID: corteId,
+          CORRELATIVO: nocorte,
+          TOTALMOVIMIENTOS: resumen.totalMovimientos,
+          TOTALVENTA: resumen.totalVenta,
+          FALTANTE: faltante,
+          SOBRANTE: sobrante,
+          FPAGO_EFECTIVO: resumen.fpEfectivo,
+        },
+      });
+    } catch (inner) {
+      try {
+        await transaction.rollback();
+      } catch (_) {
+        /* ignore */
+      }
+      throw inner;
+    }
+  } catch (err) {
+    if (err instanceof InventarioError) {
+      return res.status(err.statusCode || 400).json({ error: err.message, code: err.code });
+    }
+    console.warn('[API POST /auditoria-cajas/.../anular]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

@@ -1,0 +1,12 @@
+---
+description: Partidas de diario manuales (contabilidad)
+alwaysApply: false
+---
+
+# Partidas de diario
+
+Menú `partidas-diario` → tablas `CONTA_ASIENTOS` / `CONTA_ASIENTOS_LINEAS`.
+
+Se fusionan en `listLibroDiario()` (tipodoc `ASM`); Mayor y Balance las consumen sin lógica extra.
+
+Schema vía updater: `node scripts/seed-update-query-conta-asientos.js` (DDL embebido en `lib/conta-asientos.js`, sin `.sql` local). UPDATE_QUERIES markers `CONTA_ASIENTOS:*`, VERSION 2026 / DB P.

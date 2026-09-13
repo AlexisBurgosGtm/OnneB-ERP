@@ -4,7 +4,9 @@
  */
 const DocPrint = {
   FORMATO_OPCION: 'FORMATO IMPRESION C O T',
+  PESO_OPCION: 'MUESTRA PESO EN DOCUMENTOS',
   _formatoCache: null,
+  _muestraPesoCache: null,
 
   escapeHtml(value) {
     return PrintReport.escapeHtml(value);
@@ -27,6 +29,33 @@ const DocPrint = {
 
   normalizeFormato(value) {
     return String(value || 'CARTA').trim().toUpperCase() === 'TICKET' ? 'TICKET' : 'CARTA';
+  },
+
+  formatPeso(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('es', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  },
+
+  lineTotalPeso(ln) {
+    const stored = Number(ln?.TOTALPESO);
+    if (Number.isFinite(stored)) return stored;
+    return (Number(ln?.PESO) || 0) * (Number(ln?.CANTIDAD) || 0);
+  },
+
+  async fetchMuestraPeso(force = false) {
+    if (!force && this._muestraPesoCache != null) return this._muestraPesoCache;
+    try {
+      const params = new URLSearchParams({
+        opcion: this.PESO_OPCION,
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+      this._muestraPesoCache = String(data?.valor || 'NO').trim().toUpperCase() === 'SI';
+    } catch {
+      this._muestraPesoCache = false;
+    }
+    return this._muestraPesoCache;
   },
 
   async fetchFormatoImpresion(force = false) {
@@ -73,6 +102,7 @@ const DocPrint = {
         .doc-meta-grid{display:block}
         .doc-meta-item{margin-bottom:.15rem;font-size:10px}
         .doc-lines-table th,.doc-lines-table td{font-size:9px;padding:2px 3px}
+        .doc-line-peso{display:block;font-size:8px;color:#666;margin-top:1px}
         .doc-lines-table .col-desc{max-width:none;word-break:break-word}
         .doc-totals{font-size:10px}
         .doc-footer{margin-top:.5rem;font-size:9px;text-align:center;color:#555}
@@ -133,7 +163,7 @@ const DocPrint = {
     return `<div class="doc-meta-item"><strong>${this.escapeHtml(label)}:</strong> ${this.escapeHtml(value)}</div>`;
   },
 
-  buildLinesTableHtml(lines, { ticket = false, includePrecio = false } = {}) {
+  buildLinesTableHtml(lines, { ticket = false, includePrecio = false, muestraPeso = false } = {}) {
     const rows = (lines || [])
       .map((ln) => {
         const desc = ticket
@@ -142,13 +172,18 @@ const DocPrint = {
         const precioCell = includePrecio
           ? `<td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>`
           : '';
+        const tp = this.lineTotalPeso(ln);
+        const pesoSuffix =
+          muestraPeso && tp > 0
+            ? `<span class="doc-line-peso">${this.escapeHtml(this.formatPeso(tp))}</span>`
+            : '';
         return `<tr>
           <td>${this.escapeHtml(ln.CODPROD)}</td>
           <td>${desc}</td>
           <td class="text-end">${this.escapeHtml(ln.CODMEDIDA || '')}</td>
           <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
           ${precioCell}
-          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}${pesoSuffix}</td>
         </tr>`;
       })
       .join('');
@@ -170,7 +205,7 @@ const DocPrint = {
       </table>`;
   },
 
-  buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '' }, formato = 'CARTA') {
+  buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '', muestraPeso = false }, formato = 'CARTA') {
     const h = header || {};
     const ticket = this.isTicket(formato);
     const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
@@ -207,6 +242,11 @@ const DocPrint = {
       .join('');
 
     const obs = h.OBS ? `<p class="doc-obs"><em>${this.escapeHtml(h.OBS)}</em></p>` : '';
+    const totalPeso = (lines || []).reduce((s, ln) => s + this.lineTotalPeso(ln), 0);
+    const pesoTotalHtml =
+      muestraPeso && totalPeso > 0
+        ? `<div class="doc-totals-row"><span>Peso total</span><span>${this.escapeHtml(this.formatPeso(totalPeso))}</span></div>`
+        : '';
     const anulado = this.isAnulado(h) ? this.anuladoStampHtml() : '';
     const prioridadBadge = this.prioridadBadgeHtml(h.PRIORIDAD);
 
@@ -220,8 +260,9 @@ const DocPrint = {
         })}
         <div class="doc-meta-grid">${meta}</div>
         ${obs}
-        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true })}
+        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true, muestraPeso })}
         <div class="doc-totals">
+          ${pesoTotalHtml}
           <div class="doc-totals-row grand">
             <span>Total</span>
             <span>${this.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</span>
@@ -404,6 +445,7 @@ const DocPrint = {
 
   async printDocument({ title, header, lines, extraMeta, footerNote, formato }) {
     const fmt = formato || (await this.fetchFormatoImpresion());
+    const muestraPeso = await this.fetchMuestraPeso();
     const h = header || {};
     const coddoc = h.CODDOC;
     const correlativo = h.CORRELATIVO;
@@ -428,7 +470,10 @@ const DocPrint = {
       () =>
         this.wrapHtml({
           title,
-          bodyHtml: this.buildDocumentHtml({ title, header, lines, extraMeta, footerNote }, fmt),
+          bodyHtml: this.buildDocumentHtml(
+            { title, header, lines, extraMeta, footerNote, muestraPeso },
+            fmt
+          ),
           formato: fmt,
         }),
       this.windowFeaturesFor(fmt),

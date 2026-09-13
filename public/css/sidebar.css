@@ -150,13 +150,35 @@
   font-weight: 600;
 }
 
+.sidebar-menu-search {
+  background: color-mix(in srgb, #000 22%, transparent);
+  border-color: var(--onneb-glass-border);
+  color: #fff;
+}
+
+.sidebar-menu-search::placeholder {
+  color: color-mix(in srgb, #fff 55%, transparent);
+}
+
+.sidebar-menu-search:focus {
+  background: color-mix(in srgb, #000 28%, transparent);
+  border-color: var(--onneb-color-accent);
+  color: #fff;
+  box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--onneb-color-accent) 25%, transparent);
+}
+
+.sidebar-menu-search-hide,
+.sidebar-menu-search-section-hide {
+  display: none !important;
+}
+
 .sidebar-link {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 1rem 0.5rem 2.25rem;
   font-size: 0.84rem;
-  color: var(--onneb-text-muted);
+  color: #ffffff;
   text-decoration: none;
   transition: background 0.15s ease, color 0.15s ease;
 }

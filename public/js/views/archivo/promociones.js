@@ -9,6 +9,13 @@ const PromocionesView = {
   _registros: [],
   _editRegId: null,
   _promoModal: null,
+  _fabricantes: [],
+
+  PROMO_TIPOS: [
+    { value: 'POR IMPORTE', label: 'POR IMPORTE' },
+    { value: 'POR DOCUMENTO', label: 'POR DOCUMENTO' },
+    { value: 'POR FABRICANTE', label: 'POR FABRICANTE' },
+  ],
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -17,6 +24,21 @@ const PromocionesView = {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  },
+
+  formatMoney(value) {
+    const n = Number(value);
+    if (Number.isNaN(n)) return 'Q 0.00';
+    return n.toLocaleString('es-GT', { style: 'currency', currency: 'GTQ' });
+  },
+
+  currencySymbol() {
+    try {
+      const parts = new Intl.NumberFormat('es-GT', { style: 'currency', currency: 'GTQ' }).formatToParts(0);
+      return parts.find((p) => p.type === 'currency')?.value?.trim() || 'Q';
+    } catch {
+      return 'Q';
+    }
   },
 
   apiBase(path = '') {
@@ -52,6 +74,15 @@ const PromocionesView = {
     return `${s.slice(0, max)}…`;
   },
 
+  formatNum(value, digits = 2) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('es', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: digits,
+    });
+  },
+
   findRow(id) {
     return this._rows.find((r) => String(r.ID) === String(id));
   },
@@ -60,7 +91,13 @@ const PromocionesView = {
     const q = this._filterQuery.trim().toLowerCase();
     if (!q) return this._rows;
     return this._rows.filter((r) =>
-      [r.NOMBRE, r.STATUS, this.formatFecha(r.FECHA_INICIO), this.formatFecha(r.FECHA_FIN)]
+      [
+        r.NOMBRE,
+        r.STATUS,
+        r.TIPO,
+        this.formatFecha(r.FECHA_INICIO),
+        this.formatFecha(r.FECHA_FIN),
+      ]
         .map((v) => String(v ?? '').toLowerCase())
         .some((v) => v.includes(q))
     );
@@ -78,19 +115,25 @@ const PromocionesView = {
       const msg = this._filterQuery.trim()
         ? 'Ningún registro coincide con la búsqueda'
         : 'Sin campañas de promociones';
-      return `<tr><td colspan="5" class="text-center text-muted py-4">${msg}</td></tr>`;
+      return `<tr><td colspan="6" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((row) => {
         const nombre = this.escapeHtml(this.truncate(row.NOMBRE, 90));
         const nombreFull = this.escapeHtml(row.NOMBRE || '');
+        const tipo = this.escapeHtml(row.TIPO || '—');
         return `<tr>
           <td title="${nombreFull}">${nombre}</td>
+          <td class="text-nowrap small">${tipo}</td>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(row.FECHA_INICIO))}</td>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(row.FECHA_FIN))}</td>
           <td class="text-center">${this.statusBadgeHtml(row)}</td>
           <td class="text-end">
             <div class="catalogo-acciones">
+              <button type="button" class="btn btn-sm btn-outline-success promo-btn-puntos"
+                data-id="${this.escapeHtml(row.ID)}" title="Puntos acumulados">
+                <i class="fa-solid fa-star"></i> Puntos Acumulados
+              </button>
               <button type="button" class="btn btn-sm btn-outline-primary promo-btn-registros"
                 data-id="${this.escapeHtml(row.ID)}" title="Registros de la promoción">
                 <i class="fa-solid fa-list"></i> Registros
@@ -157,6 +200,7 @@ const PromocionesView = {
             <thead>
               <tr>
                 <th>Nombre / descripción</th>
+                <th>Tipo</th>
                 <th>Fecha inicio</th>
                 <th>Fecha fin</th>
                 <th class="text-center">Estado</th>
@@ -171,13 +215,27 @@ const PromocionesView = {
   },
 
   formHtml(row = {}) {
+    const tipoSel = String(row.TIPO || '').trim().toUpperCase();
+    const tipoOpts = this.PROMO_TIPOS.map(
+      (t) =>
+        `<option value="${t.value}"${tipoSel === t.value ? ' selected' : ''}>${t.label}</option>`
+    ).join('');
+    const fabOpts = (this._fabricantes || [])
+      .map((f) => {
+        const selected = String(f.CODCLAUNO) === String(row.CODCLAUNO ?? '') ? ' selected' : '';
+        return `<option value="${this.escapeHtml(f.CODCLAUNO)}"${selected}>${this.escapeHtml(
+          f.DESCLAUNO || f.CODCLAUNO
+        )}</option>`;
+      })
+      .join('');
+    const showFab = tipoSel === 'POR FABRICANTE';
     return `
       <div class="mb-2 text-start">
         <label class="form-label small mb-0" for="promo-nombre">Nombre / descripción</label>
         <textarea id="promo-nombre" class="form-control form-control-sm" rows="4"
           required placeholder="Descripción larga de la campaña">${this.escapeHtml(row.NOMBRE || '')}</textarea>
       </div>
-      <div class="row g-2">
+      <div class="row g-2 mb-2">
         <div class="col-12 col-sm-6">
           <label class="form-label small mb-0" for="promo-fecha-inicio">Fecha inicio</label>
           <input type="date" id="promo-fecha-inicio" class="form-control form-control-sm"
@@ -188,13 +246,64 @@ const PromocionesView = {
           <input type="date" id="promo-fecha-fin" class="form-control form-control-sm"
             value="${this.escapeHtml(this.toDateInput(row.FECHA_FIN))}">
         </div>
+      </div>
+      <div class="mb-2 text-start">
+        <label class="form-label small mb-0" for="promo-tipo">Tipo</label>
+        <select id="promo-tipo" class="form-select form-select-sm">
+          <option value="">— Seleccione —</option>
+          ${tipoOpts}
+        </select>
+      </div>
+      <div class="mb-2 text-start${showFab ? '' : ' d-none'}" id="promo-fab-wrap">
+        <label class="form-label small mb-0" for="promo-codclauno">Fabricante</label>
+        <select id="promo-codclauno" class="form-select form-select-sm">
+          <option value="">— Seleccione fabricante —</option>
+          ${fabOpts}
+        </select>
+      </div>
+      <div class="mb-2 text-start">
+        <label class="form-label small mb-0" for="promo-factor-puntos">Factor puntos</label>
+        <input type="number" id="promo-factor-puntos" class="form-control form-control-sm"
+          min="0" step="any" placeholder="Puntos por venta / importe / documento"
+          value="${this.escapeHtml(row.FACTOR_PUNTOS ?? '')}">
+        <p class="small text-muted mb-0 mt-1">Indica a cuántos puntos equivale cada venta (por importe o por documento).</p>
+      </div>
+      <div class="mb-2 text-start">
+        <label class="form-label small mb-0" for="promo-valor-punto">Valor punto (${this.escapeHtml(this.currencySymbol())})</label>
+        <input type="number" id="promo-valor-punto" class="form-control form-control-sm"
+          min="0" step="any" placeholder="${this.escapeHtml(this.formatMoney(1))}"
+          value="${this.escapeHtml(row.VALORPUNTO ?? '')}">
+        <p class="small text-muted mb-0 mt-1">Equivale en dinero a cada punto acumulado (ej. canje).</p>
       </div>`;
+  },
+
+  syncTipoFields() {
+    const tipo = String(document.getElementById('promo-tipo')?.value || '')
+      .trim()
+      .toUpperCase();
+    const wrap = document.getElementById('promo-fab-wrap');
+    if (wrap) wrap.classList.toggle('d-none', tipo !== 'POR FABRICANTE');
+  },
+
+  async ensureFabricantes() {
+    if (this._fabricantes?.length) return this._fabricantes;
+    const data = await F.fetchJson(`${this.apiBase('/clasificacionuno')}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    this._fabricantes = data.rows || [];
+    return this._fabricantes;
   },
 
   readPromoForm() {
     const NOMBRE = document.getElementById('promo-nombre')?.value?.trim() || '';
     const FECHA_INICIO = document.getElementById('promo-fecha-inicio')?.value || '';
     const FECHA_FIN = document.getElementById('promo-fecha-fin')?.value || '';
+    const TIPO = String(document.getElementById('promo-tipo')?.value || '')
+      .trim()
+      .toUpperCase();
+    const factorRaw = document.getElementById('promo-factor-puntos')?.value;
+    const valorPuntoRaw = document.getElementById('promo-valor-punto')?.value;
+    const codClaRaw = document.getElementById('promo-codclauno')?.value;
     if (!NOMBRE) {
       Swal.showValidationMessage('El nombre / descripción es obligatorio');
       return false;
@@ -203,19 +312,61 @@ const PromocionesView = {
       Swal.showValidationMessage('La fecha fin no puede ser anterior a la fecha inicio');
       return false;
     }
+    if (TIPO && !this.PROMO_TIPOS.some((t) => t.value === TIPO)) {
+      Swal.showValidationMessage('Tipo de promoción inválido');
+      return false;
+    }
+    let FACTOR_PUNTOS = null;
+    if (factorRaw !== undefined && String(factorRaw).trim() !== '') {
+      FACTOR_PUNTOS = Number(factorRaw);
+      if (!Number.isFinite(FACTOR_PUNTOS) || FACTOR_PUNTOS < 0) {
+        Swal.showValidationMessage('Factor puntos inválido');
+        return false;
+      }
+    }
+    let VALORPUNTO = null;
+    if (valorPuntoRaw !== undefined && String(valorPuntoRaw).trim() !== '') {
+      VALORPUNTO = Number(valorPuntoRaw);
+      if (!Number.isFinite(VALORPUNTO) || VALORPUNTO < 0) {
+        Swal.showValidationMessage('Valor punto inválido');
+        return false;
+      }
+    }
+    let CODCLAUNO = null;
+    if (TIPO === 'POR FABRICANTE') {
+      CODCLAUNO = parseInt(codClaRaw, 10);
+      if (!Number.isFinite(CODCLAUNO) || CODCLAUNO <= 0) {
+        Swal.showValidationMessage('Seleccione un fabricante');
+        return false;
+      }
+    }
     return {
       NOMBRE,
       FECHA_INICIO: FECHA_INICIO || null,
       FECHA_FIN: FECHA_FIN || null,
+      TIPO: TIPO || null,
+      FACTOR_PUNTOS,
+      VALORPUNTO,
+      CODCLAUNO,
     };
   },
 
   async showForm(title, row = {}, isEdit = false) {
+    try {
+      await this.ensureFabricantes();
+    } catch (err) {
+      F.toast(err.message || 'No se pudieron cargar fabricantes', 'warning');
+      this._fabricantes = [];
+    }
     return CatalogosUI.fireForm({
       title,
       html: this.formHtml(row),
       width: 560,
-      didOpen: () => document.getElementById('promo-nombre')?.focus(),
+      didOpen: () => {
+        document.getElementById('promo-nombre')?.focus();
+        document.getElementById('promo-tipo')?.addEventListener('change', () => this.syncTipoFields());
+        this.syncTipoFields();
+      },
       preConfirm: () => this.readPromoForm(),
     });
   },
@@ -561,6 +712,122 @@ const PromocionesView = {
     });
   },
 
+  puntosMetricaLabel(tipo) {
+    if (tipo === 'POR DOCUMENTO') return 'Documentos';
+    if (tipo === 'POR FABRICANTE') return 'Importe fabricante';
+    return 'Importe';
+  },
+
+  puntosAcumuladosListHtml(data) {
+    const tipo = data.tipo || 'POR DOCUMENTO';
+    const metricaLabel = this.puntosMetricaLabel(tipo);
+    if (!data.rows?.length) {
+      return '<p class="text-muted small mb-0 text-center py-3">Sin registros asociados a esta promoción.</p>';
+    }
+    const body = data.rows
+      .map((r) => {
+        const metrica =
+          tipo === 'POR DOCUMENTO' ? this.formatNum(r.documentos, 0) : this.formatNum(r.totalPrecio, 2);
+        return `<tr>
+          <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+          <td class="text-end">${this.escapeHtml(r.CODIGO ?? '—')}</td>
+          <td>${this.escapeHtml(r.TIPO || '—')}</td>
+          <td>${this.escapeHtml(r.VALOR || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatNum(r.documentos, 0))}</td>
+          <td class="text-end">${this.escapeHtml(metrica)}</td>
+          <td class="text-end">${this.escapeHtml(this.formatNum(r.puntos, 2))}</td>
+          <td class="text-end">${this.escapeHtml(this.formatNum(r.puntosCobrados, 2))}</td>
+          <td class="text-end fw-semibold text-success">
+            ${this.escapeHtml(this.formatNum(r.puntosDisponibles, 2))}
+            ${r.dineroDisponible != null && Number(data.valorPunto) > 0
+              ? `<div class="small text-muted fw-normal">${this.escapeHtml(this.formatMoney(r.dineroDisponible))}</div>`
+              : ''}
+          </td>
+        </tr>`;
+      })
+      .join('');
+    const totMetrica =
+      tipo === 'POR DOCUMENTO'
+        ? this.formatNum(data.totales?.documentos, 0)
+        : this.formatNum(data.totales?.totalPrecio, 2);
+    return `
+      <div class="table-responsive" style="max-height: 26rem;">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Fecha</th>
+              <th class="text-end">Código</th>
+              <th>Tipo reg.</th>
+              <th>Valor</th>
+              <th class="text-end">Docs</th>
+              <th class="text-end">${this.escapeHtml(metricaLabel)}</th>
+              <th class="text-end">Acum.</th>
+              <th class="text-end">Cobrados</th>
+              <th class="text-end">Disponibles</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <th colspan="4" class="text-end">Totales</th>
+              <th class="text-end">${this.escapeHtml(this.formatNum(data.totales?.documentos, 0))}</th>
+              <th class="text-end">${this.escapeHtml(totMetrica)}</th>
+              <th class="text-end">${this.escapeHtml(this.formatNum(data.totales?.puntos, 2))}</th>
+              <th class="text-end">${this.escapeHtml(this.formatNum(data.totales?.puntosCobrados, 2))}</th>
+              <th class="text-end">
+                ${this.escapeHtml(this.formatNum(data.totales?.puntosDisponibles, 2))}
+                ${data.totales?.dineroDisponible != null && Number(data.valorPunto) > 0
+                  ? `<div class="small text-muted fw-normal">${this.escapeHtml(this.formatMoney(data.totales.dineroDisponible))}</div>`
+                  : ''}
+              </th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+  },
+
+  puntosAcumuladosModalHtml(data) {
+    const promo = data.promo || {};
+    const fab =
+      data.tipo === 'POR FABRICANTE' && promo.DESCLAUNO
+        ? ` · Fabricante: <strong>${this.escapeHtml(promo.DESCLAUNO)}</strong>`
+        : '';
+    return `
+      <div class="text-start">
+        <p class="small text-muted mb-2">
+          Tipo: <strong>${this.escapeHtml(data.tipo || '—')}</strong>
+          · Factor: <strong>${this.escapeHtml(this.formatNum(data.factor, 4))}</strong>
+          · Valor punto: <strong>${this.escapeHtml(this.formatMoney(data.valorPunto ?? data.promo?.VALORPUNTO ?? 0))}</strong>${fab}
+        </p>
+        <p class="small text-muted mb-2">
+          Facturas válidas FAC/FEL (operadas) con <code>PROMOCION_CODIGO</code> igual al código del registro.
+        </p>
+        ${this.puntosAcumuladosListHtml(data)}
+      </div>`;
+  },
+
+  async onPuntosAcumulados(id) {
+    const promo = this.findRow(id);
+    if (!promo) return;
+    try {
+      const data = await F.fetchJson(
+        `${this.apiBase(`/${encodeURIComponent(id)}/puntos-acumulados`)}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      await Swal.fire({
+        ...CatalogosUI.modalBase(),
+        title: `Puntos Acumulados — ${this.escapeHtml(this.truncate(promo.NOMBRE || '', 40))}`,
+        width: '56rem',
+        html: this.puntosAcumuladosModalHtml(data),
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      });
+    } catch (err) {
+      F.toast(err.message || 'No se pudieron calcular los puntos', 'error');
+    }
+  },
+
   bindRowActions() {
     this._container?.querySelectorAll('.btn-catalogo-editar').forEach((btn) => {
       btn.addEventListener('click', () => this.onEditar(btn.dataset.id));
@@ -573,6 +840,9 @@ const PromocionesView = {
     });
     this._container?.querySelectorAll('.promo-btn-registros').forEach((btn) => {
       btn.addEventListener('click', () => this.onRegistros(btn.getAttribute('data-id')));
+    });
+    this._container?.querySelectorAll('.promo-btn-puntos').forEach((btn) => {
+      btn.addEventListener('click', () => this.onPuntosAcumulados(btn.getAttribute('data-id')));
     });
   },
 

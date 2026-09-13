@@ -1,0 +1,80 @@
+/* Despacho → Pendientes Entrega */
+.pendientes-entrega-panel .pe-table-wrap {
+  max-height: min(70vh, 720px);
+}
+
+.pendientes-entrega-panel .pe-table {
+  font-size: 0.75rem;
+}
+
+.pendientes-entrega-panel .pe-table th,
+.pendientes-entrega-panel .pe-table td {
+  white-space: nowrap;
+  padding: 0.28rem 0.4rem;
+  vertical-align: middle;
+}
+
+.pendientes-entrega-panel .pe-table td.small {
+  white-space: normal;
+  min-width: 6rem;
+  font-size: 0.72rem;
+}
+
+.pendientes-entrega-panel tr.pe-row {
+  cursor: pointer;
+}
+
+.pendientes-entrega-panel tr.pe-row:hover {
+  background: color-mix(in srgb, var(--onneb-brand, #0d6efd) 8%, transparent);
+}
+
+.pe-prioridad {
+  display: inline-block;
+  min-width: 3rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pe-prioridad--baja {
+  background: #86efac;
+  color: #14532d;
+}
+
+.pe-prioridad--media {
+  background: #facc15;
+  color: #713f12;
+}
+
+.pe-prioridad--alta {
+  background: #ef4444;
+  color: #fff;
+}
+
+.pe-detalle .nav-tabs .nav-link {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.pe-detalle-actions {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 0.75rem;
+}
+
+.pe-nueva .pe-qty-input {
+  min-width: 5rem;
+}
+
+@media (max-width: 768px) {
+  .pendientes-entrega-panel .pe-filters .form-control,
+  .pendientes-entrega-panel .pe-filters .form-select {
+    min-width: 7rem;
+  }
+
+  .pe-detalle-actions {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+}

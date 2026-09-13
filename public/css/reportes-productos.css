@@ -249,3 +249,80 @@
   background: linear-gradient(90deg, #10b981, #34d399);
   border-radius: 2px;
 }
+
+.repprod-card-util {
+  font-size: 0.68rem;
+  margin-top: 0.1rem;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .main-content > .repprod-wrap,
+  .repprod-wrap {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  .repprod-body {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .repprod-list-col {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    max-height: 40vh;
+  }
+
+  .repprod-list-scroll {
+    max-height: 280px;
+    overflow: auto;
+  }
+
+  .repprod-detail-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .repprod-kpi-row {
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  }
+
+  .repprod-sort-row {
+    flex-wrap: wrap;
+  }
+
+  .repprod-toolbar .d-flex > div {
+    flex: 1 1 100%;
+  }
+
+  .repprod-toolbar input[type='date'] {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .repprod-list-col {
+    max-height: 36vh;
+  }
+
+  .repprod-list-scroll {
+    max-height: 220px;
+  }
+
+  .repprod-table {
+    font-size: 0.72rem;
+  }
+
+  .repprod-chart-wrap {
+    height: 200px;
+  }
+
+  .repprod-kpi-value {
+    font-size: 0.85rem;
+  }
+}

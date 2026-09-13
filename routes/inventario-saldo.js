@@ -93,6 +93,7 @@ const LIST_SELECT_INVSALDO = `
   p.DESPROD,
   i.SALDO,
   p.EXISTENCIA,
+  ISNULL(i.FISICO, ISNULL(p.FISICO, 0)) AS FISICO,
   m.DESMARCA,
   p.TIPOPROD,
   p.COSTO,
@@ -123,6 +124,7 @@ const LIST_SELECT_PRODUCT = `
   p.DESPROD,
   ISNULL(inv.SALDO, 0) AS SALDO,
   p.EXISTENCIA,
+  ISNULL(inv.FISICO, ISNULL(p.FISICO, 0)) AS FISICO,
   m.DESMARCA,
   p.TIPOPROD,
   p.COSTO,
@@ -136,7 +138,7 @@ const LIST_FROM_PRODUCT = `
   FROM dbo.PRODUCTOS p
   LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
   OUTER APPLY (
-    SELECT TOP 1 i.SALDO
+    SELECT TOP 1 i.SALDO, i.FISICO
     FROM dbo.INVSALDO i
     WHERE i.EMPNIT = p.EMPNIT
       AND LTRIM(RTRIM(i.CODPROD)) = LTRIM(RTRIM(p.CODPROD))
@@ -310,6 +312,7 @@ router.get('/saldo/export', async (req, res) => {
       { header: 'Tipo', key: 'TIPOPROD', width: 10 },
       { header: 'Saldo', key: 'SALDO', width: 12 },
       { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
+      { header: 'Físico', key: 'FISICO', width: 12 },
       { header: 'Costo prom.', key: 'COSTO_PROMEDIO', width: 12 },
       { header: 'Costo', key: 'COSTO', width: 12 },
       { header: 'Total costo', key: 'TOTALCOSTO', width: 14 },
@@ -330,6 +333,7 @@ router.get('/saldo/export', async (req, res) => {
         TIPOPROD: 'Totales',
         SALDO: totalsRow.SUM_SALDO ?? 0,
         EXISTENCIA: '',
+        FISICO: '',
         COSTO_PROMEDIO: '',
         COSTO: '',
         TOTALCOSTO: totalsRow.SUM_TOTALCOSTO ?? 0,
@@ -421,6 +425,7 @@ router.get('/retroactivo/export', async (req, res) => {
       { header: 'Tipo', key: 'TIPOPROD', width: 10 },
       { header: 'Saldo', key: 'SALDO', width: 12 },
       { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
+      { header: 'Físico', key: 'FISICO', width: 12 },
       { header: 'Costo prom.', key: 'COSTO_PROMEDIO', width: 12 },
       { header: 'Costo', key: 'COSTO', width: 12 },
       { header: 'Total costo', key: 'TOTALCOSTO', width: 14 },
@@ -440,6 +445,7 @@ router.get('/retroactivo/export', async (req, res) => {
         TIPOPROD: 'Totales',
         SALDO: data.totals.SUM_SALDO ?? 0,
         EXISTENCIA: '',
+        FISICO: data.totals.SUM_FISICO ?? 0,
         COSTO: '',
         TOTALCOSTO: data.totals.SUM_TOTALCOSTO ?? 0,
         HABILITADO: '',

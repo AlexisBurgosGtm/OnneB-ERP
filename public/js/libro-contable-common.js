@@ -89,7 +89,7 @@ const LibroContableCommon = {
   searchInputHtml(prefix, value = '', placeholder = 'NIT, nombre, serie, número…') {
     const val = this.escapeHtml(value);
     return `
-      <div class="${prefix}-filter-search flex-grow-1">
+      <div class="${prefix}-filter-search flex-grow-1 d-print-none libro-contable-no-print">
         <label for="${prefix}-search" class="form-label small mb-1">Buscar</label>
         <div class="input-group input-group-sm">
           <span class="input-group-text" aria-hidden="true"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -115,13 +115,24 @@ const LibroContableCommon = {
     const parts = [
       row?.LINEA,
       row?.TIPODOC,
+      row?.TIPOPAGO,
       row?.FEL_SERIE,
       row?.FEL_NUMERO,
       row?.DOC_NIT,
       row?.DOC_NOMCLIE,
+      row?.DOC_REF,
       row?.CODDOC,
       row?.CORRELATIVO,
+      row?.CODFORMATO,
+      row?.CODCUENTA,
+      row?.DESCRIPCION_CUENTA,
+      row?.DESCRIPCION,
+      row?.GLOSA,
+      row?.CENTRO_COSTO,
       row?.STATUS,
+      row?.DEBE,
+      row?.HABER,
+      row?.SALDO,
       ...extraValues,
     ];
     const hay = parts

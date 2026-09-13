@@ -35,12 +35,22 @@ const LicenciaView = {
   },
 
   async refresh() {
-    this._status = await F.fetchJson(`/api/license/status?_=${Date.now()}`, { cache: 'no-store' });
     if (typeof LicenseAccess !== 'undefined') {
-      LicenseAccess._status = this._status;
-      LicenseAccess.updateExpiryBadge();
+      this._status = await LicenseAccess.refresh();
+    } else {
+      this._status = await F.fetchJson(`/api/license/status?_=${Date.now()}`, { cache: 'no-store' });
     }
     return this._status;
+  },
+
+  async reapplySidebarAfterLicenseChange() {
+    if (typeof LicenseAccess !== 'undefined') {
+      await LicenseAccess.refresh();
+    }
+    if (typeof TipoEmpleadoAccess !== 'undefined') {
+      await TipoEmpleadoAccess.refreshMenuAccess();
+      TipoEmpleadoAccess.applySidebarVisibility();
+    }
   },
 
   statusBadge(st) {
@@ -97,6 +107,14 @@ const LicenciaView = {
                     : ''
                 }
                 <div class="small text-muted mt-3">${this.escapeHtml(st.message || '')}</div>
+                ${
+                  st.menusStripped?.length
+                    ? `<div class="alert alert-warning mt-3 mb-0 py-2 small">
+                         ${st.menusStripped.length} vista(s) del archivo no aplicadas en esta versión del ERP
+                         (actualice el servidor): ${this.escapeHtml(st.menusStripped.join(', '))}
+                       </div>`
+                    : ''
+                }
                 ${
                   !st.hasPublicKey
                     ? `<div class="alert alert-warning mt-3 mb-0 py-2 small">
@@ -184,12 +202,7 @@ const LicenciaView = {
       try {
         await this.refresh();
         this.render();
-        if (typeof TipoEmpleadoAccess !== 'undefined') {
-          TipoEmpleadoAccess.applySidebarVisibility();
-        }
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess.applyAfterRoleFilter();
-        }
+        await this.reapplySidebarAfterLicenseChange();
         F.toast('Estado de licencia actualizado', 'success');
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
@@ -214,17 +227,8 @@ const LicenciaView = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'No se pudo activar');
         this._status = data;
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess._status = data;
-          LicenseAccess.updateExpiryBadge();
-        }
         this.render();
-        if (typeof TipoEmpleadoAccess !== 'undefined') {
-          TipoEmpleadoAccess.applySidebarVisibility();
-        }
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess.applyAfterRoleFilter();
-        }
+        await this.reapplySidebarAfterLicenseChange();
         F.toast('Licencia activada', 'success');
       } catch (err) {
         F.toast(err.message || 'Error al activar', 'error');
@@ -240,17 +244,8 @@ const LicenciaView = {
       try {
         const data = await F.fetchJson('/api/license?confirm=QUITAR', { method: 'DELETE' });
         this._status = data;
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess._status = data;
-          LicenseAccess.updateExpiryBadge();
-        }
         this.render();
-        if (typeof TipoEmpleadoAccess !== 'undefined') {
-          TipoEmpleadoAccess.applySidebarVisibility();
-        }
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess.applyAfterRoleFilter();
-        }
+        await this.reapplySidebarAfterLicenseChange();
         F.toast('Licencia eliminada', 'success');
       } catch (err) {
         F.toast(err.message || 'Error', 'error');
@@ -292,17 +287,8 @@ const LicenciaView = {
         const activated = await res.json();
         if (!res.ok) throw new Error(activated.error || 'No se pudo activar');
         this._status = activated;
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess._status = activated;
-          LicenseAccess.updateExpiryBadge();
-        }
         this.render();
-        if (typeof TipoEmpleadoAccess !== 'undefined') {
-          TipoEmpleadoAccess.applySidebarVisibility();
-        }
-        if (typeof LicenseAccess !== 'undefined') {
-          LicenseAccess.applyAfterRoleFilter();
-        }
+        await this.reapplySidebarAfterLicenseChange();
         F.toast('Licencia descargada y activada', 'success');
       } else {
         F.toast('Licencia descargada. Puede activarla con el archivo.', 'success');

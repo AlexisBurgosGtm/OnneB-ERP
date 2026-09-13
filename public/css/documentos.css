@@ -52,6 +52,25 @@
   white-space: normal;
 }
 
+.documentos-col-fel {
+  white-space: nowrap;
+  min-width: 6.5rem;
+}
+
+.documentos-fel-link {
+  text-decoration: none;
+}
+
+.documentos-fel-link:hover .documentos-fel-badge {
+  filter: brightness(0.95);
+}
+
+.documentos-fel-badge {
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+}
+
 .documentos-badge {
   font-size: 0.8rem;
   color: var(--onneb-text-muted, #6c757d);

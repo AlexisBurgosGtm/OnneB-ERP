@@ -10,6 +10,7 @@ const LibroMayorView = {
   _anio: null,
   _loading: false,
   _exporting: false,
+  _filterQuery: '',
   _prefix: 'libro-mayor',
 
   escapeHtml(value) {
@@ -35,15 +36,69 @@ const LibroMayorView = {
 
   badgeText() {
     const t = this._totals || {};
+    const filtering = Boolean(String(this._filterQuery || '').trim());
+    const rows = this.filteredRows();
+    const cuentas = rows.filter((r) => r.TIPO === 'CUENTA').length;
+    const movs = rows.filter((r) => r.TIPO !== 'CUENTA' && r.TIPO !== 'SUBTOTAL').length;
     const parts = [
-      `${t.cuentas ?? 0} cuenta(s)`,
-      `${t.movimientos ?? 0} movimiento(s)`,
+      filtering
+        ? `${cuentas} de ${t.cuentas ?? 0} cuenta(s)`
+        : `${t.cuentas ?? 0} cuenta(s)`,
+      filtering
+        ? `${movs} de ${t.movimientos ?? 0} movimiento(s)`
+        : `${t.movimientos ?? 0} movimiento(s)`,
       `${LibroContableCommon.mesLabel(this._mes)} ${this._anio}`,
       `Debe: ${LibroContableCommon.formatMoney(t.debe ?? 0)}`,
       `Haber: ${LibroContableCommon.formatMoney(t.haber ?? 0)}`,
     ];
     if ((t.sinFormato ?? 0) > 0) parts.push(`Sin formato: ${t.sinFormato}`);
     return parts.join(' · ');
+  },
+
+  filteredRows() {
+    const q = this._filterQuery;
+    if (!String(q || '').trim()) return this._rows;
+    const rows = this._rows;
+    const show = new Array(rows.length).fill(false);
+    let cuentaIdx = -1;
+    let cuentaMatch = false;
+    let movMatch = false;
+
+    const flush = (end) => {
+      if (cuentaIdx < 0) return;
+      if (!cuentaMatch && !movMatch) return;
+      show[cuentaIdx] = true;
+      for (let i = cuentaIdx + 1; i < end; i += 1) {
+        const r = rows[i];
+        if (cuentaMatch) {
+          show[i] = true;
+        } else if (r.TIPO === 'SUBTOTAL') {
+          show[i] = movMatch;
+        } else if (
+          LibroContableCommon.rowMatchesSearch(r, q, [
+            LibroContableCommon.formatDate(r.FECHA),
+          ])
+        ) {
+          show[i] = true;
+        }
+      }
+    };
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const r = rows[i];
+      if (r.TIPO === 'CUENTA') {
+        flush(i);
+        cuentaIdx = i;
+        cuentaMatch = LibroContableCommon.rowMatchesSearch(r, q, [r.CODCUENTA, r.DESCRIPCION]);
+        movMatch = false;
+      } else if (
+        LibroContableCommon.rowMatchesSearch(r, q, [LibroContableCommon.formatDate(r.FECHA)])
+      ) {
+        movMatch = true;
+      }
+    }
+    flush(rows.length);
+    return rows.filter((_, i) => show[i]);
   },
 
   renderFiltersCard() {
@@ -53,6 +108,11 @@ const LibroMayorView = {
         <div class="card-body">
           <div class="d-flex flex-wrap align-items-end gap-2 libro-mayor-filters-row">
             ${LibroContableCommon.periodSelectsHtml(p, this._mes, this._anio)}
+            ${LibroContableCommon.searchInputHtml(
+              p,
+              this._filterQuery,
+              'Cuenta, documento, glosa…'
+            )}
             <div class="libro-mayor-actions d-flex flex-wrap gap-2">
               ${LibroContableCommon.actionButtonsHtml(p)}
             </div>
@@ -74,7 +134,10 @@ const LibroMayorView = {
 
   renderTableBodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="7" class="text-center text-muted py-4">No hay movimientos para este período</td></tr>`;
+      const msg = String(this._filterQuery || '').trim()
+        ? 'Sin coincidencias para la búsqueda'
+        : 'No hay movimientos para este período';
+      return `<tr><td colspan="7" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((row) => {
@@ -123,7 +186,7 @@ const LibroMayorView = {
                 <th class="text-end">Saldo</th>
               </tr>
             </thead>
-            <tbody id="libro-mayor-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            <tbody id="libro-mayor-tbody">${this.renderTableBodyHtml(this.filteredRows())}</tbody>
           </table>
         </div>
       </div>
@@ -148,11 +211,12 @@ const LibroMayorView = {
       warnWrap.innerHTML = LibroContableCommon.renderWarningsHtml(this._warnings, (v) => this.escapeHtml(v));
     }
     const tbody = this._container?.querySelector('#libro-mayor-tbody');
-    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
+    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this.filteredRows());
   },
 
   bindEvents() {
     LibroContableCommon.bindPeriodAndActions(this._container, this._prefix, this);
+    LibroContableCommon.bindSearch(this._container, this._prefix, this);
   },
 
   async reload() {
@@ -236,6 +300,7 @@ const LibroMayorView = {
     const period = LibroContableCommon.defaultPeriod();
     this._mes = period.mes;
     this._anio = period.anio;
+    this._filterQuery = '';
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start');
     container.innerHTML = this.render();

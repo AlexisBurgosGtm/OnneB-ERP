@@ -272,6 +272,23 @@
   cursor: not-allowed;
 }
 
+.fac-btn-promo-scan {
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-decoration: none;
+  opacity: 0.72;
+}
+
+.fac-btn-promo-scan:hover:not(:disabled) {
+  opacity: 1;
+  text-decoration: none;
+}
+
+.fac-promo-codigo-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 .barcode-scanner-region {
   width: 100%;
   min-height: 220px;

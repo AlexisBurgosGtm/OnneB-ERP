@@ -89,6 +89,124 @@
   background: color-mix(in srgb, var(--onneb-brand) 32%, transparent);
 }
 
+/* Marca del tema (esquina superior izquierda) — Font Awesome, sin PNG */
+.login-theme-mark {
+  position: absolute;
+  top: 1.25rem;
+  left: 1.25rem;
+  z-index: 3;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--onneb-brand) 22%, rgba(0, 0, 0, 0.35));
+  border: 2px solid color-mix(in srgb, var(--onneb-brand) 55%, transparent);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 2.75rem;
+  pointer-events: none;
+  animation: login-card-enter 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-theme-mark--barca {
+  background: linear-gradient(135deg, #A50044 0%, #004D98 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.login-theme-mark--realmadrid {
+  background: linear-gradient(135deg, #ffffff 0%, #FEBE10 45%, #00529F 100%);
+  border-color: #00529F;
+  color: #00285c;
+}
+.login-theme-mark--manutd {
+  background: linear-gradient(135deg, #DA291C 0%, #000000 100%);
+  border-color: #FBE122;
+  color: #FBE122;
+}
+.login-theme-mark--boca {
+  background: linear-gradient(180deg, #003087 0%, #003087 48%, #F9B000 48%, #F9B000 100%);
+  border-color: #F9B000;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.login-theme-mark--mancity {
+  background: linear-gradient(135deg, #6CABDD 0%, #1C2C5B 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.login-theme-mark--arsenal {
+  background: linear-gradient(135deg, #EF0107 0%, #9C824A 100%);
+  border-color: #9C824A;
+}
+.login-theme-mark--psg {
+  background: linear-gradient(135deg, #004170 0%, #DA291C 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.login-theme-mark--chelsea {
+  background: linear-gradient(135deg, #034694 0%, #DBA111 100%);
+  border-color: #DBA111;
+  color: #fff;
+}
+.login-theme-mark--ferrari {
+  background: linear-gradient(135deg, #FF2800 0%, #1a1a1a 100%);
+  border-color: #FFF200;
+  color: #FFF200;
+}
+.login-theme-mark--porsche {
+  background: linear-gradient(135deg, #0a0a0a 0%, #D5001C 100%);
+  border-color: #C8C8C8;
+}
+.login-theme-mark--lamborghini {
+  background: linear-gradient(135deg, #DDB511 0%, #00A650 100%);
+  border-color: #0b3d0b;
+  color: #111;
+}
+.login-theme-mark--formula1 {
+  background: linear-gradient(135deg, #E10600 0%, #15151E 100%);
+  border-color: #fff;
+}
+.login-theme-mark--ktmduke {
+  background: linear-gradient(135deg, #FF6600 0%, #111111 100%);
+  border-color: #FF6600;
+}
+.login-theme-mark--ducatimonster {
+  background: linear-gradient(135deg, #CC0000 0%, #1a1a1a 100%);
+  border-color: #fff;
+}
+.login-theme-mark--hondacrf {
+  background: linear-gradient(135deg, #E4002B 0%, #111111 100%);
+  border-color: #fff;
+}
+.login-theme-mark--suzukigsxs {
+  background: linear-gradient(135deg, #0033A0 0%, #0a1628 100%);
+  border-color: #E8E8E8;
+}
+.login-theme-mark--purple { background: linear-gradient(135deg, #7c3aed, #4c1d95); }
+.login-theme-mark--carbon { background: linear-gradient(135deg, #3f3f46, #18181b); }
+.login-theme-mark--blue { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
+.login-theme-mark--bw { background: linear-gradient(135deg, #e5e5e5, #171717); color: #171717; }
+.login-theme-mark--mustard { background: linear-gradient(135deg, #eab308, #854d0e); }
+.login-theme-mark--fire { background: linear-gradient(135deg, #ef4444, #7f1d1d); }
+.login-theme-mark--winter { background: linear-gradient(135deg, #38bdf8, #0c4a6e); }
+.login-theme-mark--summer { background: linear-gradient(135deg, #fbbf24, #ea580c); }
+.login-theme-mark--autumn { background: linear-gradient(135deg, #fb923c, #9a3412); }
+.login-theme-mark--valentine { background: linear-gradient(135deg, #f472b6, #be123c); }
+.login-theme-mark--nature { background: linear-gradient(135deg, #4ade80, #166534); }
+.login-theme-mark--fs { background: linear-gradient(135deg, #fb923c, #c2410c); }
+
+@media (max-width: 480px) {
+  .login-theme-mark {
+    width: 72px;
+    height: 72px;
+    top: 0.75rem;
+    left: 0.75rem;
+    font-size: 2rem;
+    border-radius: 1rem;
+  }
+}
+
 /* Tarjeta glass central */
 .login-glass-card {
   position: relative;

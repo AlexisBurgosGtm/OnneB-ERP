@@ -25,6 +25,7 @@ const FacturacionView = {
   _pedidosEnvList: [],
   _pedidoEnvModalOpen: false,
   _pedidoEnvFilter: '',
+  _promoActiva: false,
 
   PRECIO_CAMPO_OPTIONS: [
     { value: 'PRECIO', label: 'PRECIO PUBLICO' },
@@ -65,7 +66,7 @@ const FacturacionView = {
     if (this._grupo === 'mixto') {
       return '<strong>FAC</strong>, <strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
     }
-    if (this._grupo === 'fel') {
+    if (this._grupo === 'fel' || this._grupo === 'fel-extra') {
       return '<strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
     }
     return '<strong>FAC</strong>';
@@ -118,6 +119,33 @@ const FacturacionView = {
 
   muestraDesprod2() {
     return String(this._config?.muestraDesprod2 || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  muestraPesoEnDocumentos() {
+    return String(this._config?.muestraPesoEnDocumentos || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  formatPeso(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('es', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  },
+
+  lineTotalPeso(ln) {
+    const stored = Number(ln?.TOTALPESO);
+    if (Number.isFinite(stored)) return stored;
+    return (Number(ln?.PESO) || 0) * (Number(ln?.CANTIDAD) || 0);
+  },
+
+  calcDocTotalPeso(lines) {
+    return (lines || []).reduce((sum, ln) => sum + this.lineTotalPeso(ln), 0);
+  },
+
+  linePesoHtml(ln) {
+    if (!this.muestraPesoEnDocumentos()) return '';
+    const tp = this.lineTotalPeso(ln);
+    if (!tp) return '';
+    return `<div class="small text-muted doc-line-peso">${this.escapeHtml(this.formatPeso(tp))}</div>`;
   },
 
   renderDesprod2Html(p) {
@@ -197,6 +225,152 @@ const FacturacionView = {
     return this._urlFel;
   },
 
+  async fetchPromoActiva() {
+    const emp = F.getEmpNit();
+    if (!emp) {
+      this._promoActiva = false;
+      return false;
+    }
+    const data = await F.fetchJson(
+      `/api/promociones/activa?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+    this._promoActiva = Boolean(data?.activa);
+    return this._promoActiva;
+  },
+
+  showsPromoScan() {
+    if (!this._promoActiva) return false;
+    const td = String(this._pedido?.header?.TIPODOC || '').trim().toUpperCase();
+    if (this._grupo === 'fac') return td === 'FAC';
+    if (this._grupo === 'fel' || this._grupo === 'fel-extra') return td === 'FEF' || td === 'FEC' || td === 'FES';
+    if (this._grupo === 'mixto') {
+      return td === 'FAC' || td === 'FEF' || td === 'FEC' || td === 'FES';
+    }
+    return false;
+  },
+
+  renderPromoBadge() {
+    const badge = this._container?.querySelector('#fac-promo-codigo-badge');
+    if (!badge) return;
+    const cod = this._pedido?.header?.PROMOCION_CODIGO;
+    const show = cod != null && cod !== '' && Number(cod) > 0;
+    badge.classList.toggle('d-none', !show);
+    badge.textContent = show ? `Promo #${cod}` : '';
+  },
+
+  syncPromoControls() {
+    const show = this.showsPromoScan() && this.docEditable(this._pedido?.header);
+    const btn = this._container?.querySelector('#fac-btn-promo-scan');
+    if (btn) {
+      btn.classList.toggle('d-none', !show);
+      btn.disabled = this._cartBusy || !show;
+    }
+    this.renderPromoBadge();
+  },
+
+  async openPromoScanner() {
+    if (!this.showsPromoScan()) return;
+    if (!this.docEditable(this._pedido?.header)) return;
+    if (typeof BarcodeScannerUI === 'undefined') {
+      F.toast('Lector de códigos no disponible', 'warning');
+      return;
+    }
+    const formats = [];
+    if (BarcodeScannerUI.barcodeFormats()) formats.push(...BarcodeScannerUI.barcodeFormats());
+    if (BarcodeScannerUI.qrFormats()) formats.push(...BarcodeScannerUI.qrFormats());
+    await BarcodeScannerUI.open({
+      title: 'Código de promoción',
+      hint: 'Escanee el código de barras o QR del cupón promocional',
+      formatsToSupport: formats.length ? formats : undefined,
+      manualNumeric: true,
+      manualInputLabel: 'Código de promoción',
+      onScan: (code) => {
+        this.registrarPromocionCodigo(code).catch((err) =>
+          F.toast(err.message || 'No se pudo registrar el código', 'error')
+        );
+      },
+    }).catch((err) => F.toast(err.message || 'Error al abrir cámara', 'error'));
+  },
+
+  async registrarPromocionCodigo(rawCode) {
+    const key = this.docKey();
+    if (!key) throw new Error('No hay documento activo');
+    const url = this.apiUrl(
+      `/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}/promocion-codigo`
+    );
+    const res = await F.fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo: rawCode }),
+    });
+    if (res?.pedido) this._pedido = res.pedido;
+    this.syncPromoControls();
+    const cod = res?.codigo ?? res?.pedido?.header?.PROMOCION_CODIGO;
+    const promo = res?.registro?.PROMO_NOMBRE ? ` (${res.registro.PROMO_NOMBRE})` : '';
+    F.toast(`Código promoción #${cod} registrado${promo}`, 'success');
+  },
+
+  async fetchPromoPuntosReferencia(codigo) {
+    const emp = F.getEmpNit();
+    const cod = Number(codigo);
+    if (!emp || !Number.isFinite(cod) || cod <= 0) return null;
+    try {
+      return await F.fetchJson(
+        `/api/promociones/puntos-codigo?empnit=${encodeURIComponent(emp)}&codigo=${encodeURIComponent(cod)}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+    } catch (err) {
+      console.warn('[Facturacion] puntos-codigo', err?.message || err);
+      return { found: false, error: err.message || 'No se pudieron cargar los puntos' };
+    }
+  },
+
+  formatPromoPuntosNum(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('es', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  },
+
+  renderPromoPuntosFinalizarHtml(puntosData) {
+    if (!puntosData) return '';
+    if (!puntosData.found) {
+      if (puntosData.error) {
+        return `<div class="alert alert-warning py-2 px-3 small mb-2" role="alert">
+          <i class="fa-solid fa-tags me-1"></i>${this.escapeHtml(puntosData.error)}
+        </div>`;
+      }
+      return '';
+    }
+    const cod = this.escapeHtml(puntosData.codigo);
+    const nombre = this.escapeHtml(puntosData.promo?.NOMBRE || 'Promoción');
+    const acum = this.escapeHtml(this.formatPromoPuntosNum(puntosData.puntosAcumulados));
+    const cob = this.escapeHtml(this.formatPromoPuntosNum(puntosData.puntosCobrados));
+    const disp = this.escapeHtml(this.formatPromoPuntosNum(puntosData.puntosDisponibles));
+    const valorPunto = Number(puntosData.valorPunto ?? puntosData.promo?.VALORPUNTO) || 0;
+    const dineroDisp = Number(puntosData.dineroDisponible);
+    const dineroDisponible = Number.isFinite(dineroDisp)
+      ? dineroDisp
+      : (Number(puntosData.puntosDisponibles) || 0) * valorPunto;
+    const dineroHtml =
+      valorPunto > 0
+        ? `<span class="small text-muted ms-1">Dinero disponible: ${this.escapeHtml(this.formatMoney(dineroDisponible))}</span>`
+        : '';
+    return `
+      <div class="alert alert-info py-2 px-3 small mb-2" role="status" id="fac-finalizar-promo-puntos">
+        <div class="fw-semibold mb-1">
+          <i class="fa-solid fa-star me-1"></i>Puntos carné #${cod}
+          <span class="fw-normal text-muted">· ${nombre}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-3 align-items-baseline">
+          <span>Acumulados: <strong>${acum}</strong></span>
+          <span>Cobrados: <strong>${cob}</strong></span>
+          <span>Disponibles: <strong class="text-success">${disp}</strong>${dineroHtml}</span>
+        </div>
+        <div class="text-muted mt-1">Referencia para canje — no modifica el cobro de esta factura.</div>
+      </div>`;
+  },
+
   async abrirFelDocumento(felValue) {
     const fel = String(felValue ?? '').trim();
     if (!fel) return;
@@ -223,7 +397,7 @@ const FacturacionView = {
   puedeFraccionar(row) {
     if (!this.permiteFraccionamientoFacturas()) return false;
     // Facturas normales (FAC): vista FAC o vista mixta Facturación.
-    if (this._grupo === 'fel') return false;
+    if (this._grupo === 'fel' || this._grupo === 'fel-extra') return false;
     if (this._grupo === 'mixto') {
       const tipodoc = String(row?.TIPODOC || '').trim().toUpperCase();
       if (tipodoc !== 'FAC') return false;
@@ -494,7 +668,7 @@ const FacturacionView = {
   fpagoInputValue(amount) {
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) return '0';
-    return String(Math.round(n * 100) / 100);
+    return String(typeof FpagoMatch !== 'undefined' ? FpagoMatch.roundFpago(n) : Math.round(n * 1000) / 1000);
   },
 
   renderFinalizarFpagoCardHtml(totalPrecio, concreVal) {
@@ -556,7 +730,7 @@ const FacturacionView = {
     const sum = Math.round(this.sumFinalizarFpagoInputs() * 1000) / 1000;
     const total = Math.round(Number(totalPrecio) * 1000) / 1000;
     if (sum <= 0) return 'Indique la forma de pago por el monto total de la factura';
-    if (Math.abs(sum - total) > 0.001) {
+    if (!(typeof FpagoMatch !== 'undefined' ? FpagoMatch.fpagoAmountsMatch(sum, total) : Math.abs(sum - total) <= 0.01)) {
       return `La suma (${this.formatMoney(sum)}) debe ser igual al total (${this.formatMoney(total)})`;
     }
     return null;
@@ -690,6 +864,13 @@ const FacturacionView = {
 
     const fpagoColHidden = concreVal === 'CRE' ? ' d-none' : '';
 
+    const promoCodigo = h?.PROMOCION_CODIGO;
+    const puntosRef =
+      promoCodigo != null && promoCodigo !== '' && Number(promoCodigo) > 0
+        ? await this.fetchPromoPuntosReferencia(promoCodigo)
+        : null;
+    const promoPuntosHtml = this.renderPromoPuntosFinalizarHtml(puntosRef);
+
     const { isConfirmed, value } = await Swal.fire({
       ...CatalogosUI.modalBase({
         customClass: { popup: 'modal-catalogo fac-finalizar-modal' },
@@ -698,6 +879,7 @@ const FacturacionView = {
       width: '52rem',
       html: `
         <p class="small text-muted mb-2">${this.escapeHtml(this.docLabel())} · Total: <strong>${this.escapeHtml(this.formatMoney(totalPrecio))}</strong></p>
+        ${promoPuntosHtml}
         <div class="text-start fac-finalizar-modal-body">
           <div class="row g-3 align-items-stretch">
             <div class="col-md-6 fac-finalizar-datos-col">
@@ -885,7 +1067,7 @@ const FacturacionView = {
   async maybeAutoFraccionarTrasFinalizar(coddoc, correlativo, tipodoc) {
     const tipo = String(tipodoc || '').trim().toUpperCase();
     if (tipo !== 'FAC') return;
-    if (this._grupo === 'fel') return;
+    if (this._grupo === 'fel' || this._grupo === 'fel-extra') return;
     if (!this.permiteFraccionamientoFacturas()) return;
     let auto = false;
     try {
@@ -1061,6 +1243,8 @@ const FacturacionView = {
     if (fab) fab.disabled = busy;
     const barcodeFab = this._container?.querySelector('#fac-fab-barcode');
     if (barcodeFab) barcodeFab.disabled = busy;
+    const promoBtn = this._container?.querySelector('#fac-btn-promo-scan');
+    if (promoBtn) promoBtn.disabled = busy;
   },
 
   async actualizarCantidad(lineId, cantidad) {
@@ -1362,7 +1546,10 @@ const FacturacionView = {
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
           <td class="text-end small pos-cart-exist">${this.escapeHtml(this.formatQty(ln.EXISTENCIA))}</td>
           <td class="text-center">${qtyCell}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+          <td class="text-end">
+            ${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}
+            ${this.linePesoHtml(ln)}
+          </td>
           <td class="text-end">${delBtn}</td>
         </tr>`;
       })
@@ -1378,6 +1565,17 @@ const FacturacionView = {
     const total = h?.TOTALPRECIO ?? 0;
     const itemCount = lines.reduce((sum, ln) => sum + (Number(ln.CANTIDAD) || 0), 0);
     if (totalEl) totalEl.textContent = this.formatMoney(total);
+    const pesoEl = this._container?.querySelector('#fac-header-peso');
+    if (pesoEl) {
+      if (this.muestraPesoEnDocumentos()) {
+        const tp = this.calcDocTotalPeso(lines);
+        pesoEl.textContent = `Peso: ${this.formatPeso(tp)}`;
+        pesoEl.classList.remove('d-none');
+      } else {
+        pesoEl.textContent = '';
+        pesoEl.classList.add('d-none');
+      }
+    }
     if (itemsEl) {
       itemsEl.textContent = itemCount === 1 ? '1 item' : `${itemCount} items`;
     }
@@ -1503,6 +1701,7 @@ const FacturacionView = {
     }
     this.syncClienteSearchEmphasis();
     this.syncVendedorEmphasis();
+    this.syncPromoControls();
   },
 
   renderAll() {
@@ -1510,6 +1709,7 @@ const FacturacionView = {
     this.renderCart();
     this.renderOrderSummary();
     this.syncEditorControls();
+    this.syncPromoControls();
   },
 
   async certificarPedido(coddoc, correlativo) {
@@ -1986,6 +2186,7 @@ const FacturacionView = {
                 ${this.renderCajaField()}
                 <div class="pos-header-summary text-end">
                   <h3 class="pos-header-total mb-0" id="fac-header-total">Q 0.00</h3>
+                  <div class="small text-muted d-none" id="fac-header-peso"></div>
                   <div class="pos-header-items" id="fac-header-items">0 items</div>
                 </div>
               </div>
@@ -2017,6 +2218,12 @@ const FacturacionView = {
                 <i class="fa-solid fa-receipt"></i>
                 <span class="fw-semibold">Pedido actual</span>
               </div>
+              <button type="button" class="btn btn-sm btn-link text-muted px-1 py-0 fac-btn-promo-scan d-none"
+                id="fac-btn-promo-scan" title="Escanear código de promoción"
+                aria-label="Escanear código de promoción">
+                <i class="fa-solid fa-tags me-1" aria-hidden="true"></i><span class="fac-btn-promo-label">Promo</span>
+              </button>
+              <span class="small text-success fac-promo-codigo-badge d-none" id="fac-promo-codigo-badge"></span>
             </div>
             <div class="card-body">
               <div class="pos-cliente-wrap mb-2 position-relative">
@@ -2146,6 +2353,10 @@ const FacturacionView = {
 
     this._container?.querySelector('#fac-btn-agregar-pse')?.addEventListener('click', () => {
       this.onAgregarPse().catch((err) => F.toast(err.message || 'Error al agregar PSE', 'error'));
+    });
+
+    this._container?.querySelector('#fac-btn-promo-scan')?.addEventListener('click', () => {
+      this.openPromoScanner().catch((err) => F.toast(err.message || 'Error al escanear', 'error'));
     });
 
     this._container?.querySelector('#fac-cart-tbody')?.addEventListener('click', async (e) => {
@@ -2505,6 +2716,7 @@ const FacturacionView = {
     }
     await this.fetchVendedores();
     await this.fetchCajasAbiertas();
+    await this.fetchPromoActiva().catch(() => false);
     this.ensureDocVendedorInList();
     this._selectedCodcaja = null;
     this._container.innerHTML = this.renderEditorShell();
@@ -2548,7 +2760,11 @@ const FacturacionView = {
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando ${this.escapeHtml(this._tituloModulo || 'Facturación')}…</div>`;
 
     try {
-      const [config] = await Promise.all([this.fetchConfig(), this.fetchUrlFel().catch(() => '')]);
+      const [config] = await Promise.all([
+        this.fetchConfig(),
+        this.fetchUrlFel().catch(() => ''),
+        this.fetchPromoActiva().catch(() => false),
+      ]);
       this._selectedCoddoc = '';
       this._config = config;
       DocTipoSelect.initView(this);
@@ -2597,6 +2813,7 @@ function createFacturacionViewClone(overrides = {}) {
       _pedidosEnvList: [],
       _pedidoEnvModalOpen: false,
       _pedidoEnvFilter: '',
+      _promoActiva: false,
     },
     overrides
   );
@@ -2606,6 +2823,12 @@ function createFacturacionViewClone(overrides = {}) {
 const FacturasElectronicasView = createFacturacionViewClone({
   _grupo: 'fel',
   _tituloModulo: 'Facturas Electrónicas',
+});
+
+/** Misma vista FEL, series con TIPOM=0 y REPORTES=NO (no corte / no CXC / no inventario). */
+const FacturasElectronicasExtraordinariasView = createFacturacionViewClone({
+  _grupo: 'fel-extra',
+  _tituloModulo: 'Facturación Electrónica Extraordinaria',
 });
 
 /** Vista Facturación: FAC + FEL (FEF/FEC/FES); al tomar datos usa TIPOFAC del origen. */

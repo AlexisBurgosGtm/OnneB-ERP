@@ -3,5 +3,6 @@ node_modules/
 data/license.json
 data/menu-acceso-tipos.json
 data/menu-acceso-tipos.json.migrated
+data/whatsapp-auth/
 .server.pid
 dist-client/

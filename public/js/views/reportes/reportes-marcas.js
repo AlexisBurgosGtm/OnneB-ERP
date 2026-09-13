@@ -16,6 +16,10 @@ const ReportesMarcasView = {
   _sortBy: 'ventas',
   _filters: { marcas: '', productos: '', clientes: '', proveedores: '' },
 
+  utilidadOf(venta, costo) {
+    return (Number(venta) || 0) - (Number(costo) || 0);
+  },
+
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
     return String(value)
@@ -319,6 +323,14 @@ const ReportesMarcasView = {
             <div class="repmar-kpi-value">${this.escapeHtml(this.formatMoney(r.ventas))}</div>
           </div>
           <div class="repmar-kpi">
+            <div class="repmar-kpi-label">Costo</div>
+            <div class="repmar-kpi-value">${this.escapeHtml(this.formatMoney(r.costo))}</div>
+          </div>
+          <div class="repmar-kpi">
+            <div class="repmar-kpi-label">Utilidad</div>
+            <div class="repmar-kpi-value">${this.escapeHtml(this.formatMoney(r.utilidad ?? this.utilidadOf(r.ventas, r.costo)))}</div>
+          </div>
+          <div class="repmar-kpi">
             <div class="repmar-kpi-label">Compras</div>
             <div class="repmar-kpi-value">${this.escapeHtml(this.formatMoney(r.compras))}</div>
           </div>
@@ -359,16 +371,17 @@ const ReportesMarcasView = {
     if (!all.length) return '';
     const rows = this.filterRows(
       all,
-      ['CODPROD', 'DESPROD', 'VENTAS', 'COMPRAS', 'UNIDADES_VENTA', 'UNIDADES_COMPRA'],
+      ['CODPROD', 'DESPROD', 'VENTAS', 'COMPRAS', 'TOTALCOSTO', 'UTILIDAD', 'UNIDADES_VENTA', 'UNIDADES_COMPRA'],
       this._filters.productos
     );
     if (!rows.length) {
-      return `<tr><td colspan="5" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="7" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     const maxVenta = Math.max(...all.map((r) => Number(r.VENTAS) || 0), 1);
     return rows
       .map((r) => {
         const pct = ((Number(r.VENTAS) || 0) / maxVenta) * 100;
+        const util = r.UTILIDAD ?? this.utilidadOf(r.VENTAS, r.TOTALCOSTO);
         return `
           <tr>
             <td class="small font-monospace">${this.escapeHtml(r.CODPROD || '—')}</td>
@@ -377,7 +390,9 @@ const ReportesMarcasView = {
               <div class="repmar-bar repmar-bar-venta"><span style="width:${pct.toFixed(1)}%"></span></div>
             </td>
             <td class="text-end">${this.escapeHtml(this.formatQty(r.UNIDADES_VENTA))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
             <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.VENTAS))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
             <td class="text-end text-warning">${this.escapeHtml(this.formatMoney(r.COMPRAS))}</td>
           </tr>`;
       })
@@ -400,7 +415,9 @@ const ReportesMarcasView = {
               <th>Cód.</th>
               <th>Producto</th>
               <th class="text-end">Uds. vta</th>
-              <th class="text-end">Ventas</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
               <th class="text-end">Compras</th>
             </tr>
           </thead>
@@ -414,16 +431,17 @@ const ReportesMarcasView = {
     if (!all.length) return '';
     const rows = this.filterRows(
       all,
-      ['DOC_NIT', 'DOC_NOMCLIE', 'CODCLIENTE', 'UNIDADES_VENTA', 'VENTAS'],
+      ['DOC_NIT', 'DOC_NOMCLIE', 'CODCLIENTE', 'UNIDADES_VENTA', 'VENTAS', 'TOTALCOSTO', 'UTILIDAD'],
       this._filters.clientes
     );
     if (!rows.length) {
-      return `<tr><td colspan="4" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="6" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     const maxVenta = Math.max(...all.map((r) => Number(r.VENTAS) || 0), 1);
     return rows
       .map((r) => {
         const pct = ((Number(r.VENTAS) || 0) / maxVenta) * 100;
+        const util = r.UTILIDAD ?? this.utilidadOf(r.VENTAS, r.TOTALCOSTO);
         return `
           <tr>
             <td class="small text-muted">${this.escapeHtml(r.DOC_NIT || '—')}</td>
@@ -432,7 +450,9 @@ const ReportesMarcasView = {
               <div class="repmar-bar repmar-bar-venta"><span style="width:${pct.toFixed(1)}%"></span></div>
             </td>
             <td class="text-end">${this.escapeHtml(this.formatQty(r.UNIDADES_VENTA))}</td>
-            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.VENTAS))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.VENTAS))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
           </tr>`;
       })
       .join('');
@@ -454,7 +474,9 @@ const ReportesMarcasView = {
               <th>NIT</th>
               <th>Cliente</th>
               <th class="text-end">Unidades</th>
-              <th class="text-end">Ventas</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
             </tr>
           </thead>
           <tbody id="repmar-clientes-tbody">${this.renderClientesBody()}</tbody>

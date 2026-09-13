@@ -8,6 +8,7 @@ const { certificarDocumentoFel } = require('../lib/fel/certificar');
 const { getTipomDocumento } = require('../lib/inventario');
 const { getIvaFactor, splitIvaFromTotal } = require('../lib/impuestos');
 const { getSettingValue, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
+const { valoresEntregadosIniciales } = require('../lib/documentos-entregado');
 
 const router = express.Router();
 
@@ -188,6 +189,7 @@ async function recalcDocumentTotals(transaction, empnit, coddoc, correlativo) {
 
 async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, dstCoddoc, dstCorrelativo, parts) {
   const tipom = await getTipomDocumento(transaction, empnit, dstCoddoc);
+  const ent = valoresEntregadosIniciales(dstCoddoc, 0, 0, 0);
   await new sql.Request(transaction)
     .input('EMPNIT', sql.VarChar, empnit)
     .input('ANIO', sql.Int, parts.anio)
@@ -198,6 +200,9 @@ async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, 
     .input('CODDOC_DST', sql.VarChar, dstCoddoc)
     .input('CORR_DST', sql.Decimal(18, 0), dstCorrelativo)
     .input('TIPOM', sql.Int, tipom)
+    .input('ENT_U', sql.Float, ent.unidades)
+    .input('ENT_C', sql.Decimal(18, 3), ent.costo)
+    .input('ENT_P', sql.Decimal(18, 3), ent.precio)
     .query(`
       INSERT INTO dbo.DOCPRODUCTOS (
         EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
@@ -213,7 +218,7 @@ async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, 
         l.CODPROD, l.DESPROD, l.CODMEDIDA,
         l.CANTIDAD, ISNULL(l.CANTIDADBONIF, 0), l.EQUIVALE, l.TOTALUNIDADES, ISNULL(l.TOTALBONIF, 0),
         l.COSTO, l.PRECIO, l.TOTALCOSTO, l.TOTALPRECIO,
-        l.TOTALUNIDADES, l.TOTALCOSTO, l.TOTALPRECIO,
+        @ENT_U, @ENT_C, @ENT_P,
         ISNULL(l.COSTOANTERIOR, 0), ISNULL(l.COSTOPROMEDIO, 0),
         ISNULL(l.CODBODEGAENTRADA, ${DEFAULT_BODEGA}), ISNULL(l.CODBODEGASALIDA, ${DEFAULT_BODEGA}),
         ISNULL(l.DESCUENTO, 0), ISNULL(l.PORCDESCUENTO, 0), ISNULL(l.NOSERIE, 'SN'), ISNULL(l.EXENTO, 0), ISNULL(l.OBS, 'SN'),
@@ -462,6 +467,7 @@ async function insertAllocatedDocProductos(
     const exentoFlag = Number(l.EXENTO) > 0;
     const { gravable, iva } = splitIvaFromTotal(totalPrecio, !exentoFlag, ivaFactor);
     const obs = `FFACSRC:${l.ID}`;
+    const ent = valoresEntregadosIniciales(dstCoddoc, totalUnidades, totalCosto, totalPrecio);
 
     await new sql.Request(transaction)
       .input('EMPNIT', sql.VarChar, empnit)
@@ -484,6 +490,9 @@ async function insertAllocatedDocProductos(
       .input('TOTALPRECIO', sql.Decimal(18, 4), totalPrecio)
       .input('TOTALIVA', sql.Decimal(18, 4), iva)
       .input('TOTALSINIVA', sql.Decimal(18, 4), gravable)
+      .input('ENT_U', sql.Float, ent.unidades)
+      .input('ENT_C', sql.Decimal(18, 3), ent.costo)
+      .input('ENT_P', sql.Decimal(18, 3), ent.precio)
       .input('COSTOANTERIOR', sql.Decimal(18, 4), Number(l.COSTOANTERIOR) || 0)
       .input('COSTOPROMEDIO', sql.Decimal(18, 4), Number(l.COSTOPROMEDIO) || 0)
       .input('CODBODEGAENTRADA', sql.Int, l.CODBODEGAENTRADA ?? DEFAULT_BODEGA)
@@ -511,7 +520,7 @@ async function insertAllocatedDocProductos(
           @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
           @CANTIDAD, @CANTIDADBONIF, @EQUIVALE, @TOTALUNIDADES, @TOTALBONIF,
           @COSTO, @PRECIO, @TOTALCOSTO, @TOTALPRECIO, @TOTALIVA, @TOTALSINIVA,
-          @TOTALUNIDADES, @TOTALCOSTO, @TOTALPRECIO,
+          @ENT_U, @ENT_C, @ENT_P,
           @COSTOANTERIOR, @COSTOPROMEDIO, @CODBODEGAENTRADA, @CODBODEGASALIDA,
           @DESCUENTO, @PORCDESCUENTO, @NOSERIE, @EXENTO, @OBS,
           @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)

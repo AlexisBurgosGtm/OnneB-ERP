@@ -18,6 +18,7 @@ function requireEmpNit(req, res) {
 function sqlTypeFor(field) {
   if (field.type === 'int') return sql.Int;
   if (field.type === 'float') return sql.Float;
+  if (field.type === 'decimal') return sql.Decimal(18, 4);
   if (field.type === 'numeric') return sql.Decimal(18, 0);
   if (field.type === 'varcharmax') return sql.VarChar(sql.MAX);
   if (field.type === 'date') return sql.Date;
@@ -27,11 +28,11 @@ function sqlTypeFor(field) {
 function parseValue(field, raw) {
   // JSON null no es lo mismo que el texto "null": String(null) === "null"
   if (raw === undefined || raw === null || raw === '') {
-    if (field.type === 'int' || field.type === 'float' || field.type === 'numeric') return null;
+    if (field.type === 'int' || field.type === 'float' || field.type === 'numeric' || field.type === 'decimal') return null;
     return null;
   }
   if (field.type === 'int') return Number(raw);
-  if (field.type === 'float' || field.type === 'numeric') return Number(raw);
+  if (field.type === 'float' || field.type === 'numeric' || field.type === 'decimal') return Number(raw);
   if (field.type === 'date') {
     const s = String(raw).trim().slice(0, 10);
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -122,11 +123,17 @@ function createCatalogoRouter(cfg) {
     const empnit = scoped ? requireEmpNit(req, res) : null;
     if (scoped && !empnit) return;
     const cols = cfg.listColumns.join(', ');
-    const where = scoped ? ' WHERE EMPNIT = @EMPNIT' : '';
+    let where = scoped ? ' WHERE EMPNIT = @EMPNIT' : ' WHERE 1=1';
+    let listFilter = null;
+    if (typeof cfg.buildListFilter === 'function') {
+      listFilter = cfg.buildListFilter(req) || null;
+      if (listFilter?.sql) where += ` ${listFilter.sql}`;
+    }
     try {
       const pool = await req.app.locals.getDbPool();
       const request = pool.request();
       if (scoped) request.input('EMPNIT', sql.VarChar, empnit);
+      if (typeof listFilter?.bind === 'function') listFilter.bind(request, sql);
       const result = await request.query(`
           SELECT ${cols}
           FROM dbo.[${cfg.table}]
@@ -321,4 +328,4 @@ function createCatalogoRouter(cfg) {
   return router;
 }
 
-module.exports = { createCatalogoRouter };
+module.exports = { createCatalogoRouter, getEmpNitFromReq, requireEmpNit };

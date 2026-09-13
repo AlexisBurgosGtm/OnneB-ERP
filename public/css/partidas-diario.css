@@ -1,0 +1,12 @@
+.partidas-diario-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.partidas-diario-wrap .table thead th {
+  white-space: nowrap;
+}
+
+.pd-editor .table {
+  margin-bottom: 0;
+}

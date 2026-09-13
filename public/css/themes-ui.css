@@ -375,6 +375,70 @@
   background: linear-gradient(135deg, #fb923c, #14532d);
 }
 
+.theme-swatch-barca {
+  background: linear-gradient(135deg, #A50044 0%, #004D98 100%);
+}
+
+.theme-swatch-realmadrid {
+  background: linear-gradient(135deg, #ffffff 0%, #FEBE10 50%, #00529F 100%);
+}
+
+.theme-swatch-manutd {
+  background: linear-gradient(135deg, #DA291C 0%, #111111 70%, #FBE122 100%);
+}
+
+.theme-swatch-boca {
+  background: linear-gradient(180deg, #003087 0%, #003087 50%, #F9B000 50%, #F9B000 100%);
+}
+
+.theme-swatch-mancity {
+  background: linear-gradient(135deg, #6CABDD 0%, #1C2C5B 100%);
+}
+
+.theme-swatch-arsenal {
+  background: linear-gradient(135deg, #EF0107 0%, #9C824A 100%);
+}
+
+.theme-swatch-psg {
+  background: linear-gradient(135deg, #004170 0%, #DA291C 100%);
+}
+
+.theme-swatch-chelsea {
+  background: linear-gradient(135deg, #034694 0%, #DBA111 100%);
+}
+
+.theme-swatch-ferrari {
+  background: linear-gradient(135deg, #FF2800 0%, #1a1a1a 70%, #FFF200 100%);
+}
+
+.theme-swatch-porsche {
+  background: linear-gradient(135deg, #0a0a0a 0%, #D5001C 70%, #C8C8C8 100%);
+}
+
+.theme-swatch-lamborghini {
+  background: linear-gradient(135deg, #DDB511 0%, #00A650 55%, #0b3d0b 100%);
+}
+
+.theme-swatch-formula1 {
+  background: linear-gradient(135deg, #E10600 0%, #15151E 100%);
+}
+
+.theme-swatch-ktmduke {
+  background: linear-gradient(135deg, #FF6600 0%, #111111 100%);
+}
+
+.theme-swatch-ducatimonster {
+  background: linear-gradient(135deg, #CC0000 0%, #1a1a1a 100%);
+}
+
+.theme-swatch-hondacrf {
+  background: linear-gradient(135deg, #E4002B 0%, #111111 100%);
+}
+
+.theme-swatch-suzukigsxs {
+  background: linear-gradient(135deg, #0033A0 0%, #0a1628 100%);
+}
+
 #btn-logout {
   border-color: var(--app-border);
   color: var(--app-text);

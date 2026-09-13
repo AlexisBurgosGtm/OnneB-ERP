@@ -777,10 +777,15 @@ const RolesUsuariosView = {
 
   async save() {
     if (this._saving || this._selectedCod == null) return;
+    const codKey = String(this._selectedCod);
     const full = Boolean(this._container?.querySelector('#roles-full-access')?.checked);
     const menus = full ? null : this.collectCheckedMenus();
+    this._acceso[codKey] = menus;
     this._saving = true;
-    this.render();
+    const fabLabel = this._container?.querySelector('#roles-btn-guardar .roles-guardar-fab-label');
+    const fabBtn = this._container?.querySelector('#roles-btn-guardar');
+    if (fabLabel) fabLabel.textContent = 'Guardando…';
+    if (fabBtn) fabBtn.disabled = true;
     try {
       const body = full ? { fullAccess: true } : { menus };
       const data = await F.fetchJson(`/api/roles-usuarios/${this._selectedCod}`, {
@@ -788,7 +793,13 @@ const RolesUsuariosView = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      this._acceso[String(this._selectedCod)] = data.menus === undefined ? (full ? null : menus) : data.menus;
+      if (full || data.menus === null) {
+        this._acceso[codKey] = null;
+      } else if (Array.isArray(data.menus)) {
+        this._acceso[codKey] = data.menus;
+      } else {
+        this._acceso[codKey] = menus;
+      }
       if (typeof TipoEmpleadoAccess !== 'undefined') {
         TipoEmpleadoAccess.applyMenuAccesoMap(this._acceso);
         TipoEmpleadoAccess.applySidebarVisibility();

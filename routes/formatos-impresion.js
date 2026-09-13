@@ -2,7 +2,7 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { normalizeDocumentoRows, fechaIsoFromRow } = require('../lib/documento-fecha');
-const { SETTING_OPCION, getSettingValue } = require('../lib/settings');
+const { SETTING_OPCION, getSettingValue, getSettingSino } = require('../lib/settings');
 const {
   renderTemplate,
   buildPrintContext,
@@ -600,6 +600,8 @@ async function handleRender(req, res) {
     const empresa = await loadEmpresa(pool, empnit);
     if (logoUrl) empresa.LOGO_URL = logoUrl;
     const felUrlBase = await loadFelUrlBase(pool);
+    const muestraPeso =
+      (await getSettingSino(pool, SETTING_OPCION.MUESTRA_PESO_EN_DOCUMENTOS)) === 'SI';
 
     const title = String(src.title || doc.header.DESDOC || tipodoc || 'Documento').trim();
     const footerNote =
@@ -614,6 +616,7 @@ async function handleRender(req, res) {
       title,
       footerNote,
       felUrlBase,
+      muestraPeso,
     });
     const bodyHtml = renderTemplate(formato.HTML, ctx);
     const fullHtml = wrapPrintHtml({

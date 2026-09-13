@@ -130,6 +130,8 @@ const reportesVentasRouter = require('./routes/reportes-ventas');
 const reportesClientesRouter = require('./routes/reportes-clientes');
 const reportesProductosRouter = require('./routes/reportes-productos');
 const reportesMarcasRouter = require('./routes/reportes-marcas');
+const felXmlRouter = require('./routes/fel-xml');
+const controlFletesRouter = require('./routes/control-fletes');
 const autorizacionesRouter = require('./routes/autorizaciones');
 const resumenDelDiaRouter = require('./routes/resumen-del-dia');
 const productosRouter = require('./routes/productos');
@@ -149,7 +151,9 @@ const cuentasCobrarRouter = require('./routes/cuentas-cobrar');
 const cuentasPagarRouter = require('./routes/cuentas-pagar');
 const libroVentasRouter = require('./routes/libro-ventas');
 const libroComprasRouter = require('./routes/libro-compras');
+const contaLibrosManualRouter = require('./routes/conta-libros-manual');
 const libroDiarioRouter = require('./routes/libro-diario');
+const contaAsientosRouter = require('./routes/conta-asientos');
 const libroMayorRouter = require('./routes/libro-mayor');
 const libroBalanceRouter = require('./routes/libro-balance');
 const inventarioFiscalRouter = require('./routes/inventario-fiscal');
@@ -289,9 +293,12 @@ app.use('/api/auth', authRouter);
 app.use('/api/license', licenseRouter);
 app.use('/api/community', communityRouter);
 app.use('/api/config', configRouter);
+app.use('/api/whatsapp', require('./routes/whatsapp'));
+app.use('/api/whatsapp', require('./routes/whatsapp-programacion'));
 app.use('/api/roles-usuarios', rolesUsuariosRouter);
 app.use('/api/pos', posRouter);
 app.use('/api/comandas-restaurante', comandasRestauranteRouter);
+app.use('/api/pendientes-entrega', require('./routes/pendientes-entrega'));
 app.use('/api/despachos-en-cocina', require('./routes/despachos-en-cocina'));
 app.use('/api/cotizaciones', cotizacionesRouter);
 app.use('/api/fraccionamiento-fac', fraccionamientoFacRouter);
@@ -317,6 +324,8 @@ app.use('/api/reportes-ventas', reportesVentasRouter);
 app.use('/api/reportes-clientes', reportesClientesRouter);
 app.use('/api/reportes-productos', reportesProductosRouter);
 app.use('/api/reportes-marcas', reportesMarcasRouter);
+app.use('/api/fel-xml', felXmlRouter);
+app.use('/api/control-fletes', controlFletesRouter);
 app.use('/api/autorizaciones', autorizacionesRouter);
 app.use('/api/resumen-del-dia', resumenDelDiaRouter);
 app.use('/api/productos', productosRouter);
@@ -335,7 +344,9 @@ app.use('/api/cuentas-cobrar', cuentasCobrarRouter);
 app.use('/api/cuentas-pagar', cuentasPagarRouter);
 app.use('/api/libro-ventas', libroVentasRouter);
 app.use('/api/libro-compras', libroComprasRouter);
+app.use('/api/conta-libros-manual', contaLibrosManualRouter);
 app.use('/api/libro-diario', libroDiarioRouter);
+app.use('/api/conta-asientos', contaAsientosRouter);
 app.use('/api/libro-mayor', libroMayorRouter);
 app.use('/api/libro-balance', libroBalanceRouter);
 app.use('/api/inventario-fiscal', inventarioFiscalRouter);
@@ -373,6 +384,12 @@ app.get('/api/health', async (_req, res) => {
 });
 
 registerSocketHandlers(io);
+try {
+  const { setWhatsappIo } = require('./lib/whatsapp-baileys');
+  setWhatsappIo(io);
+} catch (err) {
+  console.warn('[WhatsApp] no se pudo registrar Socket.IO:', err.message);
+}
 
 server.listen(PORT, () => {
   const { pidFilePath, getDataRoot: dataRootFn, isPackaged: packagedFn } = require('./lib/app-paths');
@@ -381,6 +398,14 @@ server.listen(PORT, () => {
     fs.writeFileSync(pidPath, String(process.pid), 'utf8');
   } catch (err) {
     console.warn('[OnneB] no se pudo escribir PID:', err.message);
+  }
+  try {
+    const { tryAutoConnect } = require('./lib/whatsapp-baileys');
+    const { startWhatsappScheduler } = require('./lib/whatsapp-scheduler');
+    tryAutoConnect().catch(() => {});
+    startWhatsappScheduler(() => getDbPool());
+  } catch {
+    console.warn('[WhatsApp] error al conectar');
   }
   const clearPid = () => {
     try {

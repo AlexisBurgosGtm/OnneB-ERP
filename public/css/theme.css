@@ -721,6 +721,950 @@
   --bs-primary-rgb: 234, 88, 12;
 }
 
+[data-theme='barca'] {
+  /* FC Barcelona — blaugrana */
+  --onneb-brand: #A50044;
+  --onneb-brand-dark: #7a0033;
+  --onneb-brand-light: #004D98;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #0a1628;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #004D98;
+  --onneb-color-secondary: #A50044;
+  --onneb-color-accent: #edf2f7;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #004D98 0%, #A50044 100%);
+
+  --login-bg: #0a1628;
+  --login-bg-base: #050b14;
+  --login-surface: #004D98;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #7a0033 0%, #A50044 45%, #004D98 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #A50044 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #004D98 42%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #0a1628 70%, #000), transparent 55%),
+    linear-gradient(155deg, #004D98 0%, var(--login-bg-base) 44%, #A50044 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #A50044 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #004D98 40%, transparent);
+  --login-orb-c: color-mix(in srgb, #0a1628 42%, transparent);
+  --login-glow: #A50044;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #0a1628;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #004D98 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #A50044 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #A50044 22%, transparent);
+  --header-chip-text: #0a1628;
+
+  --fab-menu-bg: linear-gradient(145deg, #A50044, #004D98);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #A50044;
+  --bs-primary-rgb: 165, 0, 68;
+}
+
+[data-theme='realmadrid'] {
+  /* Real Madrid — blanco, oro, azul */
+  --onneb-brand: #00529F;
+  --onneb-brand-dark: #003a70;
+  --onneb-brand-light: #FEBE10;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #0f172a;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #00529F;
+  --onneb-color-secondary: #FEBE10;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 12%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 40%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #00529F 0%, #0f172a 100%);
+
+  --login-bg: #0f172a;
+  --login-bg-base: #020617;
+  --login-surface: #00529F;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #003a70 0%, #00529F 50%, #FEBE10 100%);
+  --login-btn-text: #0f172a;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.12);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #FEBE10 38%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #00529F 44%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #0f172a 70%, #000), transparent 55%),
+    linear-gradient(155deg, #00529F 0%, var(--login-bg-base) 50%, #1e293b 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #FEBE10 42%, transparent);
+  --login-orb-b: color-mix(in srgb, #00529F 40%, transparent);
+  --login-orb-c: color-mix(in srgb, #ffffff 18%, transparent);
+  --login-glow: #FEBE10;
+
+  --app-bg: #ffffff;
+  --app-surface: #ffffff;
+  --app-text: #0f172a;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #00529F 10%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #FEBE10 14%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #00529F 18%, transparent);
+  --header-chip-text: #0f172a;
+
+  --fab-menu-bg: linear-gradient(145deg, #FEBE10, #00529F);
+  --fab-menu-color: #0f172a;
+  --bs-primary: #00529F;
+  --bs-primary-rgb: 0, 82, 159;
+}
+
+[data-theme='manutd'] {
+  /* Manchester United — rojo, negro, oro */
+  --onneb-brand: #DA291C;
+  --onneb-brand-dark: #9b1c14;
+  --onneb-brand-light: #FBE122;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #111111;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #DA291C;
+  --onneb-color-secondary: #111111;
+  --onneb-color-accent: #fef2f2;
+  --onneb-text-muted: #6b7280;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 36%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #DA291C 0%, #111111 100%);
+
+  --login-bg: #111111;
+  --login-bg-base: #050505;
+  --login-surface: #DA291C;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #9b1c14 0%, #DA291C 55%, #FBE122 100%);
+  --login-btn-text: #111111;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.1);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #DA291C 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FBE122 28%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #111111 80%, #000), transparent 55%),
+    linear-gradient(155deg, #DA291C 0%, var(--login-bg-base) 48%, #1a1a1a 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #DA291C 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FBE122 32%, transparent);
+  --login-orb-c: color-mix(in srgb, #111111 50%, transparent);
+  --login-glow: #DA291C;
+
+  --app-bg: #fafafa;
+  --app-surface: #ffffff;
+  --app-text: #111111;
+  --app-text-muted: #6b7280;
+  --app-border: color-mix(in srgb, #DA291C 12%, #e5e5e5);
+  --header-chip-bg: color-mix(in srgb, #DA291C 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #DA291C 22%, transparent);
+  --header-chip-text: #111111;
+
+  --fab-menu-bg: linear-gradient(145deg, #DA291C, #111111);
+  --fab-menu-color: #FBE122;
+  --bs-primary: #DA291C;
+  --bs-primary-rgb: 218, 41, 28;
+}
+
+[data-theme='boca'] {
+  /* Boca Juniors — azul y oro */
+  --onneb-brand: #003087;
+  --onneb-brand-dark: #001f5c;
+  --onneb-brand-light: #F9B000;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #0a1630;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #003087;
+  --onneb-color-secondary: #F9B000;
+  --onneb-color-accent: #eff6ff;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 40%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #003087 0%, #001f5c 55%, #F9B000 100%);
+
+  --login-bg: #001f5c;
+  --login-bg-base: #000f2e;
+  --login-surface: #003087;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #001f5c 0%, #003087 50%, #F9B000 100%);
+  --login-btn-text: #0a1630;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #003087 50%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #F9B000 36%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #001f5c 75%, #000), transparent 55%),
+    linear-gradient(155deg, #003087 0%, var(--login-bg-base) 48%, #F9B000 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #003087 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #F9B000 40%, transparent);
+  --login-orb-c: color-mix(in srgb, #001f5c 42%, transparent);
+  --login-glow: #F9B000;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #0a1630;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #003087 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #F9B000 14%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #003087 18%, transparent);
+  --header-chip-text: #0a1630;
+
+  --fab-menu-bg: linear-gradient(145deg, #003087, #F9B000);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #003087;
+  --bs-primary-rgb: 0, 48, 135;
+}
+
+[data-theme='mancity'] {
+  /* Manchester City — sky blue */
+  --onneb-brand: #6CABDD;
+  --onneb-brand-dark: #1C2C5B;
+  --onneb-brand-light: #FFFFFF;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #1C2C5B;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #6CABDD;
+  --onneb-color-secondary: #FFFFFF;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #6CABDD 0%, #1C2C5B 100%);
+
+  --login-bg: #1C2C5B;
+  --login-bg-base: #050505;
+  --login-surface: #6CABDD;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #1C2C5B 0%, #6CABDD 55%, #FFFFFF 100%);
+  --login-btn-text: #1C2C5B;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #6CABDD 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFFFFF 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #1C2C5B 75%, #000), transparent 55%),
+    linear-gradient(155deg, #6CABDD 0%, var(--login-bg-base) 48%, #1C2C5B 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #6CABDD 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFFFFF 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #1C2C5B 42%, transparent);
+  --login-glow: #6CABDD;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #1C2C5B;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #6CABDD 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #6CABDD 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #6CABDD 22%, transparent);
+  --header-chip-text: #1C2C5B;
+
+  --fab-menu-bg: linear-gradient(145deg, #6CABDD, #1C2C5B);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #6CABDD;
+  --bs-primary-rgb: 108, 171, 221;
+}
+
+[data-theme='arsenal'] {
+  /* Arsenal — rojo y oro */
+  --onneb-brand: #EF0107;
+  --onneb-brand-dark: #630104;
+  --onneb-brand-light: #9C824A;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #1a1a1a;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #EF0107;
+  --onneb-color-secondary: #9C824A;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #EF0107 0%, #630104 100%);
+
+  --login-bg: #630104;
+  --login-bg-base: #050505;
+  --login-surface: #EF0107;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #630104 0%, #EF0107 55%, #9C824A 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #EF0107 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #9C824A 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #630104 75%, #000), transparent 55%),
+    linear-gradient(155deg, #EF0107 0%, var(--login-bg-base) 48%, #630104 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #EF0107 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #9C824A 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #630104 42%, transparent);
+  --login-glow: #EF0107;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #1a1a1a;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #EF0107 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #EF0107 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #EF0107 22%, transparent);
+  --header-chip-text: #1a1a1a;
+
+  --fab-menu-bg: linear-gradient(145deg, #EF0107, #630104);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #EF0107;
+  --bs-primary-rgb: 239, 1, 7;
+}
+
+[data-theme='psg'] {
+  /* PSG — azul y rojo */
+  --onneb-brand: #004170;
+  --onneb-brand-dark: #001F3F;
+  --onneb-brand-light: #DA291C;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #001F3F;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #004170;
+  --onneb-color-secondary: #DA291C;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #004170 0%, #001F3F 100%);
+
+  --login-bg: #001F3F;
+  --login-bg-base: #050505;
+  --login-surface: #004170;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #001F3F 0%, #004170 55%, #DA291C 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #004170 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #DA291C 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #001F3F 75%, #000), transparent 55%),
+    linear-gradient(155deg, #004170 0%, var(--login-bg-base) 48%, #001F3F 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #004170 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #DA291C 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #001F3F 42%, transparent);
+  --login-glow: #004170;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #001F3F;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #004170 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #004170 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #004170 22%, transparent);
+  --header-chip-text: #001F3F;
+
+  --fab-menu-bg: linear-gradient(145deg, #004170, #001F3F);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #004170;
+  --bs-primary-rgb: 0, 65, 112;
+}
+
+[data-theme='chelsea'] {
+  /* Chelsea — azul royal */
+  --onneb-brand: #034694;
+  --onneb-brand-dark: #00205B;
+  --onneb-brand-light: #DBA111;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #00205B;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #034694;
+  --onneb-color-secondary: #DBA111;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #034694 0%, #00205B 100%);
+
+  --login-bg: #00205B;
+  --login-bg-base: #050505;
+  --login-surface: #034694;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #00205B 0%, #034694 55%, #DBA111 100%);
+  --login-btn-text: #00205B;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #034694 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #DBA111 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #00205B 75%, #000), transparent 55%),
+    linear-gradient(155deg, #034694 0%, var(--login-bg-base) 48%, #00205B 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #034694 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #DBA111 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #00205B 42%, transparent);
+  --login-glow: #034694;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #00205B;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #034694 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #034694 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #034694 22%, transparent);
+  --header-chip-text: #00205B;
+
+  --fab-menu-bg: linear-gradient(145deg, #034694, #00205B);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #034694;
+  --bs-primary-rgb: 3, 70, 148;
+}
+
+[data-theme='ferrari'] {
+  /* Ferrari — rojo racing */
+  --onneb-brand: #FF2800;
+  --onneb-brand-dark: #1a1a1a;
+  --onneb-brand-light: #FFF200;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #1a1a1a;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #FF2800;
+  --onneb-color-secondary: #FFF200;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #FF2800 0%, #1a1a1a 100%);
+
+  --login-bg: #1a1a1a;
+  --login-bg-base: #050505;
+  --login-surface: #FF2800;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #1a1a1a 0%, #FF2800 55%, #FFF200 100%);
+  --login-btn-text: #1a1a1a;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #FF2800 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFF200 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #1a1a1a 75%, #000), transparent 55%),
+    linear-gradient(155deg, #FF2800 0%, var(--login-bg-base) 48%, #1a1a1a 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #FF2800 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFF200 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #1a1a1a 42%, transparent);
+  --login-glow: #FF2800;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #1a1a1a;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #FF2800 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #FF2800 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #FF2800 22%, transparent);
+  --header-chip-text: #1a1a1a;
+
+  --fab-menu-bg: linear-gradient(145deg, #FF2800, #1a1a1a);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #FF2800;
+  --bs-primary-rgb: 255, 40, 0;
+}
+
+[data-theme='porsche'] {
+  /* Porsche — negro y rojo */
+  --onneb-brand: #D5001C;
+  --onneb-brand-dark: #0a0a0a;
+  --onneb-brand-light: #C8C8C8;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #0a0a0a;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #D5001C;
+  --onneb-color-secondary: #C8C8C8;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #D5001C 0%, #0a0a0a 100%);
+
+  --login-bg: #0a0a0a;
+  --login-bg-base: #050505;
+  --login-surface: #D5001C;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #0a0a0a 0%, #D5001C 55%, #C8C8C8 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #D5001C 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #C8C8C8 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #0a0a0a 75%, #000), transparent 55%),
+    linear-gradient(155deg, #D5001C 0%, var(--login-bg-base) 48%, #0a0a0a 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #D5001C 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #C8C8C8 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #0a0a0a 42%, transparent);
+  --login-glow: #D5001C;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #0a0a0a;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #D5001C 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #D5001C 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #D5001C 22%, transparent);
+  --header-chip-text: #0a0a0a;
+
+  --fab-menu-bg: linear-gradient(145deg, #D5001C, #0a0a0a);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #D5001C;
+  --bs-primary-rgb: 213, 0, 28;
+}
+
+[data-theme='lamborghini'] {
+  /* Lamborghini — amarillo y verde */
+  --onneb-brand: #DDB511;
+  --onneb-brand-dark: #0b3d0b;
+  --onneb-brand-light: #00A650;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #111111;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #DDB511;
+  --onneb-color-secondary: #00A650;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #DDB511 0%, #0b3d0b 100%);
+
+  --login-bg: #0b3d0b;
+  --login-bg-base: #050505;
+  --login-surface: #DDB511;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #0b3d0b 0%, #DDB511 55%, #00A650 100%);
+  --login-btn-text: #111111;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #DDB511 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #00A650 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #0b3d0b 75%, #000), transparent 55%),
+    linear-gradient(155deg, #DDB511 0%, var(--login-bg-base) 48%, #0b3d0b 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #DDB511 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #00A650 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #0b3d0b 42%, transparent);
+  --login-glow: #DDB511;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #111111;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #DDB511 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #DDB511 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #DDB511 22%, transparent);
+  --header-chip-text: #111111;
+
+  --fab-menu-bg: linear-gradient(145deg, #DDB511, #0b3d0b);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #DDB511;
+  --bs-primary-rgb: 221, 181, 17;
+}
+
+[data-theme='formula1'] {
+  /* Fórmula 1 — rojo oficial */
+  --onneb-brand: #E10600;
+  --onneb-brand-dark: #15151E;
+  --onneb-brand-light: #FFFFFF;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #15151E;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #E10600;
+  --onneb-color-secondary: #FFFFFF;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #E10600 0%, #15151E 100%);
+
+  --login-bg: #15151E;
+  --login-bg-base: #050505;
+  --login-surface: #E10600;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #15151E 0%, #E10600 55%, #FFFFFF 100%);
+  --login-btn-text: #15151E;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #E10600 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFFFFF 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #15151E 75%, #000), transparent 55%),
+    linear-gradient(155deg, #E10600 0%, var(--login-bg-base) 48%, #15151E 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #E10600 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFFFFF 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #15151E 42%, transparent);
+  --login-glow: #E10600;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #15151E;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #E10600 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #E10600 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #E10600 22%, transparent);
+  --header-chip-text: #15151E;
+
+  --fab-menu-bg: linear-gradient(145deg, #E10600, #15151E);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #E10600;
+  --bs-primary-rgb: 225, 6, 0;
+}
+
+[data-theme='ktmduke'] {
+  /* KTM Duke — naranja */
+  --onneb-brand: #FF6600;
+  --onneb-brand-dark: #111111;
+  --onneb-brand-light: #FFFFFF;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #111111;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #FF6600;
+  --onneb-color-secondary: #FFFFFF;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #FF6600 0%, #111111 100%);
+
+  --login-bg: #111111;
+  --login-bg-base: #050505;
+  --login-surface: #FF6600;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #111111 0%, #FF6600 55%, #FFFFFF 100%);
+  --login-btn-text: #111111;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #FF6600 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFFFFF 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #111111 75%, #000), transparent 55%),
+    linear-gradient(155deg, #FF6600 0%, var(--login-bg-base) 48%, #111111 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #FF6600 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFFFFF 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #111111 42%, transparent);
+  --login-glow: #FF6600;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #111111;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #FF6600 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #FF6600 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #FF6600 22%, transparent);
+  --header-chip-text: #111111;
+
+  --fab-menu-bg: linear-gradient(145deg, #FF6600, #111111);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #FF6600;
+  --bs-primary-rgb: 255, 102, 0;
+}
+
+[data-theme='ducatimonster'] {
+  /* Ducati Monster — rojo */
+  --onneb-brand: #CC0000;
+  --onneb-brand-dark: #1a1a1a;
+  --onneb-brand-light: #FFFFFF;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #1a1a1a;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #CC0000;
+  --onneb-color-secondary: #FFFFFF;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #CC0000 0%, #1a1a1a 100%);
+
+  --login-bg: #1a1a1a;
+  --login-bg-base: #050505;
+  --login-surface: #CC0000;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #1a1a1a 0%, #CC0000 55%, #FFFFFF 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #CC0000 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFFFFF 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #1a1a1a 75%, #000), transparent 55%),
+    linear-gradient(155deg, #CC0000 0%, var(--login-bg-base) 48%, #1a1a1a 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #CC0000 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFFFFF 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #1a1a1a 42%, transparent);
+  --login-glow: #CC0000;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #1a1a1a;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #CC0000 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #CC0000 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #CC0000 22%, transparent);
+  --header-chip-text: #1a1a1a;
+
+  --fab-menu-bg: linear-gradient(145deg, #CC0000, #1a1a1a);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #CC0000;
+  --bs-primary-rgb: 204, 0, 0;
+}
+
+[data-theme='hondacrf'] {
+  /* Honda CRF — rojo off-road */
+  --onneb-brand: #E4002B;
+  --onneb-brand-dark: #111111;
+  --onneb-brand-light: #FFFFFF;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #111111;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #E4002B;
+  --onneb-color-secondary: #FFFFFF;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #E4002B 0%, #111111 100%);
+
+  --login-bg: #111111;
+  --login-bg-base: #050505;
+  --login-surface: #E4002B;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #111111 0%, #E4002B 55%, #FFFFFF 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #E4002B 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #FFFFFF 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #111111 75%, #000), transparent 55%),
+    linear-gradient(155deg, #E4002B 0%, var(--login-bg-base) 48%, #111111 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #E4002B 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #FFFFFF 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #111111 42%, transparent);
+  --login-glow: #E4002B;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #111111;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #E4002B 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #E4002B 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #E4002B 22%, transparent);
+  --header-chip-text: #111111;
+
+  --fab-menu-bg: linear-gradient(145deg, #E4002B, #111111);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #E4002B;
+  --bs-primary-rgb: 228, 0, 43;
+}
+
+[data-theme='suzukigsxs'] {
+  /* Suzuki GSX-S — azul */
+  --onneb-brand: #0033A0;
+  --onneb-brand-dark: #0a1628;
+  --onneb-brand-light: #E8E8E8;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #0a1628;
+  --onneb-base-white: #ffffff;
+
+  --onneb-color-primary: #0033A0;
+  --onneb-color-secondary: #E8E8E8;
+  --onneb-color-accent: #f8fafc;
+  --onneb-text-muted: #64748b;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand) 34%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #0033A0 0%, #0a1628 100%);
+
+  --login-bg: #0a1628;
+  --login-bg-base: #050505;
+  --login-surface: #0033A0;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.74);
+  --login-border: rgba(255, 255, 255, 0.28);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #0a1628 0%, #0033A0 55%, #E8E8E8 100%);
+  --login-btn-text: #0a1628;
+  --login-glass-fg: rgba(255, 255, 255, 0.96);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.68);
+  --login-glass-card: rgba(255, 255, 255, 0.11);
+  --login-field-line: rgba(255, 255, 255, 0.44);
+  --login-bg-gradient:
+    radial-gradient(ellipse 95% 75% at 14% 12%, color-mix(in srgb, #0033A0 48%, transparent), transparent 58%),
+    radial-gradient(ellipse 82% 68% at 86% 18%, color-mix(in srgb, #E8E8E8 32%, transparent), transparent 52%),
+    radial-gradient(ellipse 90% 80% at 50% 100%, color-mix(in srgb, #0a1628 75%, #000), transparent 55%),
+    linear-gradient(155deg, #0033A0 0%, var(--login-bg-base) 48%, #0a1628 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #0033A0 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #E8E8E8 36%, transparent);
+  --login-orb-c: color-mix(in srgb, #0a1628 42%, transparent);
+  --login-glow: #0033A0;
+
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-text: #0a1628;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #0033A0 12%, #e2e8f0);
+  --header-chip-bg: color-mix(in srgb, #0033A0 8%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #0033A0 22%, transparent);
+  --header-chip-text: #0a1628;
+
+  --fab-menu-bg: linear-gradient(145deg, #0033A0, #0a1628);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #0033A0;
+  --bs-primary-rgb: 0, 51, 160;
+}
+
 [data-theme='carbon'] .table-light {
   --bs-table-bg: #27272a;
   --bs-table-color: #f4f4f5;

@@ -248,3 +248,80 @@
   background: linear-gradient(90deg, #2563eb, #60a5fa);
   border-radius: 2px;
 }
+
+.repcli-client-util {
+  font-size: 0.68rem;
+  margin-top: 0.1rem;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .main-content > .repcli-wrap,
+  .repcli-wrap {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  .repcli-body {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .repcli-clients-col {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    max-height: 40vh;
+  }
+
+  .repcli-clients-scroll {
+    max-height: 280px;
+    overflow: auto;
+  }
+
+  .repcli-detail-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .repcli-kpi-row {
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
+  }
+
+  .repcli-sort-row {
+    flex-wrap: wrap;
+  }
+
+  .repcli-toolbar .d-flex > div {
+    flex: 1 1 100%;
+  }
+
+  .repcli-toolbar input[type='date'] {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .repcli-clients-col {
+    max-height: 36vh;
+  }
+
+  .repcli-clients-scroll {
+    max-height: 220px;
+  }
+
+  .repcli-table {
+    font-size: 0.72rem;
+  }
+
+  .repcli-chart-wrap {
+    height: 200px;
+  }
+
+  .repcli-kpi-value {
+    font-size: 0.85rem;
+  }
+}

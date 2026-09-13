@@ -3,6 +3,14 @@ const sql = require('mssql');
 const { createCatalogoRouter } = require('./lib/catalogo-empresa');
 const { isDbConfigured } = require('../config/database');
 const { assertEliminacionRegistro } = require('../lib/config-auth');
+const {
+  listPromocionesActivas,
+  listClasificacionUno,
+  getPuntosAcumulados,
+  getPuntosPorCodigo,
+  normalizePromoTipo,
+  PROMO_TIPOS,
+} = require('../lib/promociones-doc');
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.body?.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -42,6 +50,42 @@ function validateFechas(inicio, fin) {
   return null;
 }
 
+function normalizePromoFields(data) {
+  const tipo = normalizePromoTipo(data.TIPO);
+  if (data.TIPO != null && String(data.TIPO).trim() !== '' && !tipo) {
+    return { error: `TIPO debe ser: ${PROMO_TIPOS.join(', ')}` };
+  }
+  data.TIPO = tipo;
+  if (tipo === 'POR FABRICANTE') {
+    const cod = data.CODCLAUNO != null && data.CODCLAUNO !== '' ? Number(data.CODCLAUNO) : null;
+    if (cod == null || !Number.isFinite(cod) || cod <= 0) {
+      return { error: 'Seleccione un fabricante (CODCLAUNO) para tipo POR FABRICANTE' };
+    }
+    data.CODCLAUNO = cod;
+  } else {
+    data.CODCLAUNO = null;
+  }
+  if (data.FACTOR_PUNTOS != null && data.FACTOR_PUNTOS !== '') {
+    const f = Number(data.FACTOR_PUNTOS);
+    if (!Number.isFinite(f) || f < 0) {
+      return { error: 'FACTOR_PUNTOS debe ser un número mayor o igual a cero' };
+    }
+    data.FACTOR_PUNTOS = f;
+  } else {
+    data.FACTOR_PUNTOS = null;
+  }
+  if (data.VALORPUNTO != null && data.VALORPUNTO !== '') {
+    const v = Number(data.VALORPUNTO);
+    if (!Number.isFinite(v) || v < 0) {
+      return { error: 'VALORPUNTO debe ser un número mayor o igual a cero' };
+    }
+    data.VALORPUNTO = v;
+  } else {
+    data.VALORPUNTO = null;
+  }
+  return { error: null };
+}
+
 const router = createCatalogoRouter({
   logName: 'promociones',
   entityLabel: 'Promoción',
@@ -51,23 +95,85 @@ const router = createCatalogoRouter({
   idType: 'int',
   idRouteParam: 'id',
   identityColumn: true,
-  listColumns: ['ID', 'NOMBRE', 'FECHA_INICIO', 'FECHA_FIN', 'STATUS'],
+  listColumns: ['ID', 'NOMBRE', 'FECHA_INICIO', 'FECHA_FIN', 'STATUS', 'TIPO', 'FACTOR_PUNTOS', 'VALORPUNTO', 'CODCLAUNO'],
   fields: [
     { name: 'NOMBRE', type: 'varcharmax', required: true },
     { name: 'FECHA_INICIO', type: 'date' },
     { name: 'FECHA_FIN', type: 'date' },
     { name: 'STATUS', type: 'varchar' },
+    { name: 'TIPO', type: 'varchar' },
+    { name: 'FACTOR_PUNTOS', type: 'decimal' },
+    { name: 'VALORPUNTO', type: 'decimal' },
+    { name: 'CODCLAUNO', type: 'int' },
   ],
-  insertFields: ['NOMBRE', 'FECHA_INICIO', 'FECHA_FIN'],
-  updateFields: ['NOMBRE', 'FECHA_INICIO', 'FECHA_FIN'],
+  insertFields: ['NOMBRE', 'FECHA_INICIO', 'FECHA_FIN', 'TIPO', 'FACTOR_PUNTOS', 'VALORPUNTO', 'CODCLAUNO'],
+  updateFields: ['NOMBRE', 'FECHA_INICIO', 'FECHA_FIN', 'TIPO', 'FACTOR_PUNTOS', 'VALORPUNTO', 'CODCLAUNO'],
   validateInsert: async (_pool, _empnit, data) => {
     if (!String(data.NOMBRE || '').trim()) return 'NOMBRE es obligatorio';
-    return validateFechas(data.FECHA_INICIO, data.FECHA_FIN);
+    const fechasErr = validateFechas(data.FECHA_INICIO, data.FECHA_FIN);
+    if (fechasErr) return fechasErr;
+    const norm = normalizePromoFields(data);
+    return norm.error;
   },
   validateUpdate: async (_pool, _empnit, data) => {
     if (!String(data.NOMBRE || '').trim()) return 'NOMBRE es obligatorio';
-    return validateFechas(data.FECHA_INICIO, data.FECHA_FIN);
+    const fechasErr = validateFechas(data.FECHA_INICIO, data.FECHA_FIN);
+    if (fechasErr) return fechasErr;
+    const norm = normalizePromoFields(data);
+    return norm.error;
   },
+});
+
+router.get('/activa', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const promociones = await listPromocionesActivas(pool, empnit);
+    res.json({ activa: promociones.length > 0, promociones });
+  } catch (err) {
+    console.warn('[API GET /promociones/activa]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/clasificacionuno', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const rows = await listClasificacionUno(pool, empnit);
+    res.json({ rows });
+  } catch (err) {
+    console.warn('[API GET /promociones/clasificacionuno]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/puntos-codigo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codigo = parseInt(req.query.codigo ?? req.query.CODIGO, 10);
+  if (!Number.isFinite(codigo)) {
+    return res.status(400).json({ error: 'codigo numérico requerido' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await getPuntosPorCodigo(pool, empnit, codigo);
+    if (!data.found) {
+      return res.status(404).json({ error: data.error || 'Código no encontrado', ...data });
+    }
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /promociones/puntos-codigo]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.patch('/:id/status', async (req, res) => {
@@ -106,9 +212,32 @@ async function requirePromo(pool, empnit, idPromo) {
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
     .input('ID', sql.Int, idPromo)
-    .query(`SELECT ID, NOMBRE FROM dbo.PROMOCIONES WHERE EMPNIT = @EMPNIT AND ID = @ID`);
+    .query(`
+      SELECT ID, NOMBRE, TIPO, FACTOR_PUNTOS, VALORPUNTO, CODCLAUNO
+      FROM dbo.PROMOCIONES
+      WHERE EMPNIT = @EMPNIT AND ID = @ID
+    `);
   return found.recordset[0] || null;
 }
+
+router.get('/:id/puntos-acumulados', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const idPromo = parseIntId(req.params.id);
+  if (!idPromo) return res.status(400).json({ error: 'ID de promoción inválido' });
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await getPuntosAcumulados(pool, empnit, idPromo);
+    if (!data) return res.status(404).json({ error: 'Promoción no encontrada' });
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /promociones/:id/puntos-acumulados]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 function readRegistroBody(req) {
   const fecha = parseDateValue(req.body?.FECHA ?? req.body?.fecha);

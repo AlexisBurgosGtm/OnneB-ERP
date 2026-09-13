@@ -707,7 +707,7 @@ const NotasAbonoView = {
   fpagoInputValue(amount) {
     const n = Number(amount);
     if (!Number.isFinite(n) || n <= 0) return '0';
-    return String(Math.round(n * 100) / 100);
+    return String(typeof FpagoMatch !== 'undefined' ? FpagoMatch.roundFpago(n) : Math.round(n * 1000) / 1000);
   },
 
   renderFinalizarFpagoCardHtml(totalPrecio) {
@@ -765,7 +765,7 @@ const NotasAbonoView = {
     const sum = Math.round(this.sumFinalizarFpagoInputs() * 1000) / 1000;
     const total = Math.round(Number(totalPrecio) * 1000) / 1000;
     if (sum <= 0) return 'Indique la forma de pago por el monto total de la nota';
-    if (Math.abs(sum - total) > 0.001) {
+    if (!(typeof FpagoMatch !== 'undefined' ? FpagoMatch.fpagoAmountsMatch(sum, total) : Math.abs(sum - total) <= 0.01)) {
       return `La suma (${this.formatMoney(sum)}) debe ser igual al total (${this.formatMoney(total)})`;
     }
     return null;

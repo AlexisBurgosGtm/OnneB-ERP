@@ -45,6 +45,7 @@ const LibroDiarioView = {
   _anio: null,
   _loading: false,
   _exporting: false,
+  _filterQuery: '',
 
   tableColumns: [
     { key: 'LINEA', label: 'No.', align: 'center' },
@@ -122,9 +123,12 @@ const LibroDiarioView = {
   },
 
   badgeText() {
-    const t = this._totals || {};
+    const all = this._rows.length;
+    const rows = this.filteredRows();
+    const filtering = Boolean(String(this._filterQuery || '').trim());
+    const t = filtering ? this.footerTotals() : this._totals || {};
     const parts = [
-      `${t.lineas ?? 0} partida(s)`,
+      filtering ? `${rows.length} de ${all} partida(s)` : `${t.lineas ?? all} partida(s)`,
       `${t.documentos ?? 0} documento(s)`,
       `${this.mesLabel(this._mes)} ${this._anio}`,
       `Debe: ${this.formatMoney(t.debe ?? 0)}`,
@@ -134,6 +138,42 @@ const LibroDiarioView = {
     if ((t.sinFormato ?? 0) > 0) parts.push(`Sin formato: ${t.sinFormato}`);
     if ((t.sinPartidas ?? 0) > 0) parts.push(`Sin partidas: ${t.sinPartidas}`);
     return parts.join(' · ');
+  },
+
+  filteredRows() {
+    const q = this._filterQuery;
+    if (!String(q || '').trim()) return this._rows;
+    return this._rows.filter((row) =>
+      LibroContableCommon.rowMatchesSearch(row, q, [this.fechaDisplay(row)])
+    );
+  },
+
+  footerTotals() {
+    const filtering = Boolean(String(this._filterQuery || '').trim());
+    if (!filtering && this._totals) return this._totals;
+    const rows = this.filteredRows();
+    const t = {
+      lineas: rows.length,
+      documentos: 0,
+      debe: 0,
+      haber: 0,
+      anulados: 0,
+      sinFormato: 0,
+      sinPartidas: 0,
+    };
+    const docs = new Set();
+    rows.forEach((r) => {
+      if (r.ANULADO) {
+        t.anulados += 1;
+        return;
+      }
+      t.debe += Number(r.DEBE) || 0;
+      t.haber += Number(r.HABER) || 0;
+      const ref = String(r.DOC_REF || `${r.CODDOC || ''}-${r.CORRELATIVO ?? ''}`).trim();
+      if (ref) docs.add(ref);
+    });
+    t.documentos = docs.size;
+    return t;
   },
 
   renderWarningsHtml() {
@@ -180,6 +220,11 @@ const LibroDiarioView = {
                 ${anioOpts}
               </select>
             </div>
+            ${LibroContableCommon.searchInputHtml(
+              'libro-diario',
+              this._filterQuery,
+              'Documento, cuenta, formato, glosa…'
+            )}
             <div class="libro-diario-actions d-flex gap-2">
               <button type="button" class="btn btn-sm btn-outline-primary" id="btn-libro-diario-recargar">
                 <i class="fa-solid fa-rotate me-1"></i>Actualizar
@@ -205,7 +250,10 @@ const LibroDiarioView = {
 
   renderTableBodyHtml(rows) {
     if (!rows.length) {
-      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">No hay partidas para este período</td></tr>`;
+      const msg = String(this._filterQuery || '').trim()
+        ? 'Sin coincidencias para la búsqueda'
+        : 'No hay partidas para este período';
+      return `<tr><td colspan="${this.tableColumns.length}" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((row) => {
@@ -224,12 +272,16 @@ const LibroDiarioView = {
   },
 
   renderTableFooterHtml() {
-    const t = this._totals;
-    if (!t || !this._rows.length) return '';
+    const rows = this.filteredRows();
+    const t = this.footerTotals();
+    if (!rows.length) return '';
+    const label = String(this._filterQuery || '').trim()
+      ? 'Totales (filtro, sin anulados):'
+      : 'Totales (sin anulados):';
     return `
       <tfoot>
         <tr>
-          <td colspan="8" class="text-end">Totales (sin anulados):</td>
+          <td colspan="8" class="text-end">${label}</td>
           <td class="text-end libro-diario-money">${this.escapeHtml(this.formatMoney(t.debe))}</td>
           <td class="text-end libro-diario-money">${this.escapeHtml(this.formatMoney(t.haber))}</td>
           <td></td>
@@ -254,7 +306,7 @@ const LibroDiarioView = {
             <thead class="table-light sticky-top">
               <tr>${headers}</tr>
             </thead>
-            <tbody id="libro-diario-tbody">${this.renderTableBodyHtml(this._rows)}</tbody>
+            <tbody id="libro-diario-tbody">${this.renderTableBodyHtml(this.filteredRows())}</tbody>
             ${this.renderTableFooterHtml()}
           </table>
         </div>
@@ -278,7 +330,7 @@ const LibroDiarioView = {
     const warnWrap = this._container?.querySelector('#libro-diario-warnings-wrap');
     if (warnWrap) warnWrap.innerHTML = this.renderWarningsHtml();
     const tbody = this._container?.querySelector('#libro-diario-tbody');
-    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this._rows);
+    if (tbody) tbody.innerHTML = this.renderTableBodyHtml(this.filteredRows());
     const table = this._container?.querySelector('.libro-diario-table-card table');
     if (table) {
       table.querySelector('tfoot')?.remove();
@@ -305,6 +357,7 @@ const LibroDiarioView = {
     this._container?.querySelector('#btn-libro-diario-export')?.addEventListener('click', () => {
       this.exportExcel().catch((err) => F.toast(err.message, 'error'));
     });
+    LibroContableCommon.bindSearch(this._container, 'libro-diario', this);
   },
 
   async exportExcel() {
@@ -340,8 +393,9 @@ const LibroDiarioView = {
       <p><strong>Período:</strong> ${PrintReport.escapeHtml(this.mesLabel(this._mes))} ${PrintReport.escapeHtml(String(this._anio))}</p>
       <p class="meta">Partidas generadas desde formatos contables por tipo de documento</p>
     `;
+    const printRows = this._rows;
     const headCells = this.tableColumns.map((c) => `<th>${PrintReport.escapeHtml(c.label)}</th>`).join('');
-    const bodyRows = this._rows
+    const bodyRows = printRows
       .map((row) => {
         const cells = this.tableColumns
           .map((col) => {
@@ -357,7 +411,7 @@ const LibroDiarioView = {
       })
       .join('');
     const t = this._totals || {};
-    const footerRow = this._rows.length
+    const footerRow = printRows.length
       ? `<tr class="totals">
           <td colspan="8" class="text-end">Totales (sin anulados)</td>
           <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(t.debe))}</td>
@@ -389,6 +443,7 @@ const LibroDiarioView = {
     this._rows = [];
     this._warnings = [];
     this._totals = null;
+    this._filterQuery = '';
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start');
     container.innerHTML = this.render();

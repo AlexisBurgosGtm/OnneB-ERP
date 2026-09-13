@@ -50,6 +50,7 @@ const DocumentosView = {
   _urlFel: '',
 
   FEL_TIPOS_ANULABLES: ['FEF', 'FEC', 'FNC'],
+  FEL_TIPOS_LISTA: ['FEF', 'FEC', 'FNC', 'FES'],
 
   tableColumns: [
     { key: 'FECHA', label: 'Fecha doc.', type: 'date' },
@@ -61,6 +62,7 @@ const DocumentosView = {
     { key: 'VENDEDOR', label: 'Vendedor', cellClass: 'documentos-col-vendedor' },
     { key: 'TOTALPRECIO', label: 'Total', type: 'money' },
     { key: 'STATUS', label: 'Estado', type: 'status' },
+    { key: 'FEL', label: 'FEL', type: 'fel', cellClass: 'documentos-col-fel' },
     { key: 'CONCRE', label: 'Pago' },
     { key: 'ID_COLA_TRABAJO', label: 'ColaTrabajo' },
   ],
@@ -103,6 +105,47 @@ const DocumentosView = {
     return `/api/documentos/lista?${params.toString()}`;
   },
 
+  apiUrlExport() {
+    const empNit = F.getEmpNit();
+    if (!empNit) throw new Error('No hay empresa activa. Cierre sesión e ingrese de nuevo.');
+    const params = new URLSearchParams({
+      empnit: empNit,
+      mes: String(this._mes),
+      anio: String(this._anio),
+      tipodoc: this._tipodoc,
+      _: String(Date.now()),
+    });
+    return `/api/documentos/export?${params.toString()}`;
+  },
+
+  async onExportExcel() {
+    if (!this._tipodoc) {
+      F.toast('Seleccione un tipo de documento', 'warning');
+      return;
+    }
+    const btn = this._container?.querySelector('#btn-documentos-export');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(this.apiUrlExport(), { cache: 'no-store' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText || 'Error al exportar');
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const match = dispo.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : `documentos_${this._tipodoc}.xlsx`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      F.toast('Excel exportado', 'success');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
   formatMoney(value) {
     const n = Number(value);
     if (Number.isNaN(n)) return '—';
@@ -118,7 +161,8 @@ const DocumentosView = {
     return val;
   },
 
-  formatCell(value, col) {
+  formatCell(value, col, row) {
+    if (col?.type === 'fel') return this.formatFelCell(row);
     if (col?.type === 'date') {
       return this.escapeHtml(documentosFormatDateDdMmYyyy(value));
     }
@@ -135,6 +179,35 @@ const DocumentosView = {
       return `<span class="documentos-money">${this.escapeHtml(this.formatMoney(value))}</span>`;
     }
     return this.escapeHtml(value);
+  },
+
+  isTipodocFel(row) {
+    const tipodoc = String(row?.TIPODOC ?? this._tipodoc ?? '').trim().toUpperCase();
+    return this.FEL_TIPOS_LISTA.includes(tipodoc);
+  },
+
+  felSerieNumeroLabel(row) {
+    const serie = String(row?.FEL_SERIE ?? '').trim();
+    const numero = String(row?.FEL_NUMERO ?? '').trim();
+    if (serie && numero) return `${serie}-${numero}`;
+    if (serie) return serie;
+    if (numero) return numero;
+    const uuid = this.felUudiValue(row);
+    return uuid ? uuid.slice(0, 8).toUpperCase() : '';
+  },
+
+  formatFelCell(row) {
+    if (!this.isTipodocFel(row)) return '—';
+    const uuid = this.felUudiValue(row);
+    if (!uuid) {
+      return '<span class="badge text-bg-warning documentos-fel-badge" title="Pendiente de certificar ante SAT">Sin certificar</span>';
+    }
+    const label = this.felSerieNumeroLabel(row) || 'Certificado';
+    const title = `Consultar FEL en línea · ${uuid}`;
+    return `<a href="#" class="documentos-fel-link" data-fel-uuid="${this.escapeHtml(uuid)}"
+      title="${this.escapeHtml(title)}" rel="noopener noreferrer">
+      <span class="badge text-bg-success documentos-fel-badge">${this.escapeHtml(label)}</span>
+    </a>`;
   },
 
   felUudiValue(row) {
@@ -182,6 +255,14 @@ const DocumentosView = {
       icon: 'fa-diagram-project',
       className: 'documentos-menu-item-secondary',
     });
+    if (DocOpciones.puedeHistorialEntregas(row)) {
+      items.push({
+        id: 'historial-entregas',
+        label: 'Historial de Entregas',
+        icon: 'fa-truck-ramp-box',
+        className: 'documentos-menu-item-secondary',
+      });
+    }
     if (DocOpciones.puedeCambiarFecha(row)) {
       items.push({
         id: 'cambiar-fecha',
@@ -370,6 +451,10 @@ const DocumentosView = {
       }
       if (action === 'trazabilidad') {
         await this.showTrazabilidadDocumento(row);
+        return;
+      }
+      if (action === 'historial-entregas') {
+        await DocOpciones.mostrarHistorialEntregas(coddoc, correlativo, row);
       }
     } catch (err) {
       F.alert('Error', err.message || 'No se pudo completar la acción', 'error');
@@ -815,6 +900,13 @@ const DocumentosView = {
         `Documento anulado — UUID ${data.fel?.uuid || this.felUudiValue(row)}`,
         'success'
       );
+      if (data?.fraccionamiento?.reopened && data.fraccionamiento.fuente) {
+        const f = data.fraccionamiento.fuente;
+        F.toast(
+          `FAC ${f.CODDOC} #${f.CORRELATIVO} reabierta para fraccionamiento (hay restante)`,
+          'info'
+        );
+      }
       await this.reload();
     } catch (err) {
       F.alert('Error FEL', err.message || 'No se pudo anular el documento', 'error');
@@ -842,7 +934,7 @@ const DocumentosView = {
             const align = c.type === 'money' ? ' text-end' : '';
             const extra = c.cellClass ? ` ${c.cellClass}` : '';
             const val = this.cellValue(row, c.key);
-            return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(val, c)}</td>`;
+            return `<td class="${`${align}${extra}`.trim()}">${this.formatCell(val, c, row)}</td>`;
           })
           .join('');
         return `<tr class="${this.rowClass(row)}" data-doc-row data-coddoc="${coddoc}" data-correlativo="${corr}"
@@ -932,6 +1024,13 @@ const DocumentosView = {
                   <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                 </button>
               </div>
+            </div>
+            <div class="documentos-filter-export">
+              <label class="form-label small mb-1 d-block">&nbsp;</label>
+              <button type="button" class="btn btn-sm btn-outline-success" id="btn-documentos-export"
+                title="Exportar todos los registros del periodo (sin filtro de búsqueda)">
+                <i class="fa-solid fa-file-excel me-1" aria-hidden="true"></i>Exportar
+              </button>
             </div>
           </div>
           <div class="documentos-badge small text-muted mt-2" id="documentos-count">${this.badgeText()}</div>
@@ -1046,7 +1145,18 @@ const DocumentosView = {
     document.getElementById('documentos-anio')?.addEventListener('change', refresh);
     document.getElementById('documentos-tipodoc')?.addEventListener('change', refresh);
     this.bindSearch();
+    document.getElementById('btn-documentos-export')?.addEventListener('click', () => {
+      this.syncFiltersFromUi();
+      this.onExportExcel().catch((err) => F.alert('Error', err.message || 'Error al exportar', 'error'));
+    });
     this._container?.addEventListener('click', async (e) => {
+      const felLink = e.target.closest('a.documentos-fel-link[data-fel-uuid]');
+      if (felLink && this._container.contains(felLink)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await this.abrirFelDocumento(felLink.getAttribute('data-fel-uuid'));
+        return;
+      }
       const tr = e.target.closest('tr[data-doc-row]');
       if (!tr || !this._container.contains(tr)) return;
       const coddoc = tr.getAttribute('data-coddoc');

@@ -1,0 +1,55 @@
+/* Control de Fletes */
+.control-fletes-panel .table-responsive {
+  max-height: min(70vh, 720px);
+}
+
+.control-fletes-filters .form-select {
+  min-width: 8.5rem;
+}
+
+.control-fletes-form .form-label {
+  font-weight: 500;
+}
+
+.control-fletes-form .control-fletes-card {
+  border: 1px solid var(--app-border, #dee2e6);
+  background: var(--app-surface, #fff);
+  box-shadow: none;
+}
+
+.control-fletes-form .control-fletes-money-prefix {
+  min-width: 2.25rem;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.control-fletes-total-flete {
+  font-size: 0.95rem;
+  color: #dc3545;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-end;
+  padding-bottom: 0.15rem;
+}
+
+.control-fletes-total-flete strong {
+  color: #dc3545;
+  font-weight: 700;
+}
+
+.control-fletes-table tfoot td {
+  border-top: 2px solid var(--app-border, #dee2e6);
+  background: color-mix(in srgb, var(--onneb-brand, #0d6efd) 6%, var(--app-surface, #fff));
+  white-space: nowrap;
+}
+
+.control-fletes-table td,
+.control-fletes-table th {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .control-fletes-filters .form-select {
+    min-width: 7rem;
+  }
+}

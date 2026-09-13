@@ -1,0 +1,30 @@
+---
+description: Pendiente — Lotes de vencimiento (inventario por lote)
+alwaysApply: false
+---
+
+# Lotes de vencimiento (pendiente)
+
+Nombre oficial del feature: **lotes de vencimiento**.
+
+## Estado
+
+Recordado para implementar más adelante. **No existe hoy** en Los ERP.
+
+## Contexto acordado
+
+- Control de existencias por **número de lote** ligado a **fecha de vencimiento**.
+- Hoy el stock es una sola cantidad por producto (`INVSALDO.SALDO` + `PRODUCTOS.EXISTENCIA`).
+- Aplicar en **Los ERP** (OnneB + FS-SV) cuando se pida implementar.
+
+## Enfoque tentativo (no implementar hasta que el usuario lo pida)
+
+1. Tabla tipo `INVSALDO_LOTE` (`EMPNIT`, `CODPROD`, `NUMLOTE`, `FECHA_VENC`, `SALDO`); `INVSALDO` como suma.
+2. Captura/selección de lote en compra/entrada/venta; centralizar en `lib/inventario.js`.
+3. Flag en producto para no obligar lote en todo el catálogo.
+4. UI: picker + consulta por lote; opcional FIFO/FEFO.
+5. Schema vía updater SQL compartido.
+
+## No confundir
+
+- `PRODUCTOS.VENCIMIENTO`, `PRODUCTOS.SERIE`, `DOCPRODUCTOS.NOSERIE` **no** son este control.

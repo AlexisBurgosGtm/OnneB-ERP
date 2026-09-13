@@ -22,6 +22,7 @@ const InventarioView = {
     { key: 'TIPOPROD', label: 'Tipo' },
     { key: 'SALDO', label: 'Saldo', type: 'qty' },
     { key: 'EXISTENCIA', label: 'Existencia', type: 'qty' },
+    { key: 'FISICO', label: 'Físico', type: 'qty' },
     { key: 'COSTO_PROMEDIO', label: 'Costo prom.', type: 'money', ventasHidden: true },
     { key: 'COSTO', label: 'Costo', type: 'money', ventasHidden: true },
     { key: 'TOTALCOSTO', label: 'Total costo', type: 'money', ventasHidden: true },

@@ -233,6 +233,9 @@ const ListaFacturasView = {
           <button type="button" class="btn btn-sm btn-outline-secondary" data-action="imprimir"
             data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
             title="Imprimir"><i class="fa-solid fa-print"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-success" data-action="whatsapp"
+            data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
+            title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></button>
           <button type="button" class="btn btn-sm btn-outline-secondary" data-action="trazabilidad"
             data-coddoc="${this.escapeHtml(row.CODDOC)}" data-correlativo="${this.escapeHtml(row.CORRELATIVO)}"
             title="Trazabilidad"><i class="fa-solid fa-diagram-project"></i></button>
@@ -363,6 +366,7 @@ const ListaFacturasView = {
         const coddoc = btn.getAttribute('data-coddoc');
         const correlativo = btn.getAttribute('data-correlativo');
         if (action === 'imprimir') await this.imprimir(coddoc, correlativo);
+        else if (action === 'whatsapp') await this.enviarWhatsapp(coddoc, correlativo);
         else if (action === 'trazabilidad') await this.showTrazabilidad(coddoc, correlativo);
         else if (action === 'anular') await this.anular(coddoc, correlativo);
       } catch (err) {
@@ -401,6 +405,15 @@ const ListaFacturasView = {
       return;
     }
     F.toast('No se pudo imprimir', 'error');
+  },
+
+  async enviarWhatsapp(coddoc, correlativo) {
+    const row = this.findRow(coddoc, correlativo);
+    if (typeof DocOpciones !== 'undefined' && DocOpciones.enviarWhatsapp) {
+      await DocOpciones.enviarWhatsapp(coddoc, correlativo, row);
+      return;
+    }
+    F.toast('WhatsApp no disponible', 'warning');
   },
 
   async showTrazabilidad(coddoc, correlativo) {
@@ -540,12 +553,19 @@ const ListaFacturasView = {
     if (!adminPass) return;
 
     const url = `/api/fel/anular/${encodeURIComponent(row.CODDOC)}/${encodeURIComponent(row.CORRELATIVO)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
-    await F.fetchJson(url, {
+    const data = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ motivo, adminPass }),
     });
     F.toast('Documento anulado ante SAT', 'success');
+    if (data?.fraccionamiento?.reopened && data.fraccionamiento.fuente) {
+      const f = data.fraccionamiento.fuente;
+      F.toast(
+        `FAC ${f.CODDOC} #${f.CORRELATIVO} reabierta para fraccionamiento (hay restante)`,
+        'info'
+      );
+    }
     await this.reloadList();
   },
 

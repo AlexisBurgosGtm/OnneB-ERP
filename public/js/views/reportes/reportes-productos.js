@@ -9,12 +9,16 @@ const ReportesProductosView = {
   _loading: false,
   _loadingDetalle: false,
   _productos: [],
-  _totales: { unidades: 0, precio: 0 },
+  _totales: { unidades: 0, precio: 0, costo: 0, utilidad: 0 },
   _selectedCod: null,
   _detalle: null,
   _chart: null,
   _sortBy: 'precio',
   _filters: { productos: '', documentos: '', clientes: '' },
+
+  utilidadOf(venta, costo) {
+    return (Number(venta) || 0) - (Number(costo) || 0);
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -118,7 +122,7 @@ const ReportesProductosView = {
     });
     const data = await F.fetchJson(`/api/reportes-productos?${params}`);
     this._productos = data.productos || [];
-    this._totales = data.totales || { unidades: 0, precio: 0 };
+    this._totales = data.totales || { unidades: 0, precio: 0, costo: 0, utilidad: 0 };
     return data;
   },
 
@@ -245,6 +249,7 @@ const ReportesProductosView = {
               <span><i class="fa-solid fa-box-open me-1 text-muted"></i>${this.escapeHtml(this.formatQty(p.TOTALUNIDADES))}</span>
               <span class="fw-semibold">${this.escapeHtml(this.formatMoney(p.TOTALPRECIO))}</span>
             </div>
+            <div class="repprod-card-util small text-muted">Util. ${this.escapeHtml(this.formatMoney(p.UTILIDAD ?? this.utilidadOf(p.TOTALPRECIO, p.TOTALCOSTO)))}</div>
             <div class="repprod-card-share">${this.escapeHtml(this.formatPct(share))} del total vendido</div>
           </div>`;
       })
@@ -266,8 +271,16 @@ const ReportesProductosView = {
         <div class="repprod-hero-code">${this.escapeHtml(d.codprod || '')}</div>
         <div class="repprod-kpi-row">
           <div class="repprod-kpi">
-            <div class="repprod-kpi-label">Ventas</div>
+            <div class="repprod-kpi-label">Venta</div>
             <div class="repprod-kpi-value">${this.escapeHtml(this.formatMoney(r.precio))}</div>
+          </div>
+          <div class="repprod-kpi">
+            <div class="repprod-kpi-label">Costo</div>
+            <div class="repprod-kpi-value">${this.escapeHtml(this.formatMoney(r.costo))}</div>
+          </div>
+          <div class="repprod-kpi">
+            <div class="repprod-kpi-label">Utilidad</div>
+            <div class="repprod-kpi-value">${this.escapeHtml(this.formatMoney(r.utilidad ?? this.utilidadOf(r.precio, r.costo)))}</div>
           </div>
           <div class="repprod-kpi">
             <div class="repprod-kpi-label">Unidades</div>
@@ -306,16 +319,17 @@ const ReportesProductosView = {
       'FEL_NUMERO',
       'LINE_UNIDADES',
       'LINE_PRECIO',
+      'LINE_COSTO',
+      'UTILIDAD',
       'TOTALPRECIO',
     ], this._filters.documentos);
     if (!rows.length) {
-      return `<tr><td colspan="7" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="9" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     return rows
       .map((r) => {
         const label = `${r.CODDOC || ''} #${r.CORRELATIVO ?? ''}`;
-        const fel =
-          r.FEL_SERIE || r.FEL_NUMERO ? `${r.FEL_SERIE || ''}-${r.FEL_NUMERO || ''}` : '—';
+        const util = r.UTILIDAD ?? this.utilidadOf(r.LINE_PRECIO, r.LINE_COSTO);
         return `
           <tr data-coddoc="${this.escapeHtml(r.CODDOC || '')}" data-correlativo="${this.escapeHtml(r.CORRELATIVO ?? '')}"
             data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}" data-desdoc="${this.escapeHtml(r.DESDOC || '')}">
@@ -324,7 +338,9 @@ const ReportesProductosView = {
             <td>${this.escapeHtml(label)}</td>
             <td class="small">${this.escapeHtml(r.DOC_NOMCLIE || '—')}</td>
             <td class="text-end">${this.escapeHtml(this.formatQty(r.LINE_UNIDADES))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.LINE_COSTO))}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(r.LINE_PRECIO))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
             <td class="text-center">
               <button type="button" class="btn btn-sm btn-outline-secondary repprod-print-btn" title="Imprimir">
                 <i class="fa-solid fa-print"></i>
@@ -353,7 +369,9 @@ const ReportesProductosView = {
               <th>Documento</th>
               <th>Cliente</th>
               <th class="text-end">Uds.</th>
-              <th class="text-end">Línea</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
               <th class="text-center"></th>
             </tr>
           </thead>
@@ -367,16 +385,17 @@ const ReportesProductosView = {
     if (!all.length) return '';
     const rows = this.filterRows(
       all,
-      ['DOC_NIT', 'DOC_NOMCLIE', 'CODCLIENTE', 'TOTALUNIDADES', 'TOTALPRECIO'],
+      ['DOC_NIT', 'DOC_NOMCLIE', 'CODCLIENTE', 'TOTALUNIDADES', 'TOTALPRECIO', 'TOTALCOSTO', 'UTILIDAD'],
       this._filters.clientes
     );
     if (!rows.length) {
-      return `<tr><td colspan="4" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="6" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     const maxPrecio = Math.max(...all.map((r) => Number(r.TOTALPRECIO) || 0), 1);
     return rows
       .map((r) => {
         const pct = ((Number(r.TOTALPRECIO) || 0) / maxPrecio) * 100;
+        const util = r.UTILIDAD ?? this.utilidadOf(r.TOTALPRECIO, r.TOTALCOSTO);
         return `
           <tr>
             <td class="small text-muted">${this.escapeHtml(r.DOC_NIT || '—')}</td>
@@ -385,7 +404,9 @@ const ReportesProductosView = {
               <div class="repprod-client-bar"><span style="width:${pct.toFixed(1)}%"></span></div>
             </td>
             <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
           </tr>`;
       })
       .join('');
@@ -407,7 +428,9 @@ const ReportesProductosView = {
               <th>NIT</th>
               <th>Cliente</th>
               <th class="text-end">Unidades</th>
-              <th class="text-end">Total</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
             </tr>
           </thead>
           <tbody id="repprod-clientes-tbody">${this.renderClientesBody()}</tbody>
@@ -488,7 +511,8 @@ const ReportesProductosView = {
                 <i class="fa-solid fa-rotate me-1"></i>Cargar
               </button>
               <span class="small text-muted ms-1">${this._productos.length} producto(s)</span>
-              ${Number(this._totales?.precio) > 0 ? `<span class="small text-success ms-2 fw-semibold">Total: ${this.escapeHtml(this.formatMoney(this._totales.precio))}</span>` : ''}
+              ${Number(this._totales?.precio) > 0 ? `<span class="small text-success ms-2 fw-semibold">Venta: ${this.escapeHtml(this.formatMoney(this._totales.precio))}</span>` : ''}
+              ${Number(this._totales?.utilidad) || Number(this._totales?.costo) ? `<span class="small text-primary ms-2 fw-semibold">Util.: ${this.escapeHtml(this.formatMoney(this._totales.utilidad ?? this.utilidadOf(this._totales.precio, this._totales.costo)))}</span>` : ''}
             </div>
           </div>
         </div>
@@ -675,7 +699,7 @@ const ReportesProductosView = {
     this._desde = range.desde;
     this._hasta = range.hasta;
     this._productos = [];
-    this._totales = { unidades: 0, precio: 0 };
+    this._totales = { unidades: 0, precio: 0, costo: 0, utilidad: 0 };
     this._selectedCod = null;
     this._detalle = null;
     this._sortBy = 'precio';

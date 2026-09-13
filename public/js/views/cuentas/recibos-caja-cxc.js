@@ -899,7 +899,7 @@ const RecibosCajaCxcView = {
           Swal.showValidationMessage('Seleccione una caja');
           return false;
         }
-        if (Math.abs(sum - total) > 0.001) {
+        if (!(typeof FpagoMatch !== 'undefined' ? FpagoMatch.fpagoAmountsMatch(sum, total) : Math.abs(sum - total) <= 0.01)) {
           Swal.showValidationMessage('La suma de formas de pago debe igualar el total');
           return false;
         }

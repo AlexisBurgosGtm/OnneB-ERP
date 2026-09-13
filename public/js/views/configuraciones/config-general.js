@@ -125,6 +125,20 @@ const ConfigGeneralView = {
         'En buscadores de documentos y productos, concatena DESPROD + DESPROD2 al buscar por descripción y lo muestra en la lista de resultados',
     },
     {
+      opcion: 'MUESTRA PESO EN DOCUMENTOS',
+      title: 'Muestra peso en documentos',
+      icon: 'fa-weight-hanging',
+      fallbackDesc:
+        'Muestra el peso total por línea (PRECIOS.PESO × cantidad) en facturas, FEL y compras, y en el formato impreso interno',
+    },
+    {
+      opcion: 'VISTAS EN PESTAÑAS',
+      title: 'Vistas en pestañas',
+      icon: 'fa-folder-closed',
+      fallbackDesc:
+        'Si está en SI, permite abrir varias vistas a la vez (máx. una pestaña por menú). Al cambiar de pestaña se recarga la vista. En NO se mantiene el comportamiento de un solo panel.',
+    },
+    {
       opcion: 'PERMITE BIOMETRICO EN LOGIN',
       title: 'Permite biométrico en login',
       icon: 'fa-fingerprint',
@@ -209,6 +223,7 @@ const ConfigGeneralView = {
       title: 'Clave de administrador',
       fallbackDesc: 'Clave para autorizar movimientos',
       placeholder: 'Clave de administrador',
+      tab: 'seguridad',
     },
     {
       opcion: 'CLAVE OPERADOR',
@@ -216,9 +231,19 @@ const ConfigGeneralView = {
       title: 'Clave de Operador',
       fallbackDesc: 'Clave del operador',
       placeholder: 'Clave de operador',
+      tab: 'seguridad',
     },
   ],
 
+  TABS: [
+    { id: 'seguridad', label: 'Seguridad', icon: 'fa-shield-halved' },
+    { id: 'operacion', label: 'Operación', icon: 'fa-sliders' },
+    { id: 'electronica', label: 'Electrónica', icon: 'fa-file-invoice' },
+    { id: 'whatsapp', label: 'WhatsApp', icon: 'fa-brands fa-whatsapp' },
+    { id: 'utilidades', label: 'Utilidades', icon: 'fa-wrench' },
+  ],
+
+  _tab: 'operacion',
   _container: null,
   _passMeta: {},
   _textMeta: {},
@@ -229,6 +254,38 @@ const ConfigGeneralView = {
   _felFormatoMeta: {},
   _tipofacFinalizadoMeta: {},
   _invSaldoPendientes: null,
+  _whatsappStatus: null,
+  _whatsappSocketBound: false,
+
+  tabForSino(opcion) {
+    const map = {
+      'INVENTARIO NEGATIVO': 'operacion',
+      'SOLICITA CLAVE VENDEDOR': 'seguridad',
+      'IMPRIME TICKET AL GUARDAR VENTA': 'operacion',
+      'MUESTRA DATOS EN CORTE DE CAJA': 'operacion',
+      'PERMITE CAMBIAR PRECIO EN PEDIDOS': 'operacion',
+      'SOLICITA AUTORIZACIONES': 'seguridad',
+      'CERTIFICA AL FINALIZAR': 'electronica',
+      'PERMITE FRACCIONAMIENTO FACTURAS': 'electronica',
+      'FACTURA SE PASA A FRACCIONAMIENTO AUTOM': 'electronica',
+      'MUESTRA DESPROD2 EN DOCS Y PRODS': 'operacion',
+      'MUESTRA PESO EN DOCUMENTOS': 'operacion',
+      'VISTAS EN PESTAÑAS': 'operacion',
+      'PERMITE BIOMETRICO EN LOGIN': 'seguridad',
+      'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA': 'operacion',
+    };
+    return map[opcion] || 'operacion';
+  },
+
+  tabForText(opcion) {
+    if (opcion === 'URL FEL') return 'electronica';
+    if (opcion === 'MAXIMO FRACCIONAMIENTO FACTURAS') return 'electronica';
+    return 'operacion';
+  },
+
+  tabClass(id) {
+    return this._tab === id ? 'nav-link active' : 'nav-link';
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -699,42 +756,183 @@ const ConfigGeneralView = {
       </div>`;
   },
 
+  renderWhatsappPanel() {
+    const st = this._whatsappStatus || {
+      state: 'idle',
+      connected: false,
+      qrDataUrl: null,
+      phone: null,
+      name: null,
+      error: null,
+      library: '@whiskeysockets/baileys',
+    };
+    const state = String(st.state || 'idle');
+    const library = st.library || '@whiskeysockets/baileys';
+    let badgeClass = 'text-bg-secondary';
+    let badgeLabel = 'Sin iniciar';
+    if (state === 'ready' || st.connected) {
+      badgeClass = 'text-bg-success';
+      badgeLabel = 'Conectado';
+    } else if (state === 'qr') {
+      badgeClass = 'text-bg-warning';
+      badgeLabel = 'Escanee el QR';
+    } else if (state === 'connecting') {
+      badgeClass = 'text-bg-info';
+      badgeLabel = 'Conectando…';
+    } else if (state === 'error') {
+      badgeClass = 'text-bg-danger';
+      badgeLabel = 'Error';
+    } else if (state === 'logged_out') {
+      badgeClass = 'text-bg-secondary';
+      badgeLabel = 'Sesión cerrada';
+    }
+
+    const qrHtml = st.qrDataUrl
+      ? `<img src="${this.escapeHtml(st.qrDataUrl)}" alt="QR WhatsApp" class="config-wa-qr img-fluid">`
+      : `<div class="config-wa-qr-placeholder text-muted small">
+           ${
+             state === 'connecting'
+               ? '<i class="fa-solid fa-spinner fa-spin me-1"></i>Generando código QR…'
+               : 'Pulse <strong>Conectar</strong> para mostrar el código QR.'
+           }
+         </div>`;
+
+    const phoneLine =
+      st.phone || st.name
+        ? `<p class="mb-1 small"><span class="text-muted">Cuenta:</span> <strong>${this.escapeHtml(
+            [st.name, st.phone].filter(Boolean).join(' · ')
+          )}</strong></p>`
+        : '';
+
+    const errLine = st.error
+      ? `<p class="small text-danger mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i>${this.escapeHtml(
+          st.error
+        )}</p>`
+      : '';
+
+    return `
+      <div class="config-wa-panel card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+            <div>
+              <h6 class="mb-1">
+                <i class="fa-brands fa-whatsapp me-1 text-success"></i>Inicio de sesión WhatsApp
+              </h6>
+              <p class="small text-muted mb-0">
+                Vincula un dispositivo multi-device para envíos e integraciones del ERP
+                (documentos, cobros, avisos). Si no hay sesión activa, los envíos siguen usando
+                el enlace <code>wa.me</code> como hasta ahora.
+              </p>
+            </div>
+            <span class="badge ${badgeClass}" id="config-wa-badge">${this.escapeHtml(badgeLabel)}</span>
+          </div>
+          <p class="config-wa-lib-label mb-3" title="Identificador de librería para soporte y correcciones futuras">
+            <i class="fa-solid fa-code me-1"></i>Librería:
+            <strong>${this.escapeHtml(library)}</strong>
+            <span class="text-muted">(Baileys)</span>
+          </p>
+          ${phoneLine}
+          ${errLine}
+          <div class="config-wa-qr-wrap mb-3" id="config-wa-qr-wrap">${qrHtml}</div>
+          <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-success btn-sm" id="btn-wa-connect">
+              <i class="fa-solid fa-qrcode me-1"></i>Conectar / Mostrar QR
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-wa-refresh">
+              <i class="fa-solid fa-arrows-rotate me-1"></i>Nuevo QR
+            </button>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btn-wa-logout">
+              <i class="fa-solid fa-right-from-bracket me-1"></i>Cerrar sesión
+            </button>
+          </div>
+          <ol class="small text-muted mt-3 mb-0 ps-3">
+            <li>En el teléfono: WhatsApp → Dispositivos vinculados → Vincular dispositivo.</li>
+            <li>Escanee el código QR que aparece aquí.</li>
+            <li>Mantenga el servidor del ERP encendido para conservar la sesión.</li>
+          </ol>
+        </div>
+      </div>`;
+  },
+
+  renderWhatsappTab() {
+    const agenda =
+      typeof WhatsappProgramacionUI !== 'undefined' ? WhatsappProgramacionUI.render() : '';
+    return `
+      <div class="config-wa-stack">
+        <div id="config-wa-login">${this.renderWhatsappPanel()}</div>
+        ${agenda}
+      </div>`;
+  },
+
+  renderTabCards(tabId) {
+    const parts = [];
+    if (tabId === 'whatsapp') return this.renderWhatsappTab();
+    if (tabId === 'utilidades') {
+      return `
+        <div class="config-cards-grid">
+          ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+          ${this.renderCorreccionProductosCard()}
+          ${this.renderCorregirSaldosCxcCard()}
+          ${this.renderCorregirSaldosCxpCard()}
+        </div>`;
+    }
+
+    this.PASS_CARDS.filter((c) => (c.tab || 'seguridad') === tabId).forEach((card) => {
+      parts.push(this.renderPassCard(card, this._passMeta[card.opcion] || {}));
+    });
+    this.TEXT_CARDS.filter((c) => this.tabForText(c.opcion) === tabId).forEach((card) => {
+      parts.push(this.renderTextCard(card, this._textMeta[card.opcion] || {}));
+    });
+    this.SINO_OPTIONS.filter((opt) => this.tabForSino(opt.opcion) === tabId).forEach((opt) => {
+      parts.push(this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {}));
+    });
+    if (tabId === 'operacion') {
+      this.CONCRE_OPTIONS.forEach((opt) => {
+        parts.push(this.renderConcreCard(opt, this._concreMeta[opt.opcion] || {}));
+      });
+      this.FORMATO_OPTIONS.forEach((opt) => {
+        parts.push(this.renderFormatoCard(opt, this._formatoMeta[opt.opcion] || {}));
+      });
+      this.FOTO_OPTIONS.forEach((opt) => {
+        parts.push(this.renderFotoCard(opt, this._fotoMeta[opt.opcion] || {}));
+      });
+      this.TIPOFAC_FINALIZADO_OPTIONS.forEach((opt) => {
+        parts.push(this.renderTipofacFinalizadoCard(opt, this._tipofacFinalizadoMeta[opt.opcion] || {}));
+      });
+    }
+    if (tabId === 'electronica') {
+      this.FEL_FORMATO_OPTIONS.forEach((opt) => {
+        parts.push(this.renderFelFormatoCard(opt, this._felFormatoMeta[opt.opcion] || {}));
+      });
+    }
+    if (!parts.length) {
+      return '<p class="text-muted small mb-0">Sin opciones en esta pestaña.</p>';
+    }
+    return `<div class="config-cards-grid">${parts.join('')}</div>`;
+  },
+
   renderAll() {
-    const sinoCards = this.SINO_OPTIONS.map((opt) =>
-      this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {})
+    const tabsNav = this.TABS.map(
+      (t) => `
+        <li class="nav-item" role="presentation">
+          <button type="button" class="${this.tabClass(t.id)}" data-config-tab="${t.id}" role="tab">
+            <i class="${t.icon.startsWith('fa-brands') ? t.icon : `fa-solid ${t.icon}`} me-1"></i>${this.escapeHtml(t.label)}
+          </button>
+        </li>`
     ).join('');
-    const concreCards = this.CONCRE_OPTIONS.map((opt) =>
-      this.renderConcreCard(opt, this._concreMeta[opt.opcion] || {})
-    ).join('');
-    const formatoCards = this.FORMATO_OPTIONS.map((opt) =>
-      this.renderFormatoCard(opt, this._formatoMeta[opt.opcion] || {})
-    ).join('');
-    const fotoCards = this.FOTO_OPTIONS.map((opt) =>
-      this.renderFotoCard(opt, this._fotoMeta[opt.opcion] || {})
-    ).join('');
-    const felFormatoCards = this.FEL_FORMATO_OPTIONS.map((opt) =>
-      this.renderFelFormatoCard(opt, this._felFormatoMeta[opt.opcion] || {})
-    ).join('');
-    const tipofacFinalizadoCards = this.TIPOFAC_FINALIZADO_OPTIONS.map((opt) =>
-      this.renderTipofacFinalizadoCard(opt, this._tipofacFinalizadoMeta[opt.opcion] || {})
+    const panes = this.TABS.map(
+      (t) => `
+        <div class="config-general-tab-pane${this._tab === t.id ? '' : ' d-none'}" data-config-pane="${t.id}" role="tabpanel">
+          ${this.renderTabCards(t.id)}
+        </div>`
     ).join('');
     return `
       <div class="config-general-wrap w-100">
         <div class="config-general-panel">
-          <div class="config-cards-grid">
-            ${this.PASS_CARDS.map((card) => this.renderPassCard(card, this._passMeta[card.opcion] || {})).join('')}
-            ${this.TEXT_CARDS.map((card) => this.renderTextCard(card, this._textMeta[card.opcion] || {})).join('')}
-            ${sinoCards}
-            ${concreCards}
-            ${formatoCards}
-            ${fotoCards}
-            ${felFormatoCards}
-            ${tipofacFinalizadoCards}
-            ${this.renderInvSaldoCard(this._invSaldoPendientes)}
-            ${this.renderCorreccionProductosCard()}
-            ${this.renderCorregirSaldosCxcCard()}
-            ${this.renderCorregirSaldosCxpCard()}
-          </div>
+          <ul class="nav nav-tabs config-general-tabs mb-3" role="tablist">
+            ${tabsNav}
+          </ul>
+          ${panes}
         </div>
       </div>`;
   },
@@ -784,6 +982,22 @@ const ConfigGeneralView = {
   },
 
   bindEvents() {
+    this._container?.querySelectorAll('.config-general-tabs [data-config-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-config-tab');
+        if (!tab || tab === this._tab) return;
+        this._tab = tab;
+        this._container?.querySelectorAll('.config-general-tabs [data-config-tab]').forEach((b) => {
+          const active = b.getAttribute('data-config-tab') === tab;
+          b.classList.toggle('active', active);
+        });
+        this._container?.querySelectorAll('[data-config-pane]').forEach((pane) => {
+          pane.classList.toggle('d-none', pane.getAttribute('data-config-pane') !== tab);
+        });
+        if (tab === 'whatsapp') this.refreshWhatsappStatus().catch(() => {});
+      });
+    });
+
     this.PASS_CARDS.forEach((card) => this.bindPassEvents(card));
     this.TEXT_CARDS.forEach((card) => this.bindTextEvents(card));
 
@@ -826,6 +1040,100 @@ const ConfigGeneralView = {
     document.getElementById('btn-corregir-saldos-cxp')?.addEventListener('click', () => {
       this.onCorregirSaldosCuentas('cxp');
     });
+
+    this.bindWhatsappEvents();
+    if (typeof WhatsappProgramacionUI !== 'undefined') {
+      WhatsappProgramacionUI.bind(this._container);
+    }
+  },
+
+  bindWhatsappEvents() {
+    document.getElementById('btn-wa-connect')?.addEventListener('click', () => {
+      this.onWhatsappConnect(false).catch((err) => F.toast(err.message || 'Error WhatsApp', 'error'));
+    });
+    document.getElementById('btn-wa-refresh')?.addEventListener('click', () => {
+      this.onWhatsappConnect(true).catch((err) => F.toast(err.message || 'Error WhatsApp', 'error'));
+    });
+    document.getElementById('btn-wa-logout')?.addEventListener('click', () => {
+      this.onWhatsappLogout().catch((err) => F.toast(err.message || 'Error WhatsApp', 'error'));
+    });
+    this.bindWhatsappSocket();
+  },
+
+  bindWhatsappSocket() {
+    if (this._whatsappSocketBound) return;
+    const sock =
+      (typeof F !== 'undefined' && typeof F.getSocket === 'function' && F.getSocket()) ||
+      window.OnnebSocket ||
+      null;
+    if (!sock || typeof sock.on !== 'function') return;
+    sock.on('whatsapp:status', (data) => {
+      this._whatsappStatus = data || null;
+      if (this._tab === 'whatsapp') this.paintWhatsappPanel();
+    });
+    this._whatsappSocketBound = true;
+  },
+
+  paintWhatsappPanel() {
+    const login = this._container?.querySelector('#config-wa-login');
+    if (login) {
+      login.innerHTML = this.renderWhatsappPanel();
+      this.bindWhatsappEvents();
+      return;
+    }
+    const pane = this._container?.querySelector('[data-config-pane="whatsapp"]');
+    if (!pane) return;
+    pane.innerHTML = this.renderWhatsappTab();
+    this.bindWhatsappEvents();
+    if (typeof WhatsappProgramacionUI !== 'undefined') {
+      WhatsappProgramacionUI.bind(pane);
+    }
+  },
+
+  async refreshWhatsappStatus() {
+    const data = await F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' });
+    this._whatsappStatus = data;
+    this.paintWhatsappPanel();
+    return data;
+  },
+
+  async onWhatsappConnect(forceNewQr) {
+    const btn = document.getElementById(forceNewQr ? 'btn-wa-refresh' : 'btn-wa-connect');
+    if (btn) btn.disabled = true;
+    try {
+      const data = await F.fetchJson('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceNewQr: Boolean(forceNewQr) }),
+      });
+      this._whatsappStatus = data;
+      this.paintWhatsappPanel();
+      if (data.state === 'ready') F.toast('WhatsApp conectado', 'success');
+      else if (data.state === 'qr') F.toast('Escanee el código QR en WhatsApp', 'info');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
+  async onWhatsappLogout() {
+    const ok = await Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cerrar sesión WhatsApp',
+      html: '<p class="small text-muted text-start mb-0">Se desvinculará el dispositivo del ERP. Deberá escanear un nuevo QR para volver a conectar.</p>',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Cerrar sesión'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+    });
+    if (!ok.isConfirmed) return;
+    const data = await F.fetchJson('/api/whatsapp/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    this._whatsappStatus = data;
+    this.paintWhatsappPanel();
+    F.toast('Sesión WhatsApp cerrada', 'success');
   },
 
   configQuery(opcion) {
@@ -1002,6 +1310,13 @@ const ConfigGeneralView = {
       });
       this._sinoMeta[opcion] = { ...(this._sinoMeta[opcion] || {}), sino: next };
       this.updateSinoButton(btn, next, this.getSinoOption(opcion));
+      if (
+        opcion === 'VISTAS EN PESTAÑAS' &&
+        typeof ViewTabs !== 'undefined' &&
+        typeof ViewTabs.setEnabled === 'function'
+      ) {
+        ViewTabs.setEnabled(next === 'SI');
+      }
       F.toast('Configuración actualizada', 'success');
     } catch (err) {
       F.toast(err.message || 'Error al actualizar', 'error');
@@ -1286,6 +1601,20 @@ const ConfigGeneralView = {
         ...tipofacFinalizadoFetches,
       ];
       if (empNit) fetches.push(this.fetchInvSaldoPendientes());
+      fetches.push(
+        F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' }).catch(() => ({
+          state: 'idle',
+          library: '@whiskeysockets/baileys',
+        }))
+      );
+      if (typeof WhatsappProgramacionUI !== 'undefined') {
+        fetches.push(
+          WhatsappProgramacionUI.load(empNit).catch((err) => {
+            WhatsappProgramacionUI.setLoadError(err.message);
+            return null;
+          })
+        );
+      }
       const results = await Promise.all(fetches);
       let idx = 0;
       const passResults = results.slice(idx, (idx += this.PASS_CARDS.length));
@@ -1296,7 +1625,12 @@ const ConfigGeneralView = {
       const fotoResults = results.slice(idx, (idx += this.FOTO_OPTIONS.length));
       const felFormatoResults = results.slice(idx, (idx += this.FEL_FORMATO_OPTIONS.length));
       const tipofacFinalizadoResults = results.slice(idx, (idx += this.TIPOFAC_FINALIZADO_OPTIONS.length));
-      const invSaldoMeta = empNit ? results[results.length - 1] : { pendientes: 0 };
+      let invSaldoMeta = { pendientes: 0 };
+      if (empNit) {
+        invSaldoMeta = results[idx] || { pendientes: 0 };
+        idx += 1;
+      }
+      this._whatsappStatus = results[idx] || { state: 'idle', library: '@whiskeysockets/baileys' };
 
       this._passMeta = {};
       this.PASS_CARDS.forEach((card, i) => {

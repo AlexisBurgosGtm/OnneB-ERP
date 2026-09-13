@@ -9,12 +9,16 @@ const ReportesClientesView = {
   _loading: false,
   _loadingDetalle: false,
   _clientes: [],
-  _totales: { unidades: 0, precio: 0 },
+  _totales: { unidades: 0, precio: 0, costo: 0, utilidad: 0 },
   _selectedKey: null,
   _detalle: null,
   _chart: null,
   _sortBy: 'precio',
   _filters: { clientes: '', documentos: '', productos: '' },
+
+  utilidadOf(venta, costo) {
+    return (Number(venta) || 0) - (Number(costo) || 0);
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -125,7 +129,7 @@ const ReportesClientesView = {
     });
     const data = await F.fetchJson(`/api/reportes-clientes?${params}`);
     this._clientes = data.clientes || [];
-    this._totales = data.totales || { unidades: 0, precio: 0 };
+    this._totales = data.totales || { unidades: 0, precio: 0, costo: 0, utilidad: 0 };
     return data;
   },
 
@@ -269,6 +273,7 @@ const ReportesClientesView = {
               <span><i class="fa-solid fa-box-open me-1 text-muted"></i>${this.escapeHtml(this.formatQty(c.TOTALUNIDADES))}</span>
               <span class="fw-semibold">${this.escapeHtml(this.formatMoney(c.MONTO))}</span>
             </div>
+            <div class="repcli-client-util small text-muted">Util. ${this.escapeHtml(this.formatMoney(c.UTILIDAD ?? this.utilidadOf(c.MONTO, c.TOTALCOSTO)))}</div>
             <div class="repcli-client-share">${this.escapeHtml(this.formatPct(share))} del total vendido</div>
           </div>`;
       })
@@ -291,8 +296,16 @@ const ReportesClientesView = {
         <div class="repcli-hero-nit">${this.escapeHtml(d.doc_nit || '')}</div>
         <div class="repcli-kpi-row">
           <div class="repcli-kpi">
-            <div class="repcli-kpi-label">Compras</div>
+            <div class="repcli-kpi-label">Venta</div>
             <div class="repcli-kpi-value">${this.escapeHtml(this.formatMoney(r.precio))}</div>
+          </div>
+          <div class="repcli-kpi">
+            <div class="repcli-kpi-label">Costo</div>
+            <div class="repcli-kpi-value">${this.escapeHtml(this.formatMoney(r.costo))}</div>
+          </div>
+          <div class="repcli-kpi">
+            <div class="repcli-kpi-label">Utilidad</div>
+            <div class="repcli-kpi-value">${this.escapeHtml(this.formatMoney(r.utilidad ?? this.utilidadOf(r.precio, r.costo)))}</div>
           </div>
           <div class="repcli-kpi">
             <div class="repcli-kpi-label">Unidades</div>
@@ -333,16 +346,19 @@ const ReportesClientesView = {
       'FEL_SERIE',
       'FEL_NUMERO',
       'TOTALPRECIO',
+      'TOTALCOSTO',
+      'UTILIDAD',
       'DESDOC',
     ], this._filters.documentos);
     if (!rows.length) {
-      return `<tr><td colspan="6" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="8" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     return rows
       .map((r) => {
         const label = `${r.CODDOC || ''} #${r.CORRELATIVO ?? ''}`;
         const fel =
           r.FEL_SERIE || r.FEL_NUMERO ? `${r.FEL_SERIE || ''}-${r.FEL_NUMERO || ''}` : '—';
+        const util = r.UTILIDAD ?? this.utilidadOf(r.TOTALPRECIO, r.TOTALCOSTO);
         return `
           <tr data-coddoc="${this.escapeHtml(r.CODDOC || '')}" data-correlativo="${this.escapeHtml(r.CORRELATIVO ?? '')}"
             data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}" data-desdoc="${this.escapeHtml(r.DESDOC || '')}">
@@ -350,7 +366,9 @@ const ReportesClientesView = {
             <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
             <td>${this.escapeHtml(label)}</td>
             <td class="small text-muted">${this.escapeHtml(fel)}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
             <td class="text-center text-nowrap">
               <button type="button" class="btn btn-sm btn-outline-secondary repcli-print-btn" title="Imprimir documento">
                 <i class="fa-solid fa-print"></i>
@@ -378,7 +396,9 @@ const ReportesClientesView = {
               <th>Tipo</th>
               <th>Documento</th>
               <th>FEL</th>
-              <th class="text-end">Total</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
               <th class="text-center"></th>
             </tr>
           </thead>
@@ -392,16 +412,17 @@ const ReportesClientesView = {
     if (!all.length) return '';
     const rows = this.filterRows(
       all,
-      ['CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALPRECIO'],
+      ['CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALPRECIO', 'TOTALCOSTO', 'UTILIDAD'],
       this._filters.productos
     );
     if (!rows.length) {
-      return `<tr><td colspan="4" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
+      return `<tr><td colspan="6" class="text-center text-muted py-3">Sin coincidencias</td></tr>`;
     }
     const maxPrecio = Math.max(...all.map((r) => Number(r.TOTALPRECIO) || 0), 1);
     return rows
       .map((r) => {
         const pct = ((Number(r.TOTALPRECIO) || 0) / maxPrecio) * 100;
+        const util = r.UTILIDAD ?? this.utilidadOf(r.TOTALPRECIO, r.TOTALCOSTO);
         return `
           <tr>
             <td class="small font-monospace">${this.escapeHtml(r.CODPROD || '—')}</td>
@@ -410,7 +431,9 @@ const ReportesClientesView = {
               <div class="repcli-prod-bar"><span style="width:${pct.toFixed(1)}%"></span></div>
             </td>
             <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(util))}</td>
           </tr>`;
       })
       .join('');
@@ -432,7 +455,9 @@ const ReportesClientesView = {
               <th>Cód.</th>
               <th>Producto</th>
               <th class="text-end">Unidades</th>
-              <th class="text-end">Total</th>
+              <th class="text-end">Costo</th>
+              <th class="text-end">Venta</th>
+              <th class="text-end">Utilidad</th>
             </tr>
           </thead>
           <tbody id="repcli-prods-tbody">${this.renderProductosBody()}</tbody>
@@ -499,7 +524,8 @@ const ReportesClientesView = {
                 <i class="fa-solid fa-rotate me-1"></i>Cargar
               </button>
               <span class="small text-muted ms-1">${this._clientes.length} cliente(s)</span>
-              ${Number(this._totales?.precio) > 0 ? `<span class="small text-primary ms-2 fw-semibold">Total: ${this.escapeHtml(this.formatMoney(this._totales.precio))}</span>` : ''}
+              ${Number(this._totales?.precio) > 0 ? `<span class="small text-primary ms-2 fw-semibold">Venta: ${this.escapeHtml(this.formatMoney(this._totales.precio))}</span>` : ''}
+              ${Number(this._totales?.utilidad) || Number(this._totales?.costo) ? `<span class="small text-success ms-2 fw-semibold">Util.: ${this.escapeHtml(this.formatMoney(this._totales.utilidad ?? this.utilidadOf(this._totales.precio, this._totales.costo)))}</span>` : ''}
             </div>
           </div>
         </div>
@@ -663,7 +689,7 @@ const ReportesClientesView = {
     this.destroyChart();
     this._selectedKey = null;
     this._detalle = null;
-    this._totales = { unidades: 0, precio: 0 };
+    this._totales = { unidades: 0, precio: 0, costo: 0, utilidad: 0 };
     this._filters = { clientes: '', documentos: '', productos: '' };
     const btn = this._container?.querySelector('#btn-repcli-cargar');
     if (btn) btn.disabled = true;
@@ -688,7 +714,7 @@ const ReportesClientesView = {
     this._desde = range.desde;
     this._hasta = range.hasta;
     this._clientes = [];
-    this._totales = { unidades: 0, precio: 0 };
+    this._totales = { unidades: 0, precio: 0, costo: 0, utilidad: 0 };
     this._selectedKey = null;
     this._detalle = null;
     this._sortBy = 'precio';

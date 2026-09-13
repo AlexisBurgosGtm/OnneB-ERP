@@ -1,0 +1,8 @@
+.libros-manuales-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.libros-manuales-wrap .table thead th {
+  white-space: nowrap;
+}

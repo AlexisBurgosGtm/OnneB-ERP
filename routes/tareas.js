@@ -17,7 +17,21 @@ BEGIN
 END;
 `;
 
-let fechaColumnEnsured = false;
+const ENSURE_CODEMPLEADO_SQL = `
+IF COL_LENGTH('dbo.TASKS', 'CODEMPLEADO') IS NULL
+BEGIN
+  ALTER TABLE dbo.TASKS ADD CODEMPLEADO INT NULL;
+END;
+IF NOT EXISTS (
+  SELECT 1 FROM sys.indexes
+  WHERE name = 'IX_TASKS_EMPNIT_CODEMPLEADO' AND object_id = OBJECT_ID('dbo.TASKS')
+)
+BEGIN
+  CREATE INDEX IX_TASKS_EMPNIT_CODEMPLEADO ON dbo.TASKS (EMPNIT, CODEMPLEADO);
+END;
+`;
+
+let schemaEnsured = false;
 
 function normalizePrioridad(value) {
   const s = String(value ?? '').trim().toUpperCase();
@@ -38,6 +52,11 @@ function parseHoraMinuto(raw, label) {
   return null;
 }
 
+function parseCodEmpleado(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function validateTareaPayload(data) {
   if (!String(data.TAREA || '').trim()) return 'TAREA es obligatoria';
   const prioridad = normalizePrioridad(data.PRIORIDAD);
@@ -50,6 +69,10 @@ function validateTareaPayload(data) {
   if (typeof errMin === 'string') return errMin;
   data.PRIORIDAD = prioridad;
   data.ST = estado;
+  if (data.CODEMPLEADO != null) {
+    const cod = parseCodEmpleado(data.CODEMPLEADO);
+    data.CODEMPLEADO = cod;
+  }
   return null;
 }
 
@@ -57,10 +80,11 @@ function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.headers['x-emp-nit'] || '').trim();
 }
 
-async function ensureFechaColumn(pool) {
-  if (fechaColumnEnsured) return;
+async function ensureTasksSchema(pool) {
+  if (schemaEnsured) return;
   await pool.request().query(ENSURE_FECHA_SQL);
-  fechaColumnEnsured = true;
+  await pool.request().query(ENSURE_CODEMPLEADO_SQL);
+  schemaEnsured = true;
 }
 
 const router = express.Router();
@@ -69,9 +93,9 @@ router.use(async (req, res, next) => {
   if (!isDbConfigured()) return next();
   try {
     const pool = await req.app.locals.getDbPool();
-    await ensureFechaColumn(pool);
+    await ensureTasksSchema(pool);
   } catch (err) {
-    console.warn('[API /tareas ensure FECHA]', err.message);
+    console.warn('[API /tareas ensure schema]', err.message);
   }
   next();
 });
@@ -88,7 +112,7 @@ router.use(
     autoId: false,
     identityColumn: true,
     fechaOnInsert: true,
-    listColumns: ['ID', 'FECHA', 'TAREA', 'RESPONSABLE', 'PRIORIDAD', 'ST', 'HORA', 'MINUTO'],
+    listColumns: ['ID', 'FECHA', 'TAREA', 'RESPONSABLE', 'PRIORIDAD', 'ST', 'HORA', 'MINUTO', 'CODEMPLEADO'],
     fields: [
       { name: 'TAREA', type: 'varchar', required: true },
       { name: 'RESPONSABLE', type: 'varchar' },
@@ -96,14 +120,44 @@ router.use(
       { name: 'ST', type: 'varchar', required: true },
       { name: 'HORA', type: 'int' },
       { name: 'MINUTO', type: 'int' },
+      { name: 'CODEMPLEADO', type: 'int' },
     ],
-    insertFields: ['TAREA', 'RESPONSABLE', 'PRIORIDAD', 'ST', 'HORA', 'MINUTO'],
+    insertFields: ['TAREA', 'RESPONSABLE', 'PRIORIDAD', 'ST', 'HORA', 'MINUTO', 'CODEMPLEADO'],
     updateFields: ['TAREA', 'RESPONSABLE', 'PRIORIDAD', 'ST', 'HORA', 'MINUTO'],
-    async validateInsert(_pool, _empnit, data) {
+    requireAdminPassOnDelete: false,
+    buildListFilter(req) {
+      const cod = parseCodEmpleado(req.query.codempleado ?? req.headers['x-cod-empleado']);
+      if (!cod) return null;
+      return {
+        sql: 'AND CODEMPLEADO = @CODEMPLEADO',
+        bind(request, sqlTypes) {
+          request.input('CODEMPLEADO', sqlTypes.Int, cod);
+        },
+      };
+    },
+    async validateInsert(_pool, _empnit, data, req) {
+      const fromBody = parseCodEmpleado(data.CODEMPLEADO);
+      const fromHeader = parseCodEmpleado(req?.headers?.['x-cod-empleado']);
+      data.CODEMPLEADO = fromBody || fromHeader || null;
       return validateTareaPayload(data);
     },
     async validateUpdate(_pool, _empnit, data) {
       return validateTareaPayload(data);
+    },
+    async validateDelete(pool, empnit, id, req) {
+      const cod = parseCodEmpleado(req.query.codempleado ?? req.headers['x-cod-empleado']);
+      if (!cod) return null;
+      const result = await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ID', sql.Int, id)
+        .input('CODEMPLEADO', sql.Int, cod)
+        .query(`
+          SELECT TOP 1 ID FROM dbo.TASKS
+          WHERE EMPNIT = @EMPNIT AND ID = @ID AND CODEMPLEADO = @CODEMPLEADO
+        `);
+      if (!result.recordset.length) return 'Tarea no encontrada';
+      return null;
     },
   })
 );
@@ -124,16 +178,22 @@ router.patch('/:id/estado', async (req, res) => {
   if (!st) {
     return res.status(400).json({ error: 'Estado inválido (PENDIENTE, FINALIZADA)' });
   }
+  const cod = parseCodEmpleado(req.query.codempleado ?? req.headers['x-cod-empleado']);
   try {
     const pool = await req.app.locals.getDbPool();
-    const result = await pool
+    const request = pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .input('ID', sql.Int, id)
-      .input('ST', sql.VarChar, st)
-      .query(`
+      .input('ST', sql.VarChar, st);
+    let ownerSql = '';
+    if (cod) {
+      request.input('CODEMPLEADO', sql.Int, cod);
+      ownerSql = ' AND CODEMPLEADO = @CODEMPLEADO';
+    }
+    const result = await request.query(`
         UPDATE dbo.TASKS SET ST = @ST
-        WHERE EMPNIT = @EMPNIT AND ID = @ID
+        WHERE EMPNIT = @EMPNIT AND ID = @ID${ownerSql}
       `);
     if (result.rowsAffected[0] === 0) {
       return res.status(404).json({ error: 'Tarea no encontrada' });

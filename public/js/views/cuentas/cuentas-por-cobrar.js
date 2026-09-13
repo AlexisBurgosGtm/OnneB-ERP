@@ -376,6 +376,34 @@ const CuentasPorCobrarView = {
     return this.apiUrl(params);
   },
 
+  productosClienteUrl({ codigo, nit, nombre }) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      _: String(Date.now()),
+      codcliente: String(codigo ?? 0),
+    });
+    if (!(Number(codigo) > 0)) {
+      params.set('nit', nit || '');
+      params.set('nombre', nombre || '');
+    }
+    return `/api/cuentas-cobrar/documentos/productos?${params}`;
+  },
+
+  lineasClienteUrl({ codigo, nit, nombre }) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      _: String(Date.now()),
+      codcliente: String(codigo ?? 0),
+    });
+    if (!(Number(codigo) > 0)) {
+      params.set('nit', nit || '');
+      params.set('nombre', nombre || '');
+    }
+    return `/api/cuentas-cobrar/documentos/lineas?${params}`;
+  },
+
   shiftSaldoMes(delta) {
     this.initSaldoMes();
     let mes = this._saldoMes + delta;
@@ -599,6 +627,7 @@ const CuentasPorCobrarView = {
         </tr>`;
       })
       .join('');
+    const totalImporte = rows.reduce((s, r) => s + (Number(r.TOTALPRECIO) || 0), 0);
     const totalAbono = rows.reduce((s, r) => s + (Number(r.DOC_ABONO) || 0), 0);
     const totalSaldo = rows.reduce((s, r) => s + (Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0), 0);
     return `
@@ -618,7 +647,8 @@ const CuentasPorCobrarView = {
           <tbody>${body}</tbody>
           <tfoot class="table-light">
             <tr>
-              <td colspan="5" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td colspan="4" class="text-end fw-semibold">${rows.length} documento(s)</td>
+              <td class="text-end fw-bold" data-cxp-docs-total-precio>${this.escapeHtml(this.formatMoney(totalImporte))}</td>
               <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(totalAbono))}</td>
               <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totalSaldo))}</td>
             </tr>
@@ -626,7 +656,11 @@ const CuentasPorCobrarView = {
         </table>
       </div>
       <p class="small text-muted mt-2 mb-0 text-start">Clic en un documento para ver opciones.</p>
-      <div class="d-flex flex-wrap gap-2 mt-3">
+      <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+        <div class="form-check me-auto mb-0">
+          <input class="form-check-input" type="checkbox" id="cxp-resumen-incluye-productos">
+          <label class="form-check-label small" for="cxp-resumen-incluye-productos">Incluye productos</label>
+        </div>
         <button type="button" class="btn btn-outline-secondary" id="cxp-resumen-print">
           <i class="fa-solid fa-print me-1"></i>Imprimir
         </button>
@@ -634,6 +668,148 @@ const CuentasPorCobrarView = {
           <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp
         </button>
       </div>`;
+  },
+
+  renderResumenProductosTableHtml(rows, totales = null) {
+    const list = rows || [];
+    const totals = totales ||
+      list.reduce(
+        (acc, r) => {
+          acc.totalUnidades += Number(r.TOTALUNIDADES) || 0;
+          acc.totalPrecio += Number(r.TOTALPRECIO) || 0;
+          acc.productos += 1;
+          return acc;
+        },
+        { totalUnidades: 0, totalPrecio: 0, productos: 0 }
+      );
+    if (!list.length) {
+      return '<p class="text-muted small text-center mb-0 py-3">Sin productos en los documentos pendientes</p>';
+    }
+    const body = list
+      .map(
+        (r) => `
+        <tr>
+          <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODPROD || '—')}</td>
+          <td class="text-start">${this.escapeHtml(r.DESPROD || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+          <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+        </tr>`
+      )
+      .join('');
+    return `
+      <div class="table-responsive" style="max-height: 420px">
+        <table class="table table-sm table-hover table-striped mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th class="text-end">Total unidades</th>
+              <th class="text-end">Total precio</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot class="table-light">
+            <tr>
+              <td colspan="2" class="text-end fw-semibold">${totals.productos || list.length} producto(s)</td>
+              <td class="text-end fw-semibold">${this.escapeHtml(this.formatQty(totals.totalUnidades))}</td>
+              <td class="text-end fw-bold text-primary" data-cxp-prods-total-precio>${this.escapeHtml(this.formatMoney(totals.totalPrecio))}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="small text-muted mt-2 mb-0 text-start">Sumas de TOTALUNIDADES y TOTALPRECIO de las líneas de los mismos documentos.</p>`;
+  },
+
+  renderResumenParteModalHtml({ codigoLabel, docsHtml, docsTotalPrecio }) {
+    return `
+      <p class="small text-muted text-start mb-2">Cód. ${this.escapeHtml(codigoLabel)} · documentos con saldo pendiente</p>
+      <ul class="nav nav-tabs cxp-resumen-tabs mb-2" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button type="button" class="nav-link active" data-cxp-tab="docs" role="tab" aria-selected="true">DOCUMENTOS</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button type="button" class="nav-link" data-cxp-tab="prods" role="tab" aria-selected="false">PRODUCTOS</button>
+        </li>
+      </ul>
+      <div class="cxp-resumen-pane" data-cxp-pane="docs">${docsHtml}</div>
+      <div class="cxp-resumen-pane d-none" data-cxp-pane="prods">
+        <p class="text-muted small mb-0 py-3 text-center" data-cxp-prods-placeholder>
+          <i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando productos…
+        </p>
+      </div>
+      <p class="small text-start mt-2 mb-0 d-none" data-cxp-cuadre data-docs-total="${this.escapeHtml(String(docsTotalPrecio))}"></p>`;
+  },
+
+  amountsMatch(a, b) {
+    if (typeof FpagoMatch !== 'undefined' && typeof FpagoMatch.fpagoAmountsMatch === 'function') {
+      return FpagoMatch.fpagoAmountsMatch(a, b);
+    }
+    return Math.abs(Number(a) - Number(b)) <= 0.01;
+  },
+
+  bindResumenParteTabs({ productosUrl, docsTotalPrecio }) {
+    const popup = Swal.getPopup();
+    if (!popup) return;
+    const panes = {
+      docs: popup.querySelector('[data-cxp-pane="docs"]'),
+      prods: popup.querySelector('[data-cxp-pane="prods"]'),
+    };
+    const tabs = popup.querySelectorAll('[data-cxp-tab]');
+    const cuadreEl = popup.querySelector('[data-cxp-cuadre]');
+    let loaded = false;
+    let loading = false;
+
+    const setTab = (key) => {
+      tabs.forEach((btn) => {
+        const active = btn.getAttribute('data-cxp-tab') === key;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      Object.entries(panes).forEach(([k, el]) => {
+        el?.classList.toggle('d-none', k !== key);
+      });
+    };
+
+    const updateCuadre = (prodsTotal) => {
+      if (!cuadreEl) return;
+      const ok = this.amountsMatch(docsTotalPrecio, prodsTotal);
+      cuadreEl.classList.remove('d-none', 'text-success', 'text-danger', 'text-muted');
+      cuadreEl.classList.add(ok ? 'text-success' : 'text-danger');
+      cuadreEl.innerHTML = ok
+        ? `<i class="fa-solid fa-check me-1"></i>Totales cuadran: documentos ${this.escapeHtml(this.formatMoney(docsTotalPrecio))} = productos ${this.escapeHtml(this.formatMoney(prodsTotal))}`
+        : `<i class="fa-solid fa-triangle-exclamation me-1"></i>No cuadran: documentos ${this.escapeHtml(this.formatMoney(docsTotalPrecio))} ≠ productos ${this.escapeHtml(this.formatMoney(prodsTotal))}`;
+    };
+
+    const loadProductos = async () => {
+      if (loaded || loading) return;
+      loading = true;
+      try {
+        const data = await F.fetchJson(productosUrl, { cache: 'no-store' });
+        const rows = data.rows || [];
+        const totales = data.totales || null;
+        const pane = panes.prods;
+        if (pane) pane.innerHTML = this.renderResumenProductosTableHtml(rows, totales);
+        updateCuadre(Number(totales?.totalPrecio) || rows.reduce((s, r) => s + (Number(r.TOTALPRECIO) || 0), 0));
+        loaded = true;
+      } catch (err) {
+        const pane = panes.prods;
+        if (pane) {
+          pane.innerHTML = `<p class="text-danger small text-center mb-0 py-3">${this.escapeHtml(err.message || 'No se pudieron cargar los productos')}</p>`;
+        }
+        F.toast(err.message || 'No se pudieron cargar los productos', 'error');
+      } finally {
+        loading = false;
+      }
+    };
+
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const key = btn.getAttribute('data-cxp-tab');
+        setTab(key);
+        if (key === 'prods') loadProductos();
+      });
+    });
   },
 
   bindModalDocRows(onPick) {
@@ -666,19 +842,22 @@ const CuentasPorCobrarView = {
 
   bindResumenPendientesActions(ctx) {
     const popup = Swal.getPopup();
+    const readIncluyeProductos = () =>
+      Boolean(popup?.querySelector('#cxp-resumen-incluye-productos')?.checked);
     popup?.querySelector('#cxp-resumen-print')?.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      this.imprimirResumenPendientes(ctx).catch((err) =>
+      this.imprimirResumenPendientes({ ...ctx, incluyeProductos: readIncluyeProductos() }).catch((err) =>
         F.toast(err.message || 'No se pudo imprimir', 'error')
       );
     });
     popup?.querySelector('#cxp-resumen-whatsapp')?.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      this.enviarWhatsappResumenPendientes(ctx).catch((err) =>
-        F.toast(err.message || 'No se pudo abrir WhatsApp', 'error')
-      );
+      this.enviarWhatsappResumenPendientes({
+        ...ctx,
+        incluyeProductos: readIncluyeProductos(),
+      }).catch((err) => F.toast(err.message || 'No se pudo abrir WhatsApp', 'error'));
     });
   },
 
@@ -705,22 +884,36 @@ const CuentasPorCobrarView = {
     return parts.join('\n');
   },
 
-  async imprimirResumenPendientes(ctx) {
+  async buildResumenPendientesPrintParts(ctx) {
     if (typeof PrintReport === 'undefined') {
-      F.toast('Impresión no disponible', 'warning');
-      return;
+      throw new Error('Impresión no disponible');
     }
+    await PrintReport.ensureLogo();
     const { partyKind, partyName, codigoLabel, rows } = ctx;
+    const incluyeProductos = Boolean(ctx.incluyeProductos);
     const t = this.resumenPendientesTotales(rows);
     const abonoLabel = partyKind === 'proveedor' ? 'Pagos' : 'Abonos';
     const partyTitle = partyKind === 'proveedor' ? 'Proveedor' : 'Cliente';
     const nit = String(rows?.[0]?.DOC_NIT || '').trim();
     const hoy = this.formatFecha(this.todayIsoDate());
+
+    let lineasByDoc = new Map();
+    if (incluyeProductos && ctx.lineasUrl) {
+      try {
+        const data = await F.fetchJson(ctx.lineasUrl, { cache: 'no-store' });
+        lineasByDoc = this.groupResumenLineasByDoc(data.rows || []);
+      } catch (err) {
+        throw new Error(err.message || 'No se pudieron cargar los productos del resumen');
+      }
+    }
+
     const bodyRows = (rows || []).length
       ? rows
           .map((r) => {
             const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
-            return `<tr>
+            const docKey = this.resumenDocKey(r.CODDOC, r.CORRELATIVO);
+            const lineas = lineasByDoc.get(docKey) || [];
+            let html = `<tr>
               <td>${PrintReport.escapeHtml(this.docResumenLabel(r))}</td>
               <td>${PrintReport.escapeHtml(this.formatFecha(r.FECHA))}</td>
               <td>${PrintReport.escapeHtml(this.formatFecha(r.VENCIMIENTO))}</td>
@@ -728,6 +921,10 @@ const CuentasPorCobrarView = {
               <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(r.DOC_ABONO))}</td>
               <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(saldo))}</td>
             </tr>`;
+            if (incluyeProductos) {
+              html += this.renderResumenDocProductosPrintRows(lineas);
+            }
+            return html;
           })
           .join('')
       : '<tr><td colspan="6" style="text-align:center;color:#666">Sin documentos pendientes</td></tr>';
@@ -740,6 +937,7 @@ const CuentasPorCobrarView = {
           <p><strong>Código:</strong> ${PrintReport.escapeHtml(String(codigoLabel || '—'))}</p>
           ${nit ? `<p><strong>NIT:</strong> ${PrintReport.escapeHtml(nit)}</p>` : ''}
           <p><strong>Fecha:</strong> ${PrintReport.escapeHtml(hoy)}</p>
+          ${incluyeProductos ? '<p><strong>Detalle:</strong> Incluye productos</p>' : ''}
         `,
       })}
       <table class="ecc-table">
@@ -764,34 +962,152 @@ const CuentasPorCobrarView = {
         </tfoot>
       </table>
     `;
-
-    await PrintReport.openAndPrint(
-      () =>
-        PrintReport.wrapDocument({
-          title: 'Facturas pendientes',
-          bodyHtml,
-          extraStyles: `
+    const extraStyles = `
         .ecc-table{font-size:11px}
         .ecc-table th,.ecc-table td{padding:5px 7px}
         .ecc-table tbody tr:nth-child(even){background:#fafafa}
         .ecc-table tfoot td{background:#f0f0f0;border-top:2px solid #999}
-      `,
-        }),
-      'width=900,height=700'
-    );
+        .ecc-doc-prods td{background:#f8fafc;padding:4px 6px;border-top:none}
+        .ecc-doc-prods-inner{width:100%;border-collapse:collapse;font-size:10px;margin:2px 0 6px}
+        .ecc-doc-prods-inner th{background:#e8eef5;font-weight:600;padding:3px 5px;border:1px solid #d0d7de;text-align:left}
+        .ecc-doc-prods-inner td{padding:3px 5px;border:1px solid #e5e7eb}
+        .ecc-doc-prods-inner .text-end{text-align:right}
+      `;
+    const html = PrintReport.wrapDocument({
+      title: 'Facturas pendientes',
+      bodyHtml,
+      extraStyles,
+    });
+    const report = {
+      title: 'Facturas pendientes',
+      empresa: PrintReport.getEmpresaNombre(),
+      partyTitle,
+      partyName: partyName || '—',
+      codigo: String(codigoLabel || '—'),
+      nit,
+      fecha: hoy,
+      abonoLabel,
+      incluyeProductos,
+      rows: (rows || []).map((r) => {
+        const docKey = this.resumenDocKey(r.CODDOC, r.CORRELATIVO);
+        const lineas = lineasByDoc.get(docKey) || [];
+        return {
+          doc: this.docResumenLabel(r),
+          fecha: this.formatFecha(r.FECHA),
+          vence: this.formatFecha(r.VENCIMIENTO),
+          importe: Number(r.TOTALPRECIO) || 0,
+          abono: Number(r.DOC_ABONO) || 0,
+          saldo: Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0,
+          productos: incluyeProductos
+            ? lineas.map((ln) => ({
+                CODPROD: ln.CODPROD,
+                DESPROD: ln.DESPROD,
+                CODMEDIDA: ln.CODMEDIDA,
+                CANTIDAD: ln.CANTIDAD,
+                PRECIO: ln.PRECIO,
+                TOTALPRECIO: ln.TOTALPRECIO,
+              }))
+            : undefined,
+        };
+      }),
+      totals: {
+        importe: t.importe,
+        abono: t.abono,
+        saldo: t.saldo,
+      },
+    };
+    return { html, report, bodyHtml, extraStyles };
+  },
+
+  resumenDocKey(coddoc, correlativo) {
+    return `${String(coddoc || '').trim()}|${String(correlativo ?? '').trim()}`;
+  },
+
+  groupResumenLineasByDoc(lineas) {
+    const map = new Map();
+    for (const ln of lineas || []) {
+      const key = this.resumenDocKey(ln.CODDOC, ln.CORRELATIVO);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(ln);
+    }
+    return map;
+  },
+
+  renderResumenDocProductosPrintRows(lineas) {
+    const list = lineas || [];
+    if (!list.length) {
+      return `<tr class="ecc-doc-prods"><td colspan="6" style="color:#666;font-size:10px;padding-left:1.25rem">Sin líneas de producto</td></tr>`;
+    }
+    const rowsHtml = list
+      .map(
+        (ln) => `
+        <tr>
+          <td>${PrintReport.escapeHtml(ln.CODPROD || '—')}</td>
+          <td>${PrintReport.escapeHtml(ln.DESPROD || '—')}</td>
+          <td>${PrintReport.escapeHtml(ln.CODMEDIDA || '—')}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatQty(ln.CANTIDAD))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(ln.PRECIO))}</td>
+          <td class="text-end">${PrintReport.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+        </tr>`
+      )
+      .join('');
+    return `<tr class="ecc-doc-prods"><td colspan="6">
+      <table class="ecc-doc-prods-inner">
+        <thead>
+          <tr>
+            <th>Cód.</th>
+            <th>Producto</th>
+            <th>Medida</th>
+            <th class="text-end">Cant.</th>
+            <th class="text-end">Precio</th>
+            <th class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </td></tr>`;
+  },
+
+  async imprimirResumenPendientes(ctx) {
+    if (typeof PrintReport === 'undefined') {
+      F.toast('Impresión no disponible', 'warning');
+      return;
+    }
+    const parts = await this.buildResumenPendientesPrintParts(ctx);
+    await PrintReport.openAndPrint(() => parts.html, 'width=900,height=700');
   },
 
   async enviarWhatsappResumenPendientes(ctx) {
-    if (!ctx.rows?.length) {
-      F.toast('No hay documentos para enviar', 'warning');
-      return;
-    }
-    if (typeof DocOpciones === 'undefined') {
+    if (typeof DocOpciones === 'undefined' || typeof DocOpciones.enviarReporteWhatsapp !== 'function') {
       F.toast('WhatsApp no disponible', 'warning');
       return;
     }
-    const text = this.buildResumenPendientesWhatsappText(ctx);
-    await DocOpciones.enviarWhatsappTexto(text);
+    try {
+      const phone = await DocOpciones.solicitarTelefonoWhatsapp();
+      if (!phone) return;
+      const text = this.buildResumenPendientesWhatsappText(ctx);
+      const parts = await this.buildResumenPendientesPrintParts(ctx);
+      const safeCode = String(ctx.codigoLabel || 'cliente').replace(/[^\w\-]+/g, '_');
+      const fileName = `facturas-pendientes-${safeCode}.pdf`;
+      const caption = `Facturas pendientes — ${ctx.partyName || ctx.codigoLabel || ''}`.trim();
+      const result = await DocOpciones.enviarReporteWhatsapp({
+        kind: 'pdf',
+        phone,
+        text,
+        report: parts.report,
+        html: parts.html,
+        fileName,
+        caption,
+      });
+      if (!result || result.cancelled) return;
+      if (result.via === 'wa.me') {
+        F.toast('WhatsApp Web no conectado: se abrió el mensaje de texto', 'info');
+      } else {
+        F.toast('PDF enviado por WhatsApp', 'success');
+      }
+    } catch (err) {
+      F.toast(err.message || 'No se pudo enviar por WhatsApp', 'error');
+    }
   },
 
   async mostrarDocsDeCliente(codigo, { nit = '', nombreKey = '', nombre = '' } = {}) {
@@ -805,16 +1121,22 @@ const CuentasPorCobrarView = {
       didOpen: () => Swal.showLoading(),
     });
     try {
-      const data = await F.fetchJson(this.documentosClienteUrl({ codigo, nit, nombre: nombreKey }), {
+      const partyArgs = { codigo, nit, nombre: nombreKey };
+      const data = await F.fetchJson(this.documentosClienteUrl(partyArgs), {
         cache: 'no-store',
       });
       const rows = data.rows || [];
       const titulo = nombre || rows[0]?.DOC_NOMCLIE || rows[0]?.NEGOCIO || `Cliente ${codigo}`;
       const codigoLabel = Number(codigo) > 0 ? String(codigo) : 'sin código';
+      const docsTotalPrecio = rows.reduce((s, r) => s + (Number(r.TOTALPRECIO) || 0), 0);
       await Swal.fire({
         ...CatalogosUI.modalBase(),
         title: `${titulo}`,
-        html: `<p class="small text-muted text-start mb-2">Cód. ${this.escapeHtml(codigoLabel)} · documentos con saldo pendiente</p>${this.renderResumenDocsTableHtml(rows)}`,
+        html: this.renderResumenParteModalHtml({
+          codigoLabel,
+          docsHtml: this.renderResumenDocsTableHtml(rows),
+          docsTotalPrecio,
+        }),
         width: 960,
         showConfirmButton: false,
         showCancelButton: true,
@@ -825,6 +1147,7 @@ const CuentasPorCobrarView = {
             partyName: titulo,
             codigoLabel,
             rows,
+            lineasUrl: this.lineasClienteUrl(partyArgs),
           };
           this.bindModalDocRows((row) => {
             const coddoc = row.getAttribute('data-coddoc');
@@ -834,6 +1157,10 @@ const CuentasPorCobrarView = {
             this.onRowAction(coddoc, correlativo).catch((err) => F.toast(err.message || 'Error', 'error'));
           });
           this.bindResumenPendientesActions(ctx);
+          this.bindResumenParteTabs({
+            productosUrl: this.productosClienteUrl(partyArgs),
+            docsTotalPrecio,
+          });
         },
       });
     } catch (err) {

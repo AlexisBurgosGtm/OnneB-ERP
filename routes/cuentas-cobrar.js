@@ -23,7 +23,7 @@ const {
 } = require('../lib/cuentas-abono');
 const { fetchEstadoCuentaCliente } = require('../lib/cuentas-estado-cliente');
 const { fetchSaldoMesesCxc } = require('../lib/cuentas-saldo-meses');
-const { fetchConsolidadoProductos, fetchConsolidadoProductoDocumentos } = require('../lib/cuentas-consolidado-productos');
+const { fetchConsolidadoProductos, fetchConsolidadoProductoDocumentos, fetchLineasProductosPorDocumentos } = require('../lib/cuentas-consolidado-productos');
 const {
   fetchResumenPartes,
   partyFilterSql,
@@ -87,6 +87,61 @@ function mapRow(r) {
     CORTE: r.CORTE ?? null,
   };
 }
+
+router.get('/documentos/productos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const hasParty = req.query.codcliente !== undefined && String(req.query.codcliente) !== '';
+  if (!hasParty) {
+    return res.status(400).json({ error: 'codcliente requerido' });
+  }
+  const partyFilter = partyFilterSql(req.query.codcliente, req.query.nit, req.query.nombre);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await fetchConsolidadoProductos(pool, sql, empnit, {
+      tipodocSqlIn: SQL_TIPODOC_CUENTAS_COBRAR_IN,
+      saldoWhereSql: `${SQL_DOC_SALDO_PENDIENTE_POSITIVO} AND ${SQL_TIPODOC_REPORTES_SI}`,
+      partyWhereSql: partyFilter.sql,
+      bindParty: (request) => bindPartyFilter(request, sql, partyFilter),
+    });
+    res.json({ ...data, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/documentos/productos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Líneas de producto por documento (para imprimible con detalle). */
+router.get('/documentos/lineas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const hasParty = req.query.codcliente !== undefined && String(req.query.codcliente) !== '';
+  if (!hasParty) {
+    return res.status(400).json({ error: 'codcliente requerido' });
+  }
+  const partyFilter = partyFilterSql(req.query.codcliente, req.query.nit, req.query.nombre);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await fetchLineasProductosPorDocumentos(pool, sql, empnit, {
+      tipodocSqlIn: SQL_TIPODOC_CUENTAS_COBRAR_IN,
+      saldoWhereSql: `${SQL_DOC_SALDO_PENDIENTE_POSITIVO} AND ${SQL_TIPODOC_REPORTES_SI}`,
+      partyWhereSql: partyFilter.sql,
+      bindParty: (request) => bindPartyFilter(request, sql, partyFilter),
+    });
+    res.json({ ...data, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-cobrar/documentos/lineas]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get('/documentos', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

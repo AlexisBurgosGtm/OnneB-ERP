@@ -145,6 +145,17 @@
   background-color: rgba(220, 53, 69, 0.06);
 }
 
+.swal2-popup .cxp-resumen-tabs .nav-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.4rem 0.85rem;
+}
+
+.swal2-popup .cxp-resumen-tabs .nav-link.active {
+  color: var(--bs-primary, #0d6efd);
+}
+
 .cxp-table tfoot td {
   border-top: 2px solid var(--bs-border-color, #dee2e6);
 }

@@ -67,6 +67,33 @@ const ComprasView = {
     return String(this._config?.muestraDesprod2 || 'NO').trim().toUpperCase() === 'SI';
   },
 
+  muestraPesoEnDocumentos() {
+    return String(this._config?.muestraPesoEnDocumentos || 'NO').trim().toUpperCase() === 'SI';
+  },
+
+  formatPeso(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('es', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  },
+
+  lineTotalPeso(ln) {
+    const stored = Number(ln?.TOTALPESO);
+    if (Number.isFinite(stored)) return stored;
+    return (Number(ln?.PESO) || 0) * (Number(ln?.CANTIDAD) || 0);
+  },
+
+  calcDocTotalPeso(lines) {
+    return (lines || []).reduce((sum, ln) => sum + this.lineTotalPeso(ln), 0);
+  },
+
+  linePesoHtml(ln) {
+    if (!this.muestraPesoEnDocumentos()) return '';
+    const tp = this.lineTotalPeso(ln);
+    if (!tp) return '';
+    return `<div class="small text-muted doc-line-peso">${this.escapeHtml(this.formatPeso(tp))}</div>`;
+  },
+
   renderDesprod2Html(p) {
     if (!this.muestraDesprod2()) return '';
     const des2 = String(p?.DESPROD2 ?? '').trim();
@@ -1123,7 +1150,10 @@ const ComprasView = {
           <td class="small">${this.escapeHtml(ln.DESPROD)}<br><span class="text-muted">${this.escapeHtml(ln.CODMEDIDA)}</span></td>
           <td class="text-end small pos-cart-exist">${this.escapeHtml(this.formatQty(ln.EXISTENCIA))}</td>
           <td class="text-center">${qtyControls}</td>
-          <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALCOSTO))}</td>
+          <td class="text-end">
+            ${this.escapeHtml(this.formatMoney(ln.TOTALCOSTO))}
+            ${this.linePesoHtml(ln)}
+          </td>
           <td class="text-end">${delBtn}</td>
         </tr>`;
       })
@@ -1139,6 +1169,17 @@ const ComprasView = {
     const total = h?.TOTALCOSTO ?? 0;
     const itemCount = lines.reduce((sum, ln) => sum + (Number(ln.CANTIDAD) || 0), 0);
     if (totalEl) totalEl.textContent = this.formatMoney(total);
+    const pesoEl = this._container?.querySelector('#compras-header-peso');
+    if (pesoEl) {
+      if (this.muestraPesoEnDocumentos()) {
+        const tp = this.calcDocTotalPeso(lines);
+        pesoEl.textContent = `Peso: ${this.formatPeso(tp)}`;
+        pesoEl.classList.remove('d-none');
+      } else {
+        pesoEl.textContent = '';
+        pesoEl.classList.add('d-none');
+      }
+    }
     if (itemsEl) {
       itemsEl.textContent = itemCount === 1 ? '1 item' : `${itemCount} items`;
     }
@@ -1232,16 +1273,27 @@ const ComprasView = {
       const lines = compra.lines || [];
       const rows = lines
         .map(
-          (ln) => `<tr>
+          (ln) => {
+            const pesoSuffix =
+              this.muestraPesoEnDocumentos() && this.lineTotalPeso(ln) > 0
+                ? `<span class="doc-line-peso">${this.escapeHtml(this.formatPeso(this.lineTotalPeso(ln)))}</span>`
+                : '';
+            return `<tr>
             <td>${this.escapeHtml(ln.CODPROD)}</td>
             <td>${this.escapeHtml(ln.DESPROD)}</td>
             <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
             <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
-          </tr>`
+            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}${pesoSuffix}</td>
+          </tr>`;
+          }
         )
         .join('');
+      const totalPeso = this.calcDocTotalPeso(lines);
+      const pesoTotalHtml =
+        this.muestraPesoEnDocumentos() && totalPeso > 0
+          ? `<p class="text-end small text-muted">Peso total: ${PrintReport.escapeHtml(this.formatPeso(totalPeso))}</p>`
+          : '';
       await PrintReport.openAndPrint(
         () =>
           PrintReport.wrapDocument({
@@ -1259,6 +1311,7 @@ const ComprasView = {
           <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Precio</th><th class="text-end">Total</th></tr></thead>
           <tbody>${rows || '<tr><td colspan="6">Sin líneas</td></tr>'}</tbody></table>
           <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO ?? h.TOTALCOSTO))}</strong></p>
+          ${pesoTotalHtml}
         `,
           }),
         'width=800,height=600'
@@ -1402,6 +1455,7 @@ const ComprasView = {
               </div>
               <div class="pos-header-summary ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="compras-header-total">Q 0.00</h3>
+                <div class="small text-muted d-none" id="compras-header-peso"></div>
                 <div class="pos-header-items" id="compras-header-items">0 items</div>
               </div>
             </div>

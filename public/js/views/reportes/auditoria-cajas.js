@@ -22,7 +22,7 @@ const AuditoriaCajasView = {
   _totalDocs: 0,
   _selectedRubro: 'facturas-normales',
 
-  DOC_COLSPAN: 12,
+  DOC_COLSPAN: 13,
   TIPODOC_FAC: ['FAC'],
   TIPODOC_FEL: ['FEF', 'FES', 'FEC'],
   TIPODOC_FACTURA: ['FAC', 'FEF', 'FES', 'FEC'],
@@ -316,6 +316,22 @@ const AuditoriaCajasView = {
             <i class="fa-solid fa-print"></i>
           </button>`
       : '<span class="text-muted small">—</span>';
+    const canAnular =
+      !anulado &&
+      !r.ES_RETIRO &&
+      !r.ES_VALE_CAJA &&
+      r.CODDOC != null &&
+      String(r.CODDOC).trim() !== '' &&
+      r.CORRELATIVO != null &&
+      r.CORRELATIVO !== '';
+    const anularBtn = canAnular
+      ? `<button type="button" class="btn btn-sm btn-outline-danger audcaja-doc-anular"
+            title="Anular documento (recalcula corte y regresa inventario)"
+            data-coddoc="${this.escapeHtml(r.CODDOC)}"
+            data-corr="${this.escapeHtml(r.CORRELATIVO)}">
+            <i class="fa-solid fa-ban"></i>
+          </button>`
+      : '';
     const clienteLabel = r.ES_RETIRO
       ? [r.CLIENTE, r.NODOCUMENTO ? `Boleta ${r.NODOCUMENTO}` : null].filter(Boolean).join(' · ')
       : r.CLIENTE || '—';
@@ -336,7 +352,9 @@ const AuditoriaCajasView = {
         <td class="text-end">${this.escapeHtml(this.formatMoneyCell(r.FPAGO_CHEQUE))}</td>
         <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
         <td class="text-center">${this.escapeHtml(r.STATUS)}</td>
-        <td class="text-center text-nowrap" style="width:2.5rem">${printBtn}</td>
+        <td class="text-center text-nowrap" style="width:4.5rem">
+          <div class="d-inline-flex gap-1">${printBtn}${anularBtn}</div>
+        </td>
       </tr>`;
   },
 
@@ -553,7 +571,7 @@ const AuditoriaCajasView = {
                 <th class="text-end">Cheque</th>
                 <th class="text-end">Importe</th>
                 <th class="text-center">Status</th>
-                <th class="text-center" style="width:2.5rem"></th>
+                <th class="text-center" style="width:4.5rem"></th>
               </tr>
             </thead>
             <tbody>${body}</tbody>
@@ -878,6 +896,89 @@ const AuditoriaCajasView = {
         );
       });
     });
+    root?.querySelectorAll('.audcaja-doc-anular').forEach((btn) => {
+      if (btn.dataset.boundAnular === '1') return;
+      btn.dataset.boundAnular = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.anularDocumento(btn.getAttribute('data-coddoc'), btn.getAttribute('data-corr'), btn).catch(
+          (err) => F.toast(err.message || 'No se pudo anular', 'error')
+        );
+      });
+    });
+  },
+
+  async anularDocumento(coddoc, correlativo, btn) {
+    const label = `${coddoc} #${correlativo}`;
+    const ok = await (typeof CatalogosUI !== 'undefined'
+      ? CatalogosUI.fireConfirm({
+          title: '¿Anular documento del corte?',
+          html: `<p class="mb-2">Se anulará <strong>${this.escapeHtml(label)}</strong>.</p>
+            <p class="mb-0 small text-muted">Se devolverá inventario (si aplica) y se recalcularán los totales del corte. Esta acción requiere confirmación.</p>`,
+          icon: 'warning',
+          confirmText: 'Continuar',
+          confirmClass: 'btn-catalogo-eliminar',
+        })
+      : window.confirm(`¿Anular ${label}? Se recalculará el corte y se regresará inventario.`));
+    if (!ok) return;
+
+    let motivo = '';
+    if (typeof Swal !== 'undefined') {
+      const result = await Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        title: 'Motivo de anulación',
+        input: 'textarea',
+        inputPlaceholder: 'Indique el motivo…',
+        inputAttributes: { maxlength: 255 },
+        showCancelButton: true,
+        confirmButtonText: 'Continuar',
+        cancelButtonText: 'Cancelar',
+        inputValidator: (value) => {
+          if (!String(value || '').trim()) return 'El motivo es obligatorio';
+          return null;
+        },
+      });
+      if (!result.isConfirmed) return;
+      motivo = String(result.value || '').trim();
+    } else {
+      motivo = String(window.prompt('Motivo de anulación:') || '').trim();
+      if (!motivo) return;
+    }
+
+    const adminPass = await F.solicitarClaveAdmin({
+      title: 'Autorizar anulación',
+      text: 'Ingrese la clave de administrador para anular el documento del corte.',
+      confirmText: 'Anular',
+      confirmClass: 'btn-catalogo-eliminar',
+    });
+    if (!adminPass) return;
+
+    const okFinal = await (typeof CatalogosUI !== 'undefined'
+      ? CatalogosUI.fireConfirm({
+          title: 'Confirmar anulación',
+          html: `<p class="mb-0">¿Confirma anular <strong>${this.escapeHtml(label)}</strong> y recalcular el corte?</p>`,
+          icon: 'warning',
+          confirmText: 'Anular',
+          confirmClass: 'btn-catalogo-eliminar',
+        })
+      : window.confirm(`Confirmar anulación de ${label}`));
+    if (!okFinal) return;
+
+    if (btn) btn.disabled = true;
+    try {
+      const emp = F.getEmpNit();
+      const url = `/api/auditoria-cajas/cortes/${encodeURIComponent(this._corte.ID)}/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/anular?empnit=${encodeURIComponent(emp)}`;
+      await F.fetchJson(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo, adminPass }),
+      });
+      F.toast(`Documento ${label} anulado. Totales del corte recalculados.`, 'success');
+      await this.openDetalle(this._corte.ID);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   },
 
   bindDetailGrupoEvents() {
