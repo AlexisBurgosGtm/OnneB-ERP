@@ -160,6 +160,64 @@
   border-top: 2px solid var(--bs-border-color, #dee2e6);
 }
 
+.cxp-lista-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cxp-lista-tools-search {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.cxp-lista-tools-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cxp-lista-modo {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 6.5rem;
+  border: 0;
+}
+
+.cxp-lista-modo--todas {
+  background: #0d6efd;
+}
+
+.cxp-lista-modo--todas:hover,
+.cxp-lista-modo--todas:focus {
+  background: #0b5ed7;
+  color: #fff;
+}
+
+.cxp-lista-modo--vencidas {
+  background: #dc3545;
+}
+
+.cxp-lista-modo--vencidas:hover,
+.cxp-lista-modo--vencidas:focus {
+  background: #bb2d3b;
+  color: #fff;
+}
+
+@media (max-width: 575.98px) {
+  .cxp-lista-tools,
+  .cxp-lista-tools-actions {
+    width: 100%;
+  }
+
+  .cxp-lista-tools-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
 @media (max-width: 767.98px) {
   .cxp-summary {
     width: 100%;

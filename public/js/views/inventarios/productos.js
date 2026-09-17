@@ -1107,6 +1107,7 @@ const ProductosView = {
           ${this.opcionPickBtn('ventas', 'fa-solid fa-cart-shopping', 'Ventas')}
           ${this.opcionPickBtn('compras', 'fa-solid fa-truck', 'Compras')}
           ${this.opcionPickBtn('copiar', 'fa-solid fa-copy', 'Copiar Producto')}
+          ${this.opcionPickBtn('cambiar-codigo', 'fa-solid fa-pen-to-square', 'Cambiar código')}
         </div>`,
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
@@ -1121,10 +1122,102 @@ const ProductosView = {
             else if (opcion === 'ventas') await this.showReporteVentas(codprod);
             else if (opcion === 'compras') await this.showReporteCompras(codprod);
             else if (opcion === 'copiar') await this.onCopiarProducto(codprod);
+            else if (opcion === 'cambiar-codigo') await this.onCambiarCodigoProducto(codprod);
           });
         });
       },
     });
+  },
+
+  async onCambiarCodigoProducto(codprod) {
+    const actual = String(codprod || '').trim();
+    if (!actual) return;
+    const form = await CatalogosUI.fireForm({
+      title: 'Cambiar código',
+      confirmText: 'Ejecutar',
+      width: 480,
+      html: `
+        <div class="mb-3">
+          <label class="form-label" for="prod-cod-actual">Código de producto actual</label>
+          <input type="text" class="form-control" id="prod-cod-actual" value="${this.escapeHtml(actual)}" readonly>
+        </div>
+        <div class="mb-0">
+          <label class="form-label" for="prod-cod-nuevo">Nuevo código de producto</label>
+          <input type="text" class="form-control" id="prod-cod-nuevo" maxlength="50" autocomplete="off" placeholder="Escriba el nuevo código">
+        </div>`,
+      didOpen: (popup) => {
+        const input = popup.querySelector('#prod-cod-nuevo');
+        if (input) {
+          input.focus();
+          input.select?.();
+        }
+      },
+      preConfirm: (popup) => {
+        const nuevo = String(popup.querySelector('#prod-cod-nuevo')?.value || '').trim();
+        if (!nuevo) {
+          Swal.showValidationMessage('Ingrese el nuevo código de producto');
+          return false;
+        }
+        if (nuevo.toUpperCase() === actual.toUpperCase()) {
+          Swal.showValidationMessage('El nuevo código debe ser distinto al actual');
+          return false;
+        }
+        return { nuevo };
+      },
+    });
+    if (!form) return;
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Cambiar código?',
+      html: `<p class="mb-0">Se reemplazará el código <strong>${this.escapeHtml(actual)}</strong> por <strong>${this.escapeHtml(form.nuevo)}</strong> en productos, precios, saldos e historial de documentos de esta sucursal.</p>
+        <p class="small text-muted mt-2 mb-0">Esta acción no se puede deshacer fácilmente.</p>`,
+      icon: 'warning',
+      confirmText: 'Sí, cambiar',
+      confirmClass: 'btn-catalogo-guardar',
+    });
+    if (!ok) return;
+
+    Swal.fire({
+      ...CatalogosUI.modalBase(),
+      title: 'Cambiando código…',
+      html: '<p class="mb-0 text-muted">Verificando y actualizando registros…</p>',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showConfirmButton: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    try {
+      const data = await F.fetchJson(this.apiBase(`/${encodeURIComponent(actual)}/cambiar-codigo`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevoCodprod: form.nuevo }),
+      });
+      Swal.close();
+      if (this._selectedCodprod && String(this._selectedCodprod) === actual) {
+        this._selectedCodprod = data.codprodNuevo || form.nuevo;
+      }
+      if (this._formMode === 'edit' && this._formCodprod && String(this._formCodprod) === actual) {
+        this._formCodprod = data.codprodNuevo || form.nuevo;
+        if (this._formRow) this._formRow.CODPROD = this._formCodprod;
+      }
+      if (this._preciosModalCodprod && String(this._preciosModalCodprod) === actual) {
+        this._preciosModalCodprod = data.codprodNuevo || form.nuevo;
+      }
+      F.toast(`Código cambiado a ${data.codprodNuevo || form.nuevo}`, 'success');
+      if (this._screen === 'form' && this._formMode === 'edit') {
+        await this.showForm(this._formCodprod);
+      } else {
+        await this.showListWithProduct(data.codprodNuevo || form.nuevo);
+      }
+    } catch (err) {
+      Swal.close();
+      if (err?.payload?.code === 'CODPROD_EXISTS' || /ya existe/i.test(err?.message || '')) {
+        F.alert('Código existente', err.message || 'Ya existe un producto con ese código', 'warning');
+        return;
+      }
+      F.toast(err.message || 'No se pudo cambiar el código', 'error');
+    }
   },
 
   async onCopiarProducto(codprod) {

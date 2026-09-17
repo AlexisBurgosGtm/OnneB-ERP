@@ -16,8 +16,10 @@ const {
   readProductoFotoBuffer,
   saveProductoFoto,
   removeProductoFotos,
+  renameProductoFotos,
 } = require('../lib/producto-fotos');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
+const { cambiarCodigoProducto } = require('../lib/producto-cambiar-codigo');
 
 const router = express.Router();
 const uploadFoto = multer({
@@ -727,6 +729,32 @@ router.patch('/:codprod/habilitado', async (req, res) => {
   } catch (err) {
     console.warn('[API PATCH /productos/:codprod/habilitado]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:codprod/cambiar-codigo', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const codprod = String(req.params.codprod || '').trim();
+  if (!codprod) return res.status(400).json({ error: 'CODPROD inválido' });
+  const nuevo = String(req.body?.nuevoCodprod ?? req.body?.CODPROD_NUEVO ?? req.body?.codprodNuevo ?? '').trim();
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await cambiarCodigoProducto(pool, empnit, codprod, nuevo);
+    let fotoRenombrada = false;
+    try {
+      fotoRenombrada = await renameProductoFotos(pool, empnit, result.codprodAnterior, result.codprodNuevo);
+    } catch (fotoErr) {
+      console.warn('[API POST /productos/:codprod/cambiar-codigo] foto', fotoErr.message);
+    }
+    res.json({ ...result, empnit, fotoRenombrada: Boolean(fotoRenombrada) });
+  } catch (err) {
+    console.warn('[API POST /productos/:codprod/cambiar-codigo]', err.message);
+    res.status(err.statusCode || 500).json({
+      error: err.message,
+      code: err.code || undefined,
+    });
   }
 });
 

@@ -9,6 +9,7 @@ const CuentasPorCobrarView = {
   _sumTotal: 0,
   _truncated: false,
   _filterQuery: '',
+  _listaModo: 'todas',
   _vistaTipo: 'lista',
   _calYear: null,
   _calMonth: null,
@@ -421,16 +422,21 @@ const CuentasPorCobrarView = {
   },
 
   filteredRows() {
-    return (this._rows || []).filter((r) => {
+    const rows = (this._rows || []).filter((r) => {
       const saldo = Number(r.SALDO_PENDIENTE ?? r.DOC_SALDO) || 0;
       return saldo > 0.005;
     });
+    if (this._vistaTipo === 'lista' && this._listaModo === 'vencidas') {
+      return rows.filter((r) => this.isVencido(r));
+    }
+    return rows;
   },
 
   async fetchDocumentos() {
     const params = { _: String(Date.now()) };
     const q = this._filterQuery.trim();
     if (q) params.q = q;
+    if (this._vistaTipo === 'lista' && this._listaModo === 'vencidas') params.vencidas = '1';
     const data = await F.fetchJson(this.apiUrl(params), { cache: 'no-store' });
     this._rows = data.rows || [];
     this._total = Number(data.total) || this._rows.length;
@@ -500,7 +506,10 @@ const CuentasPorCobrarView = {
   renderTableBodyHtml() {
     const rows = this.filteredRows();
     if (!rows.length) {
-      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay facturas al crédito con saldo pendiente</td></tr>`;
+      const msg = this._vistaTipo === 'lista' && this._listaModo === 'vencidas'
+        ? 'No hay facturas vencidas con saldo pendiente'
+        : 'No hay facturas al crédito con saldo pendiente';
+      return `<tr><td colspan="9" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1620,6 +1629,90 @@ const CuentasPorCobrarView = {
     }
   },
 
+  renderListaToolsHtml({ placeholder, corregirTitle, truncHint }) {
+    const soloLista = this._vistaTipo === 'lista';
+    const vencidas = this._listaModo === 'vencidas';
+    const extra = soloLista
+      ? `
+        <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="cxp-btn-exportar" title="Exportar el listado a Excel">
+          <i class="fa-solid fa-file-excel me-1"></i>Exportar
+        </button>
+        <button type="button" class="btn btn-sm cxp-lista-modo ${vencidas ? 'cxp-lista-modo--vencidas' : 'cxp-lista-modo--todas'}" id="cxp-lista-modo" title="Alternar entre todas y vencidas">
+          ${vencidas ? 'VENCIDAS' : 'TODAS'}
+        </button>`
+      : '';
+    return `
+        <div class="card shadow-sm mb-3">
+          <div class="card-body py-2">
+            <div class="cxp-lista-tools">
+              <div class="cxp-lista-tools-search">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                  <input type="search" class="form-control" id="cxp-search"
+                    placeholder="${this.escapeHtml(placeholder)}"
+                    value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+                </div>
+              </div>
+              <div class="cxp-lista-tools-actions">
+                <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
+                  title="${this.escapeHtml(corregirTitle)}">
+                  <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
+                </button>
+                ${extra}
+              </div>
+            </div>
+            ${truncHint}
+          </div>
+        </div>`;
+  },
+
+  async onToggleListaModo() {
+    this._listaModo = this._listaModo === 'vencidas' ? 'todas' : 'vencidas';
+    try {
+      this._loading = true;
+      await this.fetchDocumentos();
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    } catch (err) {
+      F.toast(err.message || 'No se pudo filtrar la lista', 'error');
+    } finally {
+      this._loading = false;
+    }
+  },
+
+  async onExportListaExcel() {
+    if (this._exporting) return;
+    this._exporting = true;
+    const btn = this._container?.querySelector('#cxp-btn-exportar');
+    if (btn) btn.disabled = true;
+    try {
+      const params = { format: 'xlsx', _: String(Date.now()) };
+      const q = this._filterQuery.trim();
+      if (q) params.q = q;
+      if (this._listaModo === 'vencidas') params.vencidas = '1';
+      const res = await fetch(this.apiUrl(params), { cache: 'no-store' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const match = dispo.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : 'cuentas.xlsx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      F.toast('Excel exportado', 'success');
+    } catch (err) {
+      F.toast(err.message || 'No se pudo exportar', 'error');
+    } finally {
+      this._exporting = false;
+      if (btn) btn.disabled = false;
+    }
+  },
+
   renderShell() {
     const count = this.filteredRows().length;
     const truncHint = this._truncated
@@ -1656,24 +1749,11 @@ const CuentasPorCobrarView = {
         </div>
         ${
           showListaTools
-            ? `
-        <div class="card shadow-sm mb-3">
-          <div class="card-body py-2">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <div class="input-group input-group-sm flex-grow-1" style="min-width: 12rem;">
-                <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input type="search" class="form-control" id="cxp-search"
-                  placeholder="Buscar documento, cliente, empleado, NIT… (Enter)"
-                  value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-warning text-nowrap" id="cxp-btn-corregir-saldos"
-                title="Recalcular saldos y abonos de facturas al crédito">
-                <i class="fa-solid fa-arrows-rotate me-1"></i>Corregir saldos
-              </button>
-            </div>
-            ${truncHint}
-          </div>
-        </div>`
+            ? this.renderListaToolsHtml({
+              placeholder: 'Buscar documento, cliente, empleado, NIT… (Enter)',
+              corregirTitle: 'Recalcular saldos y abonos de facturas al crédito',
+              truncHint,
+            })
             : ''
         }
         ${contentHtml}
@@ -2740,7 +2820,16 @@ const CuentasPorCobrarView = {
 
     const switchVista = async (value) => {
       if (value === this._vistaTipo) return;
+      const prev = this._vistaTipo;
       this._vistaTipo = value;
+      if ((prev === 'lista' && value !== 'lista' && this._listaModo === 'vencidas')
+        || (value === 'lista' && prev !== 'lista' && this._listaModo === 'vencidas')) {
+        try {
+          await this.fetchDocumentos();
+        } catch (err) {
+          F.toast(err.message || 'Error al cargar documentos', 'error');
+        }
+      }
       if (value === 'calendario') this.initCalMonth();
       if (value === 'saldo-meses') {
         this.initSaldoMes();
@@ -2851,6 +2940,12 @@ const CuentasPorCobrarView = {
 
     this._container?.querySelector('#cxp-btn-corregir-saldos')?.addEventListener('click', () => {
       this.corregirSaldos().catch((err) => F.toast(err.message || 'Error al corregir saldos', 'error'));
+    });
+    this._container?.querySelector('#cxp-btn-exportar')?.addEventListener('click', () => {
+      this.onExportListaExcel().catch((err) => F.toast(err.message || 'No se pudo exportar', 'error'));
+    });
+    this._container?.querySelector('#cxp-lista-modo')?.addEventListener('click', () => {
+      this.onToggleListaModo().catch((err) => F.toast(err.message || 'No se pudo filtrar la lista', 'error'));
     });
 
     const onRowPick = (row) => {

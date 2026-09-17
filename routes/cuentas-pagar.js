@@ -26,6 +26,12 @@ const {
   SQL_NOMBRE_PROVEEDOR,
   SQL_JOIN_PROVEEDORES,
 } = require('../lib/cuentas-resumen-partes');
+const {
+  sendCuentasListaExcel,
+  wantsVencidas,
+  wantsXlsx,
+  SQL_SOLO_VENCIDAS,
+} = require('../lib/cuentas-excel');
 
 const router = express.Router();
 const DEFAULT_LIMIT = 500;
@@ -144,15 +150,17 @@ router.get('/documentos', async (req, res) => {
 
   const q = String(req.query.q || '').trim();
   const qLike = q ? `%${q}%` : null;
+  const soloVencidas = wantsVencidas(req.query);
+  const asExcel = wantsXlsx(req.query);
   const hasParty = req.query.codprov !== undefined && String(req.query.codprov) !== '';
   const partyFilter = hasParty
     ? partyFilterSql(req.query.codprov, req.query.nit, req.query.nombre)
     : null;
-  let limit = DEFAULT_LIMIT;
+  let limit = asExcel ? 20000 : DEFAULT_LIMIT;
   const requested = parseInt(req.query.limit, 10);
-  if (!Number.isNaN(requested)) {
+  if (!asExcel && !Number.isNaN(requested)) {
     limit = Math.min(Math.max(requested, 1), hasParty ? PARTY_DOC_LIMIT : SEARCH_LIMIT);
-  } else if (hasParty) {
+  } else if (!asExcel && hasParty) {
     limit = PARTY_DOC_LIMIT;
   }
 
@@ -175,6 +183,7 @@ router.get('/documentos', async (req, res) => {
         AND d.STATUS = '${STATUS_OPERADO}'
         AND ISNULL(d.CONCRE, 'CON') = 'CRE'
         AND ${SQL_DOC_SALDO_PENDIENTE_POSITIVO}
+        ${soloVencidas ? SQL_SOLO_VENCIDAS : ''}
         ${partyWhere}
         AND (
           @q IS NULL OR @q = ''
@@ -248,6 +257,30 @@ router.get('/documentos', async (req, res) => {
 
     const rows = listRes.recordset.map(mapRow);
     const total = Number(totals.total) || 0;
+
+    if (asExcel) {
+      const safeEmp = String(empnit).replace(/[^\w-]+/g, '_');
+      await sendCuentasListaExcel(res, {
+        filename: `cuentas_pagar_${soloVencidas ? 'vencidas' : 'todas'}_${safeEmp}.xlsx`,
+        sheetName: soloVencidas ? 'Vencidas' : 'Todas',
+        columns: [
+          { header: 'Empleado', key: 'EMPLEADO', width: 22 },
+          { header: 'Fecha', key: 'FECHA', width: 14, type: 'date' },
+          { header: 'Vence', key: 'VENCIMIENTO', width: 14, type: 'date' },
+          { header: 'Documento', key: 'DOCUMENTO', width: 18 },
+          { header: 'Proveedor', key: 'DOC_NOMCLIE', width: 28 },
+          { header: 'Empresa', key: 'NEGOCIO', width: 24 },
+          { header: 'Total', key: 'TOTALPRECIO', width: 14, type: 'number' },
+          { header: 'Pagos', key: 'DOC_ABONO', width: 14, type: 'number' },
+          { header: 'Doc. saldo', key: 'DOC_SALDO', width: 14, type: 'number' },
+        ],
+        rows: rows.map((row) => ({
+          ...row,
+          DOCUMENTO: `${row.CODDOC || ''} #${row.CORRELATIVO ?? ''}`,
+        })),
+      });
+      return;
+    }
 
     res.json({
       rows,
