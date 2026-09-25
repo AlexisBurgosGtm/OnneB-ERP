@@ -71,9 +71,21 @@
 
 @media (max-width: 768px) {
   #view-login.login-parallax-active .login-layout {
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
-    padding: 1rem 1rem 1.25rem;
+    padding: 1rem 1rem clamp(2.5rem, 10vh, 4rem);
+  }
+}
+
+@media (max-width: 480px) {
+  #view-login.login-parallax-active .login-layout {
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0.75rem clamp(3rem, 14vh, 5rem);
+  }
+
+  #view-login.login-parallax-active .login-glass-card {
+    max-width: min(360px, 100%);
   }
 }
 
