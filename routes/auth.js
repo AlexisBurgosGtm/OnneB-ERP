@@ -12,6 +12,14 @@ const {
 } = require('../lib/webauthn');
 const { getSettingSino, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
 const { assertEmpnitAllowed } = require('../lib/default-empnit');
+const { isRemoteDbContext } = require('../lib/db-context');
+const { getRemoteDbPool } = require('../lib/remote-db-pool');
+const { isUpdateDbConfigured } = require('../config/update-database');
+
+function isRemoteLoginRequest(req) {
+  const mode = String(req.headers['x-db-mode'] || req.body?.dbMode || 'local').toLowerCase();
+  return mode === 'remote';
+}
 
 const router = express.Router();
 
@@ -59,8 +67,14 @@ router.get('/biometric-config', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (!isDbConfigured()) {
+  const isRemote = isRemoteLoginRequest(req) || isRemoteDbContext();
+  if (!isRemote && !isDbConfigured()) {
     return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  if (isRemote && !isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (requerida para modo remoto)',
+    });
   }
 
   const empnit = String(req.body?.empnit || req.body?.EMPNIT || '').trim();
@@ -70,10 +84,12 @@ router.post('/login', async (req, res) => {
   if (!empnit) {
     return res.status(400).json({ error: 'Empresa obligatoria' });
   }
-  try {
-    assertEmpnitAllowed(empnit);
-  } catch (err) {
-    return res.status(err.statusCode || 403).json({ error: err.message });
+  if (!isRemote) {
+    try {
+      assertEmpnitAllowed(empnit);
+    } catch (err) {
+      return res.status(err.statusCode || 403).json({ error: err.message });
+    }
   }
   if (!usuario) {
     return res.status(400).json({ error: 'Usuario obligatorio' });
@@ -83,7 +99,16 @@ router.post('/login', async (req, res) => {
   }
 
   try {
-    const pool = await req.app.locals.getDbPool();
+    let pool;
+    try {
+      pool = isRemote ? await getRemoteDbPool(empnit) : await req.app.locals.getDbPool();
+    } catch (connErr) {
+      console.warn('[API POST /auth/login] conexión:', connErr?.message || connErr);
+      const msg = connErr.message || (isRemote
+        ? 'No se pudo conectar al servidor remoto'
+        : 'No se pudo conectar a la base de datos');
+      return res.status(503).json({ error: msg });
+    }
     await ensurePasskeyColumn(pool);
     const permiteBiometrico = await getPermiteBiometrico(pool);
 

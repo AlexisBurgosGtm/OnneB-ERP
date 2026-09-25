@@ -28,10 +28,14 @@ const {
 } = require('../lib/cuentas-resumen-partes');
 const {
   sendCuentasListaExcel,
+  sendCuentasSaldoMesesExcel,
+  saldoMesesSheetLabel,
+  saldoMesesFilename,
   wantsVencidas,
   wantsXlsx,
   SQL_SOLO_VENCIDAS,
 } = require('../lib/cuentas-excel');
+const { fetchSaldoMesesCxp } = require('../lib/cuentas-saldo-meses');
 
 const router = express.Router();
 const DEFAULT_LIMIT = 500;
@@ -297,6 +301,42 @@ router.get('/documentos', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /cuentas-pagar/documentos]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/saldo-meses', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await fetchSaldoMesesCxp(pool, sql, empnit, {
+      mes: req.query.mes,
+      anio: req.query.anio,
+    });
+    if (wantsXlsx(req.query)) {
+      await sendCuentasSaldoMesesExcel(res, {
+        filename: saldoMesesFilename('cxp', data.mes, data.anio, empnit),
+        sheetName: saldoMesesSheetLabel(data.mes, data.anio),
+        columns: [
+          { header: 'Cód. proveedor', key: 'CODIGO', width: 12 },
+          { header: 'Proveedor', key: 'NOMBRE', width: 28 },
+          { header: 'Empresa', key: 'NEGOCIO', width: 24 },
+          { header: 'NIT', key: 'NIT', width: 16 },
+          { header: 'Saldo anterior', key: 'SALDO_ANTERIOR', width: 16, type: 'number' },
+          { header: 'Créditos del mes', key: 'CREDITOS', width: 16, type: 'number' },
+          { header: 'Pagos del mes', key: 'ABONOS', width: 16, type: 'number' },
+          { header: 'Saldo actual', key: 'SALDO_ACTUAL', width: 16, type: 'number' },
+        ],
+        data,
+      });
+      return;
+    }
+    res.json({ ...data, empnit });
+  } catch (err) {
+    console.warn('[API GET /cuentas-pagar/saldo-meses]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

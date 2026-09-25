@@ -9,6 +9,8 @@ const { Server } = require('socket.io');
 const sql = require('mssql');
 const { getDbConfig, isDbConfigured } = require('./config/database');
 const { registerSocketHandlers } = require('./lib/socket-hub');
+const { runWithDbContext, getDbContext } = require('./lib/db-context');
+const { getRemoteDbPool } = require('./lib/remote-db-pool');
 
 const PORT = process.env.PORT || 6500;
 
@@ -47,7 +49,7 @@ async function createDbPool(dbConfig) {
 /**
  * Pool SQL con reconexión automática si la conexión local se cae.
  */
-async function getDbPool() {
+async function getLocalDbPool() {
   const dbConfig = getDbConfig();
   if (!dbConfig) return null;
 
@@ -82,6 +84,14 @@ async function getDbPool() {
   } finally {
     dbConnecting = null;
   }
+}
+
+async function getDbPool() {
+  const ctx = getDbContext();
+  if (ctx.mode === 'remote' && ctx.empnit) {
+    return getRemoteDbPool(ctx.empnit);
+  }
+  return getLocalDbPool();
 }
 
 const empresasRouter = require('./routes/empresas');
@@ -178,6 +188,15 @@ const { getAppToken } = require('./lib/app-token');
 
 /** Logo empresa: hasta ~512 KB binario → ~1 MB hex en JSON + demás campos del formulario. */
 app.use(express.json({ limit: '3mb' }));
+
+app.use((req, res, next) => {
+  const mode = String(req.headers['x-db-mode'] || req.body?.dbMode || 'local').toLowerCase();
+  const empnit = String(
+    req.headers['x-emp-nit'] || req.query?.empnit || req.body?.empnit || req.body?.EMPNIT || ''
+  ).trim();
+  runWithDbContext({ mode, empnit }, () => next());
+});
+
 app.locals.getDbPool = getDbPool;
 app.locals.io = io;
 

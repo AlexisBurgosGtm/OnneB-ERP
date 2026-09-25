@@ -146,6 +146,55 @@ router.get('/empresas-sync', async (req, res) => {
 });
 
 /**
+ * Empresas con conexión remota configurada (login Modo Remoto).
+ * Solo EMPNIT / EMPNOMBRE — sin credenciales de servidor.
+ */
+router.get('/empresas-sync-remoto', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const token = getAppToken();
+  if (!token) {
+    return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  }
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+  try {
+    const pool = await getUpdateDbPool();
+    const tokenCheck = await checkTokenActivo(pool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+    const result = await pool
+      .request()
+      .input('TOKEN', sql.VarChar, token)
+      .query(`
+        SELECT
+          LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) AS EMPNIT,
+          LTRIM(RTRIM(ISNULL(EMPNOMBRE, ''))) AS EMPNOMBRE
+        FROM dbo.COMMUNITY_EMPRESAS_SYNC
+        WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
+          AND NULLIF(LTRIM(RTRIM(SERVER_IP)), '') IS NOT NULL
+          AND NULLIF(LTRIM(RTRIM(SERVER_DB)), '') IS NOT NULL
+          AND NULLIF(LTRIM(RTRIM(SERVER_USER)), '') IS NOT NULL
+        ORDER BY EMPNOMBRE, EMPNIT
+      `);
+    res.json({
+      token,
+      rows: result.recordset || [],
+    });
+  } catch (err) {
+    console.warn('[API GET /community/empresas-sync-remoto]', err.message);
+    res.status(500).json({ error: err.message || 'Error al consultar sedes remotas' });
+  }
+});
+
+/**
  * Sube PRODUCTOS / PRECIOS / INVSALDO → COMMUNITY_* (EMPNIT=GENERAL, TOKEN app).
  * Usa bulk insert (SqlBulkCopy) por lotes.
  */

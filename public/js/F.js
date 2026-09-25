@@ -163,6 +163,16 @@ let F = {
     return user?.empNombre ?? window.OnnebContext?.empNombre ?? '';
   },
 
+  /** local | remote — sede remota vía COMMUNITY_EMPRESAS_SYNC */
+  getDbMode() {
+    const user = this.session('user');
+    return user?.dbMode === 'remote' ? 'remote' : 'local';
+  },
+
+  isRemoteSession() {
+    return this.getDbMode() === 'remote';
+  },
+
   /**
    * CODTIPOEMPRESA: 1 PRINCIPAL, 2 SUCURSAL.
    * @returns {number|null}
@@ -281,8 +291,15 @@ let F = {
       empNit,
       empNombre,
       codTipoEmpresa: tip,
+      dbMode: prev.dbMode || 'local',
     };
-    this.session('user', { ...prev, empNit, empNombre, codTipoEmpresa: tip });
+    this.session('user', {
+      ...prev,
+      empNit,
+      empNombre,
+      codTipoEmpresa: tip,
+      dbMode: prev.dbMode || 'local',
+    });
   },
 
   async ensureCodTipoEmpresa() {
@@ -368,6 +385,10 @@ let F = {
       } catch {
         /* sesión no disponible */
       }
+      const dbMode = options.dbMode || this.getDbMode();
+      const empnit = options.empnit || this.getEmpNit();
+      if (dbMode === 'remote') headers['X-Db-Mode'] = 'remote';
+      if (empnit) headers['X-Emp-Nit'] = String(empnit);
       const res = await fetch(url, {
         cache: options.cache ?? 'no-store',
         ...options,

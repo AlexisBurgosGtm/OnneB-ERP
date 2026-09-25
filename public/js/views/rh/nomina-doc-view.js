@@ -149,6 +149,13 @@ function createNominaDocView(cfg) {
               <i class="fa-solid fa-print me-1"></i>Imprimir
             </button>
             ${
+              cfg.allowEnviarRecibos && String(r.STATUS) === 'F'
+                ? `<button type="button" class="btn btn-sm btn-outline-success inv-card-btn" data-action="enviar-recibos">
+              <i class="fa-brands fa-whatsapp me-1"></i>Enviar recibos
+            </button>`
+                : ''
+            }
+            ${
               String(r.STATUS) !== 'F'
                 ? `<button type="button" class="btn btn-sm btn-outline-danger inv-card-btn" data-action="eliminar">
               <i class="fa-solid fa-trash me-1"></i>Eliminar
@@ -808,6 +815,7 @@ function createNominaDocView(cfg) {
         const action = btn?.dataset.action;
         if (action === 'editar') this.openEditor(planillaId);
         else if (action === 'imprimir') this.printPlanilla(planillaId);
+        else if (action === 'enviar-recibos') this.enviarRecibosPlanilla(planillaId);
         else if (action === 'eliminar') this.deletePlanilla(planillaId);
       });
     },
@@ -993,6 +1001,140 @@ function createNominaDocView(cfg) {
         });
       } catch (err) {
         F.alert('Error', err.message || 'No se pudo imprimir', 'error');
+      }
+    },
+
+    parseEmpleadoTelefono(value) {
+      const digits = String(value || '').replace(/\D/g, '');
+      if (digits.length < 8) return '';
+      return digits.slice(-8);
+    },
+
+    async enviarRecibosPlanilla(planillaId) {
+      if (!cfg.allowEnviarRecibos) return;
+
+      try {
+        await this.fetchDoc(planillaId);
+      } catch (err) {
+        F.alert('Error', err.message || 'No se pudo cargar la planilla', 'error');
+        return;
+      }
+
+      const header = this._doc?.header;
+      if (!header) return;
+      if (String(header.STATUS || '').toUpperCase() !== 'F') {
+        F.toast('Solo planillas cerradas pueden enviar recibos', 'warning');
+        return;
+      }
+
+      const lines = this.includedLines();
+      if (!lines.length) {
+        F.toast('No hay empleados incluidos en la planilla', 'warning');
+        return;
+      }
+
+      try {
+        await DocOpciones.ensureWhatsappReady();
+      } catch (err) {
+        F.alert('WhatsApp no disponible', err.message || 'Active la sesión en Configuraciones → WhatsApp.', 'error');
+        return;
+      }
+
+      const conTelefono = [];
+      const sinTelefono = [];
+      for (const line of lines) {
+        const local = this.parseEmpleadoTelefono(line.TELEFONOS);
+        if (local) conTelefono.push({ line, local });
+        else sinTelefono.push(line);
+      }
+
+      if (!conTelefono.length) {
+        F.alert(
+          'Sin teléfonos',
+          'Ningún empleado incluido tiene teléfono válido en el catálogo de empleados (TELEFONOS).',
+          'warning'
+        );
+        return;
+      }
+
+      const confirm = await Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        icon: 'question',
+        title: 'Enviar recibos por WhatsApp',
+        html: `
+          <p class="mb-2">Se generará un recibo PDF y se enviará por WhatsApp a <strong>${conTelefono.length}</strong> empleado(s).</p>
+          ${
+            sinTelefono.length
+              ? `<p class="small text-warning mb-0">${sinTelefono.length} empleado(s) sin teléfono válido serán omitidos.</p>`
+              : ''
+          }
+        `,
+        showCancelButton: true,
+        confirmButtonText:
+          typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Enviar recibos') : 'Enviar recibos',
+        cancelButtonText:
+          typeof CatalogosUI !== 'undefined' ? CatalogosUI.cancelButtonHtml('Cancelar') : 'Cancelar',
+      });
+      if (!confirm.isConfirmed) return;
+
+      const dial = String(DocOpciones.WHATSAPP_DIAL_CODE || '502').replace(/\D/g, '') || '502';
+      const titulo = cfg.reciboTitle || 'Recibo de nómina';
+      let enviados = 0;
+      const errores = [];
+
+      Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        title: 'Enviando recibos…',
+        html: `<p class="mb-0">Procesando <strong>0</strong> de ${conTelefono.length}…</p>`,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+          Swal.showLoading();
+        },
+      });
+
+      for (let i = 0; i < conTelefono.length; i += 1) {
+        const { line, local } = conTelefono[i];
+        const progress = Swal.getHtmlContainer()?.querySelector('strong');
+        if (progress) progress.textContent = String(i + 1);
+
+        try {
+          const parts = await NominaPrint.buildReciboParts({ header, line, titulo });
+          await DocOpciones.enviarReporteWhatsapp({
+            kind: 'pdf',
+            phone: { local, full: `${dial}${local}`, dial },
+            text: parts.text,
+            html: parts.html,
+            fileName: `recibo-nomina-${line.CODEMPLEADO || i}-${header.ID}.pdf`,
+            caption: `${titulo} — ${line.NOMEMPLEADO || ''}`.trim(),
+          });
+          enviados += 1;
+        } catch (err) {
+          errores.push(`${line.NOMEMPLEADO || line.CODEMPLEADO}: ${err.message || 'Error al enviar'}`);
+        }
+      }
+
+      Swal.close();
+
+      const resumen = [
+        `<p><strong>${enviados}</strong> recibo(s) enviado(s).</p>`,
+        sinTelefono.length ? `<p class="small text-muted mb-0">${sinTelefono.length} omitido(s) por teléfono inválido.</p>` : '',
+        errores.length
+          ? `<div class="small text-danger text-start mt-2" style="max-height:160px;overflow:auto;"><strong>Errores:</strong><br>${errores.map((e) => this.escapeHtml(e)).join('<br>')}</div>`
+          : '',
+      ].join('');
+
+      await Swal.fire({
+        ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
+        icon: errores.length && !enviados ? 'error' : (errores.length ? 'warning' : 'success'),
+        title: 'Envío de recibos',
+        html: resumen,
+        confirmButtonText: 'Aceptar',
+      });
+
+      if (enviados > 0) {
+        F.toast(`${enviados} recibo(s) enviado(s) por WhatsApp`, 'success');
       }
     },
 

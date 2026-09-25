@@ -225,6 +225,146 @@
   animation: login-card-enter 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.login-mode-toggle {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: color-mix(in srgb, var(--onneb-brand) 18%, rgba(0, 0, 0, 0.25));
+  color: var(--login-glass-fg, #fff);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.login-mode-toggle:hover {
+  background: color-mix(in srgb, var(--onneb-brand) 32%, rgba(0, 0, 0, 0.2));
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.login-mode-toggle[hidden] {
+  display: none !important;
+}
+
+.login-remote-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: -0.35rem 0 1.1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.35), rgba(59, 130, 246, 0.22));
+  color: var(--login-glass-fg, #fff);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.login-remote-banner > i {
+  font-size: 1.15rem;
+  margin-top: 0.1rem;
+  color: #7dd3fc;
+  flex-shrink: 0;
+}
+
+.login-remote-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.login-remote-banner-text strong {
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.login-glass-card.is-remote {
+  border-color: rgba(56, 189, 248, 0.55) !important;
+  box-shadow:
+    0 28px 56px rgba(8, 47, 73, 0.45),
+    0 0 0 1px rgba(56, 189, 248, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, #0c4a6e 42%, var(--login-glass-card, rgba(255, 255, 255, 0.11))) 0%,
+    color-mix(in srgb, #1e3a8a 28%, var(--login-glass-card, rgba(255, 255, 255, 0.08))) 100%
+  ) !important;
+}
+
+.login-glass-card.is-remote .logo-app {
+  filter: drop-shadow(0 10px 24px rgba(56, 189, 248, 0.35));
+}
+
+.login-glass-card.is-remote .btn-login {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+}
+
+.login-empresas-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-radius: inherit;
+  background: color-mix(in srgb, #0f172a 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #e0f2fe;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.login-empresas-loader[hidden] {
+  display: none !important;
+}
+
+.login-empresas-loader-spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 3px solid rgba(125, 211, 252, 0.25);
+  border-top-color: #38bdf8;
+  animation: login-empresas-spin 0.75s linear infinite;
+}
+
+.login-glass-card.is-loading-empresas .login-form,
+.login-glass-card.is-loading-empresas .login-logo-wrap {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.btn-login.is-busy {
+  opacity: 0.88;
+  cursor: wait;
+  transform: none !important;
+}
+
+.login-mode-toggle:disabled,
+#btn-login-local-mode:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@keyframes login-empresas-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .login-logo-wrap {
   display: flex;
   justify-content: center;
@@ -506,4 +646,51 @@ select.login-input-line {
   .logo-app--interactive {
     cursor: default;
   }
+}
+
+/* Parallax demo — paleta fija en login (sin temas) */
+#view-login.login-parallax-active {
+  --login-bg-base: #000;
+  --login-bg: #000;
+  --login-bg-gradient: none;
+  --login-glass-fg: #fff;
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.78);
+  --login-glass-card: rgba(0, 0, 0, 0.14);
+  --login-glass-border: rgba(255, 255, 255, 0.22);
+  --login-glass-shadow: rgba(0, 0, 0, 0.35);
+  --login-glow: #ff755a;
+  --login-btn-bg: linear-gradient(135deg, #d92400 0%, #ff755a 100%);
+  --login-btn-text: #fff;
+  --onneb-brand: #d92400;
+}
+
+#view-login.login-parallax-active .login-glass-card {
+  max-width: 360px;
+  background: rgba(0, 0, 0, 0.12) !important;
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+#view-login.login-parallax-active .btn-login {
+  background: var(--login-btn-bg) !important;
+  border: none;
+  color: #fff !important;
+}
+
+#view-login.login-parallax-active .btn-login:hover {
+  box-shadow: 0 12px 32px rgba(217, 36, 0, 0.45);
+}
+
+#view-login.login-parallax-active .build-counter {
+  position: fixed;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 6;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.18);
 }

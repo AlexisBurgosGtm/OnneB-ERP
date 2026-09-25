@@ -17,6 +17,10 @@ const CuentasPorPagarView = {
   _consolidadoTotales: null,
   _resumenRows: [],
   _resumenTotales: null,
+  _saldoMes: null,
+  _saldoAnio: null,
+  _saldoMesesRows: [],
+  _saldoMesesTotales: null,
   _loading: false,
   _guardandoRecibo: false,
   _corregiendoSaldos: false,
@@ -283,6 +287,7 @@ const CuentasPorPagarView = {
     const listaActive = this._vistaTipo === 'lista';
     const calActive = this._vistaTipo === 'calendario';
     const resumenActive = this._vistaTipo === 'resumen';
+    const saldoActive = this._vistaTipo === 'saldo-meses';
     const consActive = this._vistaTipo === 'consolidado-productos';
     return `
       <div class="cxp-vista-btns btn-group btn-group-sm" role="group" aria-label="Tipo de vista">
@@ -297,6 +302,10 @@ const CuentasPorPagarView = {
         <button type="button" class="btn ${resumenActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-resumen"
           title="Resumen por proveedor">
           <i class="fa-solid fa-table-cells me-1"></i>Resumen
+        </button>
+        <button type="button" class="btn ${saldoActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-saldo-meses"
+          title="Estado de saldos por mes">
+          <i class="fa-solid fa-calendar-check me-1"></i>Saldo meses
         </button>
         <button type="button" class="btn ${consActive ? 'btn-primary' : 'btn-outline-secondary'}" id="cxp-vista-consolidado"
           title="Consolidado de productos en compras con saldo">
@@ -923,11 +932,195 @@ const CuentasPorPagarView = {
   },
 
   monthLabel(year, month) {
-    const names = [
+    return `${this.monthNames()[month]} ${year}`;
+  },
+
+  monthNames() {
+    return [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
     ];
-    return `${names[month]} ${year}`;
+  },
+
+  initSaldoMes() {
+    const d = new Date();
+    if (this._saldoAnio == null) this._saldoAnio = d.getFullYear();
+    if (this._saldoMes == null) this._saldoMes = d.getMonth() + 1;
+  },
+
+  shiftSaldoMes(delta) {
+    this.initSaldoMes();
+    let mes = this._saldoMes + delta;
+    let anio = this._saldoAnio;
+    while (mes < 1) {
+      mes += 12;
+      anio -= 1;
+    }
+    while (mes > 12) {
+      mes -= 12;
+      anio += 1;
+    }
+    this._saldoMes = mes;
+    this._saldoAnio = anio;
+  },
+
+  saldoMesesUrl(mes, anio, extra = {}) {
+    const emp = F.getEmpNit();
+    const params = new URLSearchParams({
+      empnit: emp,
+      mes: String(mes),
+      anio: String(anio),
+      _: String(Date.now()),
+    });
+    if (extra.format) params.set('format', String(extra.format));
+    return `/api/cuentas-pagar/saldo-meses?${params}`;
+  },
+
+  async fetchSaldoMeses() {
+    this.initSaldoMes();
+    const data = await F.fetchJson(this.saldoMesesUrl(this._saldoMes, this._saldoAnio), {
+      cache: 'no-store',
+    });
+    this._saldoMesesRows = data.rows || [];
+    this._saldoMesesTotales = data.totales || null;
+    this._saldoMes = Number(data.mes) || this._saldoMes;
+    this._saldoAnio = Number(data.anio) || this._saldoAnio;
+    return this._saldoMesesRows;
+  },
+
+  renderSaldoMesesOptionsHtml(selected, values, labels) {
+    return values
+      .map((v, i) => {
+        const label = labels ? labels[i] : String(v);
+        const sel = Number(v) === Number(selected) ? ' selected' : '';
+        return `<option value="${v}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+  },
+
+  renderSaldoMesesHtml() {
+    this.initSaldoMes();
+    const mes = this._saldoMes;
+    const anio = this._saldoAnio;
+    const totals = this._saldoMesesTotales || {
+      saldoAnterior: 0,
+      creditos: 0,
+      abonos: 0,
+      saldoActual: 0,
+      count: 0,
+    };
+    const years = [];
+    const yNow = new Date().getFullYear();
+    for (let y = yNow - 8; y <= yNow + 1; y += 1) years.push(y);
+    if (!years.includes(anio)) years.push(anio);
+    years.sort((a, b) => a - b);
+
+    const body =
+      this._saldoMesesRows.length === 0
+        ? `<tr><td colspan="6" class="text-center text-muted py-4">Sin movimientos ni saldos hasta ${this.escapeHtml(this.monthLabel(anio, mes - 1))}</td></tr>`
+        : this._saldoMesesRows
+            .map(
+              (r) => `<tr>
+          <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
+          <td class="small text-muted">${this.escapeHtml(r.NEGOCIO || '—')}</td>
+          <td class="text-end">${this.escapeHtml(this.formatMoney(r.SALDO_ANTERIOR))}</td>
+          <td class="text-end text-primary">${this.escapeHtml(this.formatMoney(r.CREDITOS))}</td>
+          <td class="text-end text-success">${this.escapeHtml(this.formatMoney(r.ABONOS))}</td>
+          <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.SALDO_ACTUAL))}</td>
+        </tr>`
+            )
+            .join('');
+
+    return `
+      <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-saldo-prev" title="Mes anterior">
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <label class="small mb-0 text-muted" for="cxp-saldo-mes">Mes</label>
+            <select id="cxp-saldo-mes" class="form-select form-select-sm" style="width: auto; min-width: 8rem;">
+              ${this.renderSaldoMesesOptionsHtml(mes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], this.monthNames())}
+            </select>
+            <label class="small mb-0 text-muted" for="cxp-saldo-anio">Año</label>
+            <select id="cxp-saldo-anio" class="form-select form-select-sm" style="width: auto; min-width: 5.5rem;">
+              ${this.renderSaldoMesesOptionsHtml(anio, years)}
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="cxp-saldo-next" title="Mes siguiente">
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+            <span class="small text-muted ms-1">Estado general hasta ${this.escapeHtml(this.monthLabel(anio, mes - 1))}</span>
+            <button type="button" class="btn btn-sm btn-outline-success ms-auto" id="cxp-saldo-export-excel"
+              title="Exportar saldo meses a Excel">
+              <i class="fa-solid fa-file-excel me-1"></i>Excel
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Saldo anterior</div>
+              <div class="fw-semibold">${this.escapeHtml(this.formatMoney(totals.saldoAnterior))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Créditos del mes</div>
+              <div class="fw-semibold text-primary">${this.escapeHtml(this.formatMoney(totals.creditos))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Pagos del mes</div>
+              <div class="fw-semibold text-success">${this.escapeHtml(this.formatMoney(totals.abonos))}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body py-2 px-3">
+              <div class="small text-muted">Saldo actual</div>
+              <div class="fw-bold text-primary">${this.escapeHtml(this.formatMoney(totals.saldoActual))}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover table-striped mb-0 cxp-table">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Proveedor</th>
+                <th>Empresa</th>
+                <th class="text-end">Saldo anterior</th>
+                <th class="text-end">Créditos</th>
+                <th class="text-end">Pagos</th>
+                <th class="text-end">Saldo actual</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+            <tfoot class="table-light">
+              <tr>
+                <td colspan="2" class="text-end fw-semibold">${totals.count || 0} proveedor(es)</td>
+                <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(totals.saldoAnterior))}</td>
+                <td class="text-end fw-semibold text-primary">${this.escapeHtml(this.formatMoney(totals.creditos))}</td>
+                <td class="text-end fw-semibold text-success">${this.escapeHtml(this.formatMoney(totals.abonos))}</td>
+                <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(totals.saldoActual))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <p class="small text-muted mt-2 mb-0">
+        Incluye compras al crédito y pagos (RCP, retenciones y notas) hasta el mes seleccionado.
+        En el mes en curso, el saldo actual coincide con la lista y el resumen por proveedor.
+      </p>`;
   },
 
   renderCalendarHtml() {
@@ -1056,6 +1249,7 @@ const CuentasPorPagarView = {
     await this.fetchDocumentos();
     if (this._vistaTipo === 'resumen') await this.fetchResumenProveedores();
     if (this._vistaTipo === 'consolidado-productos') await this.fetchConsolidadoProductos();
+    if (this._vistaTipo === 'saldo-meses') await this.fetchSaldoMeses();
   },
 
   consolidadoProductosUrl() {
@@ -1272,6 +1466,38 @@ const CuentasPorPagarView = {
     }
   },
 
+  async onExportSaldoMesesExcel() {
+    if (this._exporting) return;
+    this.initSaldoMes();
+    this._exporting = true;
+    const btn = this._container?.querySelector('#cxp-saldo-export-excel');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(this.saldoMesesUrl(this._saldoMes, this._saldoAnio, { format: 'xlsx' }), {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const match = dispo.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : 'cxp_saldo_meses.xlsx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      F.toast('Excel exportado', 'success');
+    } catch (err) {
+      F.toast(err.message || 'No se pudo exportar', 'error');
+    } finally {
+      this._exporting = false;
+      if (btn) btn.disabled = false;
+    }
+  },
+
   async onExportListaExcel() {
     if (this._exporting) return;
     this._exporting = true;
@@ -1310,11 +1536,21 @@ const CuentasPorPagarView = {
     const truncHint = this._truncated
       ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
       : '';
+    const saldoMesesMode = this._vistaTipo === 'saldo-meses';
+    const headerSaldo = saldoMesesMode
+      ? Number(this._saldoMesesTotales?.saldoActual) || 0
+      : this._sumSaldo;
+    const headerSaldoLabel = saldoMesesMode ? 'Saldo actual' : 'Doc. saldo total';
+    const headerCount = saldoMesesMode
+      ? Number(this._saldoMesesTotales?.count) || 0
+      : count;
+    const headerCountLabel = saldoMesesMode ? 'Proveedores' : 'Documentos';
     const showListaTools =
       this._vistaTipo === 'lista' || this._vistaTipo === 'calendario' || this._vistaTipo === 'resumen';
     let contentHtml = this.renderListaHtml();
     if (this._vistaTipo === 'calendario') contentHtml = this.renderCalendarHtml();
     if (this._vistaTipo === 'resumen') contentHtml = this.renderResumenHtml();
+    if (this._vistaTipo === 'saldo-meses') contentHtml = this.renderSaldoMesesHtml();
     if (this._vistaTipo === 'consolidado-productos') contentHtml = this.renderConsolidadoProductosHtml();
 
     return `
@@ -1328,12 +1564,12 @@ const CuentasPorPagarView = {
             <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
               ${this.renderVistaToggleHtml()}
               <div class="small">
-                <span class="text-muted">Documentos:</span>
-                <strong class="ms-1">${count}</strong>
+                <span class="text-muted">${headerCountLabel}:</span>
+                <strong class="ms-1">${headerCount}</strong>
               </div>
               <div class="small">
-                <span class="text-muted">Doc. saldo total:</span>
-                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</strong>
+                <span class="text-muted">${headerSaldoLabel}:</span>
+                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(headerSaldo))}</strong>
               </div>
             </div>
           </div>
@@ -2156,6 +2392,15 @@ const CuentasPorPagarView = {
         }
       }
       if (value === 'calendario') this.initCalMonth();
+      if (value === 'saldo-meses') {
+        this.initSaldoMes();
+        this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando saldos del mes…</div>`;
+        try {
+          await this.fetchSaldoMeses();
+        } catch (err) {
+          F.toast(err.message || 'No se pudo cargar saldo meses', 'error');
+        }
+      }
       if (value === 'consolidado-productos') {
         this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando consolidado de productos…</div>`;
         try {
@@ -2188,8 +2433,43 @@ const CuentasPorPagarView = {
       switchVista('resumen');
     });
 
+    this._container?.querySelector('#cxp-vista-saldo-meses')?.addEventListener('click', () => {
+      switchVista('saldo-meses');
+    });
+
     this._container?.querySelector('#cxp-vista-consolidado')?.addEventListener('click', () => {
       switchVista('consolidado-productos');
+    });
+
+    const reloadSaldoMeses = async () => {
+      this._container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando saldos del mes…</div>`;
+      try {
+        await this.fetchSaldoMeses();
+      } catch (err) {
+        F.toast(err.message || 'No se pudo cargar saldo meses', 'error');
+      }
+      this._container.innerHTML = this.renderShell();
+      this.bindEvents();
+    };
+
+    this._container?.querySelector('#cxp-saldo-prev')?.addEventListener('click', () => {
+      this.shiftSaldoMes(-1);
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-next')?.addEventListener('click', () => {
+      this.shiftSaldoMes(1);
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-mes')?.addEventListener('change', (e) => {
+      this._saldoMes = Number(e.target.value) || this._saldoMes;
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-anio')?.addEventListener('change', (e) => {
+      this._saldoAnio = Number(e.target.value) || this._saldoAnio;
+      reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-export-excel')?.addEventListener('click', () => {
+      this.onExportSaldoMesesExcel().catch((err) => F.toast(err.message || 'No se pudo exportar', 'error'));
     });
 
     this._container?.querySelector('#cxp-cal-prev')?.addEventListener('click', () => {

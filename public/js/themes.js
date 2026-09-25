@@ -36,10 +36,7 @@ const OnnebThemes = {
     { id: 'suzukigsxs', label: 'Suzuki GSX-S', swatchClass: 'theme-swatch-suzukigsxs', markIcon: 'fa-motorcycle' },
   ],
 
-  pickerTargets: [
-    { panelId: 'theme-picker-panel', btnId: 'btn-theme-toggle' },
-    { panelId: 'theme-picker-panel-login', btnId: 'btn-theme-toggle-login' },
-  ],
+  pickerTargets: [{ panelId: 'theme-picker-panel', btnId: 'btn-theme-toggle' }],
 
   getCurrent() {
     const id = document.documentElement.getAttribute('data-theme') || this.DEFAULT;

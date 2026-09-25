@@ -34,6 +34,9 @@ const {
 const { listCajasAbiertasConDefault } = require('../lib/empleado-coddoc-preferido');
 const {
   sendCuentasListaExcel,
+  sendCuentasSaldoMesesExcel,
+  saldoMesesSheetLabel,
+  saldoMesesFilename,
   wantsVencidas,
   wantsXlsx,
   SQL_SOLO_VENCIDAS,
@@ -318,6 +321,24 @@ router.get('/saldo-meses', async (req, res) => {
       mes: req.query.mes,
       anio: req.query.anio,
     });
+    if (wantsXlsx(req.query)) {
+      await sendCuentasSaldoMesesExcel(res, {
+        filename: saldoMesesFilename('cxc', data.mes, data.anio, empnit),
+        sheetName: saldoMesesSheetLabel(data.mes, data.anio),
+        columns: [
+          { header: 'Cód. cliente', key: 'CODIGO', width: 12 },
+          { header: 'Cliente', key: 'NOMBRE', width: 28 },
+          { header: 'Negocio', key: 'NEGOCIO', width: 24 },
+          { header: 'NIT', key: 'NIT', width: 16 },
+          { header: 'Saldo anterior', key: 'SALDO_ANTERIOR', width: 16, type: 'number' },
+          { header: 'Créditos del mes', key: 'CREDITOS', width: 16, type: 'number' },
+          { header: 'Abonos del mes', key: 'ABONOS', width: 16, type: 'number' },
+          { header: 'Saldo actual', key: 'SALDO_ACTUAL', width: 16, type: 'number' },
+        ],
+        data,
+      });
+      return;
+    }
     res.json({ ...data, empnit });
   } catch (err) {
     console.warn('[API GET /cuentas-cobrar/saldo-meses]', err.message);

@@ -29,63 +29,122 @@ function envInt(name, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function getDbConfig() {
-  const rawServer = process.env.DB_SERVER;
-  const database = process.env.DB_NAME;
-  const user = process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
+/**
+ * host\INSTANCIA | host,puerto | host\INSTANCIA,puerto
+ * Igual que .env / SSMS / ODBC. Una barra en COMMUNITY es válida.
+ */
+function parseServerEndpoint(raw) {
+  let s = String(raw || '').trim().replace(/^tcp:/i, '');
+  if (!s) return { server: '', instanceName: null, port: undefined };
+
+  const instPort = s.match(/^(.+?)\\([^,\\]+)\s*,\s*(\d+)\s*$/i);
+  if (instPort) {
+    return {
+      server: instPort[1].trim(),
+      instanceName: null,
+      port: parseInt(instPort[3], 10),
+    };
+  }
+
+  const hostPort = s.match(/^([^,\s\\]+)\s*,\s*(\d+)\s*$/);
+  if (hostPort) {
+    return {
+      server: hostPort[1].trim(),
+      instanceName: null,
+      port: parseInt(hostPort[2], 10),
+    };
+  }
+
+  s = s.replace(/\\\\/g, '\\');
+  const { server, instanceName } = parseServer(s);
+  return { server, instanceName, port: undefined };
+}
+
+/**
+ * Misma configuración mssql para .env local y conexiones remotas (COMMUNITY_EMPRESAS_SYNC).
+ */
+function buildDbConfig(params) {
+  const rawServer = params.rawServer ?? params.server;
+  const database = String(params.database ?? '').trim();
+  const user = String(params.user ?? '').trim();
+  const password = params.password;
 
   if (!rawServer || !database || !user || password === undefined) {
     return null;
   }
 
-  const { server, instanceName } = parseServer(rawServer);
-  const hasExplicitPort = String(process.env.DB_PORT || '').trim() !== '';
-  // Instancia con nombre: no forzar 1433 (usa SQL Browser / puerto dinámico).
-  // Solo aplicar puerto si el usuario lo definió y NO hay instanceName, o si
-  // DB_FORCE_PORT=true.
-  const forcePort = envBool('DB_FORCE_PORT', false);
-  const port =
-    instanceName && !forcePort
-      ? undefined
-      : hasExplicitPort
-        ? envInt('DB_PORT', 1433)
-        : instanceName
-          ? undefined
-          : 1433;
+  const endpoint = parseServerEndpoint(rawServer);
+  const { server, instanceName } = endpoint;
+  let port = endpoint.port;
+
+  if (port == null) {
+    const portRaw = params.port ?? process.env.DB_PORT;
+    const hasExplicitPort = String(portRaw || '').trim() !== '';
+    const forcePort =
+      params.forcePort !== undefined ? Boolean(params.forcePort) : envBool('DB_FORCE_PORT', false);
+    port =
+      instanceName && !forcePort
+        ? undefined
+        : hasExplicitPort
+          ? parseInt(String(portRaw), 10) || 1433
+          : instanceName
+            ? undefined
+            : 1433;
+  }
 
   const config = {
     server,
     database,
     user,
     password,
-    connectionTimeout: envInt('DB_CONNECTION_TIMEOUT', 15000),
-    requestTimeout: envInt('DB_REQUEST_TIMEOUT', 60000),
+    connectionTimeout:
+      params.connectionTimeout ?? envInt('DB_CONNECTION_TIMEOUT', 15000),
+    requestTimeout: params.requestTimeout ?? envInt('DB_REQUEST_TIMEOUT', 60000),
     pool: {
-      max: envInt('DB_POOL_MAX', 20),
-      min: envInt('DB_POOL_MIN', 1),
-      idleTimeoutMillis: envInt('DB_POOL_IDLE', 60000),
+      max: params.poolMax ?? envInt('DB_POOL_MAX', 20),
+      min: params.poolMin ?? envInt('DB_POOL_MIN', 1),
+      idleTimeoutMillis: params.poolIdle ?? envInt('DB_POOL_IDLE', 60000),
     },
     options: {
-      encrypt: envBool('DB_ENCRYPT', false),
-      trustServerCertificate: envBool('DB_TRUST_SERVER_CERTIFICATE', true),
+      encrypt:
+        params.encrypt !== undefined ? Boolean(params.encrypt) : envBool('DB_ENCRYPT', false),
+      trustServerCertificate:
+        params.trustServerCertificate !== undefined
+          ? Boolean(params.trustServerCertificate)
+          : envBool('DB_TRUST_SERVER_CERTIFICATE', true),
       enableArithAbort: true,
-      connectTimeout: envInt('DB_CONNECTION_TIMEOUT', 15000),
+      connectTimeout:
+        params.connectTimeout ?? envInt('DB_CONNECTION_TIMEOUT', 15000),
     },
   };
 
-  if (port != null) {
+  // Puerto TCP explícito: conexión directa (evita SQL Browser / UDP 1434, común en VPN).
+  if (port != null && Number.isFinite(port)) {
     config.port = port;
-  }
-  if (instanceName) {
+  } else if (instanceName) {
     config.options.instanceName = instanceName;
   }
 
   return config;
 }
 
+function getDbConfig() {
+  return buildDbConfig({
+    rawServer: process.env.DB_SERVER,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+  });
+}
+
 function isDbConfigured() {
   return getDbConfig() !== null;
 }
 
-module.exports = { getDbConfig, isDbConfigured, parseServer };
+module.exports = {
+  getDbConfig,
+  buildDbConfig,
+  isDbConfigured,
+  parseServer,
+  parseServerEndpoint,
+};

@@ -295,7 +295,7 @@ const CuentasPorCobrarView = {
     return this.filteredRows().filter((r) => this.vencimientoIso(r) === isoDate);
   },
 
-  saldoMesesUrl(mes, anio) {
+  saldoMesesUrl(mes, anio, extra = {}) {
     const emp = F.getEmpNit();
     const params = new URLSearchParams({
       empnit: emp,
@@ -303,6 +303,7 @@ const CuentasPorCobrarView = {
       anio: String(anio),
       _: String(Date.now()),
     });
+    if (extra.format) params.set('format', String(extra.format));
     return `/api/cuentas-cobrar/saldo-meses?${params}`;
   },
 
@@ -1421,6 +1422,10 @@ const CuentasPorCobrarView = {
               <i class="fa-solid fa-chevron-right"></i>
             </button>
             <span class="small text-muted ms-1">Estado general hasta ${this.escapeHtml(this.monthLabel(anio, mes - 1))}</span>
+            <button type="button" class="btn btn-sm btn-outline-success ms-auto" id="cxp-saldo-export-excel"
+              title="Exportar saldo meses a Excel">
+              <i class="fa-solid fa-file-excel me-1"></i>Excel
+            </button>
           </div>
         </div>
       </div>
@@ -1485,7 +1490,8 @@ const CuentasPorCobrarView = {
         </div>
       </div>
       <p class="small text-muted mt-2 mb-0">
-        Incluye facturas al crédito y abonos (RCC / notas de crédito) con fecha hasta el mes seleccionado.
+        Incluye facturas al crédito y abonos (RCC, PRC, RAR, retenciones y notas) hasta el mes seleccionado.
+        En el mes en curso, el saldo actual coincide con la lista y el resumen por cliente.
       </p>`;
   },
 
@@ -1680,6 +1686,38 @@ const CuentasPorCobrarView = {
     }
   },
 
+  async onExportSaldoMesesExcel() {
+    if (this._exporting) return;
+    this.initSaldoMes();
+    this._exporting = true;
+    const btn = this._container?.querySelector('#cxp-saldo-export-excel');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch(this.saldoMesesUrl(this._saldoMes, this._saldoAnio, { format: 'xlsx' }), {
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get('Content-Disposition') || '';
+      const match = dispo.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : 'cxc_saldo_meses.xlsx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      F.toast('Excel exportado', 'success');
+    } catch (err) {
+      F.toast(err.message || 'No se pudo exportar', 'error');
+    } finally {
+      this._exporting = false;
+      if (btn) btn.disabled = false;
+    }
+  },
+
   async onExportListaExcel() {
     if (this._exporting) return;
     this._exporting = true;
@@ -1718,6 +1756,15 @@ const CuentasPorCobrarView = {
     const truncHint = this._truncated
       ? `<p class="small text-warning mb-0 mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Mostrando ${count} de ${this._total} documento(s). Refine la búsqueda para ver más.</p>`
       : '';
+    const saldoMesesMode = this._vistaTipo === 'saldo-meses';
+    const headerSaldo = saldoMesesMode
+      ? Number(this._saldoMesesTotales?.saldoActual) || 0
+      : this._sumSaldo;
+    const headerSaldoLabel = saldoMesesMode ? 'Saldo actual' : 'Doc. saldo total';
+    const headerCount = saldoMesesMode
+      ? Number(this._saldoMesesTotales?.count) || 0
+      : count;
+    const headerCountLabel = saldoMesesMode ? 'Clientes' : 'Documentos';
     const showListaTools =
       this._vistaTipo === 'lista' || this._vistaTipo === 'calendario' || this._vistaTipo === 'resumen';
     let contentHtml = this.renderListaHtml();
@@ -1737,12 +1784,12 @@ const CuentasPorCobrarView = {
             <div class="card-body py-2 px-3 d-flex flex-wrap gap-3 align-items-center">
               ${this.renderVistaToggleHtml()}
               <div class="small">
-                <span class="text-muted">Documentos:</span>
-                <strong class="ms-1">${count}</strong>
+                <span class="text-muted">${headerCountLabel}:</span>
+                <strong class="ms-1">${headerCount}</strong>
               </div>
               <div class="small">
-                <span class="text-muted">Doc. saldo total:</span>
-                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</strong>
+                <span class="text-muted">${headerSaldoLabel}:</span>
+                <strong class="ms-1 text-primary">${this.escapeHtml(this.formatMoney(headerSaldo))}</strong>
               </div>
             </div>
           </div>
@@ -2936,6 +2983,9 @@ const CuentasPorCobrarView = {
     this._container?.querySelector('#cxp-saldo-anio')?.addEventListener('change', (e) => {
       this._saldoAnio = Number(e.target.value) || this._saldoAnio;
       reloadSaldoMeses();
+    });
+    this._container?.querySelector('#cxp-saldo-export-excel')?.addEventListener('click', () => {
+      this.onExportSaldoMesesExcel().catch((err) => F.toast(err.message || 'No se pudo exportar', 'error'));
     });
 
     this._container?.querySelector('#cxp-btn-corregir-saldos')?.addEventListener('click', () => {

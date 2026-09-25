@@ -62,12 +62,14 @@ const NominaPrint = {
     );
   },
 
-  async printReciboEmpleado({ header, line, titulo }) {
-    const salarioQ =
-      line.SALARIOQ != null
-        ? Number(line.SALARIOQ)
-        : (Number(line.SALARIO_BASE) || 0) * ((Number(line.DIAS_LABORADOS) || 0) / 30);
-    const bodyHtml = `
+  getSalarioQ(line) {
+    if (line.SALARIOQ != null) return Number(line.SALARIOQ);
+    return (Number(line.SALARIO_BASE) || 0) * ((Number(line.DIAS_LABORADOS) || 0) / 30);
+  },
+
+  buildReciboBodyHtml({ header, line, titulo }) {
+    const salarioQ = this.getSalarioQ(line);
+    return `
       ${PrintReport.reportHeaderHtml({
         title: titulo || 'Recibo de nómina',
         subtitleHtml: `
@@ -91,6 +93,28 @@ const NominaPrint = {
         <tr class="fw-semibold"><td>Total deducciones</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.TOTAL_DEDUCCIONES))}</td></tr>
         <tr class="fw-bold"><td>Neto a pagar</td><td class="text-end">${PrintReport.escapeHtml(this.formatMoney(line.NETO_PAGAR))}</td></tr>
       </table>`;
+  },
+
+  buildReciboWhatsappText({ header, line, titulo }) {
+    const periodo = `${header.MES}/${header.ANIO}`;
+    return [
+      titulo || 'Recibo de nómina',
+      `${line.NOMEMPLEADO || ''}`.trim(),
+      `Período ${periodo}`,
+      `Neto a pagar: ${this.formatMoney(line.NETO_PAGAR)}`,
+    ].filter(Boolean).join('\n');
+  },
+
+  async buildReciboParts(opts) {
+    await PrintReport.ensureLogo();
+    const bodyHtml = this.buildReciboBodyHtml(opts);
+    const html = PrintReport.wrapDocument({ title: 'Recibo nómina', bodyHtml });
+    const text = this.buildReciboWhatsappText(opts);
+    return { html, text, bodyHtml };
+  },
+
+  async printReciboEmpleado({ header, line, titulo }) {
+    const bodyHtml = this.buildReciboBodyHtml({ header, line, titulo });
     await PrintReport.openAndPrint(
       () => PrintReport.wrapDocument({ title: 'Recibo nómina', bodyHtml }),
       'width=720,height=680'

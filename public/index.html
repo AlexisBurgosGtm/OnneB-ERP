@@ -19,6 +19,8 @@
   <link rel="stylesheet" href="/css/themes-ui.css">
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/login.css">
+  <link rel="stylesheet" href="/vendor/parallax-fonts/parallax-fonts.css">
+  <link rel="stylesheet" href="/css/login-parallax.css">
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/pace.css">
   <link rel="stylesheet" href="/css/empresas.css">
@@ -95,27 +97,85 @@
   <script src="/vendor/pace/pace.min.js"></script>
   <script src="/js/pace-init.js"></script>
   <div id="app" class="app-shell">
-    <section id="view-login" class="view view-active" data-view="login">
-      <div class="login-scene" aria-hidden="true">
-        <div class="login-orb login-orb-a"></div>
-        <div class="login-orb login-orb-b"></div>
-        <div class="login-orb login-orb-c"></div>
-        <div class="login-grid"></div>
+    <section id="view-login" class="view view-active login-parallax-active" data-view="login">
+      <div class="login-parallax-host" aria-hidden="true">
+        <ul id="login-parallax-scene" class="scene unselectable"
+          data-friction-x="0.1"
+          data-friction-y="0.1"
+          data-scalar-x="25"
+          data-scalar-y="15">
+          <li class="layer" data-depth="0.00"></li>
+          <li class="layer" data-depth="0.10"><div class="background"></div></li>
+          <li class="layer" data-depth="0.10"><div class="light orange b phase-4"></div></li>
+          <li class="layer" data-depth="0.10"><div class="light purple c phase-5"></div></li>
+          <li class="layer" data-depth="0.10"><div class="light orange d phase-3"></div></li>
+          <li class="layer" data-depth="0.15">
+            <ul class="rope depth-10">
+              <li><img src="/parallax-demo/images/rope.png" alt=""></li>
+              <li class="hanger position-2">
+                <div class="board cloud-2 swing-1"></div>
+              </li>
+              <li class="hanger position-4">
+                <div class="board cloud-1 swing-3"></div>
+              </li>
+              <li class="hanger position-8">
+                <div class="board birds swing-5"></div>
+              </li>
+            </ul>
+          </li>
+          <li class="layer" data-depth="0.20"><h1 class="title">OnneB<em> Plus</em></h1></li>
+          <li class="layer" data-depth="0.30">
+            <ul class="rope depth-30">
+              <li><img src="/parallax-demo/images/rope.png" alt=""></li>
+              <li class="hanger position-1">
+                <div class="board cloud-1 swing-3"></div>
+              </li>
+              <li class="hanger position-5">
+                <div class="board cloud-4 swing-1"></div>
+              </li>
+            </ul>
+          </li>
+          <li class="layer" data-depth="0.30"><div class="wave paint depth-30"></div></li>
+          <li class="layer" data-depth="0.40"><div class="wave plain depth-40"></div></li>
+          <li class="layer" data-depth="0.50"><div class="wave paint depth-50"></div></li>
+          <li class="layer" data-depth="0.60"><div class="lighthouse depth-60"></div></li>
+          <li class="layer" data-depth="0.60">
+            <ul class="rope depth-60">
+              <li><img src="/parallax-demo/images/rope.png" alt=""></li>
+              <li class="hanger position-3">
+                <div class="board birds swing-5"></div>
+              </li>
+              <li class="hanger position-6">
+                <div class="board cloud-2 swing-2"></div>
+              </li>
+              <li class="hanger position-8">
+                <div class="board cloud-3 swing-4"></div>
+              </li>
+            </ul>
+          </li>
+          <li class="layer" data-depth="0.60"><div class="wave plain depth-60"></div></li>
+          <li class="layer" data-depth="0.80"><div class="wave plain depth-80"></div></li>
+          <li class="layer" data-depth="1.00"><div class="wave paint depth-100"></div></li>
+        </ul>
       </div>
 
-      <div class="login-theme-mark" id="login-theme-mark" aria-hidden="true">
-        <i class="fa-solid fa-gem" aria-hidden="true"></i>
-      </div>
-
-      <div class="login-theme-corner theme-picker-wrap">
-        <button type="button" id="btn-theme-toggle-login" class="btn-theme-fab"
-          aria-label="Cambiar tema visual" aria-expanded="false" aria-haspopup="true">
-          <i class="fa-solid fa-palette" aria-hidden="true"></i>
+      <div class="login-layout">
+      <div class="login-glass login-glass-card" id="login-card">
+        <div id="login-empresas-loader" class="login-empresas-loader" hidden aria-live="polite" aria-busy="true">
+          <span class="login-empresas-loader-spinner" aria-hidden="true"></span>
+          <span id="login-empresas-loader-text">Cargando sedes remotas…</span>
+        </div>
+        <button type="button" id="btn-login-remote-mode" style="visibility: hidden;" class="login-mode-toggle" title="Conectar a otra sede">
+          <i class="fa-solid fa-cloud" aria-hidden="true"></i>
+          Modo Remoto
         </button>
-        <div id="theme-picker-panel-login" class="theme-picker-panel" role="menu" aria-label="Temas visuales"></div>
-      </div>
-
-      <div class="login-glass login-glass-card">
+        <div id="login-remote-banner" class="login-remote-banner" hidden>
+          <i class="fa-solid fa-satellite-dish" aria-hidden="true"></i>
+          <div class="login-remote-banner-text">
+            <strong>Modo remoto</strong>
+            <span>Seleccione la sede e ingrese con las credenciales de esa base de datos.</span>
+          </div>
+        </div>
         <div class="login-logo-wrap">
           <img src="/logo.png" alt="OnneB" class="logo-app" width="120" height="120">
         </div>
@@ -142,18 +202,23 @@
               data-form-type="other" data-autocomplete="off" aria-autocomplete="none">
           </div>
           <br>
-          <button type="submit" class="btn btn-login w-100">
+          <button type="submit" class="btn btn-login w-100" id="btn-login-submit">
             INICIAR SESIÓN
           </button>
           <button type="button" class="btn btn-outline-light w-100 mt-2" id="login-passkey-btn" style="display:none">
             <i class="fa-solid fa-fingerprint me-1" aria-hidden="true"></i>
             Usar huella / passkey
           </button>
+          <button type="button" class="btn btn-outline-light w-100 mt-2" id="btn-login-local-mode" hidden>
+            <i class="fa-solid fa-house me-1" aria-hidden="true"></i>
+            Volver a login local
+          </button>
         </form>
       </div>
       <div id="build-counter" class="build-counter" aria-live="polite">
         <span class="build-count">Compilación #0</span>
         <span class="build-date">—</span>
+      </div>
       </div>
     </section>
 
@@ -505,6 +570,10 @@
               <img src="/icons/icon-72.png" width="24" height="24" alt="" class="header-app-icon-fallback" id="header-empresa-icon-fallback">
               <span id="header-empresa-name">—</span>
             </div>
+            <span id="header-remote-badge" class="header-remote-badge" hidden title="Sesión contra servidor remoto">
+              <i class="fa-solid fa-cloud" aria-hidden="true"></i>
+              Conexión Remota
+            </span>
           </div>
           <span class="main-title fw-semibold flex-grow-1 text-center text-md-start" id="main-title">OnneB PLUS</span>
           <div class="main-header-end">
@@ -551,6 +620,8 @@
   <script src="/js/fpago-match.js"></script>
   <script src="/js/themes.js"></script>
   <script src="/js/login-logo-fly.js"></script>
+  <script src="/vendor/parallax/parallax.min.js"></script>
+  <script src="/js/login-parallax.js"></script>
   <script src="/js/catalogos.js"></script>
   <script src="/js/doc-nit-sat-lookup.js"></script>
   <script src="/js/catalogo-empresa-view.js"></script>

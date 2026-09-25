@@ -1,0 +1,578 @@
+/**
+ * Parallax demo (wagerfield/parallax) — solo login.
+ * Assets: /parallax-demo/images/ · fuentes: /vendor/parallax-fonts/
+ */
+
+#view-login.login-parallax-active {
+  display: block;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  text-align: center;
+}
+
+#view-login.login-parallax-active .login-parallax-host {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+#view-login.login-parallax-active .login-parallax-host .scene {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100%;
+}
+
+#view-login.login-parallax-active .login-layout {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1.25rem clamp(1rem, 4vw, 2.75rem);
+  background: none;
+  pointer-events: none;
+}
+
+#view-login.login-parallax-active .login-layout > * {
+  pointer-events: auto;
+}
+
+#view-login.login-parallax-active .login-parallax-host .title {
+  font-family: "Roboto Slab", serif;
+  font-weight: 300;
+  color: #fff;
+  pointer-events: none;
+  user-select: none;
+}
+
+#view-login.login-parallax-active .login-parallax-host .title em {
+  font-style: normal;
+  color: #ff755a;
+}
+
+#view-login.login-parallax-active .login-parallax-host ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#view-login.login-parallax-active .login-parallax-host img {
+  display: block;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  #view-login.login-parallax-active .login-layout {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 1rem 1rem 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-login.login-parallax-active .login-parallax-host * {
+    animation: none !important;
+  }
+}
+
+#view-login.login-parallax-active .login-parallax-host .scene,
+#view-login.login-parallax-active .login-parallax-host .layer {
+  display: block;
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  margin: 0; }
+
+#view-login.login-parallax-active .login-parallax-host .scene {
+  min-height: 460px;
+  position: relative;
+  overflow: hidden; }
+
+#view-login.login-parallax-active .login-parallax-host .layer {
+  position: absolute; }
+  #view-login.login-parallax-active .login-parallax-host .layer div {
+    -webkit-transform: translate3d(0,0,0);
+    -moz-transform: translate3d(0,0,0);
+    transform: translate3d(0,0,0);
+    -webkit-transform-style: preserve-3d;
+    -moz-transform-style: preserve-3d;
+    transform-style: preserve-3d;
+    -webkit-backface-visibility: hidden;
+    -moz-backface-visibility: hidden;
+    backface-visibility: hidden; }
+
+#view-login.login-parallax-active .login-parallax-host .title {
+  font-size: 3em;
+  text-shadow: 0 8px 6px rgba(0, 0, 0, 0.6);
+  margin-top: -0.7em;
+  position: absolute;
+  width: 100%;
+  top: 42%; }
+
+#view-login.login-parallax-active .login-parallax-host .background {
+  background: url(/parallax-demo/images/background.jpg) no-repeat 50% 100%;
+  bottom: 96px;
+  background-size: cover;
+  position: absolute;
+  width: 110%;
+  left: -5%;
+  top: -5%; }
+
+#view-login.login-parallax-active .login-parallax-host .lighthouse {
+  -webkit-transform-origin: 50% 90%;
+  -moz-transform-origin: 50% 90%;
+  transform-origin: 50% 90%;
+  -webkit-animation: lighthouse 4s 0.1s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: lighthouse 4s 0.1s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: lighthouse 4s 0.1s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  margin: 0px -64px;
+  background-size: 128px 224px;
+  height: 224px;
+  width: 128px;
+  background-image: url(/parallax-demo/images/lighthouse.png);
+  background-repeat: no-repeat;
+  bottom: 64px;
+  position: absolute;
+  right: 20%; }
+
+#view-login.login-parallax-active .login-parallax-host .wave {
+  background: transparent repeat-x;
+  position: absolute;
+  width: 300%;
+  left: -100%; }
+  #view-login.login-parallax-active .login-parallax-host .wave:after {
+    background-color: #000000;
+    position: absolute;
+    display: block;
+    content: "";
+    height: 500px;
+    width: 100%;
+    top: 100%;
+    left: 0; }
+  #view-login.login-parallax-active .login-parallax-host .wave.plain {
+    background-image: url(/parallax-demo/images/wave-plain.png); }
+  #view-login.login-parallax-active .login-parallax-host .wave.paint {
+    background-image: url(/parallax-demo/images/wave-paint.png); }
+
+#view-login.login-parallax-active .login-parallax-host .light {
+  margin: -120px -120px;
+  background-size: 240px 240px;
+  height: 240px;
+  width: 240px;
+  background-repeat: no-repeat;
+  bottom: 112px;
+  position: absolute;
+  left: 50%; }
+  #view-login.login-parallax-active .login-parallax-host .light.orange {
+    background-image: url(/parallax-demo/images/light-orange.png); }
+  #view-login.login-parallax-active .login-parallax-host .light.purple {
+    background-image: url(/parallax-demo/images/light-purple.png); }
+  #view-login.login-parallax-active .login-parallax-host .light.a {
+    bottom: 80px;
+    left: 20%; }
+  #view-login.login-parallax-active .login-parallax-host .light.b {
+    bottom: 80px;
+    left: 30%; }
+  #view-login.login-parallax-active .login-parallax-host .light.c {
+    bottom: 112px;
+    left: 45%; }
+  #view-login.login-parallax-active .login-parallax-host .light.d {
+    bottom: 96px;
+    left: 60%; }
+  #view-login.login-parallax-active .login-parallax-host .light.e {
+    bottom: 112px;
+    left: 75%; }
+  #view-login.login-parallax-active .login-parallax-host .light.f {
+    bottom: 64px;
+    left: 80%; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-1 {
+    -webkit-animation: phase 20s 0.1s infinite linear;
+    -moz-animation: phase 20s 0.1s infinite linear;
+    animation: phase 20s 0.1s infinite linear; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-2 {
+    -webkit-animation: phase 18s 0.1s infinite linear;
+    -moz-animation: phase 18s 0.1s infinite linear;
+    animation: phase 18s 0.1s infinite linear; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-3 {
+    -webkit-animation: phase 16s 0.1s infinite linear;
+    -moz-animation: phase 16s 0.1s infinite linear;
+    animation: phase 16s 0.1s infinite linear; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-4 {
+    -webkit-animation: phase 14s 0.1s infinite linear;
+    -moz-animation: phase 14s 0.1s infinite linear;
+    animation: phase 14s 0.1s infinite linear; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-5 {
+    -webkit-animation: phase 12s 0.1s infinite linear;
+    -moz-animation: phase 12s 0.1s infinite linear;
+    animation: phase 12s 0.1s infinite linear; }
+  #view-login.login-parallax-active .login-parallax-host .light.phase-6 {
+    -webkit-animation: phase 10s 0.1s infinite linear;
+    -moz-animation: phase 10s 0.1s infinite linear;
+    animation: phase 10s 0.1s infinite linear; }
+
+#view-login.login-parallax-active .login-parallax-host .rope {
+  width: 120%;
+  position: relative;
+  left: -10%;
+  position: relative; }
+
+#view-login.login-parallax-active .login-parallax-host .hanger {
+  -webkit-transform-origin: 0% 0%;
+  -moz-transform-origin: 0% 0%;
+  transform-origin: 0% 0%;
+  position: absolute; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-1 {
+    top: 28%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-2 {
+    top: 46%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-3 {
+    top: 59%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-4 {
+    top: 66.5%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-5 {
+    top: 69.5%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-6 {
+    top: 66.5%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-7 {
+    top: 59%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-8 {
+    top: 46%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-9 {
+    top: 28%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-1 {
+    left: 10%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-2 {
+    left: 20%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-3 {
+    left: 30%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-4 {
+    left: 40%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-5 {
+    left: 50%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-6 {
+    left: 60%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-7 {
+    left: 70%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-8 {
+    left: 80%; }
+  #view-login.login-parallax-active .login-parallax-host .hanger.position-9 {
+    left: 90%; }
+
+#view-login.login-parallax-active .login-parallax-host .board {
+  -webkit-transform-origin: 50% 0%;
+  -moz-transform-origin: 50% 0%;
+  transform-origin: 50% 0%;
+  margin: 0px -140px;
+  background-size: 280px 280px;
+  height: 280px;
+  width: 280px;
+  background-repeat: no-repeat;
+  position: absolute;
+  top: -4px;
+  left: 0; }
+  #view-login.login-parallax-active .login-parallax-host .board.birds {
+    background-image: url(/parallax-demo/images/board-birds.png); }
+  #view-login.login-parallax-active .login-parallax-host .board.cloud-1 {
+    background-image: url(/parallax-demo/images/board-cloud-1.png); }
+  #view-login.login-parallax-active .login-parallax-host .board.cloud-2 {
+    background-image: url(/parallax-demo/images/board-cloud-2.png); }
+  #view-login.login-parallax-active .login-parallax-host .board.cloud-3 {
+    background-image: url(/parallax-demo/images/board-cloud-3.png); }
+  #view-login.login-parallax-active .login-parallax-host .board.cloud-4 {
+    background-image: url(/parallax-demo/images/board-cloud-4.png); }
+
+#view-login.login-parallax-active .login-parallax-host .swing-1 {
+  -webkit-animation: swing 4s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: swing 4s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: swing 4s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955); }
+
+#view-login.login-parallax-active .login-parallax-host .swing-2 {
+  -webkit-animation: swing 3.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: swing 3.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: swing 3.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955); }
+
+#view-login.login-parallax-active .login-parallax-host .swing-3 {
+  -webkit-animation: swing 3s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: swing 3s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: swing 3s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955); }
+
+#view-login.login-parallax-active .login-parallax-host .swing-4 {
+  -webkit-animation: swing 2.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: swing 2.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: swing 2.5s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955); }
+
+#view-login.login-parallax-active .login-parallax-host .swing-5 {
+  -webkit-animation: swing 2s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  -moz-animation: swing 2s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  animation: swing 2s infinite alternate cubic-bezier(0.455, 0.03, 0.515, 0.955); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-10 {
+  -webkit-animation: wave 8s 0.1s infinite linear;
+  -moz-animation: wave 8s 0.1s infinite linear;
+  animation: wave 8s 0.1s infinite linear;
+  bottom: 140px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 16px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-10:after {
+    height: 144px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-10 {
+  -webkit-transform: scale(1);
+  -moz-transform: scale(1);
+  transform: scale(1);
+  top: 20%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-10 .hanger {
+    -webkit-transform: scale(0.25);
+    -moz-transform: scale(0.25);
+    transform: scale(0.25); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-20 {
+  -webkit-animation: wave 7.55556s 0.1s infinite linear;
+  -moz-animation: wave 7.55556s 0.1s infinite linear;
+  animation: wave 7.55556s 0.1s infinite linear;
+  bottom: 120px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 32px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-20:after {
+    height: 128px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-20 {
+  -webkit-transform: scale(1.02778);
+  -moz-transform: scale(1.02778);
+  transform: scale(1.02778);
+  top: 16.66667%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-20 .hanger {
+    -webkit-transform: scale(0.27778);
+    -moz-transform: scale(0.27778);
+    transform: scale(0.27778); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-30 {
+  -webkit-animation: wave 7.11111s 0.1s infinite linear;
+  -moz-animation: wave 7.11111s 0.1s infinite linear;
+  animation: wave 7.11111s 0.1s infinite linear;
+  bottom: 100px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 48px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-30:after {
+    height: 112px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-30 {
+  -webkit-transform: scale(1.05556);
+  -moz-transform: scale(1.05556);
+  transform: scale(1.05556);
+  top: 13.33333%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-30 .hanger {
+    -webkit-transform: scale(0.30556);
+    -moz-transform: scale(0.30556);
+    transform: scale(0.30556); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-40 {
+  -webkit-animation: wave 6.66667s 0.1s infinite linear;
+  -moz-animation: wave 6.66667s 0.1s infinite linear;
+  animation: wave 6.66667s 0.1s infinite linear;
+  bottom: 80px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 64px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-40:after {
+    height: 96px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-40 {
+  -webkit-transform: scale(1.08333);
+  -moz-transform: scale(1.08333);
+  transform: scale(1.08333);
+  top: 10%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-40 .hanger {
+    -webkit-transform: scale(0.33333);
+    -moz-transform: scale(0.33333);
+    transform: scale(0.33333); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-50 {
+  -webkit-animation: wave 6.22222s 0.1s infinite linear;
+  -moz-animation: wave 6.22222s 0.1s infinite linear;
+  animation: wave 6.22222s 0.1s infinite linear;
+  bottom: 60px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 80px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-50:after {
+    height: 80px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-50 {
+  -webkit-transform: scale(1.11111);
+  -moz-transform: scale(1.11111);
+  transform: scale(1.11111);
+  top: 6.66667%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-50 .hanger {
+    -webkit-transform: scale(0.36111);
+    -moz-transform: scale(0.36111);
+    transform: scale(0.36111); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-60 {
+  -webkit-animation: wave 5.77778s 0.1s infinite linear;
+  -moz-animation: wave 5.77778s 0.1s infinite linear;
+  animation: wave 5.77778s 0.1s infinite linear;
+  bottom: 40px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 96px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-60:after {
+    height: 64px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-60 {
+  -webkit-transform: scale(1.13889);
+  -moz-transform: scale(1.13889);
+  transform: scale(1.13889);
+  top: 3.33333%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-60 .hanger {
+    -webkit-transform: scale(0.38889);
+    -moz-transform: scale(0.38889);
+    transform: scale(0.38889); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-70 {
+  -webkit-animation: wave 5.33333s 0.1s infinite linear;
+  -moz-animation: wave 5.33333s 0.1s infinite linear;
+  animation: wave 5.33333s 0.1s infinite linear;
+  bottom: 20px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 112px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-70:after {
+    height: 48px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-70 {
+  -webkit-transform: scale(1.16667);
+  -moz-transform: scale(1.16667);
+  transform: scale(1.16667);
+  top: 0%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-70 .hanger {
+    -webkit-transform: scale(0.41667);
+    -moz-transform: scale(0.41667);
+    transform: scale(0.41667); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-80 {
+  -webkit-animation: wave 4.88889s 0.1s infinite linear;
+  -moz-animation: wave 4.88889s 0.1s infinite linear;
+  animation: wave 4.88889s 0.1s infinite linear;
+  bottom: 0px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 128px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-80:after {
+    height: 32px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-80 {
+  -webkit-transform: scale(1.19444);
+  -moz-transform: scale(1.19444);
+  transform: scale(1.19444);
+  top: -3.33333%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-80 .hanger {
+    -webkit-transform: scale(0.44444);
+    -moz-transform: scale(0.44444);
+    transform: scale(0.44444); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-90 {
+  -webkit-animation: wave 4.44444s 0.1s infinite linear;
+  -moz-animation: wave 4.44444s 0.1s infinite linear;
+  animation: wave 4.44444s 0.1s infinite linear;
+  bottom: -20px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 144px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-90:after {
+    height: 16px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-90 {
+  -webkit-transform: scale(1.22222);
+  -moz-transform: scale(1.22222);
+  transform: scale(1.22222);
+  top: -6.66667%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-90 .hanger {
+    -webkit-transform: scale(0.47222);
+    -moz-transform: scale(0.47222);
+    transform: scale(0.47222); }
+
+#view-login.login-parallax-active .login-parallax-host .wave.depth-100 {
+  -webkit-animation: wave 4s 0.1s infinite linear;
+  -moz-animation: wave 4s 0.1s infinite linear;
+  animation: wave 4s 0.1s infinite linear;
+  bottom: -40px;
+  margin: 0px 0px;
+  background-position: center bottom;
+  background-size: auto 101%;
+  height: 160px; }
+  #view-login.login-parallax-active .login-parallax-host .wave.depth-100:after {
+    height: 0px; }
+
+#view-login.login-parallax-active .login-parallax-host .rope.depth-100 {
+  -webkit-transform: scale(1.25);
+  -moz-transform: scale(1.25);
+  transform: scale(1.25);
+  top: -10%; }
+  #view-login.login-parallax-active .login-parallax-host .rope.depth-100 .hanger {
+    -webkit-transform: scale(0.5);
+    -moz-transform: scale(0.5);
+    transform: scale(0.5); }
+
+
+@keyframes phase {
+  0% {
+    opacity: 1; }
+  25% {
+    opacity: 0.4; }
+  50% {
+    opacity: 0.8; }
+  75% {
+    opacity: 0.4; }
+  100% {
+    opacity: 1; } }
+
+@keyframes wave {
+  0% {
+    -webkit-transform: rotateZ(0deg) translate3d(0,10%,0) rotateZ(0deg);
+    -moz-transform: rotateZ(0deg) translate3d(0,10%,0) rotateZ(0deg);
+    transform: rotateZ(0deg) translate3d(0,10%,0) rotateZ(0deg); }
+  100% {
+    -webkit-transform: rotateZ(360deg) translate3d(0,10%,0) rotateZ(-360deg);
+    -moz-transform: rotateZ(360deg) translate3d(0,10%,0) rotateZ(-360deg);
+    transform: rotateZ(360deg) translate3d(0,10%,0) rotateZ(-360deg); } }
+
+@keyframes lighthouse {
+  0% {
+    -webkit-transform: translate3d(15%,0,0) rotateZ(10deg);
+    -moz-transform: translate3d(15%,0,0) rotateZ(10deg);
+    transform: translate3d(15%,0,0) rotateZ(10deg); }
+  100% {
+    -webkit-transform: translate3d(-15%,0,0) rotateZ(-10deg);
+    -moz-transform: translate3d(-15%,0,0) rotateZ(-10deg);
+    transform: translate3d(-15%,0,0) rotateZ(-10deg); } }
+
+@keyframes swing {
+  0% {
+    -webkit-transform: rotateZ(10deg);
+    -moz-transform: rotateZ(10deg);
+    transform: rotateZ(10deg); }
+  100% {
+    -webkit-transform: rotateZ(-10deg);
+    -moz-transform: rotateZ(-10deg);
+    transform: rotateZ(-10deg); } }

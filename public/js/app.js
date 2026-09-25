@@ -20,6 +20,7 @@
   let socket = null;
   let currentView = 'login';
   let permiteBiometricoLogin = false;
+  let loginRemoteMode = false;
 
   const VIEW_CLASSES = [
     'view-active',
@@ -47,7 +48,9 @@
       views.login.classList.remove('view-hidden', 'view-next');
       views.main.classList.remove('view-active');
       currentView = 'login';
+      if (typeof LoginParallax !== 'undefined') LoginParallax.mount();
     } else {
+      if (typeof LoginParallax !== 'undefined') LoginParallax.unmount();
       views.login.classList.add('view-hidden');
       views.main.classList.add('view-active');
       views.main.classList.remove('view-hidden', 'view-next');
@@ -100,6 +103,7 @@
     }
 
     resetLoginCredentials();
+    setLoginRemoteMode(false);
 
     if (mainTitle) mainTitle.textContent = 'OnneB POS';
     clearHeaderSessionInfo();
@@ -175,14 +179,18 @@
     if (userNameEl) userNameEl.textContent = username;
     if (empBadge) empBadge.title = empNombre !== '—' ? `Empresa: ${empNombre}` : 'Empresa activa';
     if (userBadge) userBadge.title = username !== '—' ? `Usuario: ${username}` : 'Usuario activo';
+    const remoteBadge = document.getElementById('header-remote-badge');
+    if (remoteBadge) remoteBadge.hidden = F.getDbMode() !== 'remote';
     updateHeaderEmpresaLogo();
   }
 
   function clearHeaderSessionInfo() {
     const empNameEl = document.getElementById('header-empresa-name');
     const userNameEl = document.getElementById('header-user-name');
+    const remoteBadge = document.getElementById('header-remote-badge');
     if (empNameEl) empNameEl.textContent = '—';
     if (userNameEl) userNameEl.textContent = '—';
+    if (remoteBadge) remoteBadge.hidden = true;
     if (typeof LicenseAccess !== 'undefined' && LicenseAccess.clearExpiryBadge) {
       LicenseAccess.clearExpiryBadge();
     }
@@ -356,7 +364,71 @@
     return String(value ?? '').trim();
   }
 
+  function setLoginEmpresasLoading(loading, message) {
+    const select = document.getElementById('login-empresa');
+    const loader = document.getElementById('login-empresas-loader');
+    const loaderText = document.getElementById('login-empresas-loader-text');
+    const card = document.getElementById('login-card');
+    const btnRemote = document.getElementById('btn-login-remote-mode');
+    const btnLocal = document.getElementById('btn-login-local-mode');
+    const msg = message || (loginRemoteMode ? 'Cargando sedes remotas…' : 'Cargando empresas locales…');
+    if (select && loading) {
+      select.innerHTML = `<option value="">${msg}</option>`;
+      select.disabled = true;
+    }
+    if (loaderText) loaderText.textContent = msg;
+    if (loader) loader.hidden = !loading;
+    card?.classList.toggle('is-loading-empresas', loading);
+    if (btnRemote) btnRemote.disabled = loading;
+    if (btnLocal) btnLocal.disabled = loading;
+  }
+
+  function setLoginSubmitBusy(busy, label) {
+    const btn = document.getElementById('btn-login-submit');
+    const btnLocal = document.getElementById('btn-login-local-mode');
+    const btnRemote = document.getElementById('btn-login-remote-mode');
+    const empresaSelect = document.getElementById('login-empresa');
+    if (!btn) return;
+    if (busy) {
+      if (!btn.dataset.defaultLabel) btn.dataset.defaultLabel = btn.textContent.trim();
+      btn.disabled = true;
+      btn.textContent = label || (loginRemoteMode ? 'Conectando a sede remota…' : 'Iniciando sesión…');
+      btn.classList.add('is-busy');
+      if (btnLocal) btnLocal.disabled = true;
+      if (btnRemote) btnRemote.disabled = true;
+      if (empresaSelect) empresaSelect.disabled = true;
+    } else {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.defaultLabel || 'INICIAR SESIÓN';
+      btn.classList.remove('is-busy');
+      if (btnLocal) btnLocal.disabled = false;
+      if (btnRemote) btnRemote.disabled = false;
+      if (empresaSelect) empresaSelect.disabled = false;
+    }
+  }
+
+  async function setLoginRemoteMode(remote) {
+    loginRemoteMode = Boolean(remote);
+    const card = document.getElementById('login-card');
+    const banner = document.getElementById('login-remote-banner');
+    const btnRemote = document.getElementById('btn-login-remote-mode');
+    const btnLocal = document.getElementById('btn-login-local-mode');
+    card?.classList.toggle('is-remote', loginRemoteMode);
+    if (banner) banner.hidden = !loginRemoteMode;
+    if (btnRemote) btnRemote.hidden = loginRemoteMode;
+    if (btnLocal) btnLocal.hidden = !loginRemoteMode;
+    updateLoginPasskeyButton();
+    setLoginEmpresasLoading(
+      true,
+      loginRemoteMode ? 'Cargando sedes remotas…' : 'Cargando empresas locales…'
+    );
+    await loadLoginEmpresas();
+  }
+
   async function fetchEmpresasForLogin() {
+    if (loginRemoteMode) {
+      return F.fetchJson(`/api/community/empresas-sync-remoto?_=${Date.now()}`, { cache: 'no-store' });
+    }
     return F.fetchJson(`/api/empresas/combo?_=${Date.now()}`, { cache: 'no-store' });
   }
 
@@ -373,6 +445,7 @@
     const passkeyBtn = document.getElementById('login-passkey-btn');
     if (!passkeyBtn) return;
     const show =
+      !loginRemoteMode &&
       permiteBiometricoLogin &&
       typeof WebAuthnClient !== 'undefined' &&
       WebAuthnClient.isSupported();
@@ -383,11 +456,14 @@
     const select = document.getElementById('login-empresa');
     if (!select) return;
     const nitGuardado = normEmpNit(selectedNit);
+    const loadingMsg = loginRemoteMode ? 'Cargando sedes remotas…' : 'Cargando empresas locales…';
+    setLoginEmpresasLoading(true, loadingMsg);
     try {
-      const [data, biometricOk] = await Promise.all([
-        fetchEmpresasForLogin(),
-        fetchBiometricConfig(),
-      ]);
+      const data = await fetchEmpresasForLogin();
+      let biometricOk = false;
+      if (!loginRemoteMode) {
+        biometricOk = await fetchBiometricConfig();
+      }
       permiteBiometricoLogin = biometricOk;
       updateLoginPasskeyButton();
       const rows = (data.rows || [])
@@ -401,7 +477,9 @@
         }))
         .filter((e) => e.EMPNIT);
       if (!rows.length) {
-        select.innerHTML = '<option value="">Sin empresas disponibles</option>';
+        select.innerHTML = loginRemoteMode
+          ? '<option value="">Sin sedes remotas configuradas</option>'
+          : '<option value="">Sin empresas disponibles</option>';
         select.disabled = true;
         return;
       }
@@ -418,10 +496,17 @@
       select.value = existe ? nitGuardado : rows[0].EMPNIT;
     } catch (err) {
       console.warn('[Login] Empresas:', err);
-      select.innerHTML = '<option value="">Error al cargar empresas</option>';
+      select.innerHTML = loginRemoteMode
+        ? `<option value="">Error al cargar sedes remotas</option>`
+        : '<option value="">Error al cargar empresas</option>';
       select.disabled = true;
       permiteBiometricoLogin = false;
       updateLoginPasskeyButton();
+      if (loginRemoteMode) {
+        F.toast(err.message || 'No se pudieron cargar las sedes remotas', 'error');
+      }
+    } finally {
+      setLoginEmpresasLoading(false);
     }
   }
 
@@ -475,6 +560,7 @@
         empNit,
         empNombre,
         codTipoEmpresa: tip,
+        dbMode: loginRemoteMode ? 'remote' : 'local',
         at: new Date().toISOString(),
       };
       F.session('user', sessionData);
@@ -549,18 +635,43 @@
         F.toast('Usuario y contraseña son obligatorios', 'warning');
         return;
       }
+      const dbMode = loginRemoteMode ? 'remote' : 'local';
+      setLoginSubmitBusy(true, loginRemoteMode ? 'Conectando a sede remota…' : 'Iniciando sesión…');
       if (window.OnnebPace) OnnebPace.start();
       try {
         const auth = await F.fetchJson('/api/auth/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ usuario: username, password, empnit: empNit }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Db-Mode': dbMode,
+            'X-Emp-Nit': empNit,
+          },
+          dbMode,
+          empnit: empNit,
+          body: JSON.stringify({ usuario: username, password, empnit: empNit, dbMode }),
         });
         await completeLoginSession(auth, empNit, empNombre, username, codTipoEmpresa);
       } catch (err) {
         stopLoadingOverlays();
         F.toast(err.message || 'Error al iniciar sesión', 'error');
+      } finally {
+        setLoginSubmitBusy(false);
       }
+    });
+
+    const btnRemoteMode = document.getElementById('btn-login-remote-mode');
+    const btnLocalMode = document.getElementById('btn-login-local-mode');
+    btnRemoteMode?.addEventListener('click', () => {
+      setLoginRemoteMode(true).catch((err) => {
+        console.warn('[Login] modo remoto:', err);
+        F.toast(err.message || 'No se pudo activar modo remoto', 'error');
+      });
+    });
+    btnLocalMode?.addEventListener('click', () => {
+      setLoginRemoteMode(false).catch((err) => {
+        console.warn('[Login] modo local:', err);
+        F.toast(err.message || 'No se pudo volver al login local', 'error');
+      });
     });
 
     const passkeyBtn = document.getElementById('login-passkey-btn');
