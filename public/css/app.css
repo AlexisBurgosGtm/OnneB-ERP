@@ -441,3 +441,47 @@ body.onneb-mutation-busy .swal2-container button {
   border-bottom-left-radius: var(--app-radius-sm);
   border-bottom-right-radius: var(--app-radius-sm);
 }
+
+/* Banner PWA — esquina superior izquierda */
+.onneb-pwa-install-banner {
+  position: fixed;
+  top: 0.65rem;
+  left: 0.65rem;
+  z-index: 1060;
+  max-width: min(22rem, calc(100vw - 1.25rem));
+  pointer-events: none;
+}
+
+.onneb-pwa-install-banner:not([hidden]) {
+  pointer-events: auto;
+}
+
+.onneb-pwa-install-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--app-surface, #fff);
+  border: 1px solid var(--app-border, #e5e7eb);
+  border-radius: var(--app-radius-sm, 0.5rem);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+}
+
+.onneb-pwa-install-banner__icon {
+  border-radius: 0.35rem;
+  flex-shrink: 0;
+}
+
+.onneb-pwa-install-banner__text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+  font-size: 0.85rem;
+}
+
+.onneb-pwa-install-banner__close {
+  padding: 0.15rem 0.35rem;
+  margin: 0;
+  line-height: 1;
+  text-decoration: none;
+}

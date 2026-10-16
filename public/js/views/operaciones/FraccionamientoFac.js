@@ -6,7 +6,9 @@ const FraccionamientoFacView = {
   _container: null,
   _rows: [],
   _filterQuery: '',
+  _filterEstado: 'TODAS',
   _tipodocs: [],
+  _cajas: [],
   _fraccionando: false,
   _fraccionCancel: false,
   _fraccionandoId: null,
@@ -24,7 +26,13 @@ const FraccionamientoFacView = {
   LS_PROCESS_KEY: 'pos_onneb_ffac_process',
 
   defaultParams() {
-    return { minutos: 15, minimo: 100, maximo: Math.min(500, this._maximoLegal || 2500), coddoc: '' };
+    return {
+      minutos: 15,
+      minimo: 100,
+      maximo: Math.min(500, this._maximoLegal || 2500),
+      coddoc: '',
+      codcaja: '',
+    };
   },
 
   escapeHtml(value) {
@@ -93,6 +101,7 @@ const FraccionamientoFacView = {
         minimo: Number(parsed.minimo) > 0 ? Number(parsed.minimo) : base.minimo,
         maximo,
         coddoc: String(parsed.coddoc || '').trim(),
+        codcaja: parsed.codcaja != null && String(parsed.codcaja).trim() !== '' ? String(parsed.codcaja).trim() : '',
       };
     } catch (_) {
       return this.defaultParams();
@@ -116,7 +125,8 @@ const FraccionamientoFacView = {
     const minimo = Number(root?.querySelector('#ffac-param-minimo')?.value) || 0;
     const maximo = Number(root?.querySelector('#ffac-param-maximo')?.value) || 0;
     const coddoc = String(root?.querySelector('#ffac-param-coddoc')?.value || '').trim();
-    return { minutos, minimo, maximo, coddoc };
+    const codcaja = String(root?.querySelector('#ffac-param-codcaja')?.value || '').trim();
+    return { minutos, minimo, maximo, coddoc, codcaja };
   },
 
   getParams() {
@@ -130,7 +140,13 @@ const FraccionamientoFacView = {
     this._paramsLocked = Boolean(locked);
     const root = this._container;
     if (!root) return;
-    ['ffac-param-minutos', 'ffac-param-minimo', 'ffac-param-maximo', 'ffac-param-coddoc'].forEach((id) => {
+    [
+      'ffac-param-minutos',
+      'ffac-param-minimo',
+      'ffac-param-maximo',
+      'ffac-param-coddoc',
+      'ffac-param-codcaja',
+    ].forEach((id) => {
       const el = root.querySelector(`#${id}`);
       if (el) el.disabled = this._paramsLocked;
     });
@@ -271,6 +287,36 @@ const FraccionamientoFacView = {
     return Math.min(100, Math.round((e / t) * 100));
   },
 
+  isRowCompleto(row) {
+    const total = Number(row?.TOTALPRECIO) || 0;
+    const emitido = Number(row?.TOTAL_EMITIDO) || 0;
+    if (!(total > 0)) return false;
+    return emitido >= total - 0.02 || this.progressPct(emitido, total) >= 100;
+  },
+
+  rowFraccionEstado(row) {
+    const id = Number(row.ID);
+    if (this._fraccionando && Number(this._fraccionandoId) === id) return 'FRACCIONANDO';
+    if (this._fraccionQueue.includes(id)) return 'FRACCIONANDO';
+    const emitido = Number(row.TOTAL_EMITIDO) || 0;
+    if (emitido > 0.005 && !this.isRowCompleto(row)) return 'FRACCIONANDO';
+    return 'PENDIENTES';
+  },
+
+  formatDocStatusCell(status) {
+    const s = String(status || '').trim().toUpperCase();
+    if (s === 'O') {
+      return '<span class="badge text-bg-success" title="Operado">O</span>';
+    }
+    if (s === 'A') {
+      return '<span class="badge text-bg-danger" title="Anulado">A</span>';
+    }
+    if (s === 'I') {
+      return '<span class="badge text-bg-secondary" title="Bloqueado">I</span>';
+    }
+    return this.formatCell(status);
+  },
+
   renderProgressBadge(row) {
     const id = Number(row.ID);
     const total = Number(row.TOTALPRECIO) || 0;
@@ -329,9 +375,16 @@ const FraccionamientoFacView = {
   },
 
   filteredRows() {
+    let rows = this._rows.filter((r) => !this.isRowCompleto(r));
+    const estado = String(this._filterEstado || 'TODAS').trim().toUpperCase();
+    if (estado === 'PENDIENTES') {
+      rows = rows.filter((r) => this.rowFraccionEstado(r) === 'PENDIENTES');
+    } else if (estado === 'FRACCIONANDO') {
+      rows = rows.filter((r) => this.rowFraccionEstado(r) === 'FRACCIONANDO');
+    }
     const q = String(this._filterQuery || '').trim().toLowerCase();
-    if (!q) return this._rows;
-    return this._rows.filter((r) => {
+    if (!q) return rows;
+    return rows.filter((r) => {
       const hay = [
         r.TIPO,
         r.CODDOC,
@@ -342,6 +395,7 @@ const FraccionamientoFacView = {
         r.TIPODOC,
         r.TOTALPRECIO,
         r.CONCRE,
+        r.DOC_STATUS,
       ]
         .map((v) => String(v ?? '').toLowerCase())
         .join(' ');
@@ -356,10 +410,10 @@ const FraccionamientoFacView = {
   renderTableBodyHtml() {
     const rows = this.filteredRows();
     if (!rows.length) {
-      const msg = this._filterQuery.trim()
-        ? 'Ningún registro coincide con la búsqueda'
+      const msg = this._filterQuery.trim() || this._filterEstado !== 'TODAS'
+        ? 'Ningún registro coincide con la búsqueda o el filtro'
         : 'Sin registros en la cola de trabajo';
-      return `<tr><td colspan="10" class="text-center text-muted py-4">${msg}</td></tr>`;
+      return `<tr><td colspan="11" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -415,6 +469,7 @@ const FraccionamientoFacView = {
             <td class="text-end">${this.formatCell(r.CORRELATIVO)}</td>
             <td class="small">${this.formatCell(r.DOC_NOMCLIE)}</td>
             <td class="small fw-semibold ${pagoClass}">${this.escapeHtml(pago)}</td>
+            <td class="text-center text-nowrap">${this.formatDocStatusCell(r.DOC_STATUS)}</td>
             <td class="text-end text-nowrap">Q ${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
             <td class="text-nowrap">${this.renderProgressBadge(r)}</td>
             <td>${this.formatFecha(r.FECHA_INICIO)}</td>
@@ -448,66 +503,90 @@ const FraccionamientoFacView = {
     }).join('');
   },
 
+  cajasOptionsHtml(selected) {
+    if (!this._cajas.length) {
+      return '<option value="">— Sin cajas en catálogo —</option>';
+    }
+    const selStr = selected != null && String(selected).trim() !== '' ? String(selected).trim() : '';
+    const head =
+      '<option value="">— Documento fuente —</option>' +
+      this._cajas
+        .map((c) => {
+          const id = c.CODCAJA;
+          const label = c.DESCAJA ? `${c.CODCAJA} — ${c.DESCAJA}` : String(c.CODCAJA);
+          const sel = selStr !== '' && String(id) === selStr ? ' selected' : '';
+          return `<option value="${this.escapeHtml(id)}"${sel}>${this.escapeHtml(label)}</option>`;
+        })
+        .join('');
+    return head;
+  },
+
   renderScreen(params) {
     const p = params || this.loadParams();
     return `
       <div class="catalogo-empresa-panel catalogo-vista-wrap w-100">
-        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-2">
-          <div>
-            <h2 class="h5 mb-0"><i class="fa-solid fa-scissors me-2"></i>Fraccionamiento Facturas</h2>
-            <p class="small text-muted mb-0">Cola de trabajo de documentos</p>
-          </div>
-          <div class="card shadow-sm flex-grow-1" style="max-width: 42rem">
+        <h2 class="h6 text-muted mb-2 fw-semibold">
+          <i class="fa-solid fa-scissors me-1"></i>Fraccionamiento Facturas
+        </h2>
+        <div class="card shadow-sm mb-2 w-100">
             <div class="card-body py-2 px-3">
-              <div class="d-flex align-items-center justify-content-between mb-2 gap-2 flex-wrap">
-                <h6 class="mb-0 small text-uppercase text-muted">
-                  <i class="fa-solid fa-sliders me-1"></i>Parámetros
-                </h6>
-                <div class="d-flex align-items-center gap-2">
-                  <span id="ffac-timer-badge" class="d-none"></span>
-                  <span class="small text-muted" id="ffac-param-status"></span>
-                </div>
-              </div>
-              <div class="row g-2 align-items-end">
-                <div class="col-6 col-md-3">
+              <div class="d-flex flex-wrap align-items-end gap-2 w-100">
+                <div class="flex-shrink-0" style="min-width: 5.5rem">
                   <label class="form-label small mb-0" for="ffac-param-minutos">Minutos</label>
                   <select class="form-select form-select-sm" id="ffac-param-minutos">
                     ${this.minutosOptionsHtml(p.minutos)}
                   </select>
                 </div>
-                <div class="col-6 col-md-2">
+                <div class="flex-shrink-0" style="min-width: 5rem">
                   <label class="form-label small mb-0" for="ffac-param-minimo">Mínimo</label>
                   <input type="number" class="form-control form-control-sm" id="ffac-param-minimo"
                     min="0.01" step="0.01" value="${this.escapeHtml(p.minimo)}">
                 </div>
-                <div class="col-6 col-md-2">
-                <div class="form-text small mb-0">Tope legal Q ${this.escapeHtml(this.formatMoney(this._maximoLegal))}</div>
-                <label class="form-label small mb-0" for="ffac-param-maximo">Máximo</label>
+                <div class="flex-shrink-0" style="min-width: 5.5rem">
+                  <label class="form-label small mb-0" for="ffac-param-maximo" title="Tope legal Q ${this.escapeHtml(this.formatMoney(this._maximoLegal))}">
+                    Máximo <span class="text-muted fw-normal">(≤ Q ${this.escapeHtml(this.formatMoney(this._maximoLegal))})</span>
+                  </label>
                   <input type="number" class="form-control form-control-sm" id="ffac-param-maximo"
                     min="0.01" step="0.01" max="${this.escapeHtml(this._maximoLegal)}"
                     value="${this.escapeHtml(p.maximo)}">
-                  
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="flex-grow-1 min-w-0" style="min-width: 8rem">
                   <label class="form-label small mb-0" for="ffac-param-coddoc">CODDOC a generar</label>
                   <select class="form-select form-select-sm" id="ffac-param-coddoc">
                     <option value="">— Seleccione —</option>
                     ${this.tipodocOptionsHtml(p.coddoc)}
                   </select>
                 </div>
-                <div class="col-12 col-md-2">
+                <div class="flex-shrink-0" style="min-width: 5.5rem">
                   <label class="form-label small mb-0" for="ffac-param-corr">Correlativo</label>
                   <input type="text" class="form-control form-control-sm" id="ffac-param-corr" readonly value="">
                 </div>
+                <div class="flex-grow-1 min-w-0" style="min-width: 8rem">
+                  <label class="form-label small mb-0" for="ffac-param-codcaja">Caja destino</label>
+                  <select class="form-select form-select-sm" id="ffac-param-codcaja" title="CODCAJA en FEF/FEC generadas">
+                    ${this.cajasOptionsHtml(p.codcaja)}
+                  </select>
+                </div>
+                <div class="d-flex align-items-center gap-2 ms-md-auto flex-shrink-0 pb-1">
+                  <span id="ffac-timer-badge" class="d-none"></span>
+                  <span class="small text-muted" id="ffac-param-status"></span>
+                </div>
               </div>
             </div>
-          </div>
         </div>
-        <div class="mb-3" style="max-width: 18rem">
-          <div class="input-group input-group-sm">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2 w-100">
+          <div class="input-group input-group-sm flex-grow-1" style="max-width: 18rem">
             <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
             <input type="search" class="form-control" id="ffac-search"
               placeholder="Buscar…" value="${this.escapeHtml(this._filterQuery)}" autocomplete="off">
+          </div>
+          <div class="flex-shrink-0" style="min-width: 10rem">
+            <label class="form-label small mb-0 visually-hidden" for="ffac-filter-estado">Estado</label>
+            <select class="form-select form-select-sm" id="ffac-filter-estado" title="Filtrar por avance">
+              <option value="TODAS"${this._filterEstado === 'TODAS' ? ' selected' : ''}>TODAS</option>
+              <option value="PENDIENTES"${this._filterEstado === 'PENDIENTES' ? ' selected' : ''}>PENDIENTES</option>
+              <option value="FRACCIONANDO"${this._filterEstado === 'FRACCIONANDO' ? ' selected' : ''}>FRACCIONANDO</option>
+            </select>
           </div>
         </div>
         <div id="ffac-progress" class="d-none alert alert-info py-2 small mb-3" role="status"></div>
@@ -521,6 +600,7 @@ const FraccionamientoFacView = {
                   <th class="text-end">Correlativo</th>
                   <th>Cliente</th>
                   <th>Pago</th>
+                  <th class="text-center">Estado doc.</th>
                   <th class="text-end">Total</th>
                   <th>Progreso</th>
                   <th>Inicio</th>
@@ -595,6 +675,7 @@ const FraccionamientoFacView = {
       persist();
       this.reloadCorrelativoParam();
     });
+    root.querySelector('#ffac-param-codcaja')?.addEventListener('change', persist);
   },
 
   bindEvents() {
@@ -602,6 +683,10 @@ const FraccionamientoFacView = {
     const search = this._container.querySelector('#ffac-search');
     search?.addEventListener('input', () => {
       this._filterQuery = search.value || '';
+      this.refreshTable();
+    });
+    this._container.querySelector('#ffac-filter-estado')?.addEventListener('change', (ev) => {
+      this._filterEstado = String(ev.target.value || 'TODAS').trim().toUpperCase() || 'TODAS';
       this.refreshTable();
     });
     this.bindParamEvents();
@@ -643,9 +728,27 @@ const FraccionamientoFacView = {
     }
   },
 
+  async fetchCajas() {
+    if (typeof DocOpciones !== 'undefined' && DocOpciones.fetchCajas) {
+      this._cajas = (await DocOpciones.fetchCajas()) || [];
+      return this._cajas;
+    }
+    const params = new URLSearchParams({ empnit: F.getEmpNit(), _: String(Date.now()) });
+    const data = await F.fetchJson(`/api/cajas?${params}`, { cache: 'no-store' });
+    this._cajas = data.rows || [];
+    return this._cajas;
+  },
+
+  codcajaPayloadFromParams(params) {
+    const raw = params?.codcaja;
+    if (raw === '' || raw == null) return {};
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? { CODCAJA: n } : {};
+  },
+
   async fetchRows() {
     const data = await F.fetchJson(this.apiUrl('', { _: Date.now() }), { cache: 'no-store' });
-    this._rows = data.rows || [];
+    this._rows = (data.rows || []).filter((r) => !this.isRowCompleto(r));
     return this._rows;
   },
 
@@ -758,7 +861,7 @@ const FraccionamientoFacView = {
       const res = await F.fetchJson(this.apiUrl(`/${id}/certificar-toda`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...this.codcajaPayloadFromParams(params) }),
       });
       const fel = res.fel || {};
       F.toast(
@@ -933,6 +1036,7 @@ const FraccionamientoFacView = {
             maximo: params.maximo,
             FECHA: fecha,
             USUARIO: usuario,
+            ...this.codcajaPayloadFromParams(params),
           }),
         });
 
@@ -1098,7 +1202,7 @@ const FraccionamientoFacView = {
         params = { ...params, ...saved.params };
       }
 
-      await Promise.all([this.fetchRows(), this.fetchTipodocs()]);
+      await Promise.all([this.fetchRows(), this.fetchTipodocs(), this.fetchCajas()]);
       // Releer params con el tope legal ya cargado
       params = this.loadParams();
       if (saved?.active && saved.empnit === emp && saved.params) {
@@ -1125,6 +1229,7 @@ const FraccionamientoFacView = {
           setVal('ffac-param-minimo', p.minimo);
           setVal('ffac-param-maximo', p.maximo);
           setVal('ffac-param-coddoc', p.coddoc);
+          setVal('ffac-param-codcaja', p.codcaja != null ? p.codcaja : '');
         }
       }
 

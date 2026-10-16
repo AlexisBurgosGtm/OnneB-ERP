@@ -1,6 +1,6 @@
 /**
  * Reportes → Reportes de Productos
- * Ventas FAC/FEL por producto: ranking, KPIs, gráfica dual y clientes top.
+ * Ventas netas por producto (facturas − devoluciones), alineado con Reportes de Ventas.
  */
 const ReportesProductosView = {
   _container: null,
@@ -510,7 +510,7 @@ const ReportesProductosView = {
               <button type="button" class="btn btn-sm btn-success" id="btn-repprod-cargar" ${this._loading ? 'disabled' : ''}>
                 <i class="fa-solid fa-rotate me-1"></i>Cargar
               </button>
-              <span class="small text-muted ms-1">${this._productos.length} producto(s)</span>
+              <span class="small text-muted ms-1">${this._productos.length} producto(s) · neto (ventas − devoluciones)</span>
               ${Number(this._totales?.precio) > 0 ? `<span class="small text-success ms-2 fw-semibold">Venta: ${this.escapeHtml(this.formatMoney(this._totales.precio))}</span>` : ''}
               ${Number(this._totales?.utilidad) || Number(this._totales?.costo) ? `<span class="small text-primary ms-2 fw-semibold">Util.: ${this.escapeHtml(this.formatMoney(this._totales.utilidad ?? this.utilidadOf(this._totales.precio, this._totales.costo)))}</span>` : ''}
             </div>

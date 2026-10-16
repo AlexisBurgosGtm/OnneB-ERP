@@ -1096,6 +1096,8 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
         empnit,
         coddoc,
         correlativo,
+        cloudEmpnit: codembarque,
+        cloudCodembarque: empnit,
       });
 
       const marcaMax = await getDocumentosMarcaMaxChars(pool);

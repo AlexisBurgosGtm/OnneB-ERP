@@ -76,6 +76,36 @@
   flex-direction: column;
 }
 
+/* Modal detalle FAC — montado en body (evita backdrop encima del contenido) */
+.rpf-doc-modal {
+  z-index: 1065;
+}
+
+body.modal-open .modal-backdrop {
+  z-index: 1060;
+}
+
+.rpf-doc-modal .modal-content {
+  background-color: var(--app-surface, var(--bs-body-bg, #fff));
+  color: var(--app-text, var(--bs-body-color, #212529));
+  border: 1px solid var(--app-border, var(--bs-border-color, #dee2e6));
+}
+
+.rpf-doc-modal .modal-header,
+.rpf-doc-modal .modal-footer {
+  border-color: var(--app-border, var(--bs-border-color, #dee2e6));
+}
+
+.rpf-doc-modal .modal-body {
+  background-color: var(--app-surface, var(--bs-body-bg, #fff));
+  color: inherit;
+}
+
+.rpf-doc-modal .table thead.table-light {
+  --bs-table-bg: var(--bs-light, #f8f9fa);
+  color: var(--app-text, inherit);
+}
+
 .repven-search {
   max-width: 16rem;
 }

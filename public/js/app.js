@@ -86,6 +86,8 @@
     if (clearSession) {
       F.clearSession('user');
       window.OnnebContext = {};
+      window.__OnnebCompanionQrSession = false;
+      if (typeof CompanionPointer !== 'undefined') CompanionPointer.setActive(false);
       if (typeof EmpresaLogo !== 'undefined') EmpresaLogo.clearSession();
     }
     setViewImmediate(true);
@@ -97,6 +99,8 @@
 
     F.clearSession('user');
     window.OnnebContext = {};
+    window.__OnnebCompanionQrSession = false;
+    if (typeof CompanionPointer !== 'undefined') CompanionPointer.setActive(false);
     if (typeof EmpresaLogo !== 'undefined') EmpresaLogo.clearSession();
     if (typeof ViewTabs !== 'undefined' && typeof ViewTabs.reset === 'function') {
       ViewTabs.reset();
@@ -407,6 +411,10 @@
     }
   }
 
+  window.__OnnebSetLoginRemoteMode = (remote) => {
+    loginRemoteMode = Boolean(remote);
+  };
+
   async function setLoginRemoteMode(remote) {
     loginRemoteMode = Boolean(remote);
     const card = document.getElementById('login-card');
@@ -541,7 +549,18 @@
       { passive: true }
     );
 
-    async function completeLoginSession(auth, empNit, empNombre, fallbackUsername, codTipoEmpresa) {
+    async function completeLoginSession(
+      auth,
+      empNit,
+      empNombre,
+      fallbackUsername,
+      codTipoEmpresa,
+      viaCompanionQr = false
+    ) {
+      window.__OnnebCompanionQrSession = Boolean(viaCompanionQr);
+      if (!viaCompanionQr && typeof CompanionPointer !== 'undefined') {
+        CompanionPointer.setActive(false);
+      }
       const authUser = auth.user;
       const displayName = authUser?.nomempleado || authUser?.usuario || fallbackUsername;
       let tip =
@@ -611,6 +630,9 @@
         }).catch(() => {});
       }
       resetLoginCredentials();
+      if (typeof ModoTelefono !== 'undefined') {
+        ModoTelefono.afterLogin();
+      }
       // Restaurar WhatsApp en segundo plano si hay sesión guardada (sin ir a Configuraciones).
       F.fetchJson('/api/whatsapp/auto-connect', {
         method: 'POST',
@@ -618,6 +640,8 @@
         body: '{}',
       }).catch(() => {});
     }
+
+    window.__OnnebCompleteLoginSession = completeLoginSession;
 
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -803,6 +827,7 @@
     'nomenclatura-contable': 'Nomenclatura Contable',
     'formatos-contables': 'Formatos Contables',
     'configuraciones-contabilidad': 'Configuraciones Contabilidad',
+    'reportes-contabilidad': 'Reportes Contabilidad',
     'movimientos-banco': 'Movimientos',
     bancos: 'Bancos',
     'cuentas-bancarias': 'Cuentas Bancarias',
@@ -832,6 +857,7 @@
     'reportes-marcas': 'Reportes de Marcas',
     'impresion-xml-fel': 'Impresión XML FEL',
     'control-fletes': 'Control de Fletes',
+    'reportes-pendientes-facturar': 'Reporte de Pendientes Facturar',
     'subir-catalogo': 'Subir catálogo',
     'descargar-catalogo': 'Descargar Catálogo',
     'traslados-en-transito': 'Traslados en tránsito',
@@ -991,6 +1017,11 @@
       ImpresionXmlFelView.load(host);
     } else if (key === 'control-fletes' && typeof ControlFletesView !== 'undefined') {
       ControlFletesView.load(host);
+    } else if (
+      key === 'reportes-pendientes-facturar' &&
+      typeof ReportesPendientesFacturarView !== 'undefined'
+    ) {
+      ReportesPendientesFacturarView.load(host);
     } else if (key === 'subir-catalogo' && typeof SubirCatalogoView !== 'undefined') {
       SubirCatalogoView.load(host);
     } else if (key === 'descargar-catalogo' && typeof DescargarCatalogoView !== 'undefined') {
@@ -1033,6 +1064,8 @@
       NomenclaturaContableView.load(host);
     } else if (key === 'formatos-contables' && typeof FormatosContablesView !== 'undefined') {
       FormatosContablesView.load(host);
+    } else if (key === 'reportes-contabilidad' && typeof ReportesContabilidadView !== 'undefined') {
+      ReportesContabilidadView.load(host);
     } else if (
       key === 'configuraciones-contabilidad' &&
       typeof ConfiguracionesContabilidadView !== 'undefined'
@@ -1132,6 +1165,8 @@
       mountMenuView(key, mainContent);
     }
   }
+
+  window.__OnnebNavigateToMenu = navigateToMenu;
 
   if (typeof ViewTabs !== 'undefined') {
     ViewTabs.init({

@@ -138,6 +138,35 @@ const WebAuthnClient = {
     });
   },
 
+  async companionLogin({ token, empnit, usuario, empNombre, codTipoEmpresa }) {
+    const start = await F.fetchJson('/api/remote-companion/webauthn/login-options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        empnit,
+        ...(usuario ? { usuario } : {}),
+      }),
+    });
+    const assertion = await navigator.credentials.get({
+      publicKey: this.prepareGetOptions(start.options),
+      mediation: usuario ? 'optional' : 'conditional',
+    });
+    if (!assertion) throw new Error('No se obtuvo autenticación del dispositivo');
+    return F.fetchJson('/api/remote-companion/webauthn/login-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        challengeId: start.challengeId,
+        empnit,
+        empNombre,
+        codTipoEmpresa,
+        response: this.serializeCredential(assertion),
+      }),
+    });
+  },
+
   async login({ empnit, usuario }) {
     const start = await F.fetchJson('/api/auth/webauthn/login-options', {
       method: 'POST',

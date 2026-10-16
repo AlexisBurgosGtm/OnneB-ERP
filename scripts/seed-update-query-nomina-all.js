@@ -8,6 +8,7 @@ const path = require('path');
 const SCRIPTS = [
   'seed-update-query-nomina-modulo.js',
   'seed-update-query-control-asistencia.js',
+  'seed-update-query-asistencia-almuerzo.js',
   'seed-update-query-nomina-vales-empleados.js',
   'seed-update-query-nomina-vales-cuotas.js',
   'seed-update-query-nomina-vales-codcaja-null.js',

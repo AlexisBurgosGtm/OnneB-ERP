@@ -19,6 +19,7 @@ const {
   normalizeGuardadoFotos,
   normalizeMuestraFormatoFelOnline,
   normalizeTipofacFinalizado,
+  buildConfigGeneralBootstrap,
 } = require('../lib/settings');
 
 const router = express.Router();
@@ -311,6 +312,21 @@ router.put('/tipofac-finalizado', async (req, res) => {
     res.json({ ok: true, opcion, tipofac });
   } catch (err) {
     console.warn('[API PUT /config/tipofac-finalizado]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/bootstrap-config-general', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await buildConfigGeneralBootstrap(pool);
+    res.json(data);
+  } catch (err) {
+    console.warn('[API GET /config/bootstrap-config-general]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

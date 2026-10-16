@@ -11,6 +11,7 @@ const { assertAdminPass } = require('../lib/config-auth');
 const { STATUS_OPERADO, STATUS_ANULADO, STATUS_BLOQUEADO, normalizeStatus } = require('../lib/documento-status');
 const { revertirMovimientoInventarioDocumento, InventarioError } = require('../lib/inventario');
 const { anularDocumentoFel } = require('../lib/fel/anular');
+const { assertFacSinFraccionadasParaAnular } = require('../lib/fraccionamiento-fac-anular-guard');
 
 const router = express.Router();
 
@@ -647,6 +648,11 @@ router.post('/cortes/:id/documentos/:coddoc/:correlativo/anular', async (req, re
     }
     if (status !== STATUS_OPERADO && status !== STATUS_BLOQUEADO) {
       return res.status(400).json({ error: 'Estado del documento no permite anulación' });
+    }
+
+    const tipodocDoc = String(doc.TIPODOC || '').trim().toUpperCase();
+    if (tipodocDoc === 'FAC') {
+      await assertFacSinFraccionadasParaAnular(pool, empnit, coddoc, correlativo);
     }
 
     const hasFel = Boolean(String(doc.FEL_UUDI || '').trim());

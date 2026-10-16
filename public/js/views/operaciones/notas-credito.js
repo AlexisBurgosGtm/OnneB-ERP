@@ -911,13 +911,102 @@ const NotasCreditoView = {
     }
   },
 
+  puedeEditarEncabezadosLista(row) {
+    if (!row) return false;
+    if (String(row.STATUS || '').trim().toUpperCase() === 'A') return false;
+    return (Number(row.LINEAS) || 0) >= 1 && Number(row.TOTALPRECIO) > 0;
+  },
+
+  async editarEncabezadosLista(coddoc, correlativo) {
+    const pedido = await F.fetchJson(
+      this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}`, {
+        _: Date.now(),
+      })
+    );
+    const h = pedido?.header || {};
+    if (!this.puedeEditarEncabezadosLista({ ...h, LINEAS: (pedido?.lines || []).length })) {
+      F.toast('Solo notas con líneas y total pueden actualizar encabezados', 'warning');
+      return;
+    }
+    const label = `${coddoc} #${correlativo}`;
+    const obsVal = this.escapeHtml(h.OBS || '');
+    const felSerieVal = this.escapeHtml(String(h.FEL_SERIE ?? '').trim());
+    const felNumeroVal = this.escapeHtml(String(h.FEL_NUMERO ?? '').trim());
+    const felFechaVal = this.escapeHtml(
+      DocFecha.fechaIsoFromValue(h.FEL_FECHA) || String(h.FEL_FECHA || '').trim().slice(0, 10)
+    );
+    const ok = await Swal.fire({
+      ...CatalogosUI.modalBase({ customClass: { popup: 'modal-catalogo nc-encabezados-modal' } }),
+      title: 'Encabezado de la nota',
+      width: '40rem',
+      html: `
+        <p class="small text-muted mb-2">${this.escapeHtml(label)} · Total: <strong>${this.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</strong></p>
+        <p class="small text-info mb-2">Solo datos generales (FEL / observaciones). No modifica importes ni saldos.</p>
+        <div class="text-start">
+          <div class="row g-2 mb-2">
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="nc-list-enc-fel-serie">Serie FEL</label>
+              <input type="text" id="nc-list-enc-fel-serie" class="form-control form-control-sm" value="${felSerieVal}" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small mb-0" for="nc-list-enc-fel-numero">Número FEL</label>
+              <input type="text" id="nc-list-enc-fel-numero" class="form-control form-control-sm" value="${felNumeroVal}" autocomplete="off">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-0" for="nc-list-enc-fel-fecha">Fecha FEL</label>
+            <input type="date" id="nc-list-enc-fel-fecha" class="form-control form-control-sm" value="${felFechaVal}">
+          </div>
+          <label class="form-label small mb-0" for="nc-list-enc-obs">Observaciones</label>
+          <input type="text" id="nc-list-enc-obs" class="form-control form-control-sm" value="${obsVal}" maxlength="500" autocomplete="off">
+        </div>
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: CatalogosUI.guardarButtonHtml('Guardar'),
+      cancelButtonText: CatalogosUI.cancelButtonHtml('Cancelar'),
+      preConfirm: () => {
+        const felFecha = document.getElementById('nc-list-enc-fel-fecha')?.value?.trim() || '';
+        if (felFecha && !/^\d{4}-\d{2}-\d{2}$/.test(felFecha)) {
+          Swal.showValidationMessage('Fecha FEL inválida');
+          return false;
+        }
+        return {
+          OBS: document.getElementById('nc-list-enc-obs')?.value?.trim() || '',
+          FEL_SERIE: document.getElementById('nc-list-enc-fel-serie')?.value?.trim() || '',
+          FEL_NUMERO: document.getElementById('nc-list-enc-fel-numero')?.value?.trim() || '',
+          FEL_FECHA: felFecha,
+        };
+      },
+    });
+    if (!ok.isConfirmed) return;
+
+    await F.fetchJson(
+      this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/datos-generales`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ok.value || {}),
+      }
+    );
+    F.toast('Encabezado actualizado', 'success');
+    await this.fetchPedidosList();
+    this.refreshListDom();
+  },
+
   renderListActionsHtml(row) {
     const certBtn = this.needsCertificar(row)
       ? `<button type="button" class="btn btn-sm btn-outline-success inv-card-btn" data-action="certificar" title="Certificar FEL">
           <i class="fa-solid fa-certificate me-1"></i>CERTIFICAR
         </button>`
       : '';
+    const encBtn = this.puedeEditarEncabezadosLista(row)
+      ? `<button type="button" class="btn btn-sm btn-outline-info inv-card-btn" data-action="encabezados" title="Datos FEL / observaciones">
+          <i class="fa-solid fa-file-pen"></i>
+        </button>`
+      : '';
     return `
+      ${encBtn}
       <button type="button" class="btn btn-sm btn-outline-primary inv-card-btn" data-action="editar" title="Editar">
         <i class="fa-solid fa-pen"></i>
       </button>
@@ -1349,7 +1438,8 @@ const NotasCreditoView = {
       const correlativo = row.getAttribute('data-correlativo');
       const action = btn.getAttribute('data-action');
       try {
-        if (action === 'editar') await this.showEditor(coddoc, correlativo);
+        if (action === 'encabezados') await this.editarEncabezadosLista(coddoc, correlativo);
+        else if (action === 'editar') await this.showEditor(coddoc, correlativo);
         else if (action === 'imprimir') await this.imprimirPedido(coddoc, correlativo);
         else if (action === 'certificar') await this.certificarPedido(coddoc, correlativo);
         else if (action === 'eliminar') await this.eliminarPedido(coddoc, correlativo);

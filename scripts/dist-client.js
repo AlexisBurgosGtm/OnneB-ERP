@@ -160,6 +160,48 @@ Write-Host 'Servicio desinstalado.'
   );
 
   fs.writeFileSync(
+    path.join(OUT, 'open-firewall-port.ps1'),
+    `# Permite conexiones entrantes TCP al puerto del ERP (LAN, ZeroTier, etc.).
+# Ejecutar como Administrador en esta carpeta (dist-client).
+
+$ErrorActionPreference = 'Stop'
+$Root = $PSScriptRoot
+$Port = ${DEFAULT_PORT}
+
+$envPath = Join-Path $Root '.env'
+if (Test-Path $envPath) {
+  $portLine = Get-Content $envPath -Encoding UTF8 | Where-Object { $_ -match '^\\s*PORT\\s*=' } | Select-Object -First 1
+  if ($portLine -match 'PORT\\s*=\\s*(\\d+)') {
+    $Port = [int]$Matches[1]
+  }
+}
+
+if ($Port -lt 1 -or $Port -gt 65535) {
+  Write-Error "Puerto invalido: $Port (revise PORT en .env)"
+}
+
+$RuleName = '${SERVICE_NAME} — TCP ' + $Port
+$existing = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+if ($existing) {
+  Write-Host "Ya existe la regla: $RuleName"
+} else {
+  New-NetFirewallRule \`
+    -DisplayName $RuleName \`
+    -Direction Inbound \`
+    -Protocol TCP \`
+    -LocalPort $Port \`
+    -Action Allow \`
+    -Profile Domain, Private, Public | Out-Null
+  Write-Host "Regla creada: TCP entrante puerto $Port (Domain, Private, Public)"
+}
+
+Write-Host "Pruebe en esta PC: http://localhost:$Port"
+Write-Host "Desde otra PC (VPN/LAN): http://<IP-de-esta-maquina>:$Port"
+`,
+    'utf8'
+  );
+
+  fs.writeFileSync(
     path.join(OUT, 'README-INSTALACION.txt'),
     `${PRODUCT} — instalación local
 ===============================
@@ -173,6 +215,7 @@ En la MISMA carpeta que ${EXE_NAME} (esta carpeta de instalación).
     .env                  ← AQUÍ (copie desde .env.example)
     ${SERVICE_ID}.xml
     ${SERVICE_ID}.exe     ← WinSW renombrado (opcional, para servicio)
+    open-firewall-port.ps1 ← liberar puerto TCP en Windows (acceso remoto)
     Fotos_productos\\      ← fotos productos (no borrar al actualizar)
     EMPLEADOS\\            ← fotos empleados (no borrar)
     data\\                 ← license.json aquí
@@ -181,12 +224,34 @@ Pasos
 -----
 1. Copiar .env.example → .env y editar DB_*, TOKEN, PORT=${DEFAULT_PORT}
 2. (Opcional) data\\license.json de Mariandre
-3. Probar: ejecutar ${EXE_NAME}
+3. Probar: ejecutar ${EXE_NAME} → http://localhost:${DEFAULT_PORT}
 4. Servicio Windows: install-service.ps1 como Administrador
+
+Acceso remoto (ZeroTier, otra sucursal, etc.)
+------------------------------------------------
+Si desde otra PC hace ping a la IP pero NO abre http://IP:PUERTO, casi siempre
+falta una regla en el Firewall de Windows de ESTA máquina.
+
+1. Confirme que aquí funciona: http://localhost:PUERTO (mismo PORT del .env)
+2. Ejecute como Administrador (clic derecho → Ejecutar con PowerShell):
+
+     .\\open-firewall-port.ps1
+
+   El script lee PORT del .env (si no hay .env, usa ${DEFAULT_PORT}) y crea la
+   regla entrante TCP. Vuelva a probar desde la otra PC: http://IP:PUERTO
+
+3. Compruebe el puerto en escucha (PowerShell):
+
+     Get-NetTCPConnection -LocalPort PUERTO -State Listen
 
 Actualizar
 ----------
 Reemplazar solo ${EXE_NAME}. Conservar .env, Fotos_productos, EMPLEADOS y data.
+
+Compilar (npm run dist:client)
+-------------------------------
+Advertencias típicas de pkg en Windows (xdg-open, sharp, bytecode): no impiden usar el .exe.
+Si el .exe no arranca, revise .env y el log del servicio (WinSW) o ejecute ${EXE_NAME} en consola.
 `,
     'utf8'
   );
@@ -232,6 +297,9 @@ function runPkg() {
     });
   }
   if (!r || r.status !== 0) throw new Error(`pkg falló (${r && r.status})`);
+  log(
+    'Si pkg mostró advertencias (xdg-open, sharp, bytecode open/brotli): en Windows cliente suelen ser inofensivas.'
+  );
 }
 
 async function main() {

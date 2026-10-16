@@ -16,6 +16,11 @@
     "stop": "node scripts/stop-server.js",
     "license:check": "node scripts/check-license-catalog.js",
     "seed:updater:nomina": "node scripts/seed-update-query-nomina-all.js",
+    "seed:updater:lotes": "node scripts/seed-update-query-invsaldo-lote.js",
+    "seed:updater:productos-usa-lotes": "node scripts/seed-update-query-productos-usa-lotes.js",
+    "seed:updater:lotes-all": "npm run seed:updater:lotes && npm run seed:updater:productos-usa-lotes",
+    "seed:updater:asistencia-almuerzo": "node scripts/seed-update-query-asistencia-almuerzo.js",
+    "seed:updater:community-costo-promedio": "node scripts/seed-update-query-community-costo-promedio.js",
     "dist:client": "node scripts/dist-client.js",
     "test": "nodemon server.js"
   },
@@ -31,13 +36,24 @@
       "server.js",
       "routes/**/*.js",
       "lib/**/*.js",
-      "config/**/*.js"
+      "config/**/*.js",
+      "node_modules/pdfkit/js/pdfkit.js",
+      "node_modules/pdfkit/js/output.cjs",
+      "node_modules/pdfkit/js/standard-fonts/**/*.cjs",
+      "node_modules/pdfkit/js/standard-fonts/chunks/**/*.cjs",
+      "node_modules/pdfkit/lib/**/*.js"
     ],
     "assets": [
       "public/**/*",
       "config/**/*",
       "data/config-tipos-documento.json",
-      "data/fel-adendas.json"
+      "data/fel-adendas.json",
+      "node_modules/pdfkit/js/data/**/*"
+    ],
+    "ignore": [
+      "**/sharp/**",
+      "**/open/xdg-open",
+      "canvas"
     ],
     "targets": [
       "node22-win-x64"

@@ -53,7 +53,7 @@ const LibroVentasView = {
     { key: 'FEL_FECHA', label: 'Fecha', type: 'date' },
     { key: 'FEL_SERIE', label: 'Serie' },
     { key: 'FEL_NUMERO', label: 'Número' },
-    { key: 'TIPODOC', label: 'Tipo' },
+    { key: 'TIPO', label: 'Tipo' },
     { key: 'DOC_NIT', label: 'NIT' },
     { key: 'DOC_NOMCLIE', label: 'Nombre proveedor', cellClass: 'libro-ventas-col-nombre' },
     { key: 'TOTAL', label: 'Total', type: 'money' },
@@ -286,7 +286,7 @@ const LibroVentasView = {
         const hasDoc = r.CODDOC != null && r.CORRELATIVO != null && r.CORRELATIVO !== '';
         const anulado = String(r.STATUS || '').toUpperCase() === 'A' || r.ANULADO;
         return `<tr class="${anulado ? 'libro-ventas-row-anulado' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC || '')}" data-correlativo="${this.escapeHtml(r.CORRELATIVO ?? '')}" data-fel-uudi="${this.escapeHtml(r.FEL_UUDI || '')}" data-desdoc="${this.escapeHtml(r.DESDOC || '')}" data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}">
-          <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
+          <td>${this.escapeHtml(r.TIPO || r.TIPODOC || '—')}</td>
           <td>${this.escapeHtml(r.FEL_SERIE || '—')}</td>
           <td>${this.escapeHtml(r.FEL_NUMERO || '—')}</td>
           <td class="text-end libro-ventas-money">${fmtMoney(r.TOTALPRECIO)}</td>
@@ -311,7 +311,7 @@ const LibroVentasView = {
         const anulado = String(r.STATUS || '').toUpperCase() === 'A' || r.ANULADO;
         const diffCls = Number(r.DIFERENCIA) > 0 ? 'text-danger' : 'text-success';
         return `<tr class="${anulado ? 'libro-ventas-row-anulado' : ''}" data-coddoc="${this.escapeHtml(r.CODDOC || '')}" data-correlativo="${this.escapeHtml(r.CORRELATIVO ?? '')}" data-fel-uudi="${this.escapeHtml(r.FEL_UUDI || '')}" data-desdoc="${this.escapeHtml(r.DESDOC || '')}" data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}">
-          <td>${this.escapeHtml(r.TIPODOC || r.TIPO_SAT || '—')}</td>
+          <td>${this.escapeHtml(r.TIPO || r.TIPODOC || r.TIPO_SAT || '—')}</td>
           <td>${this.escapeHtml(r.SERIE || '—')}</td>
           <td>${this.escapeHtml(r.NUMERO || '—')}</td>
           <td class="text-end libro-ventas-money">${fmtMoney(r.TOTAL_SAT)}</td>

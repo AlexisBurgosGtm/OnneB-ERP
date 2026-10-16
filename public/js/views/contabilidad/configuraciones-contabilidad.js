@@ -7,6 +7,7 @@ const ConfiguracionesContabilidadView = {
   _catalogo: [],
   _saving: false,
   _recalculando: false,
+  _plantillaFormatos: false,
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -97,6 +98,20 @@ const ConfiguracionesContabilidadView = {
             <p class="small text-muted mb-0 mt-2" id="cfg-contab-last-result"></p>
           </div>
         </div>
+        <div class="card shadow-sm config-contab-recalc-card mt-3">
+          <div class="card-body py-2 px-3">
+            <h6 class="mb-1"><i class="fa-solid fa-file-lines me-1 text-primary"></i>Formatos contables (plantilla)</h6>
+            <p class="small text-muted mb-2">
+              Carga inicial de códigos y partidas de ejemplo en la <strong>empresa de la sesión</strong>.
+              No sobrescribe formatos que ya tengan partidas; el contador puede editarlos después en
+              <em>Formatos contables</em>.
+            </p>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-cfg-contab-plantilla-formatos">
+              <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Generar plantillas de formatos
+            </button>
+            <p class="small text-muted mb-0 mt-2" id="cfg-contab-plantilla-result"></p>
+          </div>
+        </div>
       </div>`;
   },
 
@@ -154,6 +169,28 @@ const ConfiguracionesContabilidadView = {
     if (el) el.textContent = text || '';
   },
 
+  updatePlantillaResultText(text) {
+    const el = this._container?.querySelector('#cfg-contab-plantilla-result');
+    if (el) el.textContent = text || '';
+  },
+
+  async generarPlantillaFormatos() {
+    if (this._plantillaFormatos) return null;
+    const empnit = F.getEmpNit();
+    if (!empnit) throw new Error('No hay empresa activa');
+    this._plantillaFormatos = true;
+    try {
+      const params = new URLSearchParams({ empnit });
+      return await F.fetchJson(`/api/config-contabilidad/plantilla-formatos?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+    } finally {
+      this._plantillaFormatos = false;
+    }
+  },
+
   bindEvents() {
     this._container?.querySelector('#btn-cfg-contab-guardar')?.addEventListener('click', () => {
       this.onGuardar(false).catch((err) => F.toast(err.message, 'error'));
@@ -161,6 +198,29 @@ const ConfiguracionesContabilidadView = {
     this._container?.querySelector('#btn-cfg-contab-recalcular')?.addEventListener('click', () => {
       this.onGuardar(true).catch((err) => F.toast(err.message, 'error'));
     });
+    this._container?.querySelector('#btn-cfg-contab-plantilla-formatos')?.addEventListener('click', () => {
+      this.onPlantillaFormatos().catch((err) => F.toast(err.message, 'error'));
+    });
+  },
+
+  async onPlantillaFormatos() {
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Generar plantillas de formatos?',
+      text: 'Se crearán formatos contables de ejemplo solo en la empresa activa. Los que ya tengan partidas no se modifican.',
+      icon: 'question',
+      confirmText: 'Generar plantillas',
+    });
+    if (!ok) return;
+
+    const data = await this.generarPlantillaFormatos();
+    const creados = (data.formatos || []).filter((f) => f.formato?.created).length;
+    const partidas = (data.formatos || []).reduce((n, f) => n + (f.partidas?.created || 0), 0);
+    let msg = `${creados} formato(s) nuevo(s), ${partidas} partida(s) insertada(s).`;
+    if (data.warnings?.length) {
+      msg += ` ${data.warnings.join(' ')}`;
+    }
+    this.updatePlantillaResultText(msg);
+    F.toast('Plantillas de formatos contables aplicadas', 'success');
   },
 
   async onGuardar(withRecalc) {

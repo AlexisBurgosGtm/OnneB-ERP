@@ -329,6 +329,11 @@ let F = {
   setSocket(socket) {
     this._socket = socket || null;
     window.OnnebSocket = this._socket;
+    if (this._socket) {
+      document.dispatchEvent(
+        new CustomEvent('onneb-socket-ready', { detail: { socket: this._socket } })
+      );
+    }
   },
 
   getSocket() {

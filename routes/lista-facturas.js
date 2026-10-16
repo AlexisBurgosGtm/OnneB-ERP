@@ -15,6 +15,7 @@ const {
   sqlDocumentoFechaDiaWhere,
   normalizeDocumentoRows,
 } = require('../lib/documento-fecha');
+const { assertFacSinFraccionadasParaAnular } = require('../lib/fraccionamiento-fac-anular-guard');
 
 const router = express.Router();
 
@@ -176,6 +177,8 @@ router.post('/:coddoc/:correlativo/anular-local', async (req, res) => {
     if (status !== STATUS_OPERADO && status !== STATUS_BLOQUEADO) {
       return res.status(400).json({ error: 'Estado del documento no permite anulación' });
     }
+
+    await assertFacSinFraccionadasParaAnular(pool, empnit, coddoc, correlativo);
 
     const obsExtra = motivo ? ` | Anulado: ${motivo}` : '';
     await pool

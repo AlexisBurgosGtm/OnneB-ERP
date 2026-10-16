@@ -15,6 +15,10 @@ const {
   loadCommunityTraslado,
   deleteCommunityTraslado,
 } = require('../lib/community-traslado-download');
+const {
+  SQL_WHERE_TRASLADOS_PARA_DESTINO,
+  findCommunityTrasladoForDestino,
+} = require('../lib/community-traslado-visibility');
 const { assertAdminPass } = require('../lib/config-auth');
 
 const router = express.Router();
@@ -352,7 +356,7 @@ router.post('/catalogo/descargar', async (req, res) => {
 });
 
 /**
- * Traslados en la nube destinados a esta empresa (CODEMBARQUE = EMPNIT sesión).
+ * Traslados en la nube destinados a esta empresa (EMPNIT = destino, CODEMBARQUE = emisor).
  */
 router.get('/traslados-destino', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -384,26 +388,25 @@ router.get('/traslados-destino', async (req, res) => {
     const result = await hostPool
       .request()
       .input('TOKEN', sql.VarChar, token)
-      .input('CODEMBARQUE', sql.VarChar, empnit)
+      .input('EMPNIT_DEST', sql.VarChar, empnit)
       .query(`
         SELECT TOP 200
-          LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) AS EMPNIT,
-          LTRIM(RTRIM(CAST(CODDOC AS VARCHAR(50)))) AS CODDOC,
-          CORRELATIVO,
-          FECHA,
-          ANIO,
-          MES,
-          DIA,
-          LTRIM(RTRIM(ISNULL(CAST(USUARIO AS VARCHAR(100)), ''))) AS USUARIO,
-          LTRIM(RTRIM(ISNULL(CAST(OBS AS VARCHAR(500)), ''))) AS OBS,
-          LTRIM(RTRIM(ISNULL(CAST(CODEMBARQUE AS VARCHAR(50)), ''))) AS CODEMBARQUE,
-          LTRIM(RTRIM(ISNULL(CAST(OBSMARCA AS VARCHAR(200)), ''))) AS OBSMARCA,
-          LTRIM(RTRIM(ISNULL(CAST(TIPOVENTA AS VARCHAR(20)), ''))) AS TIPOVENTA,
-          LTRIM(RTRIM(ISNULL(CAST(STATUS AS VARCHAR(20)), ''))) AS STATUS
-        FROM dbo.COMMUNITY_DOCUMENTOS
-        WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
-          AND LTRIM(RTRIM(CAST(CODEMBARQUE AS VARCHAR(50)))) = LTRIM(RTRIM(@CODEMBARQUE))
-        ORDER BY FECHA DESC, CODDOC, CORRELATIVO DESC
+          LTRIM(RTRIM(CAST(d.EMPNIT AS VARCHAR(50)))) AS EMPNIT,
+          LTRIM(RTRIM(CAST(d.CODDOC AS VARCHAR(50)))) AS CODDOC,
+          d.CORRELATIVO,
+          d.FECHA,
+          d.ANIO,
+          d.MES,
+          d.DIA,
+          LTRIM(RTRIM(ISNULL(CAST(d.USUARIO AS VARCHAR(100)), ''))) AS USUARIO,
+          LTRIM(RTRIM(ISNULL(CAST(d.OBS AS VARCHAR(500)), ''))) AS OBS,
+          LTRIM(RTRIM(ISNULL(CAST(d.CODEMBARQUE AS VARCHAR(50)), ''))) AS CODEMBARQUE,
+          LTRIM(RTRIM(ISNULL(CAST(d.OBSMARCA AS VARCHAR(200)), ''))) AS OBSMARCA,
+          LTRIM(RTRIM(ISNULL(CAST(d.TIPOVENTA AS VARCHAR(20)), ''))) AS TIPOVENTA,
+          LTRIM(RTRIM(ISNULL(CAST(d.STATUS AS VARCHAR(20)), ''))) AS STATUS
+        FROM dbo.COMMUNITY_DOCUMENTOS d
+        WHERE ${SQL_WHERE_TRASLADOS_PARA_DESTINO}
+        ORDER BY d.FECHA DESC, d.CODDOC, d.CORRELATIVO DESC
       `);
 
     res.json({
@@ -454,30 +457,22 @@ router.get('/traslados-destino/detalle', async (req, res) => {
       });
     }
 
-    const headerCheck = await hostPool
-      .request()
-      .input('TOKEN', sql.VarChar, token)
-      .input('EMPNIT', sql.VarChar, origenEmpnit)
-      .input('CODDOC', sql.VarChar, coddoc)
-      .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-      .input('CODEMBARQUE', sql.VarChar, empnit)
-      .query(`
-        SELECT TOP 1 CODDOC
-        FROM dbo.COMMUNITY_DOCUMENTOS
-        WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
-          AND LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) = LTRIM(RTRIM(@EMPNIT))
-          AND LTRIM(RTRIM(CAST(CODDOC AS VARCHAR(50)))) = LTRIM(RTRIM(@CODDOC))
-          AND CORRELATIVO = @CORRELATIVO
-          AND LTRIM(RTRIM(CAST(CODEMBARQUE AS VARCHAR(50)))) = LTRIM(RTRIM(@CODEMBARQUE))
-      `);
-    if (!headerCheck.recordset?.length) {
+    const headerRow = await findCommunityTrasladoForDestino(
+      hostPool,
+      token,
+      empnit,
+      origenEmpnit,
+      coddoc,
+      correlativo
+    );
+    if (!headerRow) {
       return res.status(404).json({ error: 'Traslado no encontrado en la nube para esta empresa' });
     }
 
     const lines = await listCommunityTrasladoLineas(
       hostPool,
       token,
-      origenEmpnit,
+      empnit,
       coddoc,
       correlativo
     );
@@ -621,7 +616,8 @@ router.get('/traslados-transito/detalle', async (req, res) => {
     }
 
     const h = cloud.header;
-    const origenVal = String(h.EMPNIT || origenEmpnit || '').trim();
+    const origenVal = String(h.CODEMBARQUE || origenEmpnit || '').trim();
+    const destinoVal = String(h.EMPNIT || '').trim();
     let origenNombre = '';
     if (origenVal) {
       const nombreRes = await hostPool
@@ -649,6 +645,7 @@ router.get('/traslados-transito/detalle', async (req, res) => {
       header: {
         EMPNIT: origenVal,
         EMPNOMBRE: origenNombre,
+        EMPNIT_DESTINO: destinoVal,
         CODDOC: String(h.CODDOC || '').trim(),
         CORRELATIVO: h.CORRELATIVO,
         FECHA: h.FECHA,
@@ -729,7 +726,8 @@ router.delete('/traslados-transito', async (req, res) => {
       return res.status(404).json({ error: 'Traslado no encontrado en la nube' });
     }
 
-    await deleteCommunityTraslado(hostPool, token, origenEmpnit, coddoc, correlativo);
+    const destCloud = String(cloud.header.EMPNIT || '').trim();
+    await deleteCommunityTraslado(hostPool, token, destCloud, coddoc, correlativo);
     res.json({ ok: true, deleted: { origenEmpnit, CODDOC: coddoc, CORRELATIVO: correlativo } });
   } catch (err) {
     const status = err.statusCode || 500;

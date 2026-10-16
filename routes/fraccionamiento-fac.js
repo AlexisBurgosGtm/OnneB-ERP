@@ -9,10 +9,16 @@ const { getTipomDocumento } = require('../lib/inventario');
 const { getIvaFactor, splitIvaFromTotal } = require('../lib/impuestos');
 const { getSettingValue, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
 const { valoresEntregadosIniciales } = require('../lib/documentos-entregado');
+const {
+  TIPODOC_CERT_FAC,
+  tipodocSqlIn,
+  roundMoney,
+  roundQty,
+  buildRemainingProductPool,
+  poolRestanteTotal,
+} = require('../lib/fraccionamiento-product-pool');
 
 const router = express.Router();
-
-const TIPODOC_CERT_FAC = ['FEF', 'FEC'];
 const DEFAULT_BODEGA = 0;
 const DEFAULT_MAXIMO_LEGAL = 2500;
 
@@ -21,10 +27,6 @@ async function getMaximoFraccionamientoLegal(pool) {
   const raw = await getSettingValue(pool, SETTING_OPCION.MAXIMO_FRACCIONAMIENTO_FACTURAS);
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : DEFAULT_MAXIMO_LEGAL;
-}
-
-function tipodocSqlIn(tipodocs) {
-  return tipodocs.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(', ');
 }
 
 function getEmpNitFromReq(req) {
@@ -48,14 +50,6 @@ function parseId(raw) {
 function parseCorrelativo(raw) {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
-}
-
-function roundMoney(n) {
-  return Math.round((Number(n) || 0) * 10000) / 10000;
-}
-
-function roundQty(n) {
-  return Math.round((Number(n) || 0) * 1000) / 1000;
 }
 
 async function loadColaRow(pool, empnit, id) {
@@ -227,89 +221,6 @@ async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, 
       FROM dbo.DOCPRODUCTOS l
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC_SRC AND l.CORRELATIVO = @CORR_SRC
     `);
-}
-
-/**
- * Pool de líneas fuente menos lo ya emitido en fiscales (SERIEFAC/NOFAC).
- * Conserva PRECIO/CODPROD/CODMEDIDA; solo reparte CANTIDAD.
- */
-async function buildRemainingProductPool(txOrPool, empnit, srcCoddoc, srcCorrelativo) {
-  const srcRes = await new sql.Request(txOrPool)
-    .input('EMPNIT', sql.VarChar, empnit)
-    .input('CODDOC', sql.VarChar, srcCoddoc)
-    .input('CORRELATIVO', sql.Decimal(18, 0), srcCorrelativo)
-    .query(`
-      SELECT *
-      FROM dbo.DOCPRODUCTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-      ORDER BY ID
-    `);
-  const pool = (srcRes.recordset || []).map((l) => ({
-    src: l,
-    restante: roundQty(l.CANTIDAD),
-  }));
-  if (!pool.length) {
-    const err = new Error('El documento fuente no tiene líneas');
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const issuedRes = await new sql.Request(txOrPool)
-    .input('EMPNIT', sql.VarChar, empnit)
-    .input('SERIEFAC', sql.VarChar, srcCoddoc)
-    .input('CORR_SRC', sql.Decimal(18, 0), srcCorrelativo)
-    .query(`
-      SELECT l.ID, l.CODPROD, l.CODMEDIDA, l.PRECIO, l.CANTIDAD, l.OBS
-      FROM dbo.DOCPRODUCTOS l
-      INNER JOIN dbo.DOCUMENTOS d
-        ON d.EMPNIT = l.EMPNIT AND d.CODDOC = l.CODDOC AND d.CORRELATIVO = l.CORRELATIVO
-      INNER JOIN dbo.TIPODOCUMENTOS t
-        ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
-      WHERE d.EMPNIT = @EMPNIT
-        AND t.TIPODOC IN (${tipodocSqlIn(TIPODOC_CERT_FAC)})
-        AND d.SERIEFAC = @SERIEFAC
-        AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR_SRC
-        AND d.STATUS <> '${STATUS_ANULADO}'
-      ORDER BY d.ID, l.ID
-    `);
-
-  for (const iss of issuedRes.recordset || []) {
-    const qty = roundQty(iss.CANTIDAD);
-    if (!(qty > 0)) continue;
-    const obs = String(iss.OBS || '');
-    const m = /^FFACSRC:(\d+)/i.exec(obs);
-    let item = null;
-    if (m) {
-      const srcId = Number(m[1]);
-      item = pool.find((p) => Number(p.src.ID) === srcId && p.restante > 0);
-    }
-    if (!item) {
-      const precio = roundMoney(iss.PRECIO);
-      const codprod = String(iss.CODPROD || '').trim();
-      const codmedida = String(iss.CODMEDIDA || '').trim();
-      item = pool.find(
-        (p) =>
-          p.restante > 0 &&
-          String(p.src.CODPROD || '').trim() === codprod &&
-          String(p.src.CODMEDIDA || '').trim() === codmedida &&
-          roundMoney(p.src.PRECIO) === precio
-      );
-    }
-    if (!item) continue;
-    item.restante = roundQty(Math.max(0, item.restante - qty));
-  }
-
-  return pool;
-}
-
-function poolRestanteTotal(pool) {
-  return roundMoney(
-    pool.reduce((s, p) => {
-      const precio = Number(p.src.PRECIO) || 0;
-      const qty = Number(p.restante) || 0;
-      return s + precio * qty;
-    }, 0)
-  );
 }
 
 function isNearInteger(n) {
@@ -531,6 +442,13 @@ async function insertAllocatedDocProductos(
 
 const CODEMBARQUE_FRAC = 'FRAC';
 
+function parseCodcajaOptional(body) {
+  const raw = body?.CODCAJA ?? body?.codcaja;
+  if (raw === '' || raw === null || raw === undefined) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 async function insertDocumentoFiscalHeader(tx, opts) {
   const {
     empnit,
@@ -543,6 +461,7 @@ async function insertDocumentoFiscalHeader(tx, opts) {
     docDir,
     usuario,
     codembarque = 'MOSTRADOR',
+    codcaja: codcajaOverride,
   } = opts;
   const concre = String(fuente.CONCRE || 'CON').trim().toUpperCase() || 'CON';
   await new sql.Request(tx)
@@ -569,7 +488,11 @@ async function insertDocumentoFiscalHeader(tx, opts) {
     .input(
       'CODCAJA',
       sql.Int,
-      fuente.CODCAJA != null && Number(fuente.CODCAJA) > 0 ? Number(fuente.CODCAJA) : null
+      codcajaOverride != null && Number(codcajaOverride) > 0
+        ? Number(codcajaOverride)
+        : fuente.CODCAJA != null && Number(fuente.CODCAJA) > 0
+          ? Number(fuente.CODCAJA)
+          : null
     )
     .query(`
       INSERT INTO dbo.DOCUMENTOS (
@@ -734,7 +657,13 @@ router.get('/', async (req, res) => {
           AND ISNULL(c.FINALIZADO, 'NO') <> 'SI'
         ORDER BY c.ID DESC
       `);
-    res.json({ rows: normalizeDocumentoRows(result.recordset) });
+    const rows = normalizeDocumentoRows(result.recordset).filter((r) => {
+      const total = Number(r.TOTALPRECIO) || 0;
+      const emitido = Number(r.TOTAL_EMITIDO) || 0;
+      if (total > 0 && emitido >= total - 0.02) return false;
+      return true;
+    });
+    res.json({ rows });
   } catch (err) {
     console.warn('[API GET /fraccionamiento-fac]', err.message);
     res.status(500).json({ error: err.message });
@@ -866,6 +795,7 @@ router.post('/:id/certificar-toda', async (req, res) => {
   const docNom = String(req.body?.DOC_NOMCLIE || req.body?.NOMBRE || '').trim();
   const docDir = String(req.body?.DOC_DIRCLIE || req.body?.DIRECCION || 'CIUDAD').trim() || 'CIUDAD';
   const usuario = String(req.body?.USUARIO || req.body?.usuario || req.headers['x-user'] || 'FAC').trim();
+  const codcajaParam = parseCodcajaOptional(req.body);
   const fechaRaw = req.body?.FECHA || req.body?.fechaEmision || req.body?.fechaCertificacion;
   // Certificar toda: emisión y certificación usan solo la fecha del modal (no la del documento).
   const parsedFecha = parseFechaInput(fechaRaw);
@@ -982,6 +912,7 @@ router.post('/:id/certificar-toda', async (req, res) => {
           docNom,
           docDir,
           usuario,
+          codcaja: codcajaParam,
         });
         await copyDocProductos(
           tx,
@@ -1051,6 +982,7 @@ router.post('/:id/fraccionar-cf', async (req, res) => {
   const docNit = 'CF';
   const docNom = 'CONSUMIDOR FINAL';
   const docDir = 'CIUDAD';
+  const codcajaParam = parseCodcajaOptional(req.body);
 
   let fechaParts;
   const fechaRaw = req.body?.FECHA || req.body?.fechaCertificacion;
@@ -1148,6 +1080,7 @@ router.post('/:id/fraccionar-cf', async (req, res) => {
         docDir,
         usuario,
         codembarque: `${CODEMBARQUE_FRAC}-${fuente.CODDOC}-${fuente.CORRELATIVO}`,
+        codcaja: codcajaParam,
       });
       await insertAllocatedDocProductos(
         tx,

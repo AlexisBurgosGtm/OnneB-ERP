@@ -1,0 +1,104 @@
+#btn-modo-telefono {
+  white-space: nowrap;
+}
+
+body.modo-telefono-active .app-shell .sidebar,
+body.modo-telefono-active .app-shell .main-header,
+body.modo-telefono-active .app-shell #view-tabs-bar,
+body.modo-telefono-active .app-shell .main-content,
+body.modo-telefono-active #btn-favoritos-fab {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#modo-telefono-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  background: var(--bs-body-bg, #f8fafc);
+  overflow: auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.modo-telefono-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 1rem 1rem 2rem;
+}
+
+.modo-telefono-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.modo-telefono-sub {
+  color: var(--bs-secondary-color);
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.modo-telefono-card {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.modo-telefono-card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.modo-telefono-exit {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+#modo-telefono-reports-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.companion-report-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 5.25rem;
+  padding: 0.65rem 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.85rem;
+  background: var(--bs-tertiary-bg, #eef2ff);
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.companion-report-btn.is-loading {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.companion-report-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  background: color-mix(in srgb, var(--bs-primary, #6366f1) 18%, transparent);
+  color: var(--bs-primary, #6366f1);
+}
+
+.companion-report-btn:active {
+  transform: scale(0.98);
+}

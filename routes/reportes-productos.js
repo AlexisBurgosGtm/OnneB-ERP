@@ -2,12 +2,15 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { parseFechaInput, fechaIsoFromRow, normalizeDocumentoRows } = require('../lib/documento-fecha');
-const { STATUS_ANULADO, SQL_TIPODOC_REPORTES_SI } = require('../lib/documento-status');
+const {
+  SQL_REPORTES_VENTAS_WHERE,
+  SQL_SIGNO_LINEA_UNIDADES,
+  SQL_SIGNO_LINEA_IMPORTE,
+  SQL_SIGNO_LINEA_COSTO,
+  SQL_JOIN_DOC_LINEAS,
+} = require('../lib/reportes-ventas-neto');
 
 const router = express.Router();
-
-const TIPODOC_VENTA = ['FAC', 'FEF', 'FEC', 'FES'];
-const SQL_TIPODOC_VENTA_IN = TIPODOC_VENTA.map((t) => `'${t}'`).join(', ');
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.body?.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -49,19 +52,7 @@ function resolveRango(req) {
   return { desde: desde.fecha, hasta: hasta.fecha };
 }
 
-const SQL_DOC_WHERE = `
-  d.EMPNIT = @EMPNIT
-  AND CAST(d.FECHA AS DATE) BETWEEN @DESDE AND @HASTA
-  AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
-  AND t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN})
-  AND ${SQL_TIPODOC_REPORTES_SI}
-`;
-
-const SQL_JOIN_DOC = `
-  INNER JOIN dbo.DOCUMENTOS d
-    ON dp.EMPNIT = d.EMPNIT AND dp.CODDOC = d.CODDOC AND dp.CORRELATIVO = d.CORRELATIVO
-  INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
-`;
+const SQL_DOC_WHERE = SQL_REPORTES_VENTAS_WHERE;
 
 function parseCodProd(req) {
   const codprod = String(req.query.codprod ?? '').trim();
@@ -87,14 +78,14 @@ router.get('/', async (req, res) => {
         SELECT
           LTRIM(RTRIM(dp.CODPROD)) AS CODPROD,
           MAX(LTRIM(RTRIM(ISNULL(dp.DESPROD, '')))) AS DESPROD,
-          SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS TOTALUNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO,
-          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
+          SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS TOTALUNIDADES,
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS TOTALPRECIO,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
-        ${SQL_JOIN_DOC}
+        ${SQL_JOIN_DOC_LINEAS}
         WHERE ${SQL_DOC_WHERE}
         GROUP BY LTRIM(RTRIM(dp.CODPROD))
-        ORDER BY SUM(ISNULL(dp.TOTALPRECIO, 0)) DESC, LTRIM(RTRIM(dp.CODPROD))
+        ORDER BY SUM(${SQL_SIGNO_LINEA_IMPORTE}) DESC, LTRIM(RTRIM(dp.CODPROD))
       `);
 
     const productos = (result.recordset || []).map((row) => {
@@ -158,11 +149,11 @@ router.get('/detalle', async (req, res) => {
       baseReq().query(`
         SELECT
           CAST(d.FECHA AS DATE) AS FECHA,
-          SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS UNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS MONTO,
-          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
+          SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS UNIDADES,
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS MONTO,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
-        ${SQL_JOIN_DOC}
+        ${SQL_JOIN_DOC_LINEAS}
         WHERE ${prodWhere}
         GROUP BY CAST(d.FECHA AS DATE)
         ORDER BY CAST(d.FECHA AS DATE)
@@ -177,11 +168,11 @@ router.get('/detalle', async (req, res) => {
           UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) AS TIPODOC,
           ISNULL(t.DESDOC, '') AS DESDOC,
           LTRIM(RTRIM(ISNULL(d.DOC_NOMCLIE, ''))) AS DOC_NOMCLIE,
-          SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS LINE_UNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS LINE_PRECIO,
-          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS LINE_COSTO
+          SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS LINE_UNIDADES,
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS LINE_PRECIO,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS LINE_COSTO
         FROM dbo.DOCPRODUCTOS dp
-        ${SQL_JOIN_DOC}
+        ${SQL_JOIN_DOC_LINEAS}
         WHERE ${prodWhere}
         GROUP BY
           d.ID, d.FECHA, d.ANIO, d.MES, d.DIA,
@@ -194,21 +185,21 @@ router.get('/detalle', async (req, res) => {
           ISNULL(d.CODCLIENTE, 0) AS CODCLIENTE,
           LTRIM(RTRIM(ISNULL(d.DOC_NIT, ''))) AS DOC_NIT,
           MAX(LTRIM(RTRIM(ISNULL(d.DOC_NOMCLIE, '')))) AS DOC_NOMCLIE,
-          SUM(ISNULL(dp.TOTALUNIDADES, 0)) AS TOTALUNIDADES,
-          SUM(ISNULL(dp.TOTALPRECIO, 0)) AS TOTALPRECIO,
-          SUM(ISNULL(dp.TOTALCOSTO, 0)) AS TOTALCOSTO
+          SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS TOTALUNIDADES,
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS TOTALPRECIO,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
-        ${SQL_JOIN_DOC}
+        ${SQL_JOIN_DOC_LINEAS}
         WHERE ${prodWhere}
         GROUP BY ISNULL(d.CODCLIENTE, 0), LTRIM(RTRIM(ISNULL(d.DOC_NIT, '')))
-        ORDER BY SUM(ISNULL(dp.TOTALPRECIO, 0)) DESC
+        ORDER BY SUM(${SQL_SIGNO_LINEA_IMPORTE}) DESC
       `),
       baseReq().query(`
         SELECT TOP 1
           LTRIM(RTRIM(dp.CODPROD)) AS CODPROD,
           LTRIM(RTRIM(ISNULL(dp.DESPROD, ''))) AS DESPROD
         FROM dbo.DOCPRODUCTOS dp
-        ${SQL_JOIN_DOC}
+        ${SQL_JOIN_DOC_LINEAS}
         WHERE ${prodWhere}
       `),
     ]);

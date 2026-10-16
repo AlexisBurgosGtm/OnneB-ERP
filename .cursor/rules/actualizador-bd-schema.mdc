@@ -1,0 +1,24 @@
+---
+description: Columnas/tablas nuevas — Actualizador BD (UPDATE_QUERIES)
+alwaysApply: true
+---
+
+# Esquema SQL — Actualizador BD
+
+Cuando el código use **columnas o tablas nuevas** en la BD del cliente:
+
+## Obligatorio en la misma tarea
+
+1. **`scripts/sql/dbo.*.sql`** — DDL idempotente (`IF COL_LENGTH` / `IF OBJECT_ID`), trozos con `-- @UPDATER_CHUNK NombreEstable`.
+2. **Script seed** — `scripts/seed-update-query-*.js` que llame `insertUpdateQueryIfMissing` (VERSION **2026**, DB **P**, marker único en comentario `/* MODULO:TEMA:CHUNK */`).
+3. **`package.json`** — `"seed:updater:…": "node scripts/…"` si el seed es nuevo.
+4. **Ejecutar el seed** contra hosting (`npm run seed:updater:…`) cuando `UPDATE_*` esté en `.env`. No pedir al usuario que suba el SQL a mano.
+
+## No hacer en runtime del POS
+
+- No `ALTER TABLE` / `CREATE TABLE` al arrancar servidor ni al guardar documentos/productos **si el cambio ya está en el Actualizador**.
+- Sí permitido: **detectar** columna (`sys.columns` / `COL_LENGTH`) y omitir el campo en INSERT/UPDATE hasta que el cliente ejecute Actualizador BD.
+
+## Cliente
+
+Tras publicar queries: **Actualizador BD** en el ERP (año **2026**, base **P**). Eliminar en hosting queries viejos rotos del mismo tema antes de re-sembrar.

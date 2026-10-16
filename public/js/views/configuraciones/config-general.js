@@ -24,6 +24,7 @@ const ConfigGeneralView = {
     PERMITE_FRACCIONAMIENTO_FACTURAS: 'PERMITE FRACCIONAMIENTO FACTURAS',
     DEFAULT_TIPO_DOCUMENTO_FINALIZADO: 'DEFAULT TIPO DOCUMENTO FINALIZADO',
     LIMITA_EFECTIVO_DISPONIBLE_EN_VALES_CAJA: 'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA',
+    CONTROL_ASISTENCIA_ALMUERZO: 'CONTROL ASISTENCIA ALMUERZO',
   },
 
   TEXT_CARDS: [
@@ -152,6 +153,13 @@ const ConfigGeneralView = {
       fallbackDesc:
         'Si está en SI, el importe de cada vale de caja no puede superar el efectivo inicial de la caja abierta. En NO no hay tope.',
     },
+    {
+      opcion: 'CONTROL ASISTENCIA ALMUERZO',
+      title: 'Control de asistencia — almuerzo',
+      icon: 'fa-utensils',
+      fallbackDesc:
+        'Si está en SI, cada día pide salida a almuerzo, regreso de almuerzo y luego salida del día. En NO solo entrada y salida.',
+    },
   ],
 
   CONCRE_OPTIONS: [
@@ -241,6 +249,7 @@ const ConfigGeneralView = {
     { id: 'electronica', label: 'Electrónica', icon: 'fa-file-invoice' },
     { id: 'whatsapp', label: 'WhatsApp', icon: 'fa-brands fa-whatsapp' },
     { id: 'utilidades', label: 'Utilidades', icon: 'fa-wrench' },
+    { id: 'consultas-externas', label: 'Consultas externas', icon: 'fa-link' },
   ],
 
   _tab: 'operacion',
@@ -254,8 +263,96 @@ const ConfigGeneralView = {
   _felFormatoMeta: {},
   _tipofacFinalizadoMeta: {},
   _invSaldoPendientes: null,
+  _tipomNulos: null,
+  _consultasExternasCatalog: null,
   _whatsappStatus: null,
+  _whatsappPending: false,
   _whatsappSocketBound: false,
+  _loadGen: 0,
+
+  isLoadCurrent(loadGen) {
+    return loadGen === this._loadGen && !!(this._container && this._container.isConnected);
+  },
+
+  viewStillActive() {
+    if (typeof F !== 'undefined' && typeof F.getActiveMenuKey === 'function') {
+      const key = F.getActiveMenuKey();
+      if (key && key !== 'config-general') return false;
+    }
+    return !!(this._container && this._container.isConnected);
+  },
+
+  applyConfigBootstrap(data) {
+    const boot = data || {};
+    this._passMeta = boot.pass || {};
+    this._textMeta = boot.text || {};
+    this._sinoMeta = boot.sino || {};
+    this._concreMeta = boot.concre || {};
+    this._formatoMeta = boot.formato || {};
+    this._fotoMeta = boot.foto || {};
+    this._felFormatoMeta = boot.felFormato || {};
+    this._tipofacFinalizadoMeta = boot.tipofacFinalizado || {};
+    this._invSaldoPendientes = 0;
+    this._tipomNulos = 0;
+    this._consultasExternasCatalog = [];
+  },
+
+  paintUtilidadesTab() {
+    const pane = this._container?.querySelector('[data-config-pane="utilidades"]');
+    if (!pane) return;
+    pane.innerHTML = `
+      <div class="config-cards-grid">
+        ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+        ${this.renderCorregirTipomCard(this._tipomNulos)}
+        ${this.renderCorreccionProductosCard()}
+        ${this.renderCorregirSaldosCxcCard()}
+        ${this.renderCorregirSaldosCxpCard()}
+      </div>`;
+    document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
+      this.onSincronizarInvSaldo();
+    });
+    document.getElementById('btn-correccion-productos-precios')?.addEventListener('click', () => {
+      this.onCorreccionProductosPrecios();
+    });
+    document.getElementById('btn-corregir-saldos-cxc')?.addEventListener('click', () => {
+      this.onCorregirSaldosCuentas('cxc');
+    });
+    document.getElementById('btn-corregir-saldos-cxp')?.addEventListener('click', () => {
+      this.onCorregirSaldosCuentas('cxp');
+    });
+    document.getElementById('btn-corregir-tipom-nulos')?.addEventListener('click', () => {
+      this.onCorregirTipomNulos();
+    });
+  },
+
+  async loadUtilidadesEnSegundoPlano(loadGen) {
+    const empNit = F.getEmpNit();
+    if (!empNit) return;
+    try {
+      const [invSaldoMeta, tipomMeta, catalogMeta] = await Promise.all([
+        this.fetchInvSaldoPendientes().catch(() => ({ pendientes: 0 })),
+        this.fetchTipomNulosPreview().catch(() => ({ tipomNulos: 0 })),
+        (() => {
+          const catalogParams = new URLSearchParams({ _: String(Date.now()), empnit: empNit });
+          return F.fetchJson(`/api/consultas-externas/catalog?${catalogParams.toString()}`, {
+            cache: 'no-store',
+          }).catch(() => ({ reports: [] }));
+        })(),
+      ]);
+      if (!this.isLoadCurrent(loadGen)) return;
+      this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
+      this._tipomNulos = tipomMeta.tipomNulos ?? 0;
+      this._consultasExternasCatalog = catalogMeta.reports ?? [];
+      this.paintUtilidadesTab();
+      const consultasPane = this._container?.querySelector('[data-config-pane="consultas-externas"]');
+      if (consultasPane) {
+        consultasPane.innerHTML = this.renderConsultasExternasTab();
+        this.bindConsultasExternasEvents();
+      }
+    } catch (_) {
+      /* utilidades opcionales */
+    }
+  },
 
   tabForSino(opcion) {
     const map = {
@@ -273,6 +370,7 @@ const ConfigGeneralView = {
       'VISTAS EN PESTAÑAS': 'operacion',
       'PERMITE BIOMETRICO EN LOGIN': 'seguridad',
       'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA': 'operacion',
+      'CONTROL ASISTENCIA ALMUERZO': 'operacion',
     };
     return map[opcion] || 'operacion';
   },
@@ -756,6 +854,135 @@ const ConfigGeneralView = {
       </div>`;
   },
 
+  renderCorregirTipomCard(tipomNulos = 0) {
+    const nulos = Number(tipomNulos) || 0;
+    const statusText =
+      nulos === 0
+        ? 'No hay líneas de DOCPRODUCTOS con TIPOM nulo.'
+        : `${nulos.toLocaleString('es-GT')} línea(s) con TIPOM nulo.`;
+    return `
+      <div class="card config-card-compact">
+        <div class="card-body">
+          <h6 class="card-title mb-1">
+            <i class="fa-solid fa-wrench me-1 text-warning"></i>Corregir TIPOM nulos
+          </h6>
+          <p class="card-text mb-1">
+            Copia el <strong>TIPOM</strong> de <strong>TIPODOCUMENTOS</strong> en líneas de
+            <strong>DOCPRODUCTOS</strong> donde TIPOM es NULL (útil antes de recalcular inventario).
+          </p>
+          <p class="config-tipom-status mb-2" id="config-tipom-status">${this.escapeHtml(statusText)}</p>
+          <button type="button" class="btn btn-actualizar-pass btn-sm" id="btn-corregir-tipom-nulos"
+            ${nulos === 0 ? 'disabled' : ''}>
+            <i class="fa-solid fa-wrench" aria-hidden="true"></i> Corregir TIPOM nulos
+          </button>
+        </div>
+      </div>`;
+  },
+
+  buildConsultasExternasFullUrl(path) {
+    const origin = window.location.origin || '';
+    const p = String(path || '').trim();
+    if (!p) return origin;
+    if (/^https?:\/\//i.test(p)) return p;
+    return `${origin}${p.startsWith('/') ? p : `/${p}`}`;
+  },
+
+  renderConsultasExternasTab() {
+    const reports = this._consultasExternasCatalog || [];
+    if (!reports.length) {
+      return `
+        <div class="card config-card-compact">
+          <div class="card-body text-muted small">
+            <i class="fa-solid fa-spinner fa-spin me-1"></i>Cargando catálogo de reportes…
+          </div>
+        </div>`;
+    }
+
+    const rows = reports
+      .map((r) => {
+        const fullUrl = this.buildConsultasExternasFullUrl(r.path);
+        const params = (r.parametros || []).join(', ');
+        const estado = r.implementado
+          ? '<span class="badge text-bg-success">Activo</span>'
+          : '<span class="badge text-bg-secondary">Próximamente</span>';
+        return `
+          <tr>
+            <td>${this.escapeHtml(r.nombre)} ${estado}</td>
+            <td><code class="small">${this.escapeHtml(params)}</code></td>
+            <td class="text-break">
+              <code class="small user-select-all" id="consulta-ext-url-${this.escapeHtml(r.codigo)}">${this.escapeHtml(fullUrl)}</code>
+            </td>
+            <td class="text-end text-nowrap">
+              <button type="button" class="btn btn-sm btn-outline-primary btn-copy-consulta-ext"
+                data-copy-url="${this.escapeHtml(fullUrl)}" title="Copiar URL">
+                <i class="fa-solid fa-copy"></i>
+              </button>
+            </td>
+          </tr>`;
+      })
+      .join('');
+
+    const emp = F.getEmpNit() || '';
+    return `
+      <div class="card config-card-compact">
+        <div class="card-body">
+          <h6 class="card-title mb-2">
+            <i class="fa-solid fa-link me-1 text-primary"></i>API de consultas externas
+          </h6>
+          <p class="card-text small text-muted mb-3">
+            Endpoints GET públicos (sin token) que devuelven <code>{ "mensaje": "…" }</code>.
+            Use la URL en otro servicio; <strong>empnit</strong> y <strong>ventadia</strong> identifican empresa y reporte.
+            ${emp ? `Empresa actual: <code>${this.escapeHtml(emp)}</code>.` : 'Inicie sesión con empresa para ver URLs con EMPNIT.'}
+          </p>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Nombre</th>
+                  <th>Parámetros</th>
+                  <th>URL</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  async refreshConsultasExternasCatalog() {
+    const empNit = F.getEmpNit();
+    const params = new URLSearchParams({ _: String(Date.now()) });
+    if (empNit) params.set('empnit', empNit);
+    try {
+      const data = await F.fetchJson(`/api/consultas-externas/catalog?${params.toString()}`, {
+        cache: 'no-store',
+      });
+      this._consultasExternasCatalog = data.reports || [];
+    } catch {
+      this._consultasExternasCatalog = [];
+    }
+    const pane = this._container?.querySelector('[data-config-pane="consultas-externas"]');
+    if (pane) pane.innerHTML = this.renderConsultasExternasTab();
+    this.bindConsultasExternasEvents();
+  },
+
+  bindConsultasExternasEvents() {
+    this._container?.querySelectorAll('.btn-copy-consulta-ext').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const url = btn.getAttribute('data-copy-url') || '';
+        if (!url) return;
+        try {
+          await navigator.clipboard.writeText(url);
+          F.toast('URL copiada', 'success');
+        } catch {
+          F.toast('No se pudo copiar al portapapeles', 'warning');
+        }
+      });
+    });
+  },
+
   renderWhatsappPanel() {
     const st = this._whatsappStatus || {
       state: 'idle',
@@ -855,6 +1082,12 @@ const ConfigGeneralView = {
   },
 
   renderWhatsappTab() {
+    if (this._whatsappPending && !this._whatsappStatus) {
+      return `
+        <p class="text-muted small mb-0 py-3">
+          <i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i>Cargando WhatsApp…
+        </p>`;
+    }
     const agenda =
       typeof WhatsappProgramacionUI !== 'undefined' ? WhatsappProgramacionUI.render() : '';
     return `
@@ -871,10 +1104,14 @@ const ConfigGeneralView = {
       return `
         <div class="config-cards-grid">
           ${this.renderInvSaldoCard(this._invSaldoPendientes)}
+          ${this.renderCorregirTipomCard(this._tipomNulos)}
           ${this.renderCorreccionProductosCard()}
           ${this.renderCorregirSaldosCxcCard()}
           ${this.renderCorregirSaldosCxpCard()}
         </div>`;
+    }
+    if (tabId === 'consultas-externas') {
+      return this.renderConsultasExternasTab();
     }
 
     this.PASS_CARDS.filter((c) => (c.tab || 'seguridad') === tabId).forEach((card) => {
@@ -995,6 +1232,7 @@ const ConfigGeneralView = {
           pane.classList.toggle('d-none', pane.getAttribute('data-config-pane') !== tab);
         });
         if (tab === 'whatsapp') this.refreshWhatsappStatus().catch(() => {});
+        if (tab === 'consultas-externas') this.refreshConsultasExternasCatalog().catch(() => {});
       });
     });
 
@@ -1041,6 +1279,11 @@ const ConfigGeneralView = {
       this.onCorregirSaldosCuentas('cxp');
     });
 
+    document.getElementById('btn-corregir-tipom-nulos')?.addEventListener('click', () => {
+      this.onCorregirTipomNulos();
+    });
+
+    this.bindConsultasExternasEvents();
     this.bindWhatsappEvents();
     if (typeof WhatsappProgramacionUI !== 'undefined') {
       WhatsappProgramacionUI.bind(this._container);
@@ -1069,12 +1312,13 @@ const ConfigGeneralView = {
     if (!sock || typeof sock.on !== 'function') return;
     sock.on('whatsapp:status', (data) => {
       this._whatsappStatus = data || null;
-      if (this._tab === 'whatsapp') this.paintWhatsappPanel();
+      if (this._tab === 'whatsapp' && this.viewStillActive()) this.paintWhatsappPanel();
     });
     this._whatsappSocketBound = true;
   },
 
   paintWhatsappPanel() {
+    if (!this.viewStillActive()) return;
     const login = this._container?.querySelector('#config-wa-login');
     if (login) {
       login.innerHTML = this.renderWhatsappPanel();
@@ -1092,6 +1336,7 @@ const ConfigGeneralView = {
 
   async refreshWhatsappStatus() {
     const data = await F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' });
+    if (!this.viewStillActive()) return data;
     this._whatsappStatus = data;
     this.paintWhatsappPanel();
     return data;
@@ -1390,6 +1635,16 @@ const ConfigGeneralView = {
     });
   },
 
+  async fetchTipomNulosPreview() {
+    const empNit = F.getEmpNit();
+    if (!empNit) return { tipomNulos: 0 };
+    const params = new URLSearchParams({ empnit: empNit, _: String(Date.now()) });
+    const data = await F.fetchJson(`/api/inventario/recalcular/preview?${params.toString()}`, {
+      cache: 'no-store',
+    });
+    return { tipomNulos: Number(data?.tipomNulos) || 0 };
+  },
+
   updateInvSaldoCard(pendientes) {
     this._invSaldoPendientes = pendientes;
     const status = document.getElementById('config-invsaldo-status');
@@ -1402,6 +1657,86 @@ const ConfigGeneralView = {
           : `${count} producto(s) sin registro en INVSALDO.`;
     }
     if (btn) btn.disabled = count === 0;
+  },
+
+  updateTipomCard(tipomNulos) {
+    this._tipomNulos = tipomNulos;
+    const status = document.getElementById('config-tipom-status');
+    const btn = document.getElementById('btn-corregir-tipom-nulos');
+    const nulos = Number(tipomNulos) || 0;
+    if (status) {
+      status.textContent =
+        nulos === 0
+          ? 'No hay líneas de DOCPRODUCTOS con TIPOM nulo.'
+          : `${nulos.toLocaleString('es-GT')} línea(s) con TIPOM nulo.`;
+    }
+    if (btn) btn.disabled = nulos === 0;
+  },
+
+  async onCorregirTipomNulos() {
+    const empNit = F.getEmpNit();
+    if (!empNit) {
+      F.toast('No hay empresa activa en la sesión', 'warning');
+      return;
+    }
+
+    let nulos = Number(this._tipomNulos);
+    if (!Number.isFinite(nulos)) {
+      try {
+        const preview = await this.fetchTipomNulosPreview();
+        nulos = Number(preview.tipomNulos) || 0;
+        this.updateTipomCard(nulos);
+      } catch (err) {
+        F.alert('Error', err.message, 'error');
+        return;
+      }
+    }
+
+    if (nulos === 0) {
+      F.toast('No hay líneas con TIPOM nulo', 'info');
+      return;
+    }
+
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Corregir TIPOM nulos?',
+      html: `
+        <p class="mb-2 text-start">Se actualizarán <strong>${this.escapeHtml(nulos.toLocaleString('es-GT'))}</strong> línea(s)
+        de DOCPRODUCTOS con TIPOM NULL, copiando el TIPOM actual de TIPODOCUMENTOS.</p>
+        <p class="small text-muted mb-0 text-start">Esto no recalcula inventario; puede ejecutar la actualización global después.</p>`,
+      icon: 'warning',
+      confirmText: 'Sí, corregir',
+    });
+    if (!ok) return;
+
+    const btn = document.getElementById('btn-corregir-tipom-nulos');
+    const statusEl = document.getElementById('config-tipom-status');
+    const prevHtml = btn?.innerHTML;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML =
+        '<i class="fa-solid fa-spinner fa-spin me-1" aria-hidden="true"></i> Corrigiendo…';
+    }
+    if (statusEl) statusEl.textContent = 'Actualizando TIPOM en DOCPRODUCTOS…';
+
+    try {
+      const params = new URLSearchParams({ empnit: empNit });
+      const data = await F.fetchJson(`/api/inventario/recalcular/corregir-tipom?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const restantes = Number(data.resumen?.tipomNulos) || 0;
+      this.updateTipomCard(restantes);
+      F.toast(`TIPOM corregido en ${data.actualizados ?? 0} línea(s)`, 'success');
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Error al corregir TIPOM';
+      F.alert('Error', err.message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = Number(this._tipomNulos) === 0;
+        if (prevHtml) btn.innerHTML = prevHtml;
+      }
+    }
   },
 
   async onSincronizarInvSaldo() {
@@ -1569,8 +1904,52 @@ const ConfigGeneralView = {
     }
   },
 
+  async loadWhatsappEnSegundoPlano(loadGen) {
+    const empNit = typeof F !== 'undefined' && typeof F.getEmpNit === 'function' ? F.getEmpNit() : '';
+    try {
+      const statusPromise = F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' }).catch(() => ({
+        state: 'idle',
+        library: '@whiskeysockets/baileys',
+      }));
+      const progPromise =
+        typeof WhatsappProgramacionUI !== 'undefined'
+          ? WhatsappProgramacionUI.load(empNit).catch((err) => {
+              WhatsappProgramacionUI.setLoadError(err.message);
+              return null;
+            })
+          : Promise.resolve(null);
+      const [status] = await Promise.all([statusPromise, progPromise]);
+      if (!this.isLoadCurrent(loadGen)) return;
+      this._whatsappStatus = status || { state: 'idle', library: '@whiskeysockets/baileys' };
+      this._whatsappPending = false;
+      const pane = this._container?.querySelector('[data-config-pane="whatsapp"]');
+      if (!pane) return;
+      pane.innerHTML = this.renderWhatsappTab();
+      this.bindWhatsappEvents();
+      if (typeof WhatsappProgramacionUI !== 'undefined') {
+        WhatsappProgramacionUI.bind(this._container);
+      }
+    } catch (_) {
+      if (!this.isLoadCurrent(loadGen)) return;
+      this._whatsappPending = false;
+      this._whatsappStatus = this._whatsappStatus || {
+        state: 'idle',
+        library: '@whiskeysockets/baileys',
+      };
+      const pane = this._container?.querySelector('[data-config-pane="whatsapp"]');
+      if (pane) {
+        pane.innerHTML = this.renderWhatsappTab();
+        this.bindWhatsappEvents();
+      }
+    }
+  },
+
   async load(container) {
+    this._loadGen = (this._loadGen || 0) + 1;
+    const loadGen = this._loadGen;
     this._container = container;
+    this._whatsappPending = true;
+    this._whatsappStatus = null;
     container.classList.remove('align-items-center', 'justify-content-center');
     container.classList.add('align-items-stretch', 'justify-content-start', 'p-3');
     container.innerHTML = `
@@ -1579,93 +1958,11 @@ const ConfigGeneralView = {
       </div>`;
 
     try {
-      const empNit = F.getEmpNit();
-      const passFetches = this.PASS_CARDS.map((card) => this.fetchPass(card.opcion));
-      const textFetches = this.TEXT_CARDS.map((card) => this.fetchPass(card.opcion));
-      const sinoFetches = this.SINO_OPTIONS.map((opt) => this.fetchSino(opt.opcion));
-      const concreFetches = this.CONCRE_OPTIONS.map((opt) => this.fetchConcre(opt.opcion));
-      const formatoFetches = this.FORMATO_OPTIONS.map((opt) => this.fetchFormato(opt.opcion));
-      const fotoFetches = this.FOTO_OPTIONS.map((opt) => this.fetchFotoModo(opt.opcion));
-      const felFormatoFetches = this.FEL_FORMATO_OPTIONS.map((opt) => this.fetchFelFormatoModo(opt.opcion));
-      const tipofacFinalizadoFetches = this.TIPOFAC_FINALIZADO_OPTIONS.map((opt) =>
-        this.fetchTipofacFinalizado(opt.opcion)
-      );
-      const fetches = [
-        ...passFetches,
-        ...textFetches,
-        ...sinoFetches,
-        ...concreFetches,
-        ...formatoFetches,
-        ...fotoFetches,
-        ...felFormatoFetches,
-        ...tipofacFinalizadoFetches,
-      ];
-      if (empNit) fetches.push(this.fetchInvSaldoPendientes());
-      fetches.push(
-        F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' }).catch(() => ({
-          state: 'idle',
-          library: '@whiskeysockets/baileys',
-        }))
-      );
-      if (typeof WhatsappProgramacionUI !== 'undefined') {
-        fetches.push(
-          WhatsappProgramacionUI.load(empNit).catch((err) => {
-            WhatsappProgramacionUI.setLoadError(err.message);
-            return null;
-          })
-        );
-      }
-      const results = await Promise.all(fetches);
-      let idx = 0;
-      const passResults = results.slice(idx, (idx += this.PASS_CARDS.length));
-      const textResults = results.slice(idx, (idx += this.TEXT_CARDS.length));
-      const sinoResults = results.slice(idx, (idx += this.SINO_OPTIONS.length));
-      const concreResults = results.slice(idx, (idx += this.CONCRE_OPTIONS.length));
-      const formatoResults = results.slice(idx, (idx += this.FORMATO_OPTIONS.length));
-      const fotoResults = results.slice(idx, (idx += this.FOTO_OPTIONS.length));
-      const felFormatoResults = results.slice(idx, (idx += this.FEL_FORMATO_OPTIONS.length));
-      const tipofacFinalizadoResults = results.slice(idx, (idx += this.TIPOFAC_FINALIZADO_OPTIONS.length));
-      let invSaldoMeta = { pendientes: 0 };
-      if (empNit) {
-        invSaldoMeta = results[idx] || { pendientes: 0 };
-        idx += 1;
-      }
-      this._whatsappStatus = results[idx] || { state: 'idle', library: '@whiskeysockets/baileys' };
-
-      this._passMeta = {};
-      this.PASS_CARDS.forEach((card, i) => {
-        this._passMeta[card.opcion] = passResults[i];
+      const bootstrap = await F.fetchJson(`/api/config/bootstrap-config-general?_=${Date.now()}`, {
+        cache: 'no-store',
       });
-      this._textMeta = {};
-      this.TEXT_CARDS.forEach((card, i) => {
-        this._textMeta[card.opcion] = textResults[i];
-      });
-      this._sinoMeta = {};
-      this.SINO_OPTIONS.forEach((opt, i) => {
-        this._sinoMeta[opt.opcion] = sinoResults[i];
-      });
-      this._concreMeta = {};
-      this.CONCRE_OPTIONS.forEach((opt, i) => {
-        this._concreMeta[opt.opcion] = concreResults[i];
-      });
-      this._formatoMeta = {};
-      this.FORMATO_OPTIONS.forEach((opt, i) => {
-        this._formatoMeta[opt.opcion] = formatoResults[i];
-      });
-      this._fotoMeta = {};
-      this.FOTO_OPTIONS.forEach((opt, i) => {
-        this._fotoMeta[opt.opcion] = fotoResults[i];
-      });
-      this._felFormatoMeta = {};
-      this.FEL_FORMATO_OPTIONS.forEach((opt, i) => {
-        this._felFormatoMeta[opt.opcion] = felFormatoResults[i];
-      });
-      this._tipofacFinalizadoMeta = {};
-      this.TIPOFAC_FINALIZADO_OPTIONS.forEach((opt, i) => {
-        this._tipofacFinalizadoMeta[opt.opcion] = tipofacFinalizadoResults[i];
-      });
-      this._invSaldoPendientes = invSaldoMeta.pendientes ?? 0;
-
+      if (!this.isLoadCurrent(loadGen)) return;
+      this.applyConfigBootstrap(bootstrap);
       container.innerHTML = this.renderAll();
       this.PASS_CARDS.forEach((card) => {
         const input = document.getElementById(`input-${card.slug}-pass`);
@@ -1678,7 +1975,10 @@ const ConfigGeneralView = {
         input.value = stored || card.defaultValue || '';
       });
       this.bindEvents();
+      this.loadUtilidadesEnSegundoPlano(loadGen);
+      this.loadWhatsappEnSegundoPlano(loadGen);
     } catch (err) {
+      if (!this.isLoadCurrent(loadGen)) return;
       container.innerHTML = `
         <div class="alert alert-danger m-0" role="alert">
           <i class="fa-solid fa-circle-exclamation me-2"></i>

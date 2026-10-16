@@ -113,8 +113,9 @@ const SubirCatalogoView = {
       });
       Swal.close();
       const el = data.eliminados || {};
+      const refFecha = data.catalogLastSale ? ` Referencia nube (LASTSALE): ${data.catalogLastSale}.` : '';
       F.toast(
-        `Catálogo actualizado. Subidos: ${data.marcas ?? 0} marcas, ${data.medidas ?? 0} medidas, ${data.clasificacionuno ?? 0} clasif.1, ${data.proveedores ?? 0} prov., ${data.productos ?? 0} productos, ${data.precios ?? 0} precios, ${data.invsaldo ?? 0} saldos (elim. nube prod/pre/inv ${el.productos ?? 0}/${el.precios ?? 0}/${el.invsaldo ?? 0})`,
+        `Catálogo actualizado.${refFecha} Subidos: ${data.marcas ?? 0} marcas, ${data.medidas ?? 0} medidas, ${data.clasificacionuno ?? 0} clasif.1, ${data.proveedores ?? 0} prov., ${data.productos ?? 0} productos, ${data.precios ?? 0} precios, ${data.invsaldo ?? 0} saldos (elim. nube prod/pre/inv ${el.productos ?? 0}/${el.precios ?? 0}/${el.invsaldo ?? 0})`,
         'success'
       );
     } catch (err) {

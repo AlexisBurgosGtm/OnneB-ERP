@@ -81,14 +81,15 @@ const TrasladosEnTransitoView = {
     const origen = String(this._filterOrigen || '').trim().toUpperCase();
     const q = String(this._filterQ || '').trim().toLowerCase();
     return (this._rows || []).filter((r) => {
-      const emp = String(r.EMPNIT || '').trim().toUpperCase();
+      const emp = String(r.CODEMBARQUE || '').trim().toUpperCase();
       if (origen && emp !== origen) return false;
       if (!q) return true;
       const destino =
         r.OBSMARCA && String(r.OBSMARCA).trim().toUpperCase() !== 'SN'
           ? String(r.OBSMARCA)
-          : String(r.CODEMBARQUE || '');
+          : String(r.EMPNIT || '');
       const hay = [
+        r.CODEMBARQUE,
         r.EMPNIT,
         destino,
         r.CODDOC,
@@ -159,11 +160,11 @@ const TrasladosEnTransitoView = {
           <tbody>
             ${rows
               .map((r) => {
-                const origen = this.escapeHtml(r.EMPNIT || '—');
+                const origen = this.escapeHtml(r.CODEMBARQUE || '—');
                 const destino = this.escapeHtml(
                   r.OBSMARCA && String(r.OBSMARCA).trim().toUpperCase() !== 'SN'
                     ? r.OBSMARCA
-                    : r.CODEMBARQUE || '—'
+                    : r.EMPNIT || '—'
                 );
                 const coddoc = this.escapeHtml(r.CODDOC || '');
                 const corr = this.escapeHtml(r.CORRELATIVO);

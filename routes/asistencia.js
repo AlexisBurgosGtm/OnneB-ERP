@@ -4,6 +4,7 @@ const { nowParts } = require('../lib/documento-fecha');
 const {
   AsistenciaError,
   parseQrPayload,
+  getAsistenciaConfig,
   getEstadoAsistencia,
   marcarAsistencia,
   listAsistenciaDia,
@@ -41,6 +42,19 @@ function usuarioFromReq(req) {
   ).trim();
 }
 
+router.get('/config', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const config = await getAsistenciaConfig(pool);
+    res.json(config);
+  } catch (err) {
+    console.warn('[API GET /asistencia/config]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/hoy', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -49,8 +63,11 @@ router.get('/hoy', async (req, res) => {
   const fecha = parseFecha(req.query.fecha) || nowParts().fecha;
   try {
     const pool = await req.app.locals.getDbPool();
-    const rows = await listAsistenciaDia(pool, empnit, fecha);
-    res.json({ fecha, rows, empnit });
+    const [rows, config] = await Promise.all([
+      listAsistenciaDia(pool, empnit, fecha),
+      getAsistenciaConfig(pool),
+    ]);
+    res.json({ fecha, rows, empnit, ...config });
   } catch (err) {
     console.warn('[API GET /asistencia/hoy]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });

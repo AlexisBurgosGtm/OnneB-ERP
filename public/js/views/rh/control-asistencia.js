@@ -5,6 +5,7 @@ const ControlAsistenciaView = {
   _container: null,
   _fecha: '',
   _rows: [],
+  _aplicaAlmuerzo: false,
 
   escapeHtml(v) {
     if (v == null) return '';
@@ -36,23 +37,31 @@ const ControlAsistenciaView = {
     if (!this._rows.length) {
       return '<p class="text-center text-muted py-4 mb-0">Sin registros de asistencia para esta fecha</p>';
     }
+    const lunchHead = this._aplicaAlmuerzo
+      ? '<th>Sal. almuerzo</th><th>Ent. almuerzo</th>'
+      : '';
     const body = this._rows
-      .map(
-        (r) => `<tr>
+      .map((r) => {
+        const lunchCells = this._aplicaAlmuerzo
+          ? `<td>${this.escapeHtml(this.formatHora(r.HORA_SALIDA_ALMUERZO))}</td>
+             <td>${this.escapeHtml(this.formatHora(r.HORA_ENTRADA_ALMUERZO))}</td>`
+          : '';
+        return `<tr>
           <td>${this.escapeHtml(r.CODEMPLEADO)}</td>
           <td>${this.escapeHtml(r.NOMEMPLEADO || '—')}</td>
           <td>${this.escapeHtml(r.DEPARTAMENTO || '—')}</td>
           <td>${this.escapeHtml(this.formatHora(r.HORA_ENTRADA))}</td>
+          ${lunchCells}
           <td>${this.escapeHtml(this.formatHora(r.HORA_SALIDA))}</td>
-        </tr>`
-      )
+        </tr>`;
+      })
       .join('');
     return `
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
           <thead><tr>
             <th>Cód.</th><th>Empleado</th><th>Departamento</th>
-            <th>Entrada</th><th>Salida</th>
+            <th>Entrada</th>${lunchHead}<th>Salida</th>
           </tr></thead>
           <tbody>${body}</tbody>
         </table>
@@ -64,7 +73,7 @@ const ControlAsistenciaView = {
       <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
         <div>
           <h5 class="mb-0">Control de Asistencia</h5>
-          <p class="small text-muted mb-0">Registre entrada y salida con el QR o el código de barras del carné, o buscando al empleado.</p>
+          <p class="small text-muted mb-0" id="asistencia-ayuda">Registre entrada y salida con el QR o el código de barras del carné, o buscando al empleado.</p>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
           <input type="date" class="form-control form-control-sm" id="asistencia-fecha" value="${this.escapeHtml(this._fecha)}" style="width:auto">
@@ -84,31 +93,62 @@ const ControlAsistenciaView = {
   },
 
   accionLabel(accion) {
-    if (accion === 'ENTRADA') return 'entrada';
-    if (accion === 'SALIDA') return 'salida';
-    return '';
+    const map = {
+      ENTRADA: 'entrada',
+      SALIDA: 'salida del día',
+      SALIDA_ALMUERZO: 'salida a almuerzo',
+      ENTRADA_ALMUERZO: 'entrada de almuerzo',
+    };
+    return map[accion] || '';
+  },
+
+  marcadoToastLabel(marcado) {
+    const map = {
+      ENTRADA: 'Entrada',
+      SALIDA: 'Salida',
+      SALIDA_ALMUERZO: 'Salida a almuerzo',
+      ENTRADA_ALMUERZO: 'Entrada de almuerzo',
+    };
+    return map[marcado] || marcado;
+  },
+
+  ayudaTexto() {
+    if (this._aplicaAlmuerzo) {
+      return 'Modo con almuerzo: entrada → salida a almuerzo → regreso → salida del día. Use QR, carné o búsqueda.';
+    }
+    return 'Modo simple: solo entrada y salida del día. Use QR, carné o búsqueda.';
+  },
+
+  updateAyuda() {
+    const el = this._container?.querySelector('#asistencia-ayuda');
+    if (el) el.textContent = this.ayudaTexto();
   },
 
   async confirmarYMarcar(estado) {
     const accion = estado?.accion;
     const emp = estado?.empleado || {};
     if (accion === 'COMPLETO') {
-      F.toast(`${emp.NOMEMPLEADO || 'Empleado'} ya tiene entrada y salida hoy`, 'warning');
+      F.toast(`${emp.NOMEMPLEADO || 'Empleado'} ya tiene el día de asistencia completo`, 'warning');
       return;
     }
     const tipo = this.accionLabel(accion);
+    const reg = estado.registro || {};
+    const previas = [];
+    if (reg.HORA_ENTRADA) previas.push(`Entrada: ${reg.HORA_ENTRADA}`);
+    if (reg.HORA_SALIDA_ALMUERZO) previas.push(`Sal. almuerzo: ${reg.HORA_SALIDA_ALMUERZO}`);
+    if (reg.HORA_ENTRADA_ALMUERZO) previas.push(`Ent. almuerzo: ${reg.HORA_ENTRADA_ALMUERZO}`);
     const ok = await CatalogosUI.fireConfirm({
       title: `¿Registrar ${tipo}?`,
       html: `
         <p class="mb-1 text-start"><strong>${this.escapeHtml(emp.NOMEMPLEADO || '')}</strong>
           <span class="text-muted">(cód. ${this.escapeHtml(emp.CODEMPLEADO)})</span></p>
         <p class="small text-muted mb-1 text-start">Departamento: ${this.escapeHtml(emp.DEPARTAMENTO || '—')}</p>
-        <p class="mb-0 text-start">Se registrará la <strong>${tipo}</strong>
+        <p class="mb-0 text-start">Se registrará la <strong>${this.escapeHtml(tipo)}</strong>
           a las <strong>${this.escapeHtml(estado.horaActual || '')}</strong>
           del <strong>${this.escapeHtml(estado.fecha || '')}</strong>.</p>
         ${
-          estado.registro?.HORA_ENTRADA
-            ? `<p class="small text-muted mt-2 mb-0 text-start">Entrada previa: ${this.escapeHtml(estado.registro.HORA_ENTRADA)}</p>`
+          previas.length
+            ? `<p class="small text-muted mt-2 mb-0 text-start">${previas.map((p) => this.escapeHtml(p)).join(' · ')}</p>`
             : ''
         }
       `,
@@ -128,10 +168,10 @@ const ControlAsistenciaView = {
         }),
       }
     );
-    F.toast(
-      `${data.marcado === 'ENTRADA' ? 'Entrada' : 'Salida'} registrada (${data.hora || ''})`,
-      'success'
-    );
+    F.toast(`${this.marcadoToastLabel(data.marcado)} registrada (${data.hora || ''})`, 'success');
+    if (typeof data.aplicaAlmuerzo === 'boolean') {
+      this._aplicaAlmuerzo = data.aplicaAlmuerzo;
+    }
     await this.reloadRows();
   },
 
@@ -331,9 +371,11 @@ const ControlAsistenciaView = {
     const data = await F.fetchJson(this.apiHoy(fecha), { cache: 'no-store' });
     this._fecha = data.fecha || fecha;
     this._rows = data.rows || [];
+    this._aplicaAlmuerzo = data.aplicaAlmuerzo === true;
     const input = this._container?.querySelector('#asistencia-fecha');
     if (input) input.value = this._fecha;
     this.refreshTable();
+    this.updateAyuda();
   },
 
   bindEvents() {
@@ -362,9 +404,12 @@ const ControlAsistenciaView = {
     container.className = 'main-content flex-grow-1 d-flex p-3';
     container.innerHTML = '<p class="text-muted">Cargando asistencia…</p>';
     try {
-      await this.reloadRows();
+      const data = await F.fetchJson(this.apiHoy(this._fecha), { cache: 'no-store' });
+      this._aplicaAlmuerzo = data.aplicaAlmuerzo === true;
+      this._rows = data.rows || [];
       container.innerHTML = this.renderHtml();
       this.bindEvents();
+      this.updateAyuda();
     } catch (err) {
       container.innerHTML = `<p class="text-danger">${this.escapeHtml(err.message || 'Error al cargar')}</p>`;
     }

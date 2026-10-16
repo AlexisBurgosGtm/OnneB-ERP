@@ -406,6 +406,10 @@ const ProductosView = {
     return String(value ?? 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI';
   },
 
+  normalizeUsaLotes(value) {
+    return String(value ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO';
+  },
+
   normalizeTipoProd(value) {
     const v = String(value ?? 'P').trim().toUpperCase();
     return v === 'S' ? 'S' : 'P';
@@ -431,6 +435,21 @@ const ProductosView = {
         data-facturar="${val}"
         aria-label="Facturar: ${val}. Clic para cambiar"
         title="Clic para cambiar a ${val === 'SI' ? 'NO' : 'SI'}">
+        ${val}
+      </button>
+    `;
+  },
+
+  usaLotesToggleField(value) {
+    const val = this.normalizeUsaLotes(value);
+    const cls = val === 'SI' ? 'btn-empleado-activo--si' : 'btn-empleado-activo--no';
+    return `
+      <label class="form-label small mb-0 d-block">Control por lote (NOLOTE)</label>
+      <input type="hidden" name="USA_LOTES" value="${val}">
+      <button type="button" class="btn btn-sm btn-empleado-activo ${cls} btn-producto-usa-lotes"
+        data-usa-lotes="${val}"
+        aria-label="Control por lote: ${val}. Clic para cambiar"
+        title="Si es SI, el inventario puede desglosarse por NOLOTE y FVENCLOTE en documentos">
         ${val}
       </button>
     `;
@@ -617,6 +636,7 @@ const ProductosView = {
           this.selectFieldFixed('EXENTO', 'Exento', exentoOpts, this.normalizeExento(r.EXENTO)),
           this.dateField('VENCIMIENTO', 'Vencimiento', r.VENCIMIENTO, { defaultToday: true })
         )}
+        ${this.row2(this.usaLotesToggleField(r.USA_LOTES), '<div></div>')}
       </div>
     `;
 
@@ -703,6 +723,7 @@ const ProductosView = {
       EXENTO: this.normalizeExento(get('EXENTO')),
       TIPOPROD: this.normalizeTipoProd(get('TIPOPROD')),
       FACTURAR: this.normalizeFacturar(get('FACTURAR')),
+      USA_LOTES: this.normalizeUsaLotes(get('USA_LOTES')),
     };
   },
 
@@ -830,21 +851,24 @@ const ProductosView = {
     document.getElementById('btn-productos-form-opciones')?.addEventListener('click', () => {
       if (this._formCodprod) this.showOpcionesProducto(this._formCodprod);
     });
-    this._container?.querySelectorAll('.btn-producto-facturar').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const root = this._container?.querySelector('#productos-form');
-        const hidden = root?.querySelector('[name="FACTURAR"]');
-        const actual = this.normalizeFacturar(btn.dataset.facturar);
-        const siguiente = actual === 'SI' ? 'NO' : 'SI';
-        btn.dataset.facturar = siguiente;
-        btn.textContent = siguiente;
-        btn.classList.remove('btn-empleado-activo--si', 'btn-empleado-activo--no');
-        btn.classList.add(siguiente === 'SI' ? 'btn-empleado-activo--si' : 'btn-empleado-activo--no');
-        btn.setAttribute('aria-label', `Facturar: ${siguiente}. Clic para cambiar`);
-        btn.title = `Clic para cambiar a ${siguiente === 'SI' ? 'NO' : 'SI'}`;
-        if (hidden) hidden.value = siguiente;
+    const bindSiNoToggle = (selector, hiddenName, normalize, dataKey) => {
+      this._container?.querySelectorAll(selector).forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const root = this._container?.querySelector('#productos-form');
+          const hidden = root?.querySelector(`[name="${hiddenName}"]`);
+          const actual = normalize(btn.dataset[dataKey]);
+          const siguiente = actual === 'SI' ? 'NO' : 'SI';
+          btn.dataset[dataKey] = siguiente;
+          btn.textContent = siguiente;
+          btn.classList.remove('btn-empleado-activo--si', 'btn-empleado-activo--no');
+          btn.classList.add(siguiente === 'SI' ? 'btn-empleado-activo--si' : 'btn-empleado-activo--no');
+          btn.setAttribute('aria-label', `${hiddenName}: ${siguiente}. Clic para cambiar`);
+          if (hidden) hidden.value = siguiente;
+        });
       });
-    });
+    };
+    bindSiNoToggle('.btn-producto-facturar', 'FACTURAR', (v) => this.normalizeFacturar(v), 'facturar');
+    bindSiNoToggle('.btn-producto-usa-lotes', 'USA_LOTES', (v) => this.normalizeUsaLotes(v), 'usaLotes');
     this.bindFotoEvents();
   },
 

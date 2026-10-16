@@ -68,8 +68,23 @@
   <link rel="stylesheet" href="/css/inventario.css">
   <link rel="stylesheet" href="/css/productos.css">
   <link rel="stylesheet" href="/css/buttons-theme.css">
+  <link rel="stylesheet" href="/css/reportes-contabilidad.css">
+  <link rel="stylesheet" href="/css/modo-telefono.css">
 </head>
 <body>
+  <div id="onneb-pwa-install-banner" class="onneb-pwa-install-banner" hidden aria-live="polite">
+    <div class="onneb-pwa-install-banner__inner">
+      <img src="/icons/icon-192.png" alt="" class="onneb-pwa-install-banner__icon" width="40" height="40">
+      <div class="onneb-pwa-install-banner__text">
+        <strong>Instalar OnneB PLUS</strong>
+        <span class="small d-block text-muted">Acceso rápido como aplicación</span>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" id="onneb-pwa-install-btn">Instalar</button>
+      <button type="button" class="btn btn-sm btn-link text-muted onneb-pwa-install-banner__close" id="onneb-pwa-install-close" aria-label="Cerrar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+  </div>
   <script>
     (function () {
       try {
@@ -408,6 +423,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="reportes-marcas"><i class="fa-solid fa-tags" aria-hidden="true"></i> Reportes de Marcas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="impresion-xml-fel"><i class="fa-solid fa-file-code" aria-hidden="true"></i> Impresión XML FEL</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="control-fletes"><i class="fa-solid fa-truck" aria-hidden="true"></i> Control de Fletes</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="reportes-pendientes-facturar"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Reporte de Pendientes Facturar</a></li>
                 </ul>
               </div>
             </div>
@@ -441,6 +457,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="retenciones-iva-recibidas"><i class="fa-solid fa-percent" aria-hidden="true"></i> Retenciones IVA Recibidas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-compras"><i class="fa-solid fa-cart-shopping" aria-hidden="true"></i> Libro Compras</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="compras-manuales"><i class="fa-solid fa-file-import" aria-hidden="true"></i> Compras manuales</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="reportes-contabilidad"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Reportes Contabilidad</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-ventas"><i class="fa-solid fa-cash-register" aria-hidden="true"></i> Libro Ventas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="ventas-manuales"><i class="fa-solid fa-file-export" aria-hidden="true"></i> Ventas manuales</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="libro-diario"><i class="fa-solid fa-book" aria-hidden="true"></i> Libro Diario</a></li>
@@ -582,6 +599,9 @@
               <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
               <span id="header-user-name">—</span>
             </div>
+            <button type="button" id="btn-modo-telefono" class="btn btn-sm btn-outline-primary" hidden title="Modo Teléfono">
+              <i class="fa-solid fa-mobile-screen me-1" aria-hidden="true"></i>Modo Teléfono
+            </button>
             <div class="theme-picker-wrap">
               <button type="button" id="btn-theme-toggle" class="btn-theme-fab"
                 aria-label="Cambiar tema visual" aria-expanded="false" aria-haspopup="true">
@@ -710,6 +730,7 @@
   <script src="/js/views/reportes/reportes-clientes.js"></script>
   <script src="/js/views/reportes/reportes-productos.js"></script>
   <script src="/js/views/reportes/reportes-marcas.js"></script>
+  <script src="/js/views/reportes/reportes-pendientes-facturar.js"></script>
   <script src="/js/views/reportes/impresion-xml-fel.js"></script>
   <script src="/js/views/reportes/control-fletes.js"></script>
   <script src="/js/views/online-services/subir-catalogo.js"></script>
@@ -732,6 +753,7 @@
   <script src="/js/views/contabilidad/nomenclatura-contable.js"></script>
   <script src="/js/views/contabilidad/formatos-contables.js"></script>
   <script src="/js/views/contabilidad/configuraciones-contabilidad.js"></script>
+  <script src="/js/views/contabilidad/reportes-contabilidad.js"></script>
   <script src="/js/views/bancos/movimientos-banco.js"></script>
   <script src="/js/views/bancos/bancos.js"></script>
   <script src="/js/views/bancos/cuentas-bancarias.js"></script>
@@ -753,6 +775,25 @@
   <script src="/js/manifest.js"></script>
   <script src="/js/webauthn-client.js"></script>
   <script src="/js/view-tabs.js"></script>
+  <script src="/js/companion-voice-reports.js"></script>
+  <script src="/js/modo-telefono.js"></script>
   <script src="/js/app.js"></script>
+  <div id="modo-telefono-shell" hidden>
+    <div class="modo-telefono-inner">
+      <button type="button" class="btn btn-outline-secondary btn-sm modo-telefono-exit" id="btn-modo-telefono-exit">
+        <i class="fa-solid fa-arrow-left me-1"></i>Volver al ERP
+      </button>
+      <h1 class="modo-telefono-title">Modo Teléfono</h1>
+      <p class="modo-telefono-sub">Vista simplificada para consultas rápidas desde el teléfono.</p>
+      <div class="modo-telefono-card" id="modo-telefono-reports" hidden>
+        <h2><i class="fa-solid fa-volume-high me-1"></i> Reportes en voz alta</h2>
+        <p class="small text-muted mb-2">Solo administrador. Toque un reporte para escucharlo.</p>
+        <div id="modo-telefono-reports-grid"></div>
+        <p class="small text-center text-muted mt-2 mb-0" id="modo-telefono-no-reports" hidden>
+          No hay reportes activos para esta empresa.
+        </p>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

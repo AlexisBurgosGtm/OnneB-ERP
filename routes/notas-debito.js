@@ -15,6 +15,7 @@ const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-au
 const { DocumentoDeleteError } = require('../lib/documento-delete');
 const { calcLinePeso } = require('../lib/producto-precio-linea');
 const { abonoSuperaSaldo, aplicarAbonoSobreSaldo } = require('../lib/cuentas-saldo-centavos');
+const { actualizarNotaDatosGenerales } = require('../lib/notas-datos-generales');
 const {
   isLineaDescuentoCodprod,
   parseDescuentoLineaBody,
@@ -1263,6 +1264,24 @@ router.delete('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =
     }
     console.warn('[API DELETE /notas-debito/pedidos/lineas]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/pedidos/:coddoc/:correlativo/datos-generales', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const coddoc = String(req.params.coddoc || '').trim();
+  const correlativo = parseCorrelativo(req.params.correlativo);
+  if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await actualizarNotaDatosGenerales(pool, empnit, coddoc, correlativo, req.body);
+    const pedido = await loadPedido(pool, empnit, coddoc, correlativo);
+    res.json({ ...result, pedido });
+  } catch (err) {
+    console.warn('[API POST /notas-debito/pedidos/datos-generales]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 

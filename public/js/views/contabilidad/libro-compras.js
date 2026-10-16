@@ -51,7 +51,7 @@ const LibroComprasView = {
     { key: 'FEL_FECHA', label: 'Fecha', type: 'date' },
     { key: 'FEL_SERIE', label: 'Serie' },
     { key: 'FEL_NUMERO', label: 'Número' },
-    { key: 'TIPODOC', label: 'Tipo' },
+    { key: 'TIPO', label: 'Tipo' },
     { key: 'DOC_NIT', label: 'NIT' },
     { key: 'DOC_NOMCLIE', label: 'Nombre proveedor', cellClass: 'libro-compras-col-nombre' },
     { key: 'TOTAL', label: 'Total', type: 'money' },

@@ -2,19 +2,16 @@ const express = require('express');
 const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { parseFechaInput, fechaIsoFromRow, normalizeDocumentoRows } = require('../lib/documento-fecha');
-const { STATUS_ANULADO, SQL_TIPODOC_REPORTES_SI } = require('../lib/documento-status');
+const {
+  SQL_TIPODOC_VENTA_IN,
+  SQL_TIPODOC_DEV_IN,
+  SQL_REPORTES_VENTAS_WHERE,
+  SQL_SIGNO_DOC_IMPORTE,
+  SQL_SIGNO_LINEA_UNIDADES,
+  SQL_SIGNO_LINEA_IMPORTE,
+} = require('../lib/reportes-ventas-neto');
 
 const router = express.Router();
-
-/** Ventas brutas. */
-const TIPODOC_VENTA = ['FAC', 'FEF', 'FEC', 'FES'];
-/** Devoluciones (restan). */
-const TIPODOC_DEVOLUCION = ['DEV', 'FNC', 'FNA'];
-const TIPODOC_REPORTE = [...TIPODOC_VENTA, ...TIPODOC_DEVOLUCION];
-
-const SQL_TIPODOC_VENTA_IN = TIPODOC_VENTA.map((t) => `'${t}'`).join(', ');
-const SQL_TIPODOC_DEV_IN = TIPODOC_DEVOLUCION.map((t) => `'${t}'`).join(', ');
-const SQL_TIPODOC_REPORTE_IN = TIPODOC_REPORTE.map((t) => `'${t}'`).join(', ');
 
 function getEmpNitFromReq(req) {
   return String(req.query.empnit || req.body?.empnit || req.headers['x-emp-nit'] || '').trim();
@@ -56,38 +53,8 @@ function resolveRango(req) {
   return { desde: desde.fecha, hasta: hasta.fecha };
 }
 
-/** Filtro común de documentos para el reporte. */
-const SQL_BASE_WHERE = `
-  d.EMPNIT = @EMPNIT
-  AND CAST(d.FECHA AS DATE) BETWEEN @DESDE AND @HASTA
-  AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
-  AND t.TIPODOC IN (${SQL_TIPODOC_REPORTE_IN})
-  AND ${SQL_TIPODOC_REPORTES_SI}
-`;
-
-const SQL_SIGNO_IMPORTE = `
-  CASE
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(d.TOTALPRECIO, 0)
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN -ISNULL(d.TOTALPRECIO, 0)
-    ELSE 0
-  END
-`;
-
-const SQL_SIGNO_LINEA_IMPORTE = `
-  CASE
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(dp.TOTALPRECIO, 0)
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN -ISNULL(dp.TOTALPRECIO, 0)
-    ELSE 0
-  END
-`;
-
-const SQL_SIGNO_LINEA_UNIDADES = `
-  CASE
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(dp.TOTALUNIDADES, 0)
-    WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN -ISNULL(dp.TOTALUNIDADES, 0)
-    ELSE 0
-  END
-`;
+const SQL_BASE_WHERE = SQL_REPORTES_VENTAS_WHERE;
+const SQL_SIGNO_IMPORTE = SQL_SIGNO_DOC_IMPORTE;
 
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');

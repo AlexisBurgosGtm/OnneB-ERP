@@ -700,7 +700,8 @@ function createInventarioMovView(cfg) {
     },
 
     communityTrasladoRowKey(r) {
-      return `${String(r?.EMPNIT || '').trim()}|${String(r?.CODDOC || '').trim()}|${Number(r?.CORRELATIVO)}`;
+      const origen = String(r?.CODEMBARQUE || r?.EMPNIT || '').trim();
+      return `${origen}|${String(r?.CODDOC || '').trim()}|${Number(r?.CORRELATIVO)}`;
     },
 
     renderDescargarTrasladoTableHtml(rows) {
@@ -722,7 +723,7 @@ function createInventarioMovView(cfg) {
               <tbody>
                 ${rows
                   .map((r) => {
-                    const origen = this.escapeHtml(r.EMPNIT || '—');
+                    const origen = this.escapeHtml(r.CODEMBARQUE || '—');
                     const coddoc = this.escapeHtml(r.CODDOC || '');
                     const corr = this.escapeHtml(r.CORRELATIVO);
                     const key = this.escapeHtml(this.communityTrasladoRowKey(r));

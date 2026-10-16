@@ -49,6 +49,7 @@ const PRODUCT_BODY_FIELDS = [
   'HABILITADO',
   'VENCIMIENTO',
   'SERIE',
+  'USA_LOTES',
   'PORCDESCUENTO',
   'INVMINIMO',
   'INVMAXIMO',
@@ -191,6 +192,8 @@ function readProductBody(body, { includeCodprod = false } = {}) {
     } else if (name === 'VENCIMIENTO') {
       const v = String(body[name] ?? '').trim();
       data[name] = v || null;
+    } else if (name === 'USA_LOTES') {
+      data[name] = normalizeHabilitado(body[name], 'NO');
     } else {
       data[name] = body[name] === null ? null : String(body[name]).trim();
     }
@@ -871,12 +874,16 @@ router.post('/', async (req, res) => {
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
   const empnit = requireEmpNit(req, res);
   if (!empnit) return;
+  const { productoUsaLotesColumnExists } = require('../lib/lote-schema');
   const data = readProductBody(req.body, { includeCodprod: true });
   if (!data.CODPROD) return res.status(400).json({ error: 'CODPROD es obligatorio' });
   if (!data.DESPROD) return res.status(400).json({ error: 'DESPROD es obligatorio' });
   data.HABILITADO = normalizeHabilitado(data.HABILITADO, 'SI');
   try {
     const pool = await req.app.locals.getDbPool();
+    const hasUsaLotes = await productoUsaLotesColumnExists(pool);
+    if (hasUsaLotes && data.USA_LOTES === undefined) data.USA_LOTES = 'NO';
+    if (!hasUsaLotes) delete data.USA_LOTES;
     const dup = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -887,7 +894,7 @@ router.post('/', async (req, res) => {
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
-      await transaction
+      let insReq = transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('CODPROD', sql.VarChar, data.CODPROD)
@@ -912,8 +919,26 @@ router.post('/', async (req, res) => {
         .input('NF', sql.Int, data.NF ?? 0)
         .input('TIPOPROD', sql.VarChar, data.TIPOPROD || 'P')
         .input('FACTURAR', sql.VarChar, data.FACTURAR || 'SI')
-        .input('BONO', sql.Float, data.BONO ?? 0)
-        .query(`
+        .input('BONO', sql.Float, data.BONO ?? 0);
+      if (hasUsaLotes) {
+        insReq = insReq.input('USA_LOTES', sql.VarChar, normalizeHabilitado(data.USA_LOTES, 'NO'));
+      }
+      await insReq.query(
+          hasUsaLotes
+            ? `
+          INSERT INTO dbo.PRODUCTOS (
+            EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
+            CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE, USA_LOTES,
+            PORCDESCUENTO, INVMINIMO, INVMAXIMO, EXENTO, NF, TIPOPROD, EXISTENCIA, FACTURAR, BONO,
+            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO
+          ) VALUES (
+            @EMPNIT, @CODPROD, @CODPROD2, @DESPROD, @DESPROD2, @DESPROD3, @UXC, @CODMEDIDACOMPRA, @COSTO,
+            @CODMARCA, @CODCLAUNO, @CODCLADOS, @CODCLATRES, @HABILITADO, @VENCIMIENTO, @SERIE, @USA_LOTES,
+            @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
+            0, 0, 0
+          )
+        `
+            : `
           INSERT INTO dbo.PRODUCTOS (
             EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
             CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE,
@@ -925,7 +950,8 @@ router.post('/', async (req, res) => {
             @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
             0, 0, 0
           )
-        `);
+        `
+        );
       await ensureInvSaldoForProduct(transaction, empnit, data.CODPROD, 0);
       await transaction.commit();
     } catch (inner) {
@@ -951,10 +977,14 @@ router.put('/:codprod', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const { productoUsaLotesColumnExists } = require('../lib/lote-schema');
+    const hasUsaLotes = await productoUsaLotesColumnExists(pool);
+    if (!hasUsaLotes) delete data.USA_LOTES;
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit).input('CODPROD', sql.VarChar, codprod);
     const setParts = [];
     for (const [key, val] of Object.entries(data)) {
       if (key === 'CODPROD') continue;
+      if (key === 'USA_LOTES' && !hasUsaLotes) continue;
       let type = sql.VarChar;
       if (key === 'VENCIMIENTO') type = sql.Date;
       else if (['UXC', 'CODMARCA', 'CODCLAUNO', 'CODCLADOS', 'CODCLATRES', 'SERIE', 'INVMINIMO', 'INVMAXIMO', 'EXENTO', 'NF'].includes(key)) {

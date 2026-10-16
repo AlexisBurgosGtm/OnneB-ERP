@@ -139,7 +139,9 @@ const auditoriaCajasRouter = require('./routes/auditoria-cajas');
 const reportesVentasRouter = require('./routes/reportes-ventas');
 const reportesClientesRouter = require('./routes/reportes-clientes');
 const reportesProductosRouter = require('./routes/reportes-productos');
+const reportesContabilidadRouter = require('./routes/reportes-contabilidad');
 const reportesMarcasRouter = require('./routes/reportes-marcas');
+const reportesPendientesFacturarRouter = require('./routes/reportes-pendientes-facturar');
 const felXmlRouter = require('./routes/fel-xml');
 const controlFletesRouter = require('./routes/control-fletes');
 const autorizacionesRouter = require('./routes/autorizaciones');
@@ -312,6 +314,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/license', licenseRouter);
 app.use('/api/community', communityRouter);
 app.use('/api/config', configRouter);
+app.use('/api/consultas-externas', require('./routes/consultas-externas'));
+app.use('/api/remote-companion', require('./routes/remote-companion'));
 app.use('/api/whatsapp', require('./routes/whatsapp'));
 app.use('/api/whatsapp', require('./routes/whatsapp-programacion'));
 app.use('/api/roles-usuarios', rolesUsuariosRouter);
@@ -333,6 +337,7 @@ app.use('/api/inventario/ent', entradasRouter);
 app.use('/api/inventario/sal', salidasRouter);
 app.use('/api/traslados/crear', trasladosCrearRouter);
 app.use('/api/traslados/recibir', trasladosRecibirRouter);
+app.use('/api/inventario/lotes', require('./routes/inventario-lote'));
 app.use('/api/inventario', inventarioSaldoRouter);
 app.use('/api/documentos', documentosRouter);
 app.use('/api/asistente', asistenteRouter);
@@ -342,7 +347,9 @@ app.use('/api/auditoria-cajas', auditoriaCajasRouter);
 app.use('/api/reportes-ventas', reportesVentasRouter);
 app.use('/api/reportes-clientes', reportesClientesRouter);
 app.use('/api/reportes-productos', reportesProductosRouter);
+app.use('/api/reportes-contabilidad', reportesContabilidadRouter);
 app.use('/api/reportes-marcas', reportesMarcasRouter);
+app.use('/api/reportes-pendientes-facturar', reportesPendientesFacturarRouter);
 app.use('/api/fel-xml', felXmlRouter);
 app.use('/api/control-fletes', controlFletesRouter);
 app.use('/api/autorizaciones', autorizacionesRouter);
@@ -403,11 +410,20 @@ app.get('/api/health', async (_req, res) => {
 });
 
 registerSocketHandlers(io);
-try {
-  const { setWhatsappIo } = require('./lib/whatsapp-baileys');
-  setWhatsappIo(io);
-} catch (err) {
-  console.warn('[WhatsApp] no se pudo registrar Socket.IO:', err.message);
+const { registerRemoteCompanionHandlers } = require('./lib/remote-companion-socket');
+registerRemoteCompanionHandlers(io);
+app.set('io', io);
+
+function startWhatsappAfterServerReady() {
+  try {
+    const { setWhatsappIo, tryAutoConnect } = require('./lib/whatsapp-baileys');
+    setWhatsappIo(io);
+    tryAutoConnect().catch(() => {});
+    const { startWhatsappScheduler } = require('./lib/whatsapp-scheduler');
+    startWhatsappScheduler(() => getDbPool());
+  } catch (err) {
+    console.warn('[WhatsApp] error al iniciar sesión:', err.message);
+  }
 }
 
 server.listen(PORT, () => {
@@ -417,14 +433,6 @@ server.listen(PORT, () => {
     fs.writeFileSync(pidPath, String(process.pid), 'utf8');
   } catch (err) {
     console.warn('[OnneB] no se pudo escribir PID:', err.message);
-  }
-  try {
-    const { tryAutoConnect } = require('./lib/whatsapp-baileys');
-    const { startWhatsappScheduler } = require('./lib/whatsapp-scheduler');
-    tryAutoConnect().catch(() => {});
-    startWhatsappScheduler(() => getDbPool());
-  } catch {
-    console.warn('[WhatsApp] error al conectar');
   }
   const clearPid = () => {
     try {
@@ -460,6 +468,9 @@ server.listen(PORT, () => {
     require('./scripts/watch-build').start();
     watchBuildMetaBroadcast();
   }
+
+  // WhatsApp (Baileys + programación): no bloquear el puerto HTTP ni el arranque inicial.
+  setImmediate(startWhatsappAfterServerReady);
 });
 
 process.on('SIGINT', async () => {

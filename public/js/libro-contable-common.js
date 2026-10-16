@@ -114,6 +114,7 @@ const LibroContableCommon = {
     if (!nq) return true;
     const parts = [
       row?.LINEA,
+      row?.TIPO,
       row?.TIPODOC,
       row?.TIPOPAGO,
       row?.FEL_SERIE,

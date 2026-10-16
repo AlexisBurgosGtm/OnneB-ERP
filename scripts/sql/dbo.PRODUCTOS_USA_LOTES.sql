@@ -1,0 +1,9 @@
+-- Columna PRODUCTOS.USA_LOTES (lotes de vencimiento — catálogo).
+-- Uso: npm run seed:updater:productos-usa-lotes → Actualizador BD (2026 / P)
+
+-- @UPDATER_CHUNK PRODUCTOS_USA_LOTES_ONLY
+IF COL_LENGTH('dbo.PRODUCTOS', 'USA_LOTES') IS NULL
+BEGIN
+  ALTER TABLE dbo.PRODUCTOS ADD USA_LOTES VARCHAR(2) NOT NULL
+    CONSTRAINT DF_PRODUCTOS_USA_LOTES DEFAULT ('NO') WITH VALUES;
+END;

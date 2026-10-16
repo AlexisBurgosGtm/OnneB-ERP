@@ -1,30 +1,36 @@
 ---
-description: Pendiente — Lotes de vencimiento (inventario por lote)
+description: Lotes de vencimiento (inventario por lote)
 alwaysApply: false
 ---
 
-# Lotes de vencimiento (pendiente)
+# Lotes de vencimiento
 
-Nombre oficial del feature: **lotes de vencimiento**.
+Nombre oficial: **lotes de vencimiento**.
 
-## Estado
+## Estado (OnneB)
 
-Recordado para implementar más adelante. **No existe hoy** en Los ERP.
+**Fase 1 implementada** (sin romper inventario actual):
 
-## Contexto acordado
+- `PRODUCTOS.USA_LOTES` — `SI`/`NO`, **default `NO`** (no exige lote).
+- `DOCPRODUCTOS.NOLOTE`, `DOCPRODUCTOS.FVENCLOTE` — **no** reutilizar `NOSERIE` ni `PRODUCTOS.VENCIMIENTO` para lotes.
+- Tabla `INVSALDO_LOTE` (saldo por lote); `INVSALDO` / `PRODUCTOS.EXISTENCIA` siguen siendo el total.
+- Hook en `lib/inventario.js` → `lib/inventario-lote.js`: solo actúa si `USA_LOTES = SI` **y** la línea trae `NOLOTE`.
+- API consulta: `GET /api/inventario/lotes?empnit=&codprod=`.
+- Compras / facturación: aceptan `NOLOTE` y `FVENCLOTE` en el body al agregar línea (opcional).
 
-- Control de existencias por **número de lote** ligado a **fecha de vencimiento**.
-- Hoy el stock es una sola cantidad por producto (`INVSALDO.SALDO` + `PRODUCTOS.EXISTENCIA`).
-- Aplicar en **Los ERP** (OnneB + FS-SV) cuando se pida implementar.
+Schema (solo Actualizador, sin ALTER en runtime):
 
-## Enfoque tentativo (no implementar hasta que el usuario lo pida)
-
-1. Tabla tipo `INVSALDO_LOTE` (`EMPNIT`, `CODPROD`, `NUMLOTE`, `FECHA_VENC`, `SALDO`); `INVSALDO` como suma.
-2. Captura/selección de lote en compra/entrada/venta; centralizar en `lib/inventario.js`.
-3. Flag en producto para no obligar lote en todo el catálogo.
-4. UI: picker + consulta por lote; opcional FIFO/FEFO.
-5. Schema vía updater SQL compartido.
+- `npm run seed:updater:lotes` → `dbo.INVSALDO_LOTE_SCHEMA.sql` (USA_LOTES, NOLOTE, FVENCLOTE, INVSALDO_LOTE).
+- `npm run seed:updater:productos-usa-lotes` → chunk mínimo `dbo.PRODUCTOS_USA_LOTES.sql` si solo falta la columna.
+- Cliente: Actualizador BD **2026 / P**. El agente debe ejecutar los seeds al cambiar DDL, no esperar carga manual.
 
 ## No confundir
 
-- `PRODUCTOS.VENCIMIENTO`, `PRODUCTOS.SERIE`, `DOCPRODUCTOS.NOSERIE` **no** son este control.
+- `PRODUCTOS.VENCIMIENTO`, `PRODUCTOS.SERIE`, `DOCPRODUCTOS.NOSERIE` — catálogo / serie legacy, **no** control por lote.
+
+## Pendiente (fases siguientes)
+
+- UI picker de lote en compra/venta/POS (hoy solo API).
+- Validar lote obligatorio cuando `USA_LOTES = SI`.
+- Recalc inventario desde líneas con `NOLOTE`.
+- FIFO/FEFO; FS-SV cuando el usuario pida Los ERP.

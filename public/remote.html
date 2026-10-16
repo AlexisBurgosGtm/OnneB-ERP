@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#312e81">
+  <title>OnneB — MODO RC</title>
+  <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+  <link rel="stylesheet" href="/css/companion-remote.css">
+</head>
+<body class="companion-remote-body">
+  <div id="app" class="companion-app">
+    <header class="companion-hero mb-3">
+      <div class="companion-hero-icon" aria-hidden="true">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+      </div>
+      <h1 class="companion-remote-title mb-1">MODO RC</h1>
+      <p class="companion-remote-sub mb-2">Modo control remoto: empareje con la PC y controle la sesión desde aquí.</p>
+      <p class="companion-status-line small mb-0" id="companion-status-line">
+        <span class="companion-status-dot off"></span>
+        <span id="companion-status-text">Sin emparejar</span>
+      </p>
+    </header>
+
+    <div id="panel-pair" class="companion-remote-card companion-panel mb-3">
+      <h2 class="companion-section-title">
+        <i class="fa-solid fa-link" aria-hidden="true"></i> Emparejar
+      </h2>
+      <label class="form-label small companion-label">Código del QR en la PC</label>
+      <input type="text" class="form-control mb-2" id="companion-token-input" placeholder="Pegue el código o escanee QR" autocomplete="off" />
+      <button type="button" class="companion-action-btn companion-action-secondary w-100 mb-2" id="btn-companion-join">
+        <span class="companion-action-icon"><i class="fa-solid fa-plug" aria-hidden="true"></i></span>
+        <span>Emparejar con código</span>
+      </button>
+      <button type="button" class="companion-action-btn companion-action-primary w-100" id="btn-companion-scan">
+        <span class="companion-action-icon"><i class="fa-solid fa-qrcode" aria-hidden="true"></i></span>
+        <span>Escanear QR de la PC</span>
+      </button>
+      <div id="companion-scan-region" class="mt-3" hidden></div>
+    </div>
+
+    <div id="panel-login" class="companion-remote-card companion-panel mb-3" hidden>
+      <h2 class="companion-section-title">
+        <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> Iniciar sesión
+      </h2>
+      <p class="companion-remote-sub">La PC recibirá la misma sesión al confirmar.</p>
+
+      <label class="form-label small companion-label"><i class="fa-solid fa-building me-1"></i>Empresa</label>
+      <select class="form-select mb-3" id="companion-empresa"></select>
+
+      <button type="button" class="companion-action-btn companion-action-passkey w-100 mb-3" id="btn-companion-biometric" hidden>
+        <span class="companion-action-icon"><i class="fa-solid fa-fingerprint" aria-hidden="true"></i></span>
+        <span>Entrar con passkey / huella</span>
+      </button>
+
+      <p class="companion-divider-text small text-center mb-3" id="companion-login-divider" hidden>o con usuario y clave</p>
+
+      <label class="form-label small companion-label"><i class="fa-solid fa-user me-1"></i>Usuario</label>
+      <input type="text" class="form-control mb-2" id="companion-usuario" autocomplete="username" placeholder="Opcional si usa passkey" />
+      <label class="form-label small companion-label"><i class="fa-solid fa-lock me-1"></i>Contraseña</label>
+      <input type="password" class="form-control mb-3" id="companion-password" autocomplete="current-password" />
+      <button type="button" class="companion-action-btn companion-action-success w-100 mb-2" id="btn-companion-login">
+        <span class="companion-action-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span>
+        <span>Entrar y vincular PC</span>
+      </button>
+      <button type="button" class="btn btn-link btn-sm text-white-50 mt-1 p-0 w-100 text-center" id="btn-companion-register-bio" hidden>
+        <i class="fa-solid fa-plus me-1"></i>Registrar passkey en este teléfono
+      </button>
+    </div>
+
+    <div id="panel-remote" class="companion-remote-card companion-panel" hidden>
+      <h2 class="companion-section-title">
+        <i class="fa-solid fa-gamepad" aria-hidden="true"></i> MODO RC
+      </h2>
+      <p class="companion-user-line mb-3" id="companion-user-line"></p>
+
+      <section class="companion-block mb-3" id="companion-reports-section" hidden>
+        <h3 class="companion-block-title">
+          <i class="fa-solid fa-volume-high" aria-hidden="true"></i> Reportes por voz
+        </h3>
+        <p class="small opacity-75 mb-2">Solo administrador. Consultas del ERP — se leen en voz alta al tocar.</p>
+        <div id="companion-reports-grid" class="companion-reports-grid"></div>
+        <p class="small text-center mt-2 mb-0 opacity-75" id="companion-no-reports" hidden>
+          No hay reportes activos para esta empresa.
+        </p>
+      </section>
+
+      <section class="companion-block mb-3" id="companion-favs-section">
+        <h3 class="companion-block-title">
+          <i class="fa-solid fa-star" aria-hidden="true"></i> Favoritos en la PC
+        </h3>
+        <p class="small opacity-75 mb-2">Abre la vista en la computadora.</p>
+        <div id="companion-fav-grid" class="companion-fav-grid"></div>
+        <p class="small text-center mt-2 mb-0 opacity-75" id="companion-no-favs" hidden>
+          Sin favoritos. Configúrelos en la PC (menú Favoritos).
+        </p>
+      </section>
+
+      <section class="companion-block" id="companion-pointer-panel" hidden>
+        <h3 class="companion-block-title">
+          <i class="fa-solid fa-computer-mouse" aria-hidden="true"></i> Puntero en la PC
+        </h3>
+        <button type="button" class="companion-action-btn companion-action-accent w-100 mb-2" id="btn-companion-pointer">
+          <span class="companion-action-icon"><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i></span>
+          <span>Iniciar control del puntero</span>
+        </button>
+        <p class="small opacity-75 mb-2" id="companion-pointer-hint">
+          Tras vincular sesión con QR, inicie el control para mostrar el touchpad.
+        </p>
+        <div id="companion-pointer-pad-wrap" hidden>
+          <div id="companion-pointer-pad" class="companion-pointer-pad" aria-label="Touchpad para mover el puntero en la PC">
+            <span class="companion-pointer-pad-label">Touchpad</span>
+          </div>
+        </div>
+        <div id="companion-pointer-tools" hidden>
+          <button type="button" class="companion-action-btn companion-action-light w-100 mt-2" id="btn-companion-pointer-click">
+            <span class="companion-action-icon"><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i></span>
+            <span>Clic en la PC</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/html5-qrcode/html5-qrcode.min.js"></script>
+  <script src="/js/F.js"></script>
+  <script src="/js/webauthn-client.js"></script>
+  <script src="/js/companion-pointer.js"></script>
+  <script src="/js/companion-remote.js"></script>
+</body>
+</html>
