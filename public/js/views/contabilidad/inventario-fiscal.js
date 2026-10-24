@@ -33,8 +33,10 @@ const InventarioFiscalView = {
   _filterQuery: '',
   _loading: false,
   _truncated: false,
+  _modo: 'fiscal',
+  _showCostoPromedio: false,
 
-  tableColumns: [
+  baseTableColumns: [
     { key: 'CODPROD', label: 'Código' },
     { key: 'DESPROD', label: 'Descripción' },
     { key: 'DESMARCA', label: 'Marca' },
@@ -48,6 +50,19 @@ const InventarioFiscalView = {
     { key: 'TOTALCOSTO', label: 'Total costo', type: 'money' },
     { key: 'TOTALCOSTO_SIN_IVA', label: 'Total costo sin IVA', type: 'money' },
   ],
+
+  costoPromedioColumns: [
+    { key: 'COSTO_PROMEDIO', label: 'Costo prom.', type: 'money' },
+    { key: 'COSTO_PROMEDIO_SIN_IVA', label: 'Costo prom. sin IVA', type: 'money' },
+    { key: 'TOTALCOSTO_PROMEDIO', label: 'Total costo prom.', type: 'money' },
+    { key: 'TOTALCOSTO_PROMEDIO_SIN_IVA', label: 'Total costo prom. sin IVA', type: 'money' },
+  ],
+
+  activeTableColumns() {
+    const cols = [...this.baseTableColumns];
+    if (this._showCostoPromedio) cols.push(...this.costoPromedioColumns);
+    return cols;
+  },
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -129,6 +144,8 @@ const InventarioFiscalView = {
       ...extra,
     });
     if (this._filterQuery) params.set('q', this._filterQuery);
+    if (this._modo === 'general') params.set('modo', 'general');
+    if (this._showCostoPromedio) params.set('costoPromedio', '1');
     return `/api/inventario-fiscal?${params}`;
   },
 
@@ -178,7 +195,7 @@ const InventarioFiscalView = {
   },
 
   renderTable() {
-    const cols = this.tableColumns;
+    const cols = this.activeTableColumns();
     const body =
       this._rows.length === 0
         ? `<tr><td colspan="${cols.length}" class="text-center text-muted py-4">
@@ -223,10 +240,26 @@ const InventarioFiscalView = {
     return `
       <div class="inventario-fiscal-wrap w-100">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-          <div>
-            <h2 class="h5 mb-0">Inventario Fiscal</h2>
-            <p class="small text-muted mb-0">Existencia según documentos contables</p>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <h2 class="h5 mb-0 me-1">Inventario</h2>
+            <button type="button" class="badge border-0 inv-fiscal-modo-badge ${
+              this._modo === 'fiscal' ? 'text-bg-success' : 'text-bg-danger'
+            }" id="inv-fiscal-toggle-modo" title="Clic para alternar">
+              ${this._modo === 'fiscal' ? 'INVENTARIO FISCAL' : 'INVENTARIO GENERAL'}
+            </button>
+            <button type="button" class="badge border-0 ${
+              this._showCostoPromedio ? 'text-bg-primary' : 'text-bg-secondary'
+            }" id="inv-fiscal-toggle-costo-prom" title="Mostrar columnas de costo promedio">
+              COSTO PROMEDIO
+            </button>
           </div>
+          <p class="small text-muted mb-0 w-100">
+            ${
+              this._modo === 'fiscal'
+                ? 'Solo documentos con tipo contable (FEL).'
+                : 'Todos los movimientos de inventario (TIPOM del documento/línea).'
+            }
+          </p>
         </div>
         ${this.renderFiltersCard()}
         <div id="inv-fiscal-table-root">${this.renderTable()}</div>
@@ -247,6 +280,14 @@ const InventarioFiscalView = {
     });
     this._container?.querySelector('#btn-inv-fiscal-export')?.addEventListener('click', () => {
       this.exportExcel().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#inv-fiscal-toggle-modo')?.addEventListener('click', () => {
+      this._modo = this._modo === 'fiscal' ? 'general' : 'fiscal';
+      this.refreshLayout().catch((err) => F.toast(err.message, 'error'));
+    });
+    this._container?.querySelector('#inv-fiscal-toggle-costo-prom')?.addEventListener('click', () => {
+      this._showCostoPromedio = !this._showCostoPromedio;
+      this.refreshLayout().catch((err) => F.toast(err.message, 'error'));
     });
     this._container?.querySelector('#inv-fiscal-table-root')?.addEventListener('click', (e) => {
       const tr = e.target.closest('tr[data-codprod]');
@@ -275,6 +316,8 @@ const InventarioFiscalView = {
       anio: String(this._anio),
       _: String(Date.now()),
     });
+    if (this._modo === 'general') params.set('modo', 'general');
+    if (this._showCostoPromedio) params.set('costoPromedio', '1');
     const url = `/api/inventario-fiscal/export?${params}`;
     if (typeof LibroContableCommon !== 'undefined') {
       await LibroContableCommon.downloadExport(
@@ -312,6 +355,7 @@ const InventarioFiscalView = {
       codprod: String(codprod),
       _: String(Date.now()),
     });
+    if (this._modo === 'general') params.set('modo', 'general');
     const data = await F.fetchJson(`/api/inventario-fiscal/movimientos?${params}`, { cache: 'no-store' });
     const prod = data.producto || {};
     const rows = data.rows || [];
@@ -359,6 +403,13 @@ const InventarioFiscalView = {
       showCancelButton: false,
       confirmButtonText: CatalogosUI.aceptarButtonHtml('Cerrar'),
     });
+  },
+
+  async refreshLayout() {
+    if (!this._container) return;
+    this._container.innerHTML = this.render();
+    this.bindEvents();
+    await this.reload();
   },
 
   async reload() {

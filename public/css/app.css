@@ -235,6 +235,7 @@ body {
 .main-content > .actualizacion-costos-wrap,
 .main-content > .nomina-empleados-view,
 .main-content > .vales-caja-view,
+.main-content > .psim-vista-wrap,
 .main-content.productos-view-root {
   flex: 1;
   min-height: 0;

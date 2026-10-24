@@ -134,6 +134,93 @@
   border-radius: 0.35rem;
 }
 
+.formatos-impresion-wrap .fi-visual-layout {
+  align-items: flex-start;
+}
+
+.formatos-impresion-wrap .fi-palette-col {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  max-height: calc(100vh - 12rem);
+}
+
+.formatos-impresion-wrap .fi-palette {
+  max-height: calc(100vh - 12rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.formatos-impresion-wrap .fi-palette .card-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.formatos-impresion-wrap .fi-palette-heading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.formatos-impresion-wrap .fi-palette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.formatos-impresion-wrap .fi-palette-list--fields {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.formatos-impresion-wrap .fi-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.35rem;
+  background: #fff;
+  cursor: grab;
+  user-select: none;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.formatos-impresion-wrap .fi-palette-item:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.12);
+}
+
+.formatos-impresion-wrap .fi-palette-item.fi-palette-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.formatos-impresion-wrap .fi-palette-grip {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.formatos-impresion-wrap .fi-palette-field-code {
+  font-size: 0.68rem;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 0;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.2rem;
+  word-break: break-all;
+}
+
+.formatos-impresion-wrap .fi-canvas-col {
+  min-width: 0;
+}
+
 .formatos-impresion-wrap .fi-canvas-stage {
   background: #e2e8f0;
   border-radius: 0.5rem;

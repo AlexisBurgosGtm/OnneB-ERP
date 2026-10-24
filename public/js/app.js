@@ -32,6 +32,16 @@
     'view-start-left',
   ];
 
+  function applyLoginPresentation() {
+    if (typeof LoginStyle !== 'undefined') {
+      LoginStyle.applyForCurrentSetting().catch(() => {
+        if (typeof LoginParallax !== 'undefined') LoginParallax.mount();
+      });
+      return;
+    }
+    if (typeof LoginParallax !== 'undefined') LoginParallax.mount();
+  }
+
   /** Cambio de vista sin animación (evita pantalla congelada al salir). */
   function setViewImmediate(showLogin) {
     if (!views.login || !views.main) return;
@@ -48,8 +58,11 @@
       views.login.classList.remove('view-hidden', 'view-next');
       views.main.classList.remove('view-active');
       currentView = 'login';
-      if (typeof LoginParallax !== 'undefined') LoginParallax.mount();
+      applyLoginPresentation();
     } else {
+      if (typeof HourlyVoice !== 'undefined' && typeof HourlyVoice.stop === 'function') {
+        HourlyVoice.stop();
+      }
       if (typeof LoginParallax !== 'undefined') LoginParallax.unmount();
       views.login.classList.add('view-hidden');
       views.main.classList.add('view-active');
@@ -121,6 +134,9 @@
       TipoEmpleadoAccess.resetSidebarVisibility();
     }
 
+    if (typeof HourlyVoice !== 'undefined' && typeof HourlyVoice.stop === 'function') {
+      HourlyVoice.stop();
+    }
     setViewImmediate(true);
     loadLoginEmpresas();
   }
@@ -591,6 +607,9 @@
       document.getElementById('password').value = '';
       stopLoadingOverlays();
       setViewImmediate(false);
+      if (typeof HourlyVoice !== 'undefined' && typeof HourlyVoice.startAfterLogin === 'function') {
+        HourlyVoice.startAfterLogin();
+      }
       updateHeaderSessionInfo();
       if (typeof TipoEmpleadoAccess !== 'undefined') {
         await TipoEmpleadoAccess.refreshMenuAccess();
@@ -836,6 +855,7 @@
     'lista-precios': 'Lista Precios',
     inventario: 'Inventario',
     'relleno-inventario': 'Relleno de inventario',
+    'productos-sin-movimientos': 'Productos sin movimientos',
     'entradas-inventario': 'Entradas de inventario',
     'salidas-inventario': 'Salidas de inventario',
     'inventario-retroactivo': 'Inventario Retroactivo',
@@ -854,6 +874,7 @@
     'reportes-ventas': 'Reportes de Ventas',
     'reportes-clientes': 'Reportes Clientes',
     'reportes-productos': 'Reportes de Productos',
+    'reportes-restaurante': 'Reportes de Restaurante',
     'reportes-marcas': 'Reportes de Marcas',
     'impresion-xml-fel': 'Impresión XML FEL',
     'control-fletes': 'Control de Fletes',
@@ -863,6 +884,7 @@
     'traslados-en-transito': 'Traslados en tránsito',
     empleados: 'Empleados',
     'control-asistencia': 'Control de Asistencia',
+    'reporte-asistencia': 'Reporte de Asistencia',
     'nomina-config': 'Configuración nómina',
     'nomina-conceptos': 'Conceptos nómina',
     'nomina-empleados': 'Datos nómina empleados',
@@ -978,6 +1000,8 @@
       InventarioView.load(host);
     } else if (key === 'relleno-inventario' && typeof InventarioRellenoView !== 'undefined') {
       InventarioRellenoView.load(host);
+    } else if (key === 'productos-sin-movimientos' && typeof ProductosSinMovimientosView !== 'undefined') {
+      ProductosSinMovimientosView.load(host);
     } else if (key === 'inventario-retroactivo' && typeof InventarioRetroactivoView !== 'undefined') {
       InventarioRetroactivoView.load(host);
     } else if (
@@ -1011,6 +1035,8 @@
       ReportesClientesView.load(host);
     } else if (key === 'reportes-productos' && typeof ReportesProductosView !== 'undefined') {
       ReportesProductosView.load(host);
+    } else if (key === 'reportes-restaurante' && typeof ReportesRestauranteView !== 'undefined') {
+      ReportesRestauranteView.load(host);
     } else if (key === 'reportes-marcas' && typeof ReportesMarcasView !== 'undefined') {
       ReportesMarcasView.load(host);
     } else if (key === 'impresion-xml-fel' && typeof ImpresionXmlFelView !== 'undefined') {
@@ -1110,6 +1136,8 @@
       DepartamentosView.load(host);
     } else if (key === 'empleados' && typeof EmpleadosView !== 'undefined') {
       EmpleadosView.load(host);
+    } else if (key === 'reporte-asistencia' && typeof ReporteAsistenciaView !== 'undefined') {
+      ReporteAsistenciaView.load(host);
     } else if (key === 'control-asistencia' && typeof ControlAsistenciaView !== 'undefined') {
       ControlAsistenciaView.load(host);
     } else if (key === 'nomina-config' && typeof NominaConfigView !== 'undefined') {

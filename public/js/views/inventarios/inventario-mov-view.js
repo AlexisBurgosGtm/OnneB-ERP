@@ -1027,38 +1027,7 @@ function createInventarioMovView(cfg) {
 
     async imprimirDocumento(coddoc, correlativo) {
       try {
-        const doc = await this.loadDocumento(coddoc, correlativo);
-        const h = doc.header;
-        const lines = doc.lines || [];
-        const rows = lines
-          .map(
-            (ln) => `<tr>
-              <td>${this.escapeHtml(ln.CODPROD)}</td>
-              <td>${this.escapeHtml(ln.DESPROD)}</td>
-              <td>${this.escapeHtml(this.formatMedidaLine(ln))}</td>
-              <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-              <td class="text-end">${Number(ln.TOTALUNIDADES) || 0}</td>
-            </tr>`
-          )
-          .join('');
-        await PrintReport.openAndPrint(
-          () =>
-            PrintReport.wrapDocument({
-              title: cfg.printTitle || 'Inventario',
-              bodyHtml: `
-            ${PrintReport.reportHeaderHtml({
-              title: cfg.printTitle || 'Movimiento inventario',
-              subtitleHtml: `
-                <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFecha(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-                ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
-              `,
-            })}
-            <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Unidades</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="5">Sin líneas</td></tr>'}</tbody></table>
-          `,
-            }),
-          'width=800,height=600'
-        );
+        await DocOpciones.imprimir(coddoc, correlativo);
       } catch (err) {
         F.toast(err.message || 'Error al imprimir', 'error');
       }

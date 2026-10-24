@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/css/login.css">
   <link rel="stylesheet" href="/vendor/parallax-fonts/parallax-fonts.css">
   <link rel="stylesheet" href="/css/login-parallax.css">
+  <link rel="stylesheet" href="/css/login-styles.css">
   <link rel="stylesheet" href="/css/sidebar.css">
   <link rel="stylesheet" href="/css/pace.css">
   <link rel="stylesheet" href="/css/empresas.css">
@@ -48,10 +49,12 @@
   <link rel="stylesheet" href="/css/impresion-xml-fel.css">
   <link rel="stylesheet" href="/css/reportes-clientes.css">
   <link rel="stylesheet" href="/css/reportes-productos.css">
+  <link rel="stylesheet" href="/css/reportes-restaurante.css">
   <link rel="stylesheet" href="/css/reportes-marcas.css">
   <link rel="stylesheet" href="/css/control-fletes.css">
   <link rel="stylesheet" href="/css/libro-ventas.css">
   <link rel="stylesheet" href="/css/inventario-fiscal.css">
+  <link rel="stylesheet" href="/css/reporte-asistencia.css">
   <link rel="stylesheet" href="/css/libro-compras.css">
   <link rel="stylesheet" href="/css/libro-diario.css">
   <link rel="stylesheet" href="/css/partidas-diario.css">
@@ -112,8 +115,15 @@
   <script src="/vendor/pace/pace.min.js"></script>
   <script src="/js/pace-init.js"></script>
   <div id="app" class="app-shell">
-    <section id="view-login" class="view view-active login-parallax-active" data-view="login">
-      <div class="login-parallax-host" aria-hidden="true">
+    <section id="view-login" class="view view-active login-style-tema" data-view="login">
+      <div class="login-scene login-style-decor" id="login-theme-scene" aria-hidden="true">
+        <div class="login-orb login-orb-a"></div>
+        <div class="login-orb login-orb-b"></div>
+        <div class="login-orb login-orb-c"></div>
+      </div>
+      <div id="login-festive-decor" class="login-festive-decor" hidden aria-hidden="true"></div>
+      <div id="login-year-badge" class="login-year-badge" hidden aria-hidden="true"></div>
+      <div class="login-parallax-host" hidden aria-hidden="true">
         <ul id="login-parallax-scene" class="scene unselectable"
           data-friction-x="0.1"
           data-friction-y="0.1"
@@ -231,7 +241,7 @@
         </form>
       </div>
       <div id="build-counter" class="build-counter" aria-live="polite">
-        <span class="build-count">Compilación #0</span>
+        <span class="build-count">Compilación #—</span>
         <span class="build-date">—</span>
       </div>
       </div>
@@ -366,6 +376,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="lista-precios"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Lista Precios</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="relleno-inventario"><i class="fa-solid fa-cart-flatbed" aria-hidden="true"></i> Relleno de inventario</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="productos-sin-movimientos"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Productos sin movimientos</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="entradas-inventario"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i> Entradas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="salidas-inventario"><i class="fa-solid fa-arrow-up-wide-short" aria-hidden="true"></i> Salidas de inventario</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="inventario-retroactivo"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Inventario Retroactivo</a></li>
@@ -420,6 +431,7 @@
                   <li><a href="#" class="sidebar-link" data-menu="reportes-ventas"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Reportes de Ventas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="reportes-clientes"><i class="fa-solid fa-users" aria-hidden="true"></i> Reportes Clientes</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="reportes-productos"><i class="fa-solid fa-boxes-stacked" aria-hidden="true"></i> Reportes de Productos</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="reportes-restaurante"><i class="fa-solid fa-utensils" aria-hidden="true"></i> Reportes de Restaurante</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="reportes-marcas"><i class="fa-solid fa-tags" aria-hidden="true"></i> Reportes de Marcas</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="impresion-xml-fel"><i class="fa-solid fa-file-code" aria-hidden="true"></i> Impresión XML FEL</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="control-fletes"><i class="fa-solid fa-truck" aria-hidden="true"></i> Control de Fletes</a></li>
@@ -497,6 +509,7 @@
                 <ul class="sidebar-submenu list-unstyled mb-0">
                   <li><a href="#" class="sidebar-link" data-menu="empleados"><i class="fa-solid fa-user-tie" aria-hidden="true"></i> Empleados</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="control-asistencia"><i class="fa-solid fa-clipboard-user" aria-hidden="true"></i> Control de Asistencia</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="reporte-asistencia"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Reporte de Asistencia</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="nomina-config"><i class="fa-solid fa-gear" aria-hidden="true"></i> Configuración nómina</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="nomina-conceptos"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Conceptos nómina</a></li>
                   <li><a href="#" class="sidebar-link" data-menu="nomina-empleados"><i class="fa-solid fa-id-card" aria-hidden="true"></i> Datos nómina empleados</a></li>
@@ -642,6 +655,8 @@
   <script src="/js/login-logo-fly.js"></script>
   <script src="/vendor/parallax/parallax.min.js"></script>
   <script src="/js/login-parallax.js"></script>
+  <script src="/js/login-style.js"></script>
+  <script src="/js/hourly-voice.js"></script>
   <script src="/js/catalogos.js"></script>
   <script src="/js/doc-nit-sat-lookup.js"></script>
   <script src="/js/catalogo-empresa-view.js"></script>
@@ -659,6 +674,7 @@
   <script src="/js/views/catalogos/departamentos.js"></script>
   <script src="/js/views/rh/empleados.js"></script>
   <script src="/js/views/rh/control-asistencia.js"></script>
+  <script src="/js/views/rh/reporte-asistencia.js"></script>
   <script src="/js/views/rh/nomina-print.js"></script>
   <script src="/js/views/rh/nomina-config.js"></script>
   <script src="/js/views/rh/nomina-conceptos.js"></script>
@@ -709,6 +725,7 @@
   <script src="/js/views/inventarios/inventario-mov-view.js"></script>
   <script src="/js/views/inventarios/inventario.js"></script>
   <script src="/js/views/inventarios/inventario-relleno.js"></script>
+  <script src="/js/views/inventarios/productos-sin-movimientos.js"></script>
   <script src="/js/views/inventarios/inventario-retroactivo.js"></script>
   <script src="/js/views/inventarios/inventario-actualizacion.js"></script>
   <script src="/js/views/inventarios/actualizacion-costos.js"></script>
@@ -729,6 +746,7 @@
   <script src="/js/views/reportes/reportes-ventas.js"></script>
   <script src="/js/views/reportes/reportes-clientes.js"></script>
   <script src="/js/views/reportes/reportes-productos.js"></script>
+  <script src="/js/views/reportes/reportes-restaurante.js"></script>
   <script src="/js/views/reportes/reportes-marcas.js"></script>
   <script src="/js/views/reportes/reportes-pendientes-facturar.js"></script>
   <script src="/js/views/reportes/impresion-xml-fel.js"></script>

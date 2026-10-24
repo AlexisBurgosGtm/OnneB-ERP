@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-
-const root = path.join(__dirname, '..');
-const counterPath = path.join(root, 'build-counter.json');
-const metaPublic = path.join(root, 'public', 'build-meta.json');
+const {
+  counterPath,
+  metaWritePaths,
+  readPreviousCount,
+} = require('../lib/build-meta');
+const { ensureDir } = require('../lib/app-paths');
 
 function formatDateDDMMYYYY(date = new Date()) {
   const d = date instanceof Date ? date : new Date(date);
@@ -13,27 +15,35 @@ function formatDateDDMMYYYY(date = new Date()) {
   return `${day}-${month}-${year}`;
 }
 
-let count = 0;
-if (fs.existsSync(counterPath)) {
-  try {
-    const data = JSON.parse(fs.readFileSync(counterPath, 'utf8'));
-    count = Number(data.buildCount) || 0;
-  } catch {
-    count = 0;
+function runBump() {
+  const count = readPreviousCount() + 1;
+  const now = new Date();
+  const meta = {
+    buildCount: count,
+    lastBuild: now.toISOString(),
+    buildDate: formatDateDDMMYYYY(now),
+    project: 'OnneB_pos',
+  };
+
+  ensureDir(path.dirname(counterPath()));
+  fs.writeFileSync(counterPath(), JSON.stringify(meta, null, 2));
+
+  const payload = JSON.stringify(meta, null, 2);
+  for (const dest of metaWritePaths()) {
+    try {
+      ensureDir(path.dirname(dest));
+      fs.writeFileSync(dest, payload);
+    } catch (err) {
+      console.warn('[Build] no se pudo escribir', dest, err.message);
+    }
   }
+
+  console.log(`[Build] Compilación #${count}`);
+  return meta;
 }
 
-count += 1;
-const now = new Date();
-const meta = {
-  buildCount: count,
-  lastBuild: now.toISOString(),
-  buildDate: formatDateDDMMYYYY(now),
-  project: 'OnneB_pos',
-};
+if (require.main === module) {
+  runBump();
+}
 
-fs.writeFileSync(counterPath, JSON.stringify(meta, null, 2));
-fs.mkdirSync(path.dirname(metaPublic), { recursive: true });
-fs.writeFileSync(metaPublic, JSON.stringify(meta, null, 2));
-
-console.log(`[Build] Compilación #${count}`);
+module.exports = { runBump };

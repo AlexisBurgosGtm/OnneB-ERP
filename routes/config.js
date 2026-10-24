@@ -19,6 +19,8 @@ const {
   normalizeGuardadoFotos,
   normalizeMuestraFormatoFelOnline,
   normalizeTipofacFinalizado,
+  normalizeEstiloLogin,
+  getSettingEstiloLogin,
   buildConfigGeneralBootstrap,
 } = require('../lib/settings');
 
@@ -312,6 +314,41 @@ router.put('/tipofac-finalizado', async (req, res) => {
     res.json({ ok: true, opcion, tipofac });
   } catch (err) {
     console.warn('[API PUT /config/tipofac-finalizado]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/login-estilo', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.json({ opcion: SETTING_OPCION.ESTILO_DEL_LOGIN, estilo: 'DEFAULT' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const estilo = await getSettingEstiloLogin(pool, opcion);
+    res.json({ opcion, estilo });
+  } catch (err) {
+    console.warn('[API GET /config/login-estilo]', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.put('/login-estilo', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const opcion = requireOpcion(req, res);
+  if (!opcion) return;
+  const estilo = normalizeEstiloLogin(req.body?.estilo ?? req.body?.valor ?? req.body?.modo);
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await ensureSettingDefault(pool, opcion);
+    await setSettingValue(pool, opcion, estilo);
+    res.json({ ok: true, opcion, estilo });
+  } catch (err) {
+    console.warn('[API PUT /config/login-estilo]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
   }
 });

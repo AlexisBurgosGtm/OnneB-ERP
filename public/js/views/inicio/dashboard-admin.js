@@ -29,6 +29,20 @@ const DashboardAdminView = {
   _charts: [],
   _loading: false,
 
+  /** No pintar si el usuario ya salió de Inicio (evita borrar otra vista al terminar la carga). */
+  shouldApplyToDom(navToken) {
+    if (typeof F !== 'undefined') {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+        return false;
+      }
+      if (typeof F.getActiveMenuKey === 'function') {
+        const key = F.getActiveMenuKey();
+        if (key && key !== 'inicio') return false;
+      }
+    }
+    return !!(this._container && this._container.isConnected);
+  },
+
   defaultPeriod() {
     const now = new Date();
     return { mes: now.getMonth() + 1, anio: now.getFullYear() };
@@ -621,18 +635,23 @@ const DashboardAdminView = {
 
   async reload() {
     if (!this._container || this._loading) return;
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     this._loading = true;
     this.destroyCharts();
-    const wrap = this._container.querySelector('.dashboard-admin-wrap');
-    if (wrap) {
-      wrap.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando dashboard…</div>`;
+    if (this.shouldApplyToDom(navToken)) {
+      const wrap = this._container.querySelector('.dashboard-admin-wrap');
+      if (wrap) {
+        wrap.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando dashboard…</div>`;
+      }
     }
     try {
       await this.fetchData();
+      if (!this.shouldApplyToDom(navToken)) return;
       this._container.innerHTML = this.render();
       this.bindEvents();
       this.renderChartsAll();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       this._container.innerHTML = `
         <div class="alert alert-danger m-0 w-100" role="alert">
           <i class="fa-solid fa-circle-exclamation me-2"></i>${this.escapeHtml(err.message)}

@@ -524,6 +524,25 @@ router.get('/facturas/:coddoc/:correlativo/abonos', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const rows = await fetchAbonosFactura(pool, sql, empnit, coddoc, correlativo);
+    const { wantsXlsx, sendCuentasHistorialExcel } = require('../lib/cuentas-excel');
+    if (wantsXlsx(req.query)) {
+      const safeEmp = String(empnit).replace(/[^\w-]+/g, '_');
+      await sendCuentasHistorialExcel(res, {
+        filename: `cxc_historial_${coddoc}_${correlativo}_${safeEmp}.xlsx`,
+        columns: [
+          { header: 'Fecha', key: 'FECHA', width: 14, type: 'date' },
+          { header: 'Tipo', key: 'TIPODOC', width: 10 },
+          { header: 'Documento', key: 'DOCUMENTO', width: 22 },
+          { header: 'Monto', key: 'TOTALPRECIO', width: 14, type: 'number' },
+          { header: 'Usuario', key: 'USUARIO', width: 16 },
+        ],
+        rows: (rows || []).map((r) => ({
+          ...r,
+          DOCUMENTO: `${r.CODDOC || ''} #${r.CORRELATIVO ?? ''}`,
+        })),
+      });
+      return;
+    }
     res.json({ rows, empnit, factura: { CODDOC: coddoc, CORRELATIVO: correlativo } });
   } catch (err) {
     console.warn('[API GET /cuentas-cobrar/facturas/abonos]', err.message);

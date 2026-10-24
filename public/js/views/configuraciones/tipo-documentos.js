@@ -18,10 +18,24 @@ const TD_FORM_FIELDS = [
   { key: 'TIPODOC', label: 'Tipo documento', type: 'select', options: [] },
   { key: 'TIPOM', label: 'Tipo Inventario', type: 'select', options: tipomOptions },
   { key: 'FORMATO', label: 'Formato', type: 'text' },
+  {
+    key: 'NOMBRE_PLANTILLA_IMPRESION',
+    label: 'Plantilla de impresión',
+    type: 'select',
+    options: [],
+    emptyOptionLabel: '— Sin plantilla (predeterminado) —',
+  },
   { key: 'CODFORMATOCON', label: 'Formato contado', type: 'select', options: [] },
   { key: 'CODFORMATOCRE', label: 'Formato crédito', type: 'select', options: [] },
   { key: 'CONTABLE', label: 'Contable', type: 'select', options: contableOptions },
   { key: 'REPORTES', label: 'Reportes', type: 'select', options: contableOptions },
+  {
+    key: 'OBS',
+    label: 'Observaciones (ticket FEL)',
+    type: 'textarea',
+    rows: 4,
+    placeholder: 'Texto legal u observaciones en el pie del ticket FEL',
+  },
 ];
 
 function tipomLabel(value) {
@@ -55,6 +69,10 @@ function validateTipoDocumentoForm(data, isEdit) {
       return 'Si es contable, indique al menos un formato contable (contado o crédito)';
     }
   }
+  const plantilla = String(data.NOMBRE_PLANTILLA_IMPRESION ?? '').trim();
+  if (plantilla && !String(data.TIPODOC ?? '').trim()) {
+    return 'Indique el tipo documento antes de asignar una plantilla de impresión';
+  }
   return null;
 }
 
@@ -70,10 +88,12 @@ function tipoDocumentosMapFormToApi(data, isEdit) {
     CORRELATIVO: n('CORRELATIVO'),
     FORMATO: String(data.FORMATO || '').trim() || null,
     TIPOM: n('TIPOM'),
+    NOMBRE_PLANTILLA_IMPRESION: String(data.NOMBRE_PLANTILLA_IMPRESION || '').trim() || null,
     CODFORMATOCON: String(data.CODFORMATOCON || '').trim() || null,
     CODFORMATOCRE: String(data.CODFORMATOCRE || '').trim() || null,
     CONTABLE: String(data.CONTABLE || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
     REPORTES: String(data.REPORTES || 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
+    OBS: String(data.OBS ?? '').trim() || null,
   };
   if (!isEdit) {
     payload.CODDOC = String(data.CODDOC ?? '').trim().toUpperCase();
@@ -101,6 +121,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'CORRELATIVO',
     'FORMATO',
     'TIPOM',
+    'NOMBRE_PLANTILLA_IMPRESION',
     'CODFORMATOCON',
     'CODFORMATOCRE',
     'CONTABLE',
@@ -113,6 +134,7 @@ const TipoDocumentosViewBase = createCatalogoEmpresaView({
     'CORRELATIVO',
     'FORMATO',
     'TIPOM',
+    'NOMBRE_PLANTILLA_IMPRESION',
     'CODFORMATOCON',
     'CODFORMATOCRE',
     'CONTABLE',
@@ -170,13 +192,23 @@ const TipoDocumentosView = {
             `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
         )
         .join('');
+      const emptyLabel = f.emptyOptionLabel || '— Seleccione —';
       return `
         <label class="form-label small mb-0" for="${inputId}">${this.escapeHtml(f.label)}</label>
         <select class="form-select form-select-sm" id="${inputId}" name="${f.key}" ${req} ${ro}>
-          <option value="">— Seleccione —</option>
+          <option value="">${this.escapeHtml(emptyLabel)}</option>
           ${legacyOpt}
           ${optsHtml}
         </select>
+      `;
+    }
+
+    if (f.type === 'textarea') {
+      const rows = Number(f.rows) > 0 ? Number(f.rows) : 3;
+      const ph = f.placeholder ? ` placeholder="${this.escapeHtml(f.placeholder)}"` : '';
+      return `
+        <label class="form-label small mb-0" for="${inputId}">${this.escapeHtml(f.label)}</label>
+        <textarea class="form-control form-control-sm" id="${inputId}" name="${f.key}" rows="${rows}"${ph} ${req} ${ro}>${this.escapeHtml(val)}</textarea>
       `;
     }
 
@@ -207,10 +239,12 @@ const TipoDocumentosView = {
       CORRELATIVO: row.CORRELATIVO ?? '',
       FORMATO: row.FORMATO ?? '',
       TIPOM: tipom,
+      NOMBRE_PLANTILLA_IMPRESION: row.NOMBRE_PLANTILLA_IMPRESION ?? '',
       CODFORMATOCON: row.CODFORMATOCON ?? '',
       CODFORMATOCRE: row.CODFORMATOCRE ?? '',
       CONTABLE: String(row.CONTABLE ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
       REPORTES: String(row.REPORTES ?? 'NO').trim().toUpperCase() === 'SI' ? 'SI' : 'NO',
+      OBS: row.OBS ?? '',
     };
   },
 
@@ -219,6 +253,7 @@ const TipoDocumentosView = {
     const ts = Date.now();
     let tiposDoc = [];
     let formatos = [];
+    let plantillasImpresion = [];
     try {
       const res = await F.fetchJson(`/data/config-tipos-documento.json?_=${ts}`, {
         cache: 'no-store',
@@ -260,18 +295,85 @@ const TipoDocumentosView = {
     } catch (err) {
       console.warn('[TipoDocumentos] formatos-contables:', err);
     }
-    this._lookups = { tiposDoc, formatos };
+    try {
+      const emp = F.getEmpNit();
+      if (emp) {
+        const res = await F.fetchJson(
+          `/api/tipo-documentos/plantillas-impresion?empnit=${encodeURIComponent(emp)}&_=${ts}`,
+          { cache: 'no-store' }
+        );
+        plantillasImpresion = (res.rows || []).map((r) => ({
+          value: String(r.value ?? r.NOMBRE ?? '').trim(),
+          label: String(r.label ?? r.NOMBRE ?? '').trim(),
+          tipodoc: String(r.TIPODOC ?? '').trim().toUpperCase(),
+        }));
+      }
+    } catch (err) {
+      console.warn('[TipoDocumentos] plantillas-impresion:', err);
+    }
+    this._lookups = { tiposDoc, formatos, plantillasImpresion };
     return this._lookups;
   },
 
-  formFieldsWithLookups() {
-    const L = this._lookups || { tiposDoc: [], formatos: [] };
+  plantillaOptionsForTipodoc(tipodoc) {
+    const td = String(tipodoc ?? '').trim().toUpperCase();
+    const all = this._lookups?.plantillasImpresion || [];
+    if (!td) return [];
+    return all.filter((p) => p.tipodoc === td);
+  },
+
+  formFieldsWithLookups(tipodocForPlantilla) {
+    const L = this._lookups || { tiposDoc: [], formatos: [], plantillasImpresion: [] };
+    const td =
+      tipodocForPlantilla !== undefined
+        ? String(tipodocForPlantilla ?? '').trim().toUpperCase()
+        : '';
     return TD_FORM_FIELDS.map((f) => {
       if (f.key === 'TIPODOC') return { ...f, options: L.tiposDoc };
       if (f.key === 'CODFORMATOCON' || f.key === 'CODFORMATOCRE') {
         return { ...f, options: L.formatos };
       }
+      if (f.key === 'NOMBRE_PLANTILLA_IMPRESION') {
+        return { ...f, options: td ? this.plantillaOptionsForTipodoc(td) : [] };
+      }
       return f;
+    });
+  },
+
+  refreshPlantillaSelect(popup, tipodoc, currentValue) {
+    const select = popup?.querySelector(`#${TD_FIELD_ID_PREFIX}NOMBRE_PLANTILLA_IMPRESION`);
+    if (!select) return;
+    const strVal = String(currentValue ?? select.value ?? '').trim();
+    const options = this.plantillaOptionsForTipodoc(tipodoc);
+    const hasVal = strVal && options.some((o) => String(o.value) === strVal);
+    const legacyOpt =
+      strVal && !hasVal
+        ? `<option value="${this.escapeHtml(strVal)}" selected>${this.escapeHtml(strVal)} (actual)</option>`
+        : '';
+    const optsHtml = options
+      .map(
+        (o) =>
+          `<option value="${this.escapeHtml(o.value)}"${strVal === String(o.value) ? ' selected' : ''}>${this.escapeHtml(o.label)}</option>`
+      )
+      .join('');
+    const emptyLabel = '— Sin plantilla (predeterminado) —';
+    select.innerHTML = `
+      <option value="">${this.escapeHtml(emptyLabel)}</option>
+      ${legacyOpt}
+      ${optsHtml}
+    `;
+    if (!strVal || hasVal) select.value = strVal;
+    else if (legacyOpt) select.value = strVal;
+    else select.value = '';
+  },
+
+  bindPlantillaTipodocSync(popup, initialTipodoc) {
+    const tipodocEl = popup?.querySelector(`#${TD_FIELD_ID_PREFIX}TIPODOC`);
+    const plantillaEl = popup?.querySelector(`#${TD_FIELD_ID_PREFIX}NOMBRE_PLANTILLA_IMPRESION`);
+    if (!tipodocEl || !plantillaEl) return;
+    this.refreshPlantillaSelect(popup, tipodocEl.value || initialTipodoc, plantillaEl.value);
+    tipodocEl.addEventListener('change', () => {
+      this.refreshPlantillaSelect(popup, tipodocEl.value, '');
     });
   },
 
@@ -498,14 +600,22 @@ const TipoDocumentosView = {
 
   buildFormHtml(row = {}, isEdit = false) {
     const r = this.normalizeRowForForm(row);
-    const fields = this.formFieldsWithLookups();
+    const fields = this.formFieldsWithLookups(r.TIPODOC);
     const byKey = Object.fromEntries(fields.map((f) => [f.key, f]));
     const field = (key) => this.fieldHtml(byKey[key], r, isEdit);
+    const plantillaHelp = `
+      <p class="form-text small text-muted mb-0 mt-1">
+        Opcional. Mismo tipo documento puede usar plantillas distintas según el código (CODDOC).
+        El tamaño de papel (carta/ticket) sigue la configuración de impresión del documento.
+      </p>
+    `;
 
     return [
       this.rowCols([field('CODDOC'), field('CORRELATIVO')]),
       this.rowCols([field('DESDOC')]),
       this.rowCols([field('TIPODOC'), field('TIPOM'), field('FORMATO')]),
+      `<div class="row g-2 mb-2"><div class="col-12">${field('NOMBRE_PLANTILLA_IMPRESION')}${plantillaHelp}</div></div>`,
+      `<div class="row g-2 mb-2"><div class="col-12">${field('OBS')}</div></div>`,
       this.rowCols([field('CODFORMATOCON'), field('CODFORMATOCRE')]),
       this.rowCols([field('CONTABLE'), field('REPORTES')]),
     ].join('');
@@ -513,7 +623,9 @@ const TipoDocumentosView = {
 
   readFormData() {
     const data = {};
-    this.formFieldsWithLookups().forEach((field) => {
+    const tipodocEl = document.getElementById(this.fieldId('TIPODOC'));
+    const tipodoc = tipodocEl ? String(tipodocEl.value ?? '').trim() : '';
+    this.formFieldsWithLookups(tipodoc).forEach((field) => {
       const el = document.getElementById(this.fieldId(field.key));
       if (!el || el.disabled) return;
       data[field.key] = String(el.value ?? '').trim();
@@ -530,6 +642,8 @@ const TipoDocumentosView = {
       html: view.buildFormHtml(row, isEdit),
       width: 780,
       didOpen: (popup) => {
+        const r = view.normalizeRowForForm(row);
+        view.bindPlantillaTipodocSync(popup, r.TIPODOC);
         if (!isEdit) {
           popup?.querySelector(`#${TD_FIELD_ID_PREFIX}CODDOC`)?.focus();
         }

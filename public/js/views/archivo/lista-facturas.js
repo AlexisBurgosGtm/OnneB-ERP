@@ -427,7 +427,13 @@ const ListaFacturasView = {
       `/api/documentos/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/trazabilidad` +
       `?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
     const data = await F.fetchJson(url);
-    const rows = data?.rows || [];
+    const rows = (data?.rows || []).filter(
+      (r) =>
+        !(
+          String(r.CODDOC || '').trim() === String(coddoc).trim() &&
+          String(r.CORRELATIVO ?? '') === String(correlativo ?? '')
+        )
+    );
     const bodyHtml = rows.length
       ? `<div class="table-responsive text-start">
           <table class="table table-sm table-hover mb-0">

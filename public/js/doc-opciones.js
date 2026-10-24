@@ -339,11 +339,11 @@ const DocOpciones = {
     const showOnline = modo === 'SI' || modo === 'AMBOS';
     const showSistema = modo === 'NO' || modo === 'AMBOS';
 
-    if (showOnline) {
-      await this.abrirFelOnline(felUuid);
-    }
     if (showSistema && typeof opts.onImprimirSistema === 'function') {
       await opts.onImprimirSistema();
+    }
+    if (showOnline && felUuid) {
+      await this.abrirFelOnline(felUuid);
     }
   },
 
@@ -619,15 +619,17 @@ const DocOpciones = {
         ? 'Cotización — documento sin validez fiscal'
         : opts.footerNote || 'Documento generado por POS OnneB';
     let muestraPeso = false;
+    let muestraMarcas = false;
     try {
       muestraPeso = await DocPrint.fetchMuestraPeso();
+      muestraMarcas = await DocPrint.fetchMuestraMarcas();
     } catch {
       /* ignore */
     }
     return DocPrint.wrapHtml({
       title,
       bodyHtml: DocPrint.buildDocumentHtml(
-        { title, header: h, lines, footerNote, muestraPeso },
+        { title, header: h, lines, footerNote, muestraPeso, muestraMarcas },
         papel
       ),
       formato: papel,

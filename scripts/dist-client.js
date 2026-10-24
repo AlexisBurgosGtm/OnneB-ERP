@@ -304,6 +304,11 @@ function runPkg() {
 
 async function main() {
   log(`Producto: ${PRODUCT}`);
+  try {
+    require('./bump-build').runBump();
+  } catch (err) {
+    console.warn('[dist:client] build counter:', err.message);
+  }
   ensureDir(OUT);
   for (const name of fs.readdirSync(OUT)) {
     if (name === '_public_backup') continue;
@@ -324,6 +329,13 @@ async function main() {
     restore();
     rmDir(STAGING_PUBLIC);
   }
+
+  const buildMetaSrc = path.join(ROOT, 'public', 'build-meta.json');
+  if (fs.existsSync(buildMetaSrc)) {
+    fs.copyFileSync(buildMetaSrc, path.join(OUT, 'build-meta.json'));
+    log('build-meta.json copiado junto al .exe');
+  }
+
   log(`Listo: ${OUT}`);
   log(`Cliente: copie .env junto a ${EXE_NAME}`);
 }

@@ -6,6 +6,7 @@ const { isUpdateDbConfigured } = require('../config/update-database');
 const { getUpdateDbPool } = require('../lib/update-db-pool');
 const { checkTokenActivo, TOKEN_NO_NUBE_MSG } = require('../lib/community-token');
 const { uploadCatalogToCommunity } = require('../lib/community-catalog-upload');
+const { getCatalogCloudStatus } = require('../lib/community-catalog-cloud-status');
 const {
   previewCatalogFromCommunity,
   downloadCatalogFromCommunity,
@@ -249,6 +250,55 @@ router.post('/catalogo/subir', async (req, res) => {
   } catch (err) {
     console.warn('[API POST /community/catalogo/subir]', err.message);
     res.status(500).json({ error: err.message || 'Error al subir catálogo' });
+  }
+});
+
+/**
+ * Estado del catálogo ya subido en la nube (conteo + LASTSALE por TOKEN).
+ * Solo empresa PRINCIPAL (misma vista Subir catálogo).
+ */
+router.get('/catalogo/estado-nube', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
+  const token = getAppToken();
+  if (!token) return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+
+  try {
+    const localPool = await req.app.locals.getDbPool();
+    const tip = await getCodTipoEmpresa(localPool, empnit);
+    if (tip !== TIPO_EMPRESA_PRINCIPAL) {
+      return res.status(403).json({
+        error: 'Solo la empresa PRINCIPAL puede consultar el estado del catálogo en la nube',
+        code: 'EMPRESA_NO_PRINCIPAL',
+      });
+    }
+
+    const hostPool = await getUpdateDbPool();
+    if (!hostPool) {
+      return res.status(503).json({ error: 'No se pudo conectar a la base UPDATE_*' });
+    }
+    const tokenCheck = await checkTokenActivo(hostPool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+
+    const status = await getCatalogCloudStatus(hostPool, token);
+    res.json({ ...status, token });
+  } catch (err) {
+    console.warn('[API GET /community/catalogo/estado-nube]', err.message);
+    res.status(500).json({ error: err.message || 'Error al consultar catálogo en la nube' });
   }
 });
 

@@ -502,17 +502,20 @@ router.get('/detalle/:coddoc/:correlativo', async (req, res) => {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
+    const { SQL_JOIN_MARCA_DESDE_LINEA, SQL_COL_DESMARCA } = require('../lib/doc-lineas-marca');
     const linesRes = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
-        SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
-          TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
-        FROM dbo.DOCPRODUCTOS
-        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-        ORDER BY Id
+        SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
+          l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO,
+          ${SQL_COL_DESMARCA}
+        FROM dbo.DOCPRODUCTOS l
+        ${SQL_JOIN_MARCA_DESDE_LINEA}
+        WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
+        ORDER BY l.Id
       `);
 
     res.json({
@@ -809,6 +812,7 @@ router.get('/:coddoc/:correlativo/trazabilidad', async (req, res) => {
             TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18,0)) = @CORRELATIVO
             OR LTRIM(RTRIM(ISNULL(d.NOFAC, ''))) = @NOFAC
           )
+          AND NOT (d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO)
         ORDER BY d.FECHA DESC, d.CORRELATIVO DESC, d.ID DESC
       `);
     res.json({

@@ -447,20 +447,39 @@ const VendedorInicioView = {
     }
   },
 
+  shouldApplyToDom(navToken) {
+    if (typeof F !== 'undefined') {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+        return false;
+      }
+      if (typeof F.getActiveMenuKey === 'function') {
+        const key = F.getActiveMenuKey();
+        if (key && key !== 'inicio') return false;
+      }
+    }
+    return !!(this._container && this._container.isConnected);
+  },
+
   async reloadResumen() {
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     try {
       await this.fetchResumen();
+      if (!this.shouldApplyToDom(navToken)) return;
       this.renderChartsAll();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       F.toast(err.message || 'Error al cargar gráficas', 'error');
     }
   },
 
   async reloadDocumentos() {
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     try {
       await this.fetchDocumentos();
+      if (!this.shouldApplyToDom(navToken)) return;
       this.updateDocumentosDom();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       F.toast(err.message || 'Error al cargar documentos', 'error');
     }
   },
@@ -518,6 +537,7 @@ const VendedorInicioView = {
     this._codven = this.sessionCodEmpleado();
     this._grupo = 'todos';
 
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     container.innerHTML = `<div class="text-center text-muted py-5 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</div>`;
 
     if (this._loading) return;
@@ -525,10 +545,12 @@ const VendedorInicioView = {
     this.destroyCharts();
     try {
       await Promise.all([this.fetchResumen(), this.fetchDocumentos(), this.fetchTareas()]);
+      if (!this.shouldApplyToDom(navToken)) return;
       container.innerHTML = this.render();
       this.bindEvents();
       this.renderChartsAll();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       container.innerHTML = `
         <div class="alert alert-danger m-0 w-100" role="alert">
           <i class="fa-solid fa-circle-exclamation me-2"></i>${this.escapeHtml(err.message)}

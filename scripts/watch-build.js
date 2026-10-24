@@ -1,12 +1,11 @@
 /**
  * Incrementa el build counter cuando cambian archivos del proyecto.
+ * Desactivado por defecto al arrancar el servidor. Opt-in: BUILD_COUNTER_WATCH=true o npm run watch:build
  */
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
-
 const root = path.join(__dirname, '..');
-const bumpScript = path.join(__dirname, 'bump-build.js');
+const { runBump } = require('./bump-build');
 const DEBOUNCE_MS = 300;
 
 let debounceTimer = null;
@@ -14,6 +13,9 @@ let isBumping = false;
 
 const WATCH_DIRS = [
   path.join(root, 'public'),
+  path.join(root, 'lib'),
+  path.join(root, 'routes'),
+  path.join(root, 'config'),
   path.join(root, 'scripts'),
 ];
 const WATCH_FILES = [path.join(root, 'server.js')];
@@ -24,6 +26,8 @@ function shouldIgnore(filename) {
   return (
     name.includes('build-meta.json') ||
     name.includes('build-counter.json') ||
+    name.endsWith('bump-build.js') ||
+    name.endsWith('watch-build.js') ||
     name.endsWith('.map') ||
     name.includes('/icons/') ||
     name.endsWith('.png') ||
@@ -31,20 +35,21 @@ function shouldIgnore(filename) {
   );
 }
 
-function runBump() {
+function runBumpSafe() {
   if (isBumping) return;
   isBumping = true;
-  const result = spawnSync(process.execPath, [bumpScript], { cwd: root, encoding: 'utf8' });
-  isBumping = false;
-  if (result.status !== 0) {
-    console.warn('[Watch] Error al actualizar build:', result.stderr || result.stdout);
+  try {
+    runBump();
+  } catch (err) {
+    console.warn('[Watch] Error al actualizar build:', err.message);
   }
+  isBumping = false;
 }
 
 function scheduleBump(filename) {
   if (filename && shouldIgnore(filename)) return;
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(runBump, DEBOUNCE_MS);
+  debounceTimer = setTimeout(runBumpSafe, DEBOUNCE_MS);
 }
 
 function watchPath(targetPath) {
@@ -65,12 +70,11 @@ function watchPath(targetPath) {
 function start() {
   WATCH_DIRS.forEach(watchPath);
   WATCH_FILES.forEach(watchPath);
-  console.log('[Watch] Build counter: vigía public/, scripts/ y server.js');
+  console.log('[Watch] Build counter: vigía public/, lib/, routes/, config/, scripts/ y server.js');
 }
 
-module.exports = { start, runBump };
+module.exports = { start, runBump: runBumpSafe };
 
 if (require.main === module) {
   start();
-  runBump();
 }

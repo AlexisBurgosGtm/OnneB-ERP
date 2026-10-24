@@ -431,8 +431,10 @@ async function loadCompra(pool, empnit, coddoc, correlativo) {
     .query(`
       SELECT l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
         l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO, l.TIPOPROD,
-        ${sqlExistenciaMedidaExpr('l.EQUIVALE')}
+        ${sqlExistenciaMedidaExpr('l.EQUIVALE')},
+        ${require('../lib/doc-lineas-marca').SQL_COL_DESMARCA}
       FROM dbo.DOCPRODUCTOS l
+      ${require('../lib/doc-lineas-marca').SQL_JOIN_MARCA_DESDE_LINEA}
       ${SQL_INVSALDO_UNICO_JOIN_LINEA}
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
       ORDER BY l.Id

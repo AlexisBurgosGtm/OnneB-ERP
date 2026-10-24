@@ -3,8 +3,8 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const { requireEmpNit } = require('./lib/catalogo-empresa');
 const { parseCertifiedFelXml } = require('../lib/fel/parse-certified-xml');
+const { buildPrintContextAsync } = require('../lib/print-document-context');
 const {
-  buildPrintContext,
   getFelTicketTemplate,
   getDefaultTemplate,
   renderTemplate,
@@ -95,7 +95,9 @@ router.post('/render', async (req, res) => {
 
     const felUrlBase = await loadFelUrlBase(pool);
     const title = `FEL ${tipodoc} — XML SAT`;
-    const ctx = buildPrintContext({
+    const ctx = await buildPrintContextAsync({
+      pool,
+      empnit,
       empresa,
       header: parsed.header,
       lines: parsed.lines,

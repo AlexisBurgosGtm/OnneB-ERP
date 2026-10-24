@@ -39,6 +39,7 @@ router.get('/movimientos', async (req, res) => {
       mes: parseInt(req.query.mes, 10),
       anio: parseInt(req.query.anio, 10),
       codprod: req.query.codprod,
+      modo: req.query.modo,
     });
     res.json(data);
   } catch (err) {
@@ -61,7 +62,16 @@ router.get('/export', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const [data, movimientos] = await Promise.all([
-      listInventarioFiscal(pool, { empnit, mes, anio, unfiltered: true }),
+      listInventarioFiscal(pool, {
+        empnit,
+        mes,
+        anio,
+        unfiltered: true,
+        modo: req.query.modo,
+        includeCostoPromedio: ['1', 'si', 'true'].includes(
+          String(req.query.costoPromedio || '').trim().toLowerCase()
+        ),
+      }),
       listMovimientosFiscalMes(pool, { empnit, mes, anio }),
     ]);
     const buffer = await buildInventarioFiscalXlsx(data, { empnit, mes, anio, movimientos });
@@ -94,6 +104,10 @@ router.get('/', async (req, res) => {
       anio,
       q,
       limit: Number.isFinite(limit) ? limit : 500,
+      modo: req.query.modo,
+      includeCostoPromedio: ['1', 'si', 'true'].includes(
+        String(req.query.costoPromedio || '').trim().toLowerCase()
+      ),
     });
     res.json(data);
   } catch (err) {

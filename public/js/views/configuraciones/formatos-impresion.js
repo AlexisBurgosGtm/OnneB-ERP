@@ -193,14 +193,22 @@ const FormatosImpresionView = {
           </div>
 
           <div class="fi-pane-visual${tabVisual ? '' : ' d-none'}" id="fi-pane-visual">
-            ${D ? D.toolbarHtml() : ''}
-            <div class="fi-canvas-stage mt-2">
-              <div class="fi-canvas-label small text-muted mb-1">Lienzo al 100% · edite textos y formato; los campos azules son variables</div>
-              <div class="fi-paper ${this.paperFrameClass(d.PAPEL)}" id="fi-paper">
-                <iframe id="fi-design-frame" class="fi-design-frame" title="Diseñador visual"></iframe>
+            <div class="row g-2 fi-visual-layout">
+              <div class="col-12 col-xl-3 fi-palette-col">
+                ${D ? D.paletteHtml(this._variables) : ''}
+              </div>
+              <div class="col-12 col-xl-9 fi-canvas-col">
+                ${D ? D.toolbarHtml() : ''}
+                <div class="fi-canvas-stage mt-2">
+                  <div class="fi-canvas-label small text-muted mb-1">
+                    Arrastre bloques y campos desde la paleta · reordene con ⠿ · los chips azules son variables
+                  </div>
+                  <div class="fi-paper ${this.paperFrameClass(d.PAPEL)}" id="fi-paper">
+                    <iframe id="fi-design-frame" class="fi-design-frame" title="Diseñador visual"></iframe>
+                  </div>
+                </div>
               </div>
             </div>
-            <p class="small text-muted mt-2 mb-0">Use la barra para negritas, alineación, insertar campos o bloques (encabezado, líneas, totales…).</p>
           </div>
 
           <div class="fi-pane-codigo${tabVisual ? ' d-none' : ''}" id="fi-pane-codigo">
@@ -380,14 +388,21 @@ const FormatosImpresionView = {
       css,
       papel,
     });
-    frame.onload = () => {
+    const resizeDesignFrame = () => {
       try {
+        const DnD = FormatoImpresionDesigner;
+        DnD.attachFrameDnD(frame);
+        DnD.bindPaletteDrag(this._container?.querySelector('.fi-palette'));
         const h = Math.max(520, (frame.contentDocument?.body?.scrollHeight || 0) + 40);
         frame.style.height = `${h}px`;
       } catch {
         /* cross-origin ignore */
       }
     };
+    frame.onload = () => resizeDesignFrame();
+    window.setTimeout(() => {
+      if (frame.contentDocument?.body) resizeDesignFrame();
+    }, 800);
     frame.srcdoc = docHtml;
   },
 
@@ -548,7 +563,7 @@ const FormatosImpresionView = {
     if (!root) return;
     this._previewHtml = html;
     const isTicket = String(papel).toUpperCase() === 'TICKET';
-    const width = isTicket ? 302 : 794;
+    const width = isTicket ? 420 : 794;
     root.innerHTML = `
       <div class="fi-preview-overlay" id="fi-preview-overlay" role="dialog" aria-modal="true" aria-label="Vista previa al 100%">
         <div class="fi-preview-dialog">
@@ -577,7 +592,7 @@ const FormatosImpresionView = {
       </div>`;
     const frame = root.querySelector('#fi-preview-frame');
     if (frame) {
-      frame.onload = () => {
+      const resizePreviewFrame = () => {
         try {
           const doc = frame.contentDocument;
           if (!doc) return;
@@ -592,6 +607,8 @@ const FormatosImpresionView = {
           /* ignore */
         }
       };
+      frame.onload = () => resizePreviewFrame();
+      window.setTimeout(resizePreviewFrame, 800);
       frame.srcdoc = html;
     }
     root.querySelector('#fi-preview-close')?.addEventListener('click', () => this.closePreviewModal());
@@ -599,24 +616,17 @@ const FormatosImpresionView = {
       if (e.target.id === 'fi-preview-overlay') this.closePreviewModal();
     });
     root.querySelector('#fi-preview-print')?.addEventListener('click', () => {
-      if (typeof PrintReport !== 'undefined' && this._previewHtml) {
-        PrintReport.openAndPrint(
-          this._previewHtml,
-          PrintReport.maximizedFeatures ? PrintReport.maximizedFeatures() : undefined,
-          { ticket: isTicket, papel: isTicket ? 'TICKET' : 'CARTA' }
-        ).catch(() => {
-          const w = frame?.contentWindow;
-          if (w) {
-            w.focus();
-            w.print();
-          }
-        });
-        return;
-      }
       const w = frame?.contentWindow;
       if (w) {
         w.focus();
         w.print();
+        return;
+      }
+      if (typeof PrintReport !== 'undefined' && this._previewHtml) {
+        PrintReport.openAndPrint(this._previewHtml, undefined, {
+          ticket: isTicket,
+          papel: isTicket ? 'TICKET' : 'CARTA',
+        }).catch(() => {});
       }
     });
   },
@@ -641,11 +651,19 @@ const FormatosImpresionView = {
     this.showPreviewModal(data.html, d.PAPEL);
   },
 
+  activeDesignEditable(doc) {
+    if (!doc) return null;
+    const active = doc.activeElement;
+    if (active?.classList?.contains('fi-dnd-block-body')) return active;
+    return doc.querySelector('.fi-dnd-block-body:focus') || doc.querySelector('.fi-dnd-block-body');
+  },
+
   execDesignCommand(cmd, value = null) {
     const frame = this._container?.querySelector('#fi-design-frame');
     const doc = frame?.contentDocument;
-    if (!doc) return;
-    doc.body.focus();
+    const target = this.activeDesignEditable(doc);
+    if (!target) return;
+    target.focus();
     try {
       doc.execCommand(cmd, false, value);
     } catch {
@@ -658,12 +676,21 @@ const FormatosImpresionView = {
     const doc = frame?.contentDocument;
     if (!doc || typeof FormatoImpresionDesigner === 'undefined') return;
     const designHtml = FormatoImpresionDesigner.htmlToDesign(htmlSnippet);
-    doc.body.focus();
-    try {
-      doc.execCommand('insertHTML', false, designHtml);
-    } catch {
-      doc.body.insertAdjacentHTML('beforeend', designHtml);
+    const target = this.activeDesignEditable(doc);
+    if (target) {
+      target.focus();
+      try {
+        doc.execCommand('insertHTML', false, designHtml);
+        return;
+      } catch {
+        target.insertAdjacentHTML('beforeend', designHtml);
+        return;
+      }
     }
+    const body = doc.body;
+    if (body) FormatoImpresionDesigner.appendBlock(doc, body, 'text');
+    const last = doc.querySelector('.fi-dnd-block:last-child .fi-dnd-block-body');
+    last?.insertAdjacentHTML('beforeend', designHtml);
   },
 
   bindListEvents() {
@@ -727,45 +754,9 @@ const FormatosImpresionView = {
       e.target.value = '';
     });
 
-    const varSel = this._container?.querySelector('.fi-insert-var');
-    if (varSel && typeof FormatoImpresionDesigner !== 'undefined') {
-      FormatoImpresionDesigner.fillVarSelect(varSel, this._variables);
-      varSel.addEventListener('change', () => {
-        const v = varSel.value;
-        if (!v) return;
-        this.insertIntoDesign(`{{${v}}}`);
-        varSel.value = '';
-      });
+    if (typeof FormatoImpresionDesigner !== 'undefined') {
+      FormatoImpresionDesigner.bindPaletteDrag(this._container?.querySelector('.fi-palette'));
     }
-
-    this._container?.querySelector('.fi-insert-block')?.addEventListener('change', (e) => {
-      const id = e.target.value;
-      if (!id || typeof FormatoImpresionDesigner === 'undefined') return;
-      const block = FormatoImpresionDesigner.BLOCKS.find((b) => b.id === id);
-      if (block) this.insertIntoDesign(block.html);
-      e.target.value = '';
-    });
-
-    this._container?.querySelector('.fi-insert-field-type')?.addEventListener('change', (e) => {
-      const id = e.target.value;
-      if (!id || typeof FormatoImpresionDesigner === 'undefined') return;
-      const field = FormatoImpresionDesigner.FIELD_TYPES.find((f) => f.id === id);
-      const html = field?.insertHtml || '';
-      e.target.value = '';
-      if (!html) return;
-      if (this._editorTab === 'visual') {
-        this.insertIntoDesign(html);
-        return;
-      }
-      const ta = this._container?.querySelector('#fi-html');
-      if (!ta) return;
-      const start = ta.selectionStart || 0;
-      const end = ta.selectionEnd || 0;
-      const text = ta.value;
-      ta.value = text.slice(0, start) + html + text.slice(end);
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = start + html.length;
-    });
 
     this._container?.querySelectorAll('.fi-var-chip').forEach((btn) => {
       btn.addEventListener('click', () => {

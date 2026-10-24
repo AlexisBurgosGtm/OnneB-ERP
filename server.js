@@ -139,6 +139,7 @@ const auditoriaCajasRouter = require('./routes/auditoria-cajas');
 const reportesVentasRouter = require('./routes/reportes-ventas');
 const reportesClientesRouter = require('./routes/reportes-clientes');
 const reportesProductosRouter = require('./routes/reportes-productos');
+const reportesRestauranteRouter = require('./routes/reportes-restaurante');
 const reportesContabilidadRouter = require('./routes/reportes-contabilidad');
 const reportesMarcasRouter = require('./routes/reportes-marcas');
 const reportesPendientesFacturarRouter = require('./routes/reportes-pendientes-facturar');
@@ -208,7 +209,8 @@ app.use(licenseMiddleware);
 const publicDir = require('./lib/app-paths').publicDir();
 const dataDir = require('./lib/app-paths').writableDataDir();
 const fotosProductosDir = require('./lib/app-paths').fotosProductosDir();
-const buildMetaPath = path.join(publicDir, 'build-meta.json');
+const { metaPathForServe, ensureBuildMetaSeeded } = require('./lib/build-meta');
+ensureBuildMetaSeeded();
 
 if (!fs.existsSync(fotosProductosDir)) {
   try {
@@ -259,6 +261,7 @@ app.use(
 app.get('/api/build-meta', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
+  const buildMetaPath = metaPathForServe();
   if (fs.existsSync(buildMetaPath)) {
     res.sendFile(buildMetaPath);
   } else {
@@ -267,7 +270,8 @@ app.get('/api/build-meta', (_req, res) => {
 });
 
 function watchBuildMetaBroadcast() {
-  if (!fs.existsSync(publicDir)) return;
+  const { getDataRoot } = require('./lib/app-paths');
+  const dirs = new Set([publicDir, getDataRoot()].filter((d) => d && fs.existsSync(d)));
 
   let notifyTimer = null;
   const notify = () => {
@@ -277,14 +281,16 @@ function watchBuildMetaBroadcast() {
     }, 80);
   };
 
-  try {
-    fs.watch(publicDir, { recursive: true }, (_event, filename) => {
-      if (filename && String(filename).replace(/\\/g, '/').includes('build-meta.json')) {
-        notify();
-      }
-    });
-  } catch (err) {
-    console.warn('[Watch] build-meta broadcast:', err.message);
+  for (const dir of dirs) {
+    try {
+      fs.watch(dir, { recursive: true }, (_event, filename) => {
+        if (filename && String(filename).replace(/\\/g, '/').includes('build-meta.json')) {
+          notify();
+        }
+      });
+    } catch (err) {
+      console.warn('[Watch] build-meta broadcast:', dir, err.message);
+    }
   }
 }
 
@@ -347,6 +353,7 @@ app.use('/api/auditoria-cajas', auditoriaCajasRouter);
 app.use('/api/reportes-ventas', reportesVentasRouter);
 app.use('/api/reportes-clientes', reportesClientesRouter);
 app.use('/api/reportes-productos', reportesProductosRouter);
+app.use('/api/reportes-restaurante', reportesRestauranteRouter);
 app.use('/api/reportes-contabilidad', reportesContabilidadRouter);
 app.use('/api/reportes-marcas', reportesMarcasRouter);
 app.use('/api/reportes-pendientes-facturar', reportesPendientesFacturarRouter);
@@ -464,10 +471,12 @@ server.listen(PORT, () => {
   } catch (err) {
     console.warn('[Licencia]', err.message);
   }
-  if (!require('./lib/app-paths').isPackaged() && process.env.BUMP_WATCH !== 'false') {
+  // Build counter: no auto-bump por cambios en disco (ver npm run build / regla build-counter).
+  // Opt-in legacy: BUILD_COUNTER_WATCH=true
+  if (process.env.BUILD_COUNTER_WATCH === 'true' && !require('./lib/app-paths').isPackaged()) {
     require('./scripts/watch-build').start();
-    watchBuildMetaBroadcast();
   }
+  watchBuildMetaBroadcast();
 
   // WhatsApp (Baileys + programación): no bloquear el puerto HTTP ni el arranque inicial.
   setImmediate(startWhatsappAfterServerReady);

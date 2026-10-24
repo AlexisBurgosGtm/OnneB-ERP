@@ -5,9 +5,7 @@
   "main": "server.js",
   "bin": "server.js",
   "scripts": {
-    "prestart": "node scripts/bump-build.js",
     "start": "node server.js",
-    "predev": "node scripts/bump-build.js",
     "dev": "node server.js",
     "build": "node scripts/bump-build.js",
     "icons": "node scripts/generate-icons.js",
@@ -20,7 +18,11 @@
     "seed:updater:productos-usa-lotes": "node scripts/seed-update-query-productos-usa-lotes.js",
     "seed:updater:lotes-all": "npm run seed:updater:lotes && npm run seed:updater:productos-usa-lotes",
     "seed:updater:asistencia-almuerzo": "node scripts/seed-update-query-asistencia-almuerzo.js",
+    "seed:updater:tipodoc-plantilla-impresion": "node scripts/seed-update-query-tipodoc-plantilla-impresion.js",
+    "seed:updater:fel-frase-tipodoc-obs": "node scripts/seed-update-query-fel-frase-tipodoc-obs.js",
+    "seed:updater:voz-login-estilo": "node scripts/seed-update-query-voz-login-estilo.js",
     "seed:updater:community-costo-promedio": "node scripts/seed-update-query-community-costo-promedio.js",
+    "seed:updater:documentos-mesa-restaurante": "node scripts/seed-update-query-documentos-mesa-restaurante.js",
     "dist:client": "node scripts/dist-client.js",
     "test": "nodemon server.js"
   },
@@ -41,7 +43,11 @@
       "node_modules/pdfkit/js/output.cjs",
       "node_modules/pdfkit/js/standard-fonts/**/*.cjs",
       "node_modules/pdfkit/js/standard-fonts/chunks/**/*.cjs",
-      "node_modules/pdfkit/lib/**/*.js"
+      "node_modules/pdfkit/lib/**/*.js",
+      "node_modules/qrcode/**/*.js",
+      "node_modules/pngjs/**/*.js",
+      "node_modules/@whiskeysockets/baileys/lib/**/*.js",
+      "node_modules/@whiskeysockets/baileys/WAProto/**/*.js"
     ],
     "assets": [
       "public/**/*",

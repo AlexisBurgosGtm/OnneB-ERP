@@ -8,6 +8,7 @@ const {
   getEstadoAsistencia,
   marcarAsistencia,
   listAsistenciaDia,
+  listAsistenciaReporteMes,
   buscarEmpleados,
 } = require('../lib/asistencia');
 
@@ -86,6 +87,24 @@ router.get('/empleados/buscar', async (req, res) => {
   } catch (err) {
     console.warn('[API GET /asistencia/empleados/buscar]', err.message);
     res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.get('/reporte', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const mes = parseInt(req.query.mes, 10);
+  const anio = parseInt(req.query.anio, 10);
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await listAsistenciaReporteMes(pool, empnit, mes, anio);
+    res.json({ empnit, ...data });
+  } catch (err) {
+    console.warn('[API GET /asistencia/reporte]', err.message);
+    const status = err instanceof AsistenciaError ? err.statusCode : 500;
+    res.status(status || 500).json({ error: err.message });
   }
 });
 

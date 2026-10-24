@@ -25,6 +25,8 @@ const ConfigGeneralView = {
     DEFAULT_TIPO_DOCUMENTO_FINALIZADO: 'DEFAULT TIPO DOCUMENTO FINALIZADO',
     LIMITA_EFECTIVO_DISPONIBLE_EN_VALES_CAJA: 'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA',
     CONTROL_ASISTENCIA_ALMUERZO: 'CONTROL ASISTENCIA ALMUERZO',
+    DICE_LA_HORA_EN_VOZ_ALTA: 'DICE LA HORA EN VOZ ALTA',
+    ESTILO_DEL_LOGIN: 'ESTILO DEL LOGIN',
   },
 
   TEXT_CARDS: [
@@ -133,6 +135,13 @@ const ConfigGeneralView = {
         'Muestra el peso total por línea (PRECIOS.PESO × cantidad) en facturas, FEL y compras, y en el formato impreso interno',
     },
     {
+      opcion: 'MUESTRA MARCAS EN DOCUMENTOS',
+      title: 'Muestra Marcas en documentos',
+      icon: 'fa-tag',
+      fallbackDesc:
+        'En documentos impresos (formato interno y plantillas), muestra la marca del producto en negrita debajo de la descripción',
+    },
+    {
       opcion: 'VISTAS EN PESTAÑAS',
       title: 'Vistas en pestañas',
       icon: 'fa-folder-closed',
@@ -159,6 +168,33 @@ const ConfigGeneralView = {
       icon: 'fa-utensils',
       fallbackDesc:
         'Si está en SI, cada día pide salida a almuerzo, regreso de almuerzo y luego salida del día. En NO solo entrada y salida.',
+    },
+    {
+      opcion: 'DICE LA HORA EN VOZ ALTA',
+      title: 'Dice la hora en voz alta',
+      icon: 'fa-clock',
+      fallbackDesc:
+        'Con sesión iniciada, anuncia en voz alta la hora en punto una vez cada hora (solo mientras el POS está abierto).',
+    },
+  ],
+
+  LOGIN_ESTILO_OPTIONS: [
+    {
+      opcion: 'ESTILO DEL LOGIN',
+      title: 'Estilo del login',
+      icon: 'fa-right-to-bracket',
+      fallbackDesc:
+        'Default: tarjeta centrada según el tema (carga rápida). Tema: escena parallax OnneB Plus. Solo afecta la pantalla de login.',
+      labels: {
+        TEMA: 'Default',
+        DEFAULT: 'Tema',
+        HALLOWEEN: 'Halloween',
+        NAVIDAD: 'Navidad',
+        'DIA CARINO': 'Día del cariño',
+        'ANO NUEVO': 'Año nuevo',
+      },
+      defaultValue: 'TEMA',
+      values: ['TEMA', 'DEFAULT', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'],
     },
   ],
 
@@ -245,6 +281,7 @@ const ConfigGeneralView = {
 
   TABS: [
     { id: 'seguridad', label: 'Seguridad', icon: 'fa-shield-halved' },
+    { id: 'login', label: 'Inicio de sesión', icon: 'fa-right-to-bracket' },
     { id: 'operacion', label: 'Operación', icon: 'fa-sliders' },
     { id: 'electronica', label: 'Electrónica', icon: 'fa-file-invoice' },
     { id: 'whatsapp', label: 'WhatsApp', icon: 'fa-brands fa-whatsapp' },
@@ -262,12 +299,15 @@ const ConfigGeneralView = {
   _fotoMeta: {},
   _felFormatoMeta: {},
   _tipofacFinalizadoMeta: {},
+  _loginEstiloMeta: {},
   _invSaldoPendientes: null,
   _tipomNulos: null,
   _consultasExternasCatalog: null,
   _whatsappStatus: null,
   _whatsappPending: false,
   _whatsappSocketBound: false,
+  _whatsappSocketRef: null,
+  _whatsappPollTimer: null,
   _loadGen: 0,
 
   isLoadCurrent(loadGen) {
@@ -292,6 +332,7 @@ const ConfigGeneralView = {
     this._fotoMeta = boot.foto || {};
     this._felFormatoMeta = boot.felFormato || {};
     this._tipofacFinalizadoMeta = boot.tipofacFinalizado || {};
+    this._loginEstiloMeta = boot.loginEstilo || {};
     this._invSaldoPendientes = 0;
     this._tipomNulos = 0;
     this._consultasExternasCatalog = [];
@@ -367,10 +408,12 @@ const ConfigGeneralView = {
       'FACTURA SE PASA A FRACCIONAMIENTO AUTOM': 'electronica',
       'MUESTRA DESPROD2 EN DOCS Y PRODS': 'operacion',
       'MUESTRA PESO EN DOCUMENTOS': 'operacion',
+      'MUESTRA MARCAS EN DOCUMENTOS': 'operacion',
       'VISTAS EN PESTAÑAS': 'operacion',
-      'PERMITE BIOMETRICO EN LOGIN': 'seguridad',
+      'PERMITE BIOMETRICO EN LOGIN': 'login',
       'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA': 'operacion',
       'CONTROL ASISTENCIA ALMUERZO': 'operacion',
+      'DICE LA HORA EN VOZ ALTA': 'operacion',
     };
     return map[opcion] || 'operacion';
   },
@@ -546,6 +589,54 @@ const ConfigGeneralView = {
               <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
             </div>
             <select class="form-select form-select-sm config-fel-formato-select" style="max-width:8rem"
+              data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
+              ${options}
+            </select>
+          </div>
+        </div>
+      </div>`;
+  },
+
+  normalizeLoginEstilo(value) {
+    let s = String(value ?? 'DEFAULT')
+      .trim()
+      .toUpperCase();
+    if (s === 'DEFAUL') return 'DEFAULT';
+    s = s.replace(/Ñ/g, 'N').replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U');
+    if (s === 'DIA DEL CARINO') return 'DIA CARINO';
+    if (s === 'AÑO NUEVO') return 'ANO NUEVO';
+    const allowed = ['DEFAULT', 'TEMA', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'];
+    return allowed.includes(s) ? s : 'TEMA';
+  },
+
+  getLoginEstiloLabel(option, estilo) {
+    const val = this.normalizeLoginEstilo(estilo);
+    if (option?.labels?.[val]) return option.labels[val];
+    return val;
+  },
+
+  renderLoginEstiloCard(option, meta = {}) {
+    const desc = meta.descripcion || option.fallbackDesc;
+    const estilo = this.normalizeLoginEstilo(meta.estilo || option.defaultValue || 'DEFAULT');
+    const values = option.values || ['DEFAULT', 'TEMA', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'];
+    const options = values
+      .map((val) => {
+        const label = this.getLoginEstiloLabel(option, val);
+        const sel = val === estilo ? ' selected' : '';
+        return `<option value="${val}"${sel}>${this.escapeHtml(label)}</option>`;
+      })
+      .join('');
+    return `
+      <div class="card config-card-compact" data-login-estilo-card="${this.escapeHtml(option.opcion)}">
+        <div class="card-body">
+          <div class="config-card-row">
+            <div class="config-card-info">
+              <h6 class="card-title mb-0">
+                <i class="fa-solid ${option.icon} me-1 text-primary"></i>${this.escapeHtml(option.title)}
+              </h6>
+              <p class="card-text mb-0">${this.escapeHtml(desc)}</p>
+            </div>
+            <select class="form-select form-select-sm config-login-estilo-select" style="max-width:11.5rem"
               data-setting-opcion="${this.escapeHtml(option.opcion)}" aria-label="${this.escapeHtml(option.title)}">
               ${options}
             </select>
@@ -1014,8 +1105,9 @@ const ConfigGeneralView = {
       badgeLabel = 'Sesión cerrada';
     }
 
-    const qrHtml = st.qrDataUrl
-      ? `<img src="${this.escapeHtml(st.qrDataUrl)}" alt="QR WhatsApp" class="config-wa-qr img-fluid">`
+    const qrSrc = st.qrDataUrl ? String(st.qrDataUrl).replace(/"/g, '&quot;') : '';
+    const qrHtml = qrSrc
+      ? `<img src="${qrSrc}" alt="QR WhatsApp" class="config-wa-qr img-fluid">`
       : `<div class="config-wa-qr-placeholder text-muted small">
            ${
              state === 'connecting'
@@ -1142,6 +1234,11 @@ const ConfigGeneralView = {
         parts.push(this.renderFelFormatoCard(opt, this._felFormatoMeta[opt.opcion] || {}));
       });
     }
+    if (tabId === 'login') {
+      this.LOGIN_ESTILO_OPTIONS.forEach((opt) => {
+        parts.push(this.renderLoginEstiloCard(opt, this._loginEstiloMeta[opt.opcion] || {}));
+      });
+    }
     if (!parts.length) {
       return '<p class="text-muted small mb-0">Sin opciones en esta pestaña.</p>';
     }
@@ -1231,7 +1328,13 @@ const ConfigGeneralView = {
         this._container?.querySelectorAll('[data-config-pane]').forEach((pane) => {
           pane.classList.toggle('d-none', pane.getAttribute('data-config-pane') !== tab);
         });
-        if (tab === 'whatsapp') this.refreshWhatsappStatus().catch(() => {});
+        if (tab === 'whatsapp') {
+          this.refreshWhatsappStatus().catch(() => {});
+          const st = this._whatsappStatus;
+          if (st && (st.state === 'connecting' || st.state === 'qr') && !st.qrDataUrl) {
+            this.startWhatsappStatusPoll();
+          }
+        }
         if (tab === 'consultas-externas') this.refreshConsultasExternasCatalog().catch(() => {});
       });
     });
@@ -1261,6 +1364,10 @@ const ConfigGeneralView = {
 
     this._container?.querySelectorAll('.config-tipofac-finalizado-select').forEach((sel) => {
       sel.addEventListener('change', () => this.onChangeTipofacFinalizado(sel));
+    });
+
+    this._container?.querySelectorAll('.config-login-estilo-select').forEach((sel) => {
+      sel.addEventListener('change', () => this.onChangeLoginEstilo(sel));
     });
 
     document.getElementById('btn-sincronizar-invsaldo')?.addEventListener('click', () => {
@@ -1304,17 +1411,62 @@ const ConfigGeneralView = {
   },
 
   bindWhatsappSocket() {
-    if (this._whatsappSocketBound) return;
     const sock =
       (typeof F !== 'undefined' && typeof F.getSocket === 'function' && F.getSocket()) ||
       window.OnnebSocket ||
       null;
-    if (!sock || typeof sock.on !== 'function') return;
+    if (!sock || typeof sock.on !== 'function') {
+      if (!this._whatsappSocketReadyListener) {
+        this._whatsappSocketReadyListener = () => this.bindWhatsappSocket();
+        document.addEventListener('onneb-socket-ready', this._whatsappSocketReadyListener);
+      }
+      return;
+    }
+    if (this._whatsappSocketRef === sock) return;
+    this._whatsappSocketRef = sock;
     sock.on('whatsapp:status', (data) => {
       this._whatsappStatus = data || null;
       if (this._tab === 'whatsapp' && this.viewStillActive()) this.paintWhatsappPanel();
     });
     this._whatsappSocketBound = true;
+  },
+
+  stopWhatsappStatusPoll() {
+    if (this._whatsappPollTimer) {
+      clearInterval(this._whatsappPollTimer);
+      this._whatsappPollTimer = null;
+    }
+  },
+
+  /** Dist cliente: el QR llega async; no depender solo de Socket.IO. */
+  startWhatsappStatusPoll(maxMs = 90000) {
+    this.stopWhatsappStatusPoll();
+    const started = Date.now();
+    const tick = () => {
+      if (!this.viewStillActive() || Date.now() - started > maxMs) {
+        this.stopWhatsappStatusPoll();
+        return;
+      }
+      F.fetchJson(`/api/whatsapp/status?_=${Date.now()}`, { cache: 'no-store' })
+        .then((data) => {
+          if (!this.viewStillActive()) return;
+          this._whatsappStatus = data || this._whatsappStatus;
+          if (this._tab === 'whatsapp') this.paintWhatsappPanel();
+          const state = String(data?.state || '');
+          if (
+            data?.qrDataUrl ||
+            state === 'ready' ||
+            state === 'error' ||
+            state === 'logged_out' ||
+            (state !== 'connecting' && state !== 'qr')
+          ) {
+            this.stopWhatsappStatusPoll();
+          }
+        })
+        .catch(() => {});
+    };
+    tick();
+    this._whatsappPollTimer = setInterval(tick, 700);
   },
 
   paintWhatsappPanel() {
@@ -1353,8 +1505,13 @@ const ConfigGeneralView = {
       });
       this._whatsappStatus = data;
       this.paintWhatsappPanel();
-      if (data.state === 'ready') F.toast('WhatsApp conectado', 'success');
-      else if (data.state === 'qr') F.toast('Escanee el código QR en WhatsApp', 'info');
+      if (data.state === 'ready') {
+        F.toast('WhatsApp conectado', 'success');
+      } else if (data.qrDataUrl || data.state === 'qr') {
+        F.toast('Escanee el código QR en WhatsApp', 'info');
+      } else if (data.state === 'connecting' || data.state === 'idle') {
+        this.startWhatsappStatusPoll();
+      }
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -1427,6 +1584,12 @@ const ConfigGeneralView = {
     });
   },
 
+  async fetchLoginEstilo(opcion) {
+    return F.fetchJson(`/api/config/login-estilo?${this.configQuery(opcion)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+  },
+
   async onChangeFormato(sel) {
     const opcion = sel.getAttribute('data-setting-opcion');
     if (!opcion) return;
@@ -1486,6 +1649,28 @@ const ConfigGeneralView = {
       });
       this._felFormatoMeta[opcion] = { ...(this._felFormatoMeta[opcion] || {}), modo };
       F.toast('Configuración actualizada', 'success');
+    } catch (err) {
+      sel.value = prev;
+      F.toast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      sel.disabled = false;
+    }
+  },
+
+  async onChangeLoginEstilo(sel) {
+    const opcion = sel.getAttribute('data-setting-opcion');
+    if (!opcion) return;
+    const estilo = this.normalizeLoginEstilo(sel.value);
+    const prev = this.normalizeLoginEstilo(this._loginEstiloMeta[opcion]?.estilo || 'DEFAULT');
+    sel.disabled = true;
+    try {
+      await F.fetchJson(`/api/config/login-estilo?${this.configQuery(opcion)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opcion, estilo }),
+      });
+      this._loginEstiloMeta[opcion] = { ...(this._loginEstiloMeta[opcion] || {}), estilo };
+      F.toast('Estilo de login actualizado. Se verá al volver a la pantalla de inicio de sesión.', 'success');
     } catch (err) {
       sel.value = prev;
       F.toast(err.message || 'Error al actualizar', 'error');
@@ -1561,6 +1746,12 @@ const ConfigGeneralView = {
         typeof ViewTabs.setEnabled === 'function'
       ) {
         ViewTabs.setEnabled(next === 'SI');
+      }
+      if (
+        typeof HourlyVoice !== 'undefined' &&
+        typeof HourlyVoice.onSettingChanged === 'function'
+      ) {
+        HourlyVoice.onSettingChanged(opcion, next);
       }
       F.toast('Configuración actualizada', 'success');
     } catch (err) {
@@ -1716,7 +1907,10 @@ const ConfigGeneralView = {
       btn.innerHTML =
         '<i class="fa-solid fa-spinner fa-spin me-1" aria-hidden="true"></i> Corrigiendo…';
     }
-    if (statusEl) statusEl.textContent = 'Actualizando TIPOM en DOCPRODUCTOS…';
+    if (statusEl) {
+      statusEl.textContent =
+        'Actualizando TIPOM en DOCPRODUCTOS… puede tardar varios minutos en bases grandes.';
+    }
 
     try {
       const params = new URLSearchParams({ empnit: empNit });

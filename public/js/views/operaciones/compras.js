@@ -1267,55 +1267,7 @@ const ComprasView = {
 
   async imprimirCompra(coddoc, correlativo) {
     try {
-      const url = `/api/compras/compras/${encodeURIComponent(coddoc)}/${correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}&_=${Date.now()}`;
-      const compra = await F.fetchJson(url);
-      const h = compra.header;
-      const lines = compra.lines || [];
-      const rows = lines
-        .map(
-          (ln) => {
-            const pesoSuffix =
-              this.muestraPesoEnDocumentos() && this.lineTotalPeso(ln) > 0
-                ? `<span class="doc-line-peso">${this.escapeHtml(this.formatPeso(this.lineTotalPeso(ln)))}</span>`
-                : '';
-            return `<tr>
-            <td>${this.escapeHtml(ln.CODPROD)}</td>
-            <td>${this.escapeHtml(ln.DESPROD)}</td>
-            <td>${this.escapeHtml(ln.CODMEDIDA)}</td>
-            <td class="text-end">${Number(ln.CANTIDAD) || 0}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}${pesoSuffix}</td>
-          </tr>`;
-          }
-        )
-        .join('');
-      const totalPeso = this.calcDocTotalPeso(lines);
-      const pesoTotalHtml =
-        this.muestraPesoEnDocumentos() && totalPeso > 0
-          ? `<p class="text-end small text-muted">Peso total: ${PrintReport.escapeHtml(this.formatPeso(totalPeso))}</p>`
-          : '';
-      await PrintReport.openAndPrint(
-        () =>
-          PrintReport.wrapDocument({
-            title: 'Compra',
-            bodyHtml: `
-          ${PrintReport.reportHeaderHtml({
-            title: 'Compra a proveedor',
-            subtitleHtml: `
-              <p><strong>${this.escapeHtml(h.CODDOC)} #${h.CORRELATIVO}</strong> · ${this.formatFechaCompra(h)} · ${PrintReport.escapeHtml(h.USUARIO || '')}</p>
-              <p><strong>Proveedor:</strong> ${PrintReport.escapeHtml(h.DOC_NOMCLIE || '—')}</p>
-              ${h.SERIEFAC || h.NOFAC ? `<p><strong>Serie:</strong> ${PrintReport.escapeHtml(h.SERIEFAC || '')} · <strong>Número:</strong> ${PrintReport.escapeHtml(h.NOFAC || '')}</p>` : ''}
-              ${h.OBS ? `<p><em>${PrintReport.escapeHtml(h.OBS)}</em></p>` : ''}
-            `,
-          })}
-          <table><thead><tr><th>Cód.</th><th>Producto</th><th>Medida</th><th class="text-end">Cant.</th><th class="text-end">Precio</th><th class="text-end">Total</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="6">Sin líneas</td></tr>'}</tbody></table>
-          <p class="text-end"><strong>Total: ${PrintReport.escapeHtml(this.formatMoney(h.TOTALPRECIO ?? h.TOTALCOSTO))}</strong></p>
-          ${pesoTotalHtml}
-        `,
-          }),
-        'width=800,height=600'
-      );
+      await DocOpciones.imprimir(coddoc, correlativo);
     } catch (err) {
       F.toast(err.message || 'Error al imprimir', 'error');
     }

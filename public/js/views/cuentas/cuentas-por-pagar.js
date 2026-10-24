@@ -2281,6 +2281,25 @@ const CuentasPorPagarView = {
     this.bindEvents();
   },
 
+  async exportHistorialExcel(coddoc, correlativo) {
+    const emp = F.getEmpNit();
+    const url =
+      `/api/cuentas-pagar/compras/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/pagos` +
+      `?empnit=${encodeURIComponent(emp)}&format=xlsx&_=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText);
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cxp_historial_${coddoc}_${correlativo}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    F.toast('Excel exportado', 'success');
+  },
+
   async mostrarHistorial(row) {
     const data = await this.fetchCompraDetalle(row.CODDOC, row.CORRELATIVO);
     const pagos = data.pagos || [];
@@ -2289,10 +2308,15 @@ const CuentasPorPagarView = {
       ...CatalogosUI.modalBase(),
       title: 'Historial de pagos y notas de crédito',
       html: `
-        <p class="small text-muted text-start mb-2">
-          Compra <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
-          · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
-        </p>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <p class="small text-muted text-start mb-0">
+            Compra <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
+            · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
+          </p>
+          <button type="button" class="btn btn-sm btn-outline-success" id="cxp-historial-export">
+            <i class="fa-solid fa-file-excel me-1"></i>Excel
+          </button>
+        </div>
         <p class="small text-muted text-start mb-2">RCP y DVP vinculados por SERIEFAC / NOFAC</p>
         ${this.renderPagosTableHtml(pagos)}
         <p class="text-end mt-2 mb-0 small"><strong>Total: ${this.escapeHtml(this.formatMoney(totalMov))}</strong></p>
@@ -2301,6 +2325,13 @@ const CuentasPorPagarView = {
       showConfirmButton: false,
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
+      didOpen: () => {
+        document.getElementById('cxp-historial-export')?.addEventListener('click', () => {
+          this.exportHistorialExcel(row.CODDOC, row.CORRELATIVO).catch((err) =>
+            F.toast(err.message || 'No se pudo exportar', 'error')
+          );
+        });
+      },
     });
   },
 

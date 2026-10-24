@@ -1,0 +1,284 @@
+/**
+ * Estilos alternativos del login (TEMA, HALLOWEEN, NAVIDAD).
+ */
+
+#view-login.login-style-tema {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+#view-login.login-style-tema .login-parallax-host {
+  display: none !important;
+}
+
+#view-login.login-style-tema .login-layout {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(100vh, 100%);
+  padding: 1.25rem;
+  background: none;
+  pointer-events: none;
+}
+
+#view-login.login-style-tema .login-layout > * {
+  pointer-events: auto;
+}
+
+#view-login.login-style-tema .login-scene {
+  display: block;
+}
+
+#view-login.login-style-halloween,
+#view-login.login-style-navidad,
+#view-login.login-style-dia-carino,
+#view-login.login-style-ano-nuevo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  overflow: hidden;
+}
+
+#view-login.login-style-halloween .login-parallax-host,
+#view-login.login-style-navidad .login-parallax-host,
+#view-login.login-style-dia-carino .login-parallax-host,
+#view-login.login-style-ano-nuevo .login-parallax-host {
+  display: none !important;
+}
+
+#view-login.login-style-halloween .login-layout,
+#view-login.login-style-navidad .login-layout,
+#view-login.login-style-dia-carino .login-layout,
+#view-login.login-style-ano-nuevo .login-layout {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(100vh, 100%);
+  padding: 1.25rem;
+  pointer-events: none;
+}
+
+#view-login.login-style-halloween .login-layout > *,
+#view-login.login-style-navidad .login-layout > *,
+#view-login.login-style-dia-carino .login-layout > *,
+#view-login.login-style-ano-nuevo .login-layout > * {
+  pointer-events: auto;
+}
+
+#view-login.login-style-halloween {
+  --login-bg-base: #0c0a09;
+  --login-bg-gradient: radial-gradient(ellipse 80% 60% at 50% 0%, #422006 0%, #0c0a09 55%);
+  --login-glass-fg: #fef3c7;
+  --login-glass-fg-muted: rgba(254, 243, 199, 0.72);
+  --login-glass-card: rgba(28, 25, 23, 0.72);
+  --login-glass-border: rgba(251, 191, 36, 0.35);
+  --login-btn-bg: linear-gradient(135deg, #ea580c 0%, #f59e0b 100%);
+  --login-btn-text: #fff;
+}
+
+#view-login.login-style-navidad {
+  --login-bg-base: #0c4a6e;
+  --login-bg-gradient: linear-gradient(165deg, #0ea5e9 0%, #0369a1 38%, #1e3a8a 100%);
+  --login-glass-fg: #f0f9ff;
+  --login-glass-fg-muted: rgba(240, 249, 255, 0.78);
+  --login-glass-card: rgba(15, 23, 42, 0.45);
+  --login-glass-border: rgba(186, 230, 253, 0.45);
+  --login-btn-bg: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  --login-btn-text: #fff;
+  background-image:
+    url('/img/login/santa-silhouette.svg'),
+    var(--login-bg-gradient);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right 4% bottom 6%, center;
+  background-size: min(280px, 42vw) auto, cover;
+}
+
+.login-festive-decor {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.login-festive-icon {
+  position: absolute;
+  opacity: 0.55;
+  animation: login-festive-float 5s ease-in-out infinite;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes login-festive-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(6deg);
+  }
+}
+
+.login-snowflake {
+  position: absolute;
+  top: -10%;
+  color: #fff;
+  animation: login-snow-fall linear infinite;
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.65);
+}
+
+@keyframes login-snow-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg);
+  }
+}
+
+#view-login.login-style-dia-carino {
+  --login-bg-base: #1a0a12;
+  --login-bg-gradient: radial-gradient(ellipse 90% 70% at 50% 20%, #831843 0%, #1a0a12 52%, #0f0510 100%);
+  --login-glass-fg: #ffe4e6;
+  --login-glass-fg-muted: rgba(255, 228, 230, 0.78);
+  --login-glass-card: rgba(40, 10, 24, 0.55);
+  --login-glass-border: rgba(251, 113, 133, 0.45);
+  --login-btn-bg: linear-gradient(135deg, #e11d48 0%, #fb7185 100%);
+  --login-btn-text: #fff;
+}
+
+#view-login.login-style-ano-nuevo {
+  --login-bg-base: #0b1020;
+  --login-bg-gradient: radial-gradient(ellipse 100% 80% at 50% 0%, #1e293b 0%, #0b1020 45%, #020617 100%);
+  --login-glass-fg: #f8fafc;
+  --login-glass-fg-muted: rgba(248, 250, 252, 0.75);
+  --login-glass-card: rgba(15, 23, 42, 0.62);
+  --login-glass-border: rgba(251, 191, 36, 0.35);
+  --login-btn-bg: linear-gradient(135deg, #ca8a04 0%, #eab308 100%);
+  --login-btn-text: #1e293b;
+}
+
+.login-year-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 6;
+  font-weight: 800;
+  font-size: clamp(2.5rem, 8vw, 4.25rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: transparent;
+  background: linear-gradient(180deg, #fef08a 0%, #fbbf24 40%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 0 40px rgba(251, 191, 36, 0.35);
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
+}
+
+.login-firework {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fw-color, #fbbf24);
+  animation: login-firework-burst 2.8s ease-out infinite;
+  box-shadow:
+    0 0 12px var(--fw-color, #fbbf24),
+    0 0 24px color-mix(in srgb, var(--fw-color, #fbbf24) 55%, transparent);
+}
+
+@keyframes login-firework-burst {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    transform: scale(2.8);
+    opacity: 0.85;
+    box-shadow:
+      0 -28px 0 var(--fw-color),
+      20px -14px 0 color-mix(in srgb, var(--fw-color) 80%, #fff),
+      -20px -14px 0 color-mix(in srgb, var(--fw-color) 80%, #fff),
+      28px 8px 0 color-mix(in srgb, var(--fw-color) 70%, #fff),
+      -28px 8px 0 color-mix(in srgb, var(--fw-color) 70%, #fff),
+      0 32px 0 color-mix(in srgb, var(--fw-color) 75%, #fff);
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+.login-confetti {
+  position: absolute;
+  top: -8px;
+  width: 8px;
+  height: 12px;
+  opacity: 0.85;
+  animation: login-confetti-fall linear infinite;
+  border-radius: 1px;
+}
+
+@keyframes login-confetti-fall {
+  0% {
+    transform: translateY(-5vh) rotate(0deg);
+  }
+  100% {
+    transform: translateY(110vh) rotate(720deg);
+  }
+}
+
+.login-festive-icon--heart {
+  opacity: 0.5;
+}
+
+.login-festive-icon--party {
+  opacity: 0.55;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+}
+
+#view-login.login-style-halloween .login-glass-card,
+#view-login.login-style-navidad .login-glass-card,
+#view-login.login-style-dia-carino .login-glass-card,
+#view-login.login-style-ano-nuevo .login-glass-card {
+  max-width: 380px;
+}
+
+@media (max-width: 480px) {
+  #view-login.login-style-navidad {
+    background-size: min(200px, 55vw) auto, cover;
+    background-position: right 2% bottom 4%, center;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-year-badge {
+    top: 0.65rem;
+    right: 0.65rem;
+    font-size: clamp(2rem, 12vw, 3rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-festive-icon,
+  .login-snowflake,
+  .login-firework,
+  .login-confetti {
+    animation: none !important;
+  }
+}

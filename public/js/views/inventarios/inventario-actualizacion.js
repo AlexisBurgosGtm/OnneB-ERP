@@ -216,9 +216,7 @@ const InventarioActualizacionView = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      this._preview = data.resumen || null;
-      const previewEl = document.getElementById('inventario-recalc-preview');
-      if (previewEl) previewEl.innerHTML = this.renderPreviewCard();
+      await this.loadPreview();
       F.toast(`TIPOM corregido en ${data.actualizados ?? 0} línea(s)`, 'success');
     } catch (err) {
       F.alert('Error al corregir TIPOM', err.message, 'error');

@@ -45,6 +45,11 @@ const {
   valoresEntregadosIniciales,
 } = require('../lib/documentos-entregado');
 const {
+  ensureDocumentosMesaRestauranteColumn,
+  parseMesaRestauranteId,
+  aplicarMesaRestauranteAlFacturarComanda,
+} = require('../lib/documentos-mesa-restaurante');
+const {
   normalizeTipofac,
   normalizePrioridad,
   tipodocsForTipofac,
@@ -967,12 +972,20 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
       const dirRaw = String(pedido.DIRENTREGA || '').trim();
       if (dirRaw && dirRaw.toUpperCase() !== 'SN') dirEntrega = dirRaw;
     }
+    const mesaDesdeComanda =
+      String(pedido.TIPODOC || '').trim().toUpperCase() === TIPODOC_COMANDA
+        ? parseMesaRestauranteId(pedido.CODEMBARQUE)
+        : null;
+
     const transaction = new sql.Transaction(pool);
     await ensureDocumentosEntregadoColumn(pool);
+    if (mesaDesdeComanda) await ensureDocumentosMesaRestauranteColumn(pool);
     await transaction.begin();
     try {
       const correlativoFac = await allocateCorrelativo(transaction, empnit, coddocFac);
-      await transaction
+      const mesaCols = mesaDesdeComanda ? ', RESTAURANTE_MESA_ID' : '';
+      const mesaVals = mesaDesdeComanda ? ', @RESTAURANTE_MESA_ID' : '';
+      const insReq = transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('ANIO', sql.Int, parts.anio)
@@ -1012,8 +1025,11 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             }
           })()
         )
-        .input('ENTREGADO', sql.Int, entregadoIni)
-        .query(`
+        .input('ENTREGADO', sql.Int, entregadoIni);
+      if (mesaDesdeComanda) {
+        insReq.input('RESTAURANTE_MESA_ID', sql.Int, mesaDesdeComanda);
+      }
+      await insReq.query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
             CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE, CODVEN,
@@ -1021,7 +1037,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
             DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
             VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO,
-            SERIEFAC, NOFAC, F_ENTREGA, TIPOFAC, PRIORIDAD, ENTREGADO
+            SERIEFAC, NOFAC, F_ENTREGA, TIPOFAC, PRIORIDAD, ENTREGADO${mesaCols}
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
@@ -1030,7 +1046,7 @@ router.post('/pedidos/desde-pedido', async (req, res) => {
             @DIRENTREGA, 'SN', 0, 0,
             CASE WHEN @CONCRE = 'CRE' THEN 'CREDITO' ELSE 'CONTADO' END, 'SN',
             @FECHA, 0, 0, 0, 0, 0,
-            @SERIEFAC, @NOFAC, @F_ENTREGA, @TIPOFAC, @PRIORIDAD, @ENTREGADO
+            @SERIEFAC, @NOFAC, @F_ENTREGA, @TIPOFAC, @PRIORIDAD, @ENTREGADO${mesaVals}
           )
         `);
       const tipom = await copyDocProductosFromPedido(
@@ -1950,6 +1966,13 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       if (pedCoddoc && pedCorrelativo !== null) {
         const pedOk = await loadPedidoEnvOperado(transaction, empnit, pedCoddoc, pedCorrelativo);
         if (pedOk) {
+          await aplicarMesaRestauranteAlFacturarComanda(
+            transaction,
+            empnit,
+            coddoc,
+            correlativo,
+            pedOk
+          );
           await cerrarPedidoReferenciaFactura(
             transaction,
             empnit,

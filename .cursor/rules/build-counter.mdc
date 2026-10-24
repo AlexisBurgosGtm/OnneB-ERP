@@ -1,0 +1,24 @@
+# Build counter (OnneB)
+
+El número de compilación (`build-counter.json` / `/api/build-meta`) **no** debe subir con cada guardado de archivo.
+
+## Comportamiento esperado
+
+- **Un bump por prompt de usuario**: al terminar una tarea que modificó código del ERP (OnneB), ejecutar **una sola vez**:
+  ```bash
+  npm run build
+  ```
+  (equivale a `node scripts/bump-build.js`).
+- **No** arrancar ni depender de `watch-build` en desarrollo normal.
+- **`npm run dist:client`** sigue haciendo bump al empaquetar cliente (release).
+
+## Servidor en dev
+
+- El auto-watch al guardar está **off** por defecto.
+- Opt-in legacy: `BUILD_COUNTER_WATCH=true` antes de `npm start`.
+- Tras `npm run build`, el servidor emite `build:updated` vía Socket.IO si detecta cambio en `build-meta.json`.
+
+## No hacer
+
+- No bump al inicio de `npm start` / `npm dev`.
+- No múltiples bumps en el mismo prompt salvo que el usuario pida explícitamente otro número.

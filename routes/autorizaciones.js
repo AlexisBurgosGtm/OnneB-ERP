@@ -2,6 +2,7 @@ const express = require('express');
 const { isDbConfigured } = require('../config/database');
 const {
   listAutorizaciones,
+  getAutorizacionById,
   createAutorizacion,
   autorizarAutorizacion,
 } = require('../lib/autorizaciones');
@@ -36,6 +37,26 @@ router.get('/', async (req, res) => {
     res.json({ rows });
   } catch (err) {
     console.warn('[API GET /autorizaciones]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const row = await getAutorizacionById(pool, empnit, id);
+    if (!row) return res.status(404).json({ error: 'Autorización no encontrada' });
+    res.json({ row });
+  } catch (err) {
+    console.warn('[API GET /autorizaciones/:id]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -579,6 +579,10 @@ router.post('/recalcular/corregir-tipom', async (req, res) => {
   const empnit = requireEmpNit(req, res);
   if (!empnit) return undefined;
 
+  const routeTimeoutMs = 3_600_000;
+  req.setTimeout(routeTimeoutMs);
+  res.setTimeout(routeTimeoutMs);
+
   try {
     const pool = await req.app.locals.getDbPool();
     const result = await corregirTipomNulos(pool, empnit);
@@ -822,14 +826,197 @@ router.get('/relleno/export', async (req, res) => {
 });
 
 /** Facturas de venta (FAC + FEL: FEF/FES/FEC). */
-const TIPODOC_VENTA_RELLENO = ['FAC', 'FEF', 'FES', 'FEC'];
-const SQL_TIPODOC_VENTA_RELLENO_IN = TIPODOC_VENTA_RELLENO.map((t) => `'${t}'`).join(', ');
+/** Ventas válidas FAC / FEL (TIPOM salida, no anuladas). */
+const TIPODOC_VENTA_VALIDAS = ['FAC', 'FEF', 'FES', 'FEC'];
+const SQL_TIPODOC_VENTA_IN = TIPODOC_VENTA_VALIDAS.map((t) => `'${t}'`).join(', ');
+
+function parseMesesSinMovQuery(req) {
+  let meses = parseInt(req.query.meses, 10);
+  if (!Number.isFinite(meses) || meses < 1) meses = 12;
+  if (meses > 36) meses = 36;
+  return meses;
+}
+
+function bindSinMovimientosFilters(request, empnit, q, qLike, codmarca, habilitado, meses) {
+  bindSaldoFilters(request, empnit, q, qLike, codmarca, habilitado);
+  request.input('MESES', sql.Int, meses);
+}
+
+const LIST_FROM_SIN_MOV = `
+  FROM dbo.PRODUCTOS p
+  LEFT JOIN dbo.Marcas m ON p.EMPNIT = m.EMPNIT AND p.CODMARCA = m.CODMARCA
+  OUTER APPLY (
+    SELECT TOP 1 i.FISICO
+    FROM dbo.INVSALDO i
+    WHERE i.EMPNIT = p.EMPNIT
+      AND LTRIM(RTRIM(i.CODPROD)) = LTRIM(RTRIM(p.CODPROD))
+    ORDER BY CASE WHEN ISNULL(i.CODBODEGA, 0) = 0 THEN 0 ELSE 1 END, i.ID
+  ) inv
+`;
+
+const LIST_WHERE_SIN_MOV = `
+  WHERE p.EMPNIT = @EMPNIT
+    AND (@codmarca IS NULL OR p.CODMARCA = @codmarca)
+    AND (@habilitado IS NULL OR UPPER(LTRIM(RTRIM(ISNULL(p.HABILITADO, '')))) = @habilitado)
+    AND (
+      @q IS NULL OR @q = ''
+      OR p.CODPROD LIKE @qLike
+      OR p.DESPROD LIKE @qLike
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.DOCPRODUCTOS dp
+      INNER JOIN dbo.DOCUMENTOS d
+        ON dp.EMPNIT = d.EMPNIT
+        AND dp.CODDOC = d.CODDOC
+        AND dp.CORRELATIVO = d.CORRELATIVO
+      INNER JOIN dbo.TIPODOCUMENTOS t
+        ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE dp.EMPNIT = p.EMPNIT
+        AND LTRIM(RTRIM(CAST(dp.CODPROD AS VARCHAR(50)))) = LTRIM(RTRIM(CAST(p.CODPROD AS VARCHAR(50))))
+        AND CAST(d.FECHA AS DATE) >= DATEADD(MONTH, -@MESES, CAST(GETDATE() AS DATE))
+        AND ISNULL(d.STATUS, '') <> 'A'
+        AND UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) IN (${SQL_TIPODOC_VENTA_IN})
+        AND ISNULL(t.TIPOM, 0) = -1
+        AND ABS(ISNULL(dp.TOTALUNIDADES, ISNULL(dp.CANTIDAD, 0))) > 0
+    )
+`;
+
+const LIST_SELECT_SIN_MOV = `
+  p.CODPROD,
+  p.DESPROD,
+  m.DESMARCA,
+  ISNULL(p.EXISTENCIA, 0) AS EXISTENCIA,
+  ISNULL(inv.FISICO, ISNULL(p.FISICO, 0)) AS FISICO,
+  p.HABILITADO
+`;
 
 /**
  * Calcula INVMAXIMO (promedio mensual de TOTALUNIDADES vendidas) e INVMINIMO
  * (promedio / días) para todos los productos de la empresa.
  * Solo documentos FAC/FEL no anulados con TIPOM = SALIDA (-1).
  */
+router.get('/sin-movimientos', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  const meses = parseMesesSinMovQuery(req);
+  const { q, codmarca, habilitado, limit } = parseListQuery(req);
+  const qLike = q ? `%${q}%` : null;
+  const preview = isPreviewLoad(q, codmarca, habilitado, limit) && meses === 12;
+  const skipExactMeta = preview || Boolean(q);
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+
+    let total = 0;
+    if (!skipExactMeta) {
+      const countReq = createSaldoRequest(pool);
+      bindSinMovimientosFilters(countReq, empnit, q, qLike, codmarca, habilitado, meses);
+      const countResult = await countReq.query(`
+        SELECT COUNT(*) AS total
+        ${LIST_FROM_SIN_MOV}
+        ${LIST_WHERE_SIN_MOV}
+      `);
+      total = countResult.recordset[0]?.total ?? 0;
+    }
+
+    const listReq = createSaldoRequest(pool);
+    bindSinMovimientosFilters(listReq, empnit, q, qLike, codmarca, habilitado, meses);
+    if (limit > 0) listReq.input('limit', sql.Int, limit);
+    const topClause = limit > 0 ? 'TOP (@limit)' : '';
+    const listResult = await listReq.query(`
+      SELECT ${topClause} ${LIST_SELECT_SIN_MOV}
+      ${LIST_FROM_SIN_MOV}
+      ${LIST_WHERE_SIN_MOV}
+      ORDER BY p.CODPROD
+    `);
+
+    const rows = listResult.recordset;
+    if (skipExactMeta) {
+      total = rows.length;
+    }
+
+    const truncated = limit > 0 && !skipExactMeta && total > rows.length;
+    res.json({
+      rows,
+      total,
+      truncated,
+      empnit,
+      meses,
+      codmarca,
+      habilitado,
+    });
+  } catch (err) {
+    console.error('[API GET /inventario/sin-movimientos]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
+router.get('/sin-movimientos/export', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return undefined;
+
+  const meses = parseMesesSinMovQuery(req);
+  const { q, codmarca, habilitado } = parseListQuery(req);
+  const qLike = q ? `%${q}%` : null;
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const listReq = createSaldoRequest(pool);
+    bindSinMovimientosFilters(listReq, empnit, q, qLike, codmarca, habilitado, meses);
+    const listResult = await listReq.query(`
+      SELECT ${LIST_SELECT_SIN_MOV}
+      ${LIST_FROM_SIN_MOV}
+      ${LIST_WHERE_SIN_MOV}
+      ORDER BY p.CODPROD
+    `);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sin movimientos');
+    sheet.columns = [
+      { header: 'Código', key: 'CODPROD', width: 14 },
+      { header: 'Descripción', key: 'DESPROD', width: 36 },
+      { header: 'Marca', key: 'DESMARCA', width: 18 },
+      { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
+      { header: 'Físico', key: 'FISICO', width: 12 },
+      { header: 'Habilitado', key: 'HABILITADO', width: 12 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    sheet.getCell('A1').note = `Sin ventas FAC/FEL en los últimos ${meses} mes(es)`;
+
+    for (const row of listResult.recordset) {
+      sheet.addRow(row);
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const stamp = todayDateOnly().replace(/-/g, '');
+    const safeEmp = String(empnit).replace(/[^\w\-]+/g, '_');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="productos_sin_movimientos_${safeEmp}_${stamp}.xlsx"`,
+    );
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('[API GET /inventario/sin-movimientos/export]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+  return undefined;
+});
+
 router.post('/relleno/calcular-min-max', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) {
@@ -891,7 +1078,7 @@ router.post('/relleno/calcular-min-max', async (req, res) => {
         AND d.ANIO = @ANIO
         AND d.MES BETWEEN @MES_INI AND @MES_FIN
         AND ISNULL(d.STATUS, '') <> 'A'
-        AND UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) IN (${SQL_TIPODOC_VENTA_RELLENO_IN})
+        AND UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) IN (${SQL_TIPODOC_VENTA_IN})
         AND ISNULL(t.TIPOM, 0) = -1
       GROUP BY LTRIM(RTRIM(CAST(dp.CODPROD AS VARCHAR(50))));
 

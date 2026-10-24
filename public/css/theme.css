@@ -138,6 +138,31 @@
   --fab-menu-color: #fafafa;
   --bs-primary: #71717a;
   --bs-primary-rgb: 113, 113, 122;
+
+  color-scheme: dark;
+  --bs-body-color: #f4f4f5;
+  --bs-body-color-rgb: 244, 244, 245;
+  --bs-body-bg: #111113;
+  --bs-body-bg-rgb: 17, 17, 19;
+  --bs-emphasis-color: #fafafa;
+  --bs-emphasis-color-rgb: 250, 250, 250;
+  --bs-secondary-color: rgba(244, 244, 245, 0.78);
+  --bs-secondary-bg: #27272a;
+  --bs-secondary-bg-rgb: 39, 39, 42;
+  --bs-tertiary-bg: #18181b;
+  --bs-tertiary-bg-rgb: 24, 24, 27;
+  --bs-border-color: rgba(255, 255, 255, 0.28);
+  --bs-border-color-translucent: rgba(255, 255, 255, 0.18);
+  --bs-light: #27272a;
+  --bs-light-rgb: 39, 39, 42;
+  --bs-dark: #f4f4f5;
+  --bs-dark-rgb: 244, 244, 245;
+  --bs-table-color: #f4f4f5;
+  --bs-table-bg: #09090b;
+  --bs-table-border-color: rgba(255, 255, 255, 0.32);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.08);
+  --bs-table-active-bg: rgba(255, 255, 255, 0.12);
 }
 
 [data-theme='blue'] {
@@ -1665,22 +1690,127 @@
   --bs-primary-rgb: 0, 51, 160;
 }
 
-[data-theme='carbon'] .table-light {
-  --bs-table-bg: #27272a;
-  --bs-table-color: #f4f4f5;
-}
-
+/* Carbono — tablas, forms y modales (solo este tema) */
 [data-theme='carbon'] .card {
   background: var(--app-surface);
   border-color: var(--app-border);
   color: var(--app-text);
 }
 
+[data-theme='carbon'] #view-main .table-responsive,
+[data-theme='carbon'] .catalogo-empresa-panel .table-responsive,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .table-responsive {
+  background: #09090b;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+[data-theme='carbon'] #view-main .table,
+[data-theme='carbon'] .catalogo-empresa-panel .table,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .table {
+  --bs-table-bg: #09090b;
+  --bs-table-color: #f4f4f5;
+  --bs-table-border-color: rgba(255, 255, 255, 0.28);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.08);
+  color: #f4f4f5;
+}
+
+[data-theme='carbon'] #view-main .table > :not(caption) > * > *,
+[data-theme='carbon'] .catalogo-empresa-panel .table td,
+[data-theme='carbon'] .catalogo-empresa-panel .table th,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .table > :not(caption) > * > * {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #f4f4f5;
+}
+
+[data-theme='carbon'] #view-main .table thead th,
+[data-theme='carbon'] #view-main .table > thead > tr > th,
+[data-theme='carbon'] .catalogo-empresa-panel .table thead th,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .table thead th {
+  background: #18181b !important;
+  color: #fafafa !important;
+  border-bottom-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+[data-theme='carbon'] .table-light,
+[data-theme='carbon'] thead.table-light,
+[data-theme='carbon'] tfoot.table-light,
+[data-theme='carbon'] tr.table-light {
+  --bs-table-bg: #18181b;
+  --bs-table-color: #fafafa;
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.06);
+  --bs-table-hover-bg: rgba(255, 255, 255, 0.1);
+  --bs-table-border-color: rgba(255, 255, 255, 0.32);
+  color: #fafafa;
+}
+
+[data-theme='carbon'] .catalogo-empresa-panel .table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 [data-theme='carbon'] .form-control,
-[data-theme='carbon'] .form-select {
+[data-theme='carbon'] .form-select,
+[data-theme='carbon'] textarea.form-control {
+  background-color: #18181b;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #f4f4f5;
+}
+
+[data-theme='carbon'] .form-control:focus,
+[data-theme='carbon'] .form-select:focus {
+  background-color: #1c1c1f;
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fafafa;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='carbon'] .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+[data-theme='carbon'] .form-control:disabled,
+[data-theme='carbon'] .form-select:disabled,
+[data-theme='carbon'] .form-control[readonly] {
   background-color: #27272a;
-  border-color: var(--app-border);
+  color: #a1a1aa;
+}
+
+[data-theme='carbon'] .input-group-text {
+  background-color: #27272a;
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #f4f4f5;
+}
+
+[data-theme='carbon'] .form-label,
+[data-theme='carbon'] label.form-label,
+[data-theme='carbon'] .col-form-label,
+[data-theme='carbon'] .catalogo-form .form-label,
+[data-theme='carbon'] .config-field-label,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .form-label,
+[data-theme='carbon'] .swal2-popup.modal-catalogo label,
+[data-theme='carbon'] .modal .form-label,
+[data-theme='carbon'] .modal label {
+  color: #e4e4e7;
+}
+
+[data-theme='carbon'] .text-dark {
+  color: #f4f4f5 !important;
+}
+
+[data-theme='carbon'] .swal2-popup.modal-catalogo .swal2-title,
+[data-theme='carbon'] .swal2-popup.modal-catalogo .swal2-html-container {
   color: var(--app-text);
+}
+
+[data-theme='carbon'] .modal-content {
+  background: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+
+[data-theme='carbon'] .modal-header,
+[data-theme='carbon'] .modal-footer {
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 [data-theme='carbon'] .btn-outline-secondary {

@@ -127,12 +127,10 @@ const PrintReport = {
     return `left=0,top=0,width=${w},height=${h}`;
   },
 
-  /**
-   * Ventana de vista previa ticket (misma maximizada que carta; el tamaño
-   * térmico se aplica en @page al imprimir).
-   */
+  /** Ventana estrecha: el diálogo de impresión carga más rápido en ticketeras (p. ej. Epson TM-T20). */
   ticketFeatures() {
-    return this.maximizedFeatures();
+    const h = Math.min(900, Math.max(640, Number(window.screen?.availHeight) || 800));
+    return `left=24,top=24,width=440,height=${h},scrollbars=yes,resizable=yes`;
   },
 
   isTicketPrintOptions(options) {
@@ -197,6 +195,135 @@ const PrintReport = {
   },
 
   /**
+   * Espera documento + imágenes (logo, QR) antes de window.print().
+   * Evita tickets en blanco o preview colgado en impresoras térmicas.
+   */
+  async _waitForPrintReady(win, options = {}) {
+    const ticket = this.isTicketPrintOptions(options);
+    const timeoutMs = ticket ? 2200 : 14000;
+    const minDelayMs = ticket ? 60 : 150;
+
+    return new Promise((resolve) => {
+      const doc = win?.document;
+      if (!doc) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const hardCap = window.setTimeout(finish, timeoutMs);
+
+      const afterImages = () => {
+        window.clearTimeout(hardCap);
+        window.setTimeout(finish, minDelayMs);
+      };
+
+      const waitImages = () => {
+        const imgs = Array.from(doc.images || []);
+        const pending = imgs.filter((img) => {
+          const src = String(img.getAttribute('src') || img.src || '').trim();
+          if (!src) return false;
+          if (img.complete) return false;
+          return true;
+        });
+        if (!pending.length) {
+          afterImages();
+          return;
+        }
+        let left = pending.length;
+        const imgTimeout = window.setTimeout(afterImages, Math.min(timeoutMs - 500, 3500));
+        const tick = () => {
+          left -= 1;
+          if (left <= 0) {
+            window.clearTimeout(imgTimeout);
+            afterImages();
+          }
+        };
+        pending.forEach((img) => {
+          img.addEventListener('load', tick, { once: true });
+          img.addEventListener('error', tick, { once: true });
+        });
+      };
+
+      const onDocReady = () => {
+        let done = false;
+        const go = () => {
+          if (done) return;
+          done = true;
+          waitImages();
+        };
+        window.setTimeout(go, ticket ? 450 : 1200);
+        try {
+          if (doc.fonts?.ready) {
+            doc.fonts.ready.then(go).catch(go);
+          }
+        } catch {
+          /* waitImages vía timeout */
+        }
+      };
+
+      if (doc.readyState === 'complete') {
+        onDocReady();
+      } else {
+        win.addEventListener('load', onDocReady, { once: true });
+        window.setTimeout(onDocReady, 1200);
+      }
+    });
+  },
+
+  /**
+   * Cierra la ventana emergente del ticket cuando el usuario termina el diálogo de impresión.
+   * No usar timeout corto: cerraría la ventana mientras el preview sigue abierto.
+   */
+  _closeTicketPopupWhenPrintDone(targetWin) {
+    if (!targetWin) return;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        targetWin.close();
+      } catch {
+        /* ignore */
+      }
+    };
+    try {
+      targetWin.addEventListener('afterprint', finish, { once: true });
+    } catch {
+      /* ignore */
+    }
+    try {
+      const mq = targetWin.matchMedia?.('print');
+      if (mq) {
+        const onPrintChange = () => {
+          if (!mq.matches) {
+            try {
+              mq.removeEventListener('change', onPrintChange);
+            } catch {
+              mq.removeListener?.(onPrintChange);
+            }
+            window.setTimeout(finish, 120);
+          }
+        };
+        if (typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', onPrintChange);
+        } else if (typeof mq.addListener === 'function') {
+          mq.addListener(onPrintChange);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    window.setTimeout(finish, 10 * 60 * 1000);
+  },
+
+  /**
    * Tras imprimir (o cancelar), limpia ventana/iframe.
    * En móvil afterprint no siempre dispara → timeout de respaldo.
    */
@@ -219,11 +346,70 @@ const PrintReport = {
     window.setTimeout(finish, delayMs);
   },
 
+  /**
+   * Ticket en ventana emergente: vista del formato y diálogo de impresión del navegador.
+   * Al cerrar el preview (imprimir o cancelar), se cierra la ventana emergente; el POS sigue abierto.
+   */
+  async openTicketPreviewWindow(html, windowFeatures, options = {}) {
+    const features = windowFeatures || this.ticketFeatures();
+    let w = null;
+    try {
+      w = window.open('about:blank', '_blank', features);
+    } catch {
+      w = null;
+    }
+    if (!w) {
+      if (typeof F !== 'undefined') {
+        F.toast('Permita ventanas emergentes para imprimir el ticket', 'warning');
+      }
+      return this._printViaIframe(html, options);
+    }
+    try {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } catch {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+      if (typeof F !== 'undefined') F.toast('No se pudo abrir la ventana del ticket', 'warning');
+      return false;
+    }
+    this._forceZoom100(w);
+    try {
+      w.focus();
+    } catch {
+      /* ignore */
+    }
+    await Promise.race([
+      this._waitForPrintReady(w, options),
+      new Promise((resolve) => {
+        window.setTimeout(resolve, 900);
+      }),
+    ]);
+    this._forceZoom100(w);
+    this._closeTicketPopupWhenPrintDone(w);
+    try {
+      w.focus();
+      w.print();
+    } catch {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    return true;
+  },
+
   /** Impresión sin salir de la app (pantallas pequeñas / popup bloqueado). */
-  _printViaIframe(html) {
+  async _printViaIframe(html, options = {}) {
     const existing = document.getElementById('onneb-print-frame');
     if (existing) this._removePrintFrame(existing);
 
+    const ticket = this.isTicketPrintOptions(options);
     const frame = document.createElement('iframe');
     frame.id = 'onneb-print-frame';
     frame.setAttribute('title', 'Impresión');
@@ -233,8 +419,8 @@ const PrintReport = {
       position: 'fixed',
       left: '0',
       top: '0',
-      width: '1px',
-      height: '1px',
+      width: ticket ? '320px' : '1px',
+      height: ticket ? '480px' : '1px',
       border: '0',
       opacity: '0',
       pointerEvents: 'none',
@@ -255,40 +441,34 @@ const PrintReport = {
     doc.close();
     this._forceZoom100(win);
 
-    let printed = false;
-    const doPrint = () => {
-      if (printed) return;
-      printed = true;
-      this._forceZoom100(win);
-      this._afterPrintCleanup(win, () => this._removePrintFrame(frame), 1800);
-      try {
-        win.focus();
-        win.print();
-      } catch {
-        this._removePrintFrame(frame);
-        if (typeof F !== 'undefined') F.toast('No se pudo abrir el diálogo de impresión', 'warning');
-      }
-    };
-
-    if (doc.readyState === 'complete') {
-      window.setTimeout(doPrint, 80);
-    } else {
-      frame.addEventListener('load', () => window.setTimeout(doPrint, 80), { once: true });
-      window.setTimeout(doPrint, 500);
+    await this._waitForPrintReady(win, options);
+    this._forceZoom100(win);
+    this._afterPrintCleanup(win, () => this._removePrintFrame(frame), 2200);
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      this._removePrintFrame(frame);
+      if (typeof F !== 'undefined') F.toast('No se pudo abrir el diálogo de impresión', 'warning');
+      return false;
     }
     return true;
   },
 
-  _openPrintWindow(html, windowFeatures, options = {}) {
+  async _openPrintWindow(html, windowFeatures, options = {}) {
+    const ticket = this.isTicketPrintOptions(options);
+    if (ticket) {
+      return this.openTicketPreviewWindow(html, windowFeatures, options);
+    }
+
     if (this.isCompactPrintViewport()) {
-      return this._printViaIframe(html);
+      return this._printViaIframe(html, options);
     }
 
     const features = windowFeatures || this.maximizedFeatures();
-    const w = window.open('', '_blank', features);
+    const w = window.open('about:blank', '_blank', features);
     if (!w) {
-      // Popup bloqueado: no abandonar la app; imprimir en iframe.
-      return this._printViaIframe(html);
+      return this._printViaIframe(html, options);
     }
     this._maximizeWindow(w);
     w.document.write(html);
@@ -296,38 +476,33 @@ const PrintReport = {
     this._forceZoom100(w);
     this._maximizeWindow(w);
     w.focus();
-    let printed = false;
-    const doPrint = () => {
-      if (printed) return;
-      printed = true;
-      this._forceZoom100(w);
-      this._maximizeWindow(w);
-      this._afterPrintCleanup(
-        w,
-        () => {
-          try {
-            w.close();
-          } catch {
-            /* ignore */
-          }
-        },
-        1500
-      );
-      try {
-        w.print();
-      } catch {
+
+    await Promise.race([
+      this._waitForPrintReady(w, options),
+      new Promise((resolve) => {
+        window.setTimeout(resolve, 15000);
+      }),
+    ]);
+    this._forceZoom100(w);
+    this._afterPrintCleanup(
+      w,
+      () => {
         try {
           w.close();
         } catch {
           /* ignore */
         }
+      },
+      1600
+    );
+    try {
+      w.print();
+    } catch {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
       }
-    };
-    if (w.document.readyState === 'complete') {
-      window.setTimeout(doPrint, 60);
-    } else {
-      w.addEventListener('load', () => window.setTimeout(doPrint, 60), { once: true });
-      window.setTimeout(doPrint, 400);
     }
     return true;
   },
@@ -341,8 +516,17 @@ const PrintReport = {
    */
   async openAndPrint(htmlOrBuilder, windowFeatures, options = {}) {
     await this.ensureLogo();
-    const html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
-    const features = windowFeatures || this.maximizedFeatures();
+    let html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
+    if (html != null && typeof html.then === 'function') {
+      html = await html;
+    }
+    if (html == null || html === '') {
+      if (typeof F !== 'undefined') F.toast('No se pudo generar el documento para imprimir', 'warning');
+      return false;
+    }
+    const features =
+      windowFeatures ||
+      (this.isTicketPrintOptions(options) ? this.ticketFeatures() : this.maximizedFeatures());
     return this._openPrintWindow(html, features, options);
   },
 };

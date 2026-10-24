@@ -332,11 +332,27 @@ const CajeroInicioView = {
     this._data = await F.fetchJson(this.dashboardUrl(), { cache: 'no-store' });
   },
 
+  shouldApplyToDom(navToken) {
+    if (typeof F !== 'undefined') {
+      if (typeof F.isMenuNavigationCurrent === 'function' && !F.isMenuNavigationCurrent(navToken)) {
+        return false;
+      }
+      if (typeof F.getActiveMenuKey === 'function') {
+        const key = F.getActiveMenuKey();
+        if (key && key !== 'inicio') return false;
+      }
+    }
+    return !!(this._container && this._container.isConnected);
+  },
+
   async reload() {
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     try {
       await this.fetchDashboard();
+      if (!this.shouldApplyToDom(navToken)) return;
       this.updateDom();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       F.toast(err.message || 'Error al cargar el dashboard', 'error');
     }
   },
@@ -365,6 +381,7 @@ const CajeroInicioView = {
     }
 
     this._fecha = this.todayIsoDate();
+    const navToken = typeof F !== 'undefined' && F.getMenuNavToken ? F.getMenuNavToken() : 0;
     container.innerHTML = `<div class="text-center text-muted py-5 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando…</div>`;
 
     if (this._loading) return;
@@ -372,10 +389,12 @@ const CajeroInicioView = {
     this.destroyCharts();
     try {
       await this.fetchDashboard();
+      if (!this.shouldApplyToDom(navToken)) return;
       container.innerHTML = this.render();
       this.bindEvents();
       this.renderCharts();
     } catch (err) {
+      if (!this.shouldApplyToDom(navToken)) return;
       container.innerHTML = `
         <div class="alert alert-danger m-0 w-100" role="alert">
           <i class="fa-solid fa-circle-exclamation me-2"></i>${this.escapeHtml(err.message)}

@@ -12,6 +12,8 @@ const {
   FEL_TICKET_TIPODOCS,
   samplePrintContext,
 } = require('../lib/formato-impresion-engine');
+const { buildPrintContextAsync, loadFelCredForPrint } = require('../lib/print-document-context');
+const { sanitizeDesignerHtml } = require('../lib/formato-impresion-designer-html');
 
 const {
   loadAbonosRetencion,
@@ -39,7 +41,7 @@ BEGIN
     ACTIVO VARCHAR(2) NOT NULL CONSTRAINT DF_FORMATOS_IMPRESION_ACTIVO DEFAULT ('SI'),
     FECHA_MOD DATETIME NULL,
     USUARIO_MOD VARCHAR(50) NULL,
-    CONSTRAINT UQ_FORMATOS_IMPRESION UNIQUE (EMPNIT, TIPODOC, PAPEL)
+    CONSTRAINT UQ_FORMATOS_IMPRESION_NOMBRE UNIQUE (EMPNIT, TIPODOC, PAPEL, NOMBRE)
   );
   CREATE INDEX IX_FORMATOS_IMPRESION_EMPNIT ON dbo.FORMATOS_IMPRESION (EMPNIT);
 END;
@@ -128,9 +130,48 @@ async function loadFelUrlBase(pool) {
 
 async function ensureFelTicketFormats(pool, empnit, usuario = 'SISTEMA') {
   for (const tipodoc of FEL_TICKET_TIPODOCS) {
-    const existing = await findFormato(pool, empnit, tipodoc, 'TICKET');
-    if (existing) continue;
     const tpl = getFelTicketTemplate(tipodoc);
+    const existing = await findFormato(pool, empnit, tipodoc, 'TICKET');
+    if (existing) {
+      const html = String(existing.HTML || '');
+      const wrongEmisorLine =
+        html.includes('EMPRESA.RAZON_SOCIAL') ||
+        /fel-line-emisor|fel-emisor-nombre|fel-razon[\s\S]{0,160}\{\{FEL_CRED\.NOMBRE_COMERCIAL\}\}/.test(html) ||
+        (html.includes('{{EMPRESA.NOMBRE}}') && html.includes('fel-razon'));
+      const needsFelFrasesObs =
+        html.includes('SUJETO A PAGOS TRIMESTRALES') ||
+        html.includes('DESPUES DE 15 DIAS') ||
+        html.includes('EMPRESA.FRASE_FISCAL');
+      const needsFelExentoLeyenda = !html.includes('FEL_EXENTO_LEYENDA');
+      const needsFelSubtotalTotales = !html.includes('TOTALES.SUBTOTAL_FMT');
+      const needsFelClienteLabels = html.includes('<strong>NIT=</strong>') || html.includes('<strong>NOMBRE=</strong>');
+      const needsFelHeader =
+        !html.includes('fel-header-cred-v10') ||
+        wrongEmisorLine ||
+        needsFelFrasesObs ||
+        needsFelExentoLeyenda ||
+        needsFelSubtotalTotales ||
+        needsFelClienteLabels;
+      const needsFecComplemento =
+        tipodoc === 'FEC' &&
+        String(existing.NOMBRE || '').trim() === String(tpl.NOMBRE || '').trim() &&
+        !html.includes('fel-complemento');
+      if (needsFelHeader || needsFecComplemento) {
+        await pool
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('ID', sql.Int, existing.ID)
+          .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+          .input('CSS', sql.NVarChar(sql.MAX), tpl.CSS)
+          .input('USUARIO_MOD', sql.VarChar, usuario)
+          .query(`
+            UPDATE dbo.FORMATOS_IMPRESION
+            SET HTML = @HTML, CSS = @CSS, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
+            WHERE EMPNIT = @EMPNIT AND ID = @ID
+          `);
+      }
+      continue;
+    }
     await pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -154,6 +195,55 @@ async function ensureFelTicketFormats(pool, empnit, usuario = 'SISTEMA') {
   }
 }
 
+async function ensureFacTicketFormat(pool, empnit, usuario = 'SISTEMA') {
+  const tpl = getDefaultTemplate('TICKET', 'FAC');
+  const existing = await findFormato(pool, empnit, 'FAC', 'TICKET');
+  if (existing) {
+    const html = String(existing.HTML || '');
+    const css = String(existing.CSS || '');
+    const looksLikeCartaOnTicket =
+      html.includes('doc-meta-grid') || html.includes('doc-lines-table') || html.includes('report-header');
+    const needsFacTicketLayout = looksLikeCartaOnTicket || !html.includes('fel-ticket');
+    const needsFacLogoV2 = !css.includes('fac-ticket-logo-v2') || !html.includes('fac-ticket-doc');
+    if (needsFacTicketLayout || needsFacLogoV2) {
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ID', sql.Int, existing.ID)
+        .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+        .input('CSS', sql.NVarChar(sql.MAX), tpl.CSS)
+        .input('NOMBRE', sql.VarChar, tpl.NOMBRE)
+        .input('USUARIO_MOD', sql.VarChar, usuario)
+        .query(`
+          UPDATE dbo.FORMATOS_IMPRESION
+          SET HTML = @HTML, CSS = @CSS, NOMBRE = @NOMBRE, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
+          WHERE EMPNIT = @EMPNIT AND ID = @ID
+        `);
+    }
+    return;
+  }
+  await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('TIPODOC', sql.VarChar, 'FAC')
+    .input('PAPEL', sql.VarChar, 'TICKET')
+    .input('NOMBRE', sql.VarChar, tpl.NOMBRE)
+    .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+    .input('CSS', sql.NVarChar(sql.MAX), tpl.CSS)
+    .input('ACTIVO', sql.VarChar, 'SI')
+    .input('USUARIO_MOD', sql.VarChar, usuario)
+    .query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM dbo.FORMATOS_IMPRESION
+        WHERE EMPNIT = @EMPNIT AND TIPODOC = 'FAC' AND PAPEL = 'TICKET'
+      )
+      INSERT INTO dbo.FORMATOS_IMPRESION
+        (EMPNIT, TIPODOC, PAPEL, NOMBRE, HTML, CSS, ACTIVO, FECHA_MOD, USUARIO_MOD)
+      VALUES
+        (@EMPNIT, 'FAC', 'TICKET', @NOMBRE, @HTML, @CSS, 'SI', GETDATE(), @USUARIO_MOD)
+    `);
+}
+
 async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
   const headerRes = await pool
     .request()
@@ -161,7 +251,7 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
     .input('CODDOC', sql.VarChar, coddoc)
     .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
     .query(`
-      SELECT d.*, t.DESDOC, t.TIPODOC,
+      SELECT d.*, t.DESDOC, t.TIPODOC, t.OBS AS TIPODOC_OBS,
         c.NEGOCIO AS CLI_NEGOCIO,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
         ISNULL(emp.TELEFONOS, '') AS VENDEDOR_TELEFONO,
@@ -211,11 +301,18 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
-      SELECT Id AS ID, CODPROD, DESPROD, CODMEDIDA, CANTIDAD, EQUIVALE, PRECIO, COSTO,
-        TOTALPRECIO, TOTALCOSTO, TOTALUNIDADES, TIPOPRECIO
-      FROM dbo.DOCPRODUCTOS
-      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
-      ORDER BY Id
+      SELECT
+        l.Id AS ID, l.CODPROD, l.DESPROD, l.CODMEDIDA, l.CANTIDAD, l.EQUIVALE, l.PRECIO, l.COSTO,
+        l.TOTALPRECIO, l.TOTALCOSTO, l.TOTALUNIDADES, l.TIPOPRECIO,
+        ISNULL(l.EXENTO, 0) AS EXENTO,
+        ISNULL(m.DESMARCA, '') AS DESMARCA
+      FROM dbo.DOCPRODUCTOS l
+      LEFT JOIN dbo.PRODUCTOS p
+        ON p.EMPNIT = l.EMPNIT AND p.CODPROD = l.CODPROD
+      LEFT JOIN dbo.MARCAS m
+        ON m.EMPNIT = p.EMPNIT AND m.CODMARCA = p.CODMARCA
+      WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC AND l.CORRELATIVO = @CORRELATIVO
+      ORDER BY l.Id
     `);
     lines = linesRes.recordset || [];
   }
@@ -223,7 +320,46 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
   return { header, lines };
 }
 
-async function findFormato(pool, empnit, tipodoc, papel) {
+async function loadNombrePlantillaImpresion(pool, empnit, coddoc) {
+  const cod = String(coddoc || '').trim();
+  if (!cod) return null;
+  try {
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, cod)
+      .query(`
+        SELECT NOMBRE_PLANTILLA_IMPRESION
+        FROM dbo.TIPODOCUMENTOS
+        WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC
+      `);
+    const v = String(result.recordset[0]?.NOMBRE_PLANTILLA_IMPRESION || '').trim();
+    return v || null;
+  } catch (err) {
+    if (String(err.message || '').includes('NOMBRE_PLANTILLA_IMPRESION')) return null;
+    throw err;
+  }
+}
+
+/**
+ * @param {string} [nombrePlantilla] — NOMBRE en FORMATOS_IMPRESION (desde TIPODOCUMENTOS por CODDOC)
+ */
+async function findFormato(pool, empnit, tipodoc, papel, nombrePlantilla, opts = {}) {
+  const nombre = String(nombrePlantilla || '').trim();
+  const strictName = Boolean(opts.strictPlantillaNombre && nombre);
+  const req = pool.request().input('EMPNIT', sql.VarChar, empnit).input('PAPEL', sql.VarChar, papel);
+  if (nombre) {
+    req.input('NOMBRE', sql.VarChar, nombre);
+    req.input('TIPODOC', sql.VarChar, tipodoc);
+    const byName = await req.query(`
+      SELECT TOP 1 *
+      FROM dbo.FORMATOS_IMPRESION
+      WHERE EMPNIT = @EMPNIT AND TIPODOC = @TIPODOC AND PAPEL = @PAPEL
+        AND NOMBRE = @NOMBRE AND ACTIVO = 'SI'
+    `);
+    if (byName.recordset[0]) return mapFormatoRow(byName.recordset[0]);
+    if (strictName) return null;
+  }
   const result = await pool
     .request()
     .input('EMPNIT', sql.VarChar, empnit)
@@ -233,8 +369,44 @@ async function findFormato(pool, empnit, tipodoc, papel) {
       SELECT TOP 1 *
       FROM dbo.FORMATOS_IMPRESION
       WHERE EMPNIT = @EMPNIT AND TIPODOC = @TIPODOC AND PAPEL = @PAPEL AND ACTIVO = 'SI'
+      ORDER BY ID
     `);
   return mapFormatoRow(result.recordset[0]);
+}
+
+async function resolveFormatoForDocument(pool, empnit, coddoc, tipodoc, papel) {
+  const nombre = await loadNombrePlantillaImpresion(pool, empnit, coddoc);
+  return findFormato(pool, empnit, tipodoc, papel, nombre, {
+    strictPlantillaNombre: Boolean(nombre),
+  });
+}
+
+function isCartaHtmlOnTicket(html) {
+  const h = String(html || '');
+  return (
+    h.includes('doc-meta-grid') ||
+    h.includes('doc-lines-table') ||
+    (h.includes('report-header') && h.includes('doc-print-sheet') && !h.includes('fel-ticket'))
+  );
+}
+
+/** Evita plantillas ticket FAC rotas (layout carta) que congelan el navegador. */
+function coerceFacTicketFormat(formato, tipodoc, papel) {
+  const t = String(tipodoc || '').trim().toUpperCase();
+  const p = normalizePapel(papel);
+  if (t !== 'FAC' || p !== 'TICKET') return formato;
+  const html = String(formato?.HTML || '');
+  if (html.includes('fel-ticket') && !isCartaHtmlOnTicket(html)) return formato;
+  const def = getDefaultTemplate('TICKET', 'FAC');
+  return {
+    ...formato,
+    ...def,
+    HTML: def.HTML,
+    CSS: def.CSS,
+    NOMBRE: def.NOMBRE,
+    TIPODOC: 'FAC',
+    PAPEL: 'TICKET',
+  };
 }
 
 function isDocAnulado(header) {
@@ -275,7 +447,8 @@ const PRIORIDAD_BADGE_CSS = `
 
 /** Fuerza papel térmico 80mm al imprimir; en pantalla maximizada el contenido usa todo el ancho legible. */
 const TICKET_PAPER_OVERRIDE_CSS = `
-@page{size:80mm auto!important;margin:2mm!important}
+.doc-prioridad-badge{display:none!important;visibility:hidden!important}
+@page{size:80mm auto!important;margin:1mm 2mm!important}
 html{width:100%;margin:0;padding:0;box-sizing:border-box}
 html,body{zoom:1!important;transform:none!important}
 body{
@@ -291,6 +464,7 @@ body{
   .doc-print-sheet,.fel-ticket{width:100%!important;max-width:none!important;margin:0!important}
   .report-logo{max-height:72px!important;max-width:140px!important}
   .fel-logo{max-height:84px!important;max-width:140px!important}
+  .fac-ticket-doc .fel-logo{max-height:168px!important;max-width:280px!important}
   .report-empresa-nombre,.fel-nombre{font-size:1.35rem!important}
   .report-title,.fel-dte-tipo{font-size:1.1rem!important}
   .report-subtitle,.doc-meta-item,.fel-meta,.fel-muted{font-size:14px!important}
@@ -303,8 +477,29 @@ body{
   .fel-fel-badge svg{width:120px!important}
 }
 @media print{
-  html,body{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
-  body{padding:1mm 1.5mm!important;font-size:11px!important}
+  html,body{width:100%!important;max-width:80mm!important;margin:0 auto!important;padding:0!important}
+  body{padding:1mm 1.5mm!important;font-size:11px!important;-webkit-print-color-adjust:economy;print-color-adjust:economy}
+  img{max-width:100%!important;height:auto!important}
+}
+`;
+
+/** Vista previa en ventana maximizada: ticket centrado, zoom 100%, tipografía legible. */
+const TICKET_SCREEN_PREVIEW_CSS = `
+@media screen{
+  html,body{
+    height:100%;margin:0;background:#e8eaed;
+    zoom:1!important;transform:none!important;
+    -webkit-text-size-adjust:100%;text-size-adjust:100%;
+  }
+  body{
+    display:flex;justify-content:center;align-items:flex-start;
+    min-height:100%;padding:20px 16px;box-sizing:border-box;
+  }
+  .fel-ticket,.doc-print-sheet{
+    width:80mm!important;max-width:80mm!important;min-width:0!important;
+    margin:0 auto!important;background:#fff!important;
+    box-shadow:0 6px 28px rgba(15,23,42,.14);
+  }
 }
 `;
 
@@ -320,7 +515,7 @@ body{padding:${isTicket ? '8px' : '16px'};background:#fff}
 `
     : '';
   const stamp = anulado ? anuladoStampHtml() : '';
-  const badge = prioridadBadgeHtml(prioridad);
+  const badge = isTicket ? '' : prioridadBadgeHtml(prioridad);
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>${safeTitle}</title>
@@ -343,6 +538,7 @@ ${PRIORIDAD_BADGE_CSS}
 ${previewCss}
 ${css || ''}
 ${isTicket ? TICKET_PAPER_OVERRIDE_CSS : ''}
+${isTicket ? TICKET_SCREEN_PREVIEW_CSS : ''}
 </style></head><body>${stamp}${badge}${bodyHtml}</body></html>`;
 }
 
@@ -372,6 +568,12 @@ router.get('/variables', (_req, res) => {
           'DOC.VENDEDOR_TELEFONO',
           'DOC.OBS',
           'DOC.PRIORIDAD',
+          'DOC.FEL_COMPLEMENTO_SHOW',
+          'DOC.FEL_NUM_CUOTAS',
+          'DOC.FEL_CUOTAS (bloque {{#DOC.FEL_CUOTAS}}…{{/DOC.FEL_CUOTAS}})',
+          'NUM',
+          'FECHA',
+          'MONTO_FMT',
           'DOC.FEL_UUDI',
           'DOC.FEL_SERIE',
           'DOC.FEL_NUMERO',
@@ -417,6 +619,27 @@ router.get('/variables', (_req, res) => {
         ],
       },
       {
+        name: 'Credenciales FEL (encabezado)',
+        vars: [
+          'FEL_CRED.NOMBRE_COMERCIAL',
+          'FEL_CRED.NOMBRE_EMISOR',
+          'FEL_CRED.EMISOR_NOMBRECOMECIAL',
+          'FEL_CRED.EMISOR_NOMBRE',
+          'FEL_CRED.RAZON_SOCIAL',
+          'FEL_CRED.DIRECCION',
+          'FEL_CRED.EMISOR_DIRECCION',
+          'FEL_CRED.EMISOR_MUNICIPIO',
+          'FEL_CRED.EMISOR_DEPARTAMENTO',
+          'FEL_CRED.FRASE1',
+          'FEL_CRED.FRASE2',
+          'FEL_CRED.FRASE3',
+          'FEL_CRED.NIT',
+          'DOC.TIPODOC_OBS',
+          'DOC.FEL_EXENTO_LEYENDA',
+          'FEL_CRED.TEL_SUCURSAL',
+        ],
+      },
+      {
         name: 'Líneas (LINES)',
         vars: [
           'LINES (bloque {{#LINES}}…{{/LINES}})',
@@ -437,6 +660,7 @@ router.get('/variables', (_req, res) => {
           'TITLE',
           'FOOTER',
           'TOTALES.TOTALPRECIO_FMT',
+          'TOTALES.SUBTOTAL_FMT',
           'TOTALES.DESCUENTO_FMT',
           'TOTALES.TOTAL_LETRAS',
           'TOTALES.LINEAS',
@@ -461,6 +685,7 @@ router.get('/', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
+    await ensureFacTicketFormat(pool, empnit);
     const tipodoc = normalizeTipodoc(req.query.tipodoc);
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
     let filter = '';
@@ -538,6 +763,48 @@ router.get('/tipodocs', async (req, res) => {
   }
 });
 
+/** Nombres de plantillas internas (FORMATOS_IMPRESION) para selector en TIPODOCUMENTOS. */
+router.get('/plantillas', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const tipodoc = normalizeTipodoc(req.query.tipodoc);
+  try {
+    const pool = await req.app.locals.getDbPool();
+    await ensureTable(pool);
+    const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
+    let filterSql = '';
+    if (tipodoc) {
+      request.input('TIPODOC', sql.VarChar, tipodoc);
+      filterSql = ' AND TIPODOC = @TIPODOC';
+    }
+    const result = await request.query(`
+      SELECT NOMBRE, TIPODOC, PAPEL
+      FROM dbo.FORMATOS_IMPRESION
+      WHERE EMPNIT = @EMPNIT AND ACTIVO = 'SI'${filterSql}
+      ORDER BY TIPODOC, PAPEL, NOMBRE
+    `);
+    res.json({
+      rows: (result.recordset || []).map((r) => {
+        const nombre = String(r.NOMBRE || '').trim();
+        const td = String(r.TIPODOC || '').trim().toUpperCase();
+        const papel = normalizePapel(r.PAPEL);
+        return {
+          NOMBRE: nombre,
+          TIPODOC: td,
+          PAPEL: papel,
+          value: nombre,
+          label: `${nombre} (${td} · ${papel})`,
+        };
+      }),
+    });
+  } catch (err) {
+    console.warn('[API GET /formatos-impresion/plantillas]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/resolve', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -550,6 +817,7 @@ router.get('/resolve', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
+    await ensureFacTicketFormat(pool, empnit);
     const found = await findFormato(pool, empnit, tipodoc, papel);
     if (found) return res.json(found);
     const def = getDefaultTemplate(papel, tipodoc);
@@ -587,21 +855,25 @@ async function handleRender(req, res) {
     const pool = await req.app.locals.getDbPool();
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
+    await ensureFacTicketFormat(pool, empnit);
     const doc = await loadDocumentoPrintData(pool, empnit, coddoc, correlativo);
     if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
 
     const tipodoc = normalizeTipodoc(doc.header.TIPODOC);
-    const formato = (await findFormato(pool, empnit, tipodoc, papel)) || {
+    let formato = (await resolveFormatoForDocument(pool, empnit, coddoc, tipodoc, papel)) || {
       ...getDefaultTemplate(papel, tipodoc),
       EMPNIT: empnit,
       TIPODOC: tipodoc,
     };
+    formato = coerceFacTicketFormat(formato, tipodoc, papel);
 
     const empresa = await loadEmpresa(pool, empnit);
     if (logoUrl) empresa.LOGO_URL = logoUrl;
     const felUrlBase = await loadFelUrlBase(pool);
     const muestraPeso =
       (await getSettingSino(pool, SETTING_OPCION.MUESTRA_PESO_EN_DOCUMENTOS)) === 'SI';
+    const muestraMarcas =
+      (await getSettingSino(pool, SETTING_OPCION.MUESTRA_MARCAS_EN_DOCUMENTOS)) === 'SI';
 
     const title = String(src.title || doc.header.DESDOC || tipodoc || 'Documento').trim();
     const footerNote =
@@ -609,7 +881,12 @@ async function handleRender(req, res) {
         ? 'Cotización — documento sin validez fiscal'
         : 'Documento generado por POS OnneB';
 
-    const ctx = buildPrintContext({
+    const felCredencial = await loadFelCredForPrint(pool, empnit, tipodoc, {
+      felUuid: doc.header?.FEL_UUDI,
+    });
+    const ctx = await buildPrintContextAsync({
+      pool,
+      empnit,
       empresa,
       header: doc.header,
       lines: doc.lines,
@@ -617,8 +894,11 @@ async function handleRender(req, res) {
       footerNote,
       felUrlBase,
       muestraPeso,
+      muestraMarcas,
+      felCredencial,
+      tipodocObs: doc.header?.TIPODOC_OBS,
     });
-    const bodyHtml = renderTemplate(formato.HTML, ctx);
+    const bodyHtml = renderTemplate(sanitizeDesignerHtml(formato.HTML), ctx);
     const fullHtml = wrapPrintHtml({
       title,
       bodyHtml,
@@ -671,13 +951,22 @@ router.post('/preview', async (req, res) => {
       if (logoUrl) empresa.LOGO_URL = logoUrl;
       const felUrlBase = await loadFelUrlBase(pool);
       title = doc.header.DESDOC || doc.header.TIPODOC || title;
-      ctx = buildPrintContext({
+      const muestraPeso =
+        (await getSettingSino(pool, SETTING_OPCION.MUESTRA_PESO_EN_DOCUMENTOS)) === 'SI';
+      const muestraMarcas =
+        (await getSettingSino(pool, SETTING_OPCION.MUESTRA_MARCAS_EN_DOCUMENTOS)) === 'SI';
+      ctx = await buildPrintContextAsync({
+        pool,
+        empnit,
         empresa,
         header: doc.header,
         lines: doc.lines,
         title,
         footerNote: 'Vista previa',
         felUrlBase,
+        muestraPeso,
+        muestraMarcas,
+        tipodocObs: doc.header?.TIPODOC_OBS,
       });
     } else {
       const felUrlBase = await loadFelUrlBase(pool);
@@ -692,7 +981,7 @@ router.post('/preview', async (req, res) => {
       ctx.EMPRESA.FEL_URL = felUrlBase || ctx.EMPRESA.FEL_URL || '';
       if (logoUrl) ctx.EMPRESA.LOGO_URL = logoUrl;
       if (felUrlBase && ctx.DOC?.FEL_UUDI) {
-        const rebuilt = buildPrintContext({
+        const rebuilt = await buildPrintContextAsync({
           empresa: { ...empresa, LOGO_URL: logoUrl || '', FEL_URL: felUrlBase },
           header: {
             CODDOC: ctx.DOC.CODDOC,
@@ -722,7 +1011,7 @@ router.post('/preview', async (req, res) => {
     }
 
     const tipodocPreview = normalizeTipodoc(req.body?.tipodoc || ctx?.DOC?.TIPODOC);
-    const tpl = htmlTpl || getDefaultTemplate(papel, tipodocPreview).HTML;
+    const tpl = sanitizeDesignerHtml(htmlTpl || getDefaultTemplate(papel, tipodocPreview).HTML);
     const style = css || getDefaultTemplate(papel, tipodocPreview).CSS;
     const bodyHtml = renderTemplate(tpl, ctx);
     const fullHtml = wrapPrintHtml({
@@ -775,7 +1064,7 @@ router.post('/', async (req, res) => {
   const tipodoc = normalizeTipodoc(req.body?.TIPODOC);
   const papel = normalizePapel(req.body?.PAPEL);
   const nombre = String(req.body?.NOMBRE || `Formato ${tipodoc} ${papel}`).trim().slice(0, 100);
-  const html = String(req.body?.HTML ?? '');
+  const html = sanitizeDesignerHtml(String(req.body?.HTML ?? ''));
   const css = String(req.body?.CSS ?? '');
   const activo = normalizeActivo(req.body?.ACTIVO, 'SI');
   const usuario = String(req.body?.USUARIO || req.body?.usuario || '').trim().slice(0, 50) || null;
@@ -804,9 +1093,13 @@ router.post('/', async (req, res) => {
     const id = Number(result.recordset?.[0]?.ID);
     res.status(201).json({ ok: true, ID: id, EMPNIT: empnit, TIPODOC: tipodoc, PAPEL: papel });
   } catch (err) {
-    if (String(err.message || '').includes('UQ_FORMATOS_IMPRESION') || err.number === 2627) {
+    if (
+      String(err.message || '').includes('UQ_FORMATOS_IMPRESION') ||
+      String(err.message || '').includes('UQ_FORMATOS_IMPRESION_NOMBRE') ||
+      err.number === 2627
+    ) {
       return res.status(409).json({
-        error: `Ya existe un formato para ${tipodoc} / ${papel} en esta empresa`,
+        error: `Ya existe un formato con el mismo nombre para ${tipodoc} / ${papel} en esta empresa`,
       });
     }
     console.warn('[API POST /formatos-impresion]', err.message);
@@ -821,7 +1114,7 @@ router.put('/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'ID inválido' });
   const nombre = String(req.body?.NOMBRE || '').trim().slice(0, 100);
-  const html = String(req.body?.HTML ?? '');
+  const html = sanitizeDesignerHtml(String(req.body?.HTML ?? ''));
   const css = String(req.body?.CSS ?? '');
   const activo = normalizeActivo(req.body?.ACTIVO, 'SI');
   const usuario = String(req.body?.USUARIO || req.body?.usuario || '').trim().slice(0, 50) || null;

@@ -71,6 +71,7 @@ const AutorizacionesUI = {
       socket.on('autorizacion:nueva', (data) => this._onAutorizacionNueva(data));
       socket.on('autorizacion:autorizada', (data) => this._onAutorizacionAutorizada(data));
       socket.on('autorizacion:lista', (data) => this._onAutorizacionLista(data));
+      socket.on('connect', () => this._registerSocketSession(socket));
       this._socketBound = true;
     }
 
@@ -134,9 +135,12 @@ const AutorizacionesUI = {
   _onAutorizacionAutorizada(data) {
     if (!this._sameEmpnit(data)) return;
     const idKey = String(data?.id ?? '');
-    if (idKey && this._waiters.has(idKey)) {
-      const set = this._waiters.get(idKey);
-      this._waiters.delete(idKey);
+    const altKey = idKey && Number.isFinite(Number(idKey)) ? String(Number(idKey)) : idKey;
+    const waiterKeys = [idKey, altKey].filter(Boolean);
+    for (const key of waiterKeys) {
+      if (!key || !this._waiters.has(key)) continue;
+      const set = this._waiters.get(key);
+      this._waiters.delete(key);
       set.forEach((fn) => {
         try {
           fn(data);
@@ -176,12 +180,39 @@ const AutorizacionesUI = {
     this.bindSocket();
     if (!this._waiters.has(idKey)) this._waiters.set(idKey, new Set());
     this._waiters.get(idKey).add(fn);
+
+    let pollStopped = false;
+    const pollId = setInterval(() => {
+      if (pollStopped) return;
+      this.fetchById(id)
+        .then((row) => {
+          if (pollStopped || !row) return;
+          if (String(row.AUTORIZADO || 'NO').trim().toUpperCase() !== 'SI') return;
+          const data = {
+            id: row.ID,
+            usuarioAutoriza: row.USUARIOAUTORIZA,
+            USUARIOAUTORIZA: row.USUARIOAUTORIZA,
+          };
+          this._onAutorizacionAutorizada(data);
+        })
+        .catch(() => {});
+    }, 2500);
+
     return () => {
+      pollStopped = true;
+      clearInterval(pollId);
       const set = this._waiters.get(idKey);
       if (!set) return;
       set.delete(fn);
       if (!set.size) this._waiters.delete(idKey);
     };
+  },
+
+  async fetchById(id) {
+    const data = await F.fetchJson(this.apiUrl(`/${encodeURIComponent(id)}`, { _: String(Date.now()) }), {
+      cache: 'no-store',
+    });
+    return data.row || null;
   },
 
   async isEnabled({ force = false } = {}) {

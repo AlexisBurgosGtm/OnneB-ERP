@@ -6,19 +6,41 @@ const DocVendedorClave = {
   SETTING_OPCION: 'SOLICITA CLAVE VENDEDOR',
   INPUT_ID: 'doc-vendedor-clave-input',
 
+  sessionUser() {
+    return typeof F !== 'undefined' ? F.session('user') : null;
+  },
+
+  sessionCodTipo(user) {
+    const u = user || this.sessionUser();
+    if (!u) return null;
+    if (u.superUser) {
+      return typeof TipoEmpleadoAccess !== 'undefined'
+        ? TipoEmpleadoAccess.TIPO_ADMIN
+        : 1;
+    }
+    const n = parseInt(u.codtipoempleado, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+    if (typeof TipoEmpleadoAccess !== 'undefined') {
+      return TipoEmpleadoAccess.getCodTipo(u);
+    }
+    return null;
+  },
+
   isCajeroSession() {
     if (typeof TipoEmpleadoAccess === 'undefined') return false;
-    return Number(TipoEmpleadoAccess.getCodTipo()) === TipoEmpleadoAccess.TIPO_CAJERO;
+    return this.sessionCodTipo() === TipoEmpleadoAccess.TIPO_CAJERO;
   },
 
   isAdminSession() {
+    if (typeof TipoEmpleadoAccess === 'undefined') {
+      return typeof F !== 'undefined' && F.isAdminOrSuperUser();
+    }
+    const cod = this.sessionCodTipo();
+    if (cod === TipoEmpleadoAccess.TIPO_ADMIN) return true;
     if (typeof F !== 'undefined' && typeof F.isAdminOrSuperUser === 'function') {
       return F.isAdminOrSuperUser();
     }
-    if (typeof TipoEmpleadoAccess === 'undefined') return false;
-    const user = typeof F !== 'undefined' ? F.session('user') : null;
-    if (user?.superUser) return true;
-    return Number(TipoEmpleadoAccess.getCodTipo(user)) === TipoEmpleadoAccess.TIPO_ADMIN;
+    return false;
   },
 
   async fetchSolicitaClave() {

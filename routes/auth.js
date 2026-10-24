@@ -10,7 +10,12 @@ const {
   beginAuthentication,
   finishAuthentication,
 } = require('../lib/webauthn');
-const { getSettingSino, ensureSettingDefault, SETTING_OPCION } = require('../lib/settings');
+const {
+  getSettingSino,
+  getSettingEstiloLogin,
+  ensureSettingDefault,
+  SETTING_OPCION,
+} = require('../lib/settings');
 const { assertEmpnitAllowed } = require('../lib/default-empnit');
 const { isRemoteDbContext } = require('../lib/db-context');
 const { getRemoteDbPool } = require('../lib/remote-db-pool');
@@ -48,6 +53,22 @@ async function assertBiometricoPermitido(pool) {
   }
   return permite;
 }
+
+/** Público: estilo visual del login (no afecta el tema del POS). */
+router.get('/login-presentation', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.json({ estiloLogin: 'TEMA' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const estiloLogin = await getSettingEstiloLogin(pool, SETTING_OPCION.ESTILO_DEL_LOGIN);
+    res.json({ estiloLogin });
+  } catch (err) {
+    console.warn('[API GET /auth/login-presentation]', err.message);
+    res.json({ estiloLogin: 'TEMA' });
+  }
+});
 
 /** Público: indica si el login debe ofrecer huella / passkey. */
 router.get('/biometric-config', async (req, res) => {

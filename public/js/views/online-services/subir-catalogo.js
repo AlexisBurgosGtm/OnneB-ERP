@@ -5,6 +5,7 @@
 const SubirCatalogoView = {
   _container: null,
   _uploading: false,
+  _cloudStatus: null,
 
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -21,6 +22,49 @@ const SubirCatalogoView = {
     return `/api/community${path}${sep}empnit=${empnit}`;
   },
 
+  formatLastSaleLabel(lastSale) {
+    if (!lastSale) return '—';
+    const s = String(lastSale).trim();
+    if (!s) return '—';
+    const parts = s.slice(0, 10).split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return s;
+  },
+
+  cloudStatCard(title, stat, loading) {
+    const count = stat?.count ?? 0;
+    const last = this.formatLastSaleLabel(stat?.lastSale);
+    const emptyHint =
+      !loading && count === 0
+        ? '<span class="text-muted">Sin registros con este TOKEN</span>'
+        : '';
+    return `
+      <div class="col-md-6">
+        <div class="card h-100 border-0 bg-light">
+          <div class="card-body py-3">
+            <div class="fw-semibold small text-uppercase text-muted mb-2">${this.escapeHtml(title)}</div>
+            ${
+              loading
+                ? '<span class="small text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i>Consultando…</span>'
+                : `
+              <div class="d-flex flex-wrap gap-3 align-items-baseline">
+                <div>
+                  <span class="display-6 fw-bold lh-1">${this.escapeHtml(String(count))}</span>
+                  <span class="small text-muted ms-1">registro(s)</span>
+                </div>
+                <div class="small">
+                  <span class="text-muted">LASTSALE:</span>
+                  <strong>${this.escapeHtml(last)}</strong>
+                </div>
+              </div>
+              ${emptyHint ? `<div class="small mt-2">${emptyHint}</div>` : ''}
+            `
+            }
+          </div>
+        </div>
+      </div>`;
+  },
+
   renderBlockedHtml() {
     return `
       <div class="pos-list-wrap">
@@ -35,6 +79,27 @@ const SubirCatalogoView = {
       </div>`;
   },
 
+  renderCloudStatusHtml(loading = false) {
+    const st = this._cloudStatus;
+    return `
+      <div class="mb-4" id="os-subir-catalogo-status">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+          <h3 class="h6 mb-0">Catálogo en la nube (<code>EMPNIT = GENERAL</code>)</h3>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="os-subir-catalogo-refresh-status"
+            ${loading ? 'disabled' : ''} title="Actualizar conteos">
+            <i class="fa-solid fa-rotate-right me-1" aria-hidden="true"></i>Actualizar
+          </button>
+        </div>
+        <p class="small text-muted mb-2">
+          Registros asociados al <strong>TOKEN</strong> de esta instalación. <code>LASTSALE</code> indica la fecha de la última subida.
+        </p>
+        <div class="row g-2">
+          ${this.cloudStatCard('Productos (COMMUNITY_PRODUCTOS)', st?.productos, loading)}
+          ${this.cloudStatCard('Marcas (COMMUNITY_MARCAS)', st?.marcas, loading)}
+        </div>
+      </div>`;
+  },
+
   renderHtml() {
     return `
       <div class="pos-list-wrap">
@@ -42,7 +107,8 @@ const SubirCatalogoView = {
           <h2 class="pos-list-title">Subir catálogo</h2>
           <p class="pos-list-sub text-muted mb-0">Online Services · nube comunitaria</p>
         </div>
-        <div class="card border-0 shadow-sm" style="max-width:36rem">
+        ${this.renderCloudStatusHtml(true)}
+        <div class="card border-0 shadow-sm" style="max-width:42rem">
           <div class="card-body">
             <p class="mb-3 text-muted small">
               Se enviarán maestros (<strong>Marcas</strong>, <strong>Medidas</strong>,
@@ -56,6 +122,39 @@ const SubirCatalogoView = {
           </div>
         </div>
       </div>`;
+  },
+
+  updateCloudStatusPanel(loading = false) {
+    const host = this._container?.querySelector('#os-subir-catalogo-status');
+    if (!host) return;
+    const outer = host.parentElement;
+    if (!outer) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = this.renderCloudStatusHtml(loading);
+    const next = tmp.firstElementChild;
+    if (next) host.replaceWith(next);
+    this.bindStatusRefresh();
+  },
+
+  async loadCloudStatus() {
+    try {
+      const data = await F.fetchJson(this.apiUrl('/catalogo/estado-nube'), { cache: 'no-store' });
+      this._cloudStatus = {
+        productos: data.productos,
+        marcas: data.marcas,
+      };
+      this.updateCloudStatusPanel(false);
+    } catch (err) {
+      this._cloudStatus = null;
+      this.updateCloudStatusPanel(false);
+      const host = this._container?.querySelector('#os-subir-catalogo-status');
+      if (host) {
+        host.insertAdjacentHTML(
+          'beforeend',
+          `<div class="alert alert-warning small py-2 mt-2 mb-0">${this.escapeHtml(err.message || 'No se pudo leer el estado en la nube')}</div>`
+        );
+      }
+    }
   },
 
   async checkTokenActivo() {
@@ -118,6 +217,7 @@ const SubirCatalogoView = {
         `Catálogo actualizado.${refFecha} Subidos: ${data.marcas ?? 0} marcas, ${data.medidas ?? 0} medidas, ${data.clasificacionuno ?? 0} clasif.1, ${data.proveedores ?? 0} prov., ${data.productos ?? 0} productos, ${data.precios ?? 0} precios, ${data.invsaldo ?? 0} saldos (elim. nube prod/pre/inv ${el.productos ?? 0}/${el.precios ?? 0}/${el.invsaldo ?? 0})`,
         'success'
       );
+      await this.loadCloudStatus();
     } catch (err) {
       Swal.close();
       F.toast(err.message || 'Error al subir catálogo', 'error');
@@ -127,17 +227,28 @@ const SubirCatalogoView = {
     }
   },
 
+  bindStatusRefresh() {
+    this._container
+      ?.querySelector('#os-subir-catalogo-refresh-status')
+      ?.addEventListener('click', () => {
+        this.updateCloudStatusPanel(true);
+        this.loadCloudStatus().catch((err) => F.toast(err.message || 'Error', 'error'));
+      });
+  },
+
   bindEvents() {
     this._container
       ?.querySelector('#os-subir-catalogo-btn')
       ?.addEventListener('click', () => {
         this.onSubir().catch((err) => F.toast(err.message || 'Error', 'error'));
       });
+    this.bindStatusRefresh();
   },
 
   async load(container) {
     this._container = container;
     this._uploading = false;
+    this._cloudStatus = null;
     await F.ensureCodTipoEmpresa();
     if (!F.isEmpresaPrincipal()) {
       this._container.innerHTML = this.renderBlockedHtml();
@@ -145,5 +256,8 @@ const SubirCatalogoView = {
     }
     this._container.innerHTML = this.renderHtml();
     this.bindEvents();
+    this.loadCloudStatus().catch(() => {
+      /* error shown in panel */
+    });
   },
 };

@@ -20,6 +20,7 @@ async function main() {
   const sqlFiles = [
     { file: 'dbo.COMMUNITY_COSTO_PROMEDIO_COLUMNS.sql', markerPrefix: 'COMMUNITY_COSTO_PROMEDIO' },
     { file: 'dbo.COMMUNITY_PRODUCTOS_LASTSALE.sql', markerPrefix: 'COMMUNITY_CATALOG' },
+    { file: 'dbo.COMMUNITY_MARCAS_LASTSALE.sql', markerPrefix: 'COMMUNITY_CATALOG' },
   ];
 
   for (const { file, markerPrefix } of sqlFiles) {

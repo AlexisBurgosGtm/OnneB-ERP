@@ -2744,6 +2744,25 @@ const CuentasPorCobrarView = {
     this.bindEvents();
   },
 
+  async exportHistorialExcel(coddoc, correlativo) {
+    const emp = F.getEmpNit();
+    const url =
+      `/api/cuentas-cobrar/facturas/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}/abonos` +
+      `?empnit=${encodeURIComponent(emp)}&format=xlsx&_=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText);
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `cxc_historial_${coddoc}_${correlativo}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    F.toast('Excel exportado', 'success');
+  },
+
   async mostrarHistorial(row) {
     const data = await this.fetchFacturaDetalle(row.CODDOC, row.CORRELATIVO);
     const abonos = data.abonos || [];
@@ -2752,10 +2771,15 @@ const CuentasPorCobrarView = {
       ...CatalogosUI.modalBase(),
       title: 'Historial de abonos y notas de crédito',
       html: `
-        <p class="small text-muted text-start mb-2">
-          Factura <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
-          · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
-        </p>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <p class="small text-muted text-start mb-0">
+            Factura <strong>${this.escapeHtml(row.CODDOC)} #${this.escapeHtml(row.CORRELATIVO)}</strong>
+            · ${this.escapeHtml(row.DOC_NOMCLIE || '')}
+          </p>
+          <button type="button" class="btn btn-sm btn-outline-success" id="cxc-historial-export">
+            <i class="fa-solid fa-file-excel me-1"></i>Excel
+          </button>
+        </div>
         <p class="small text-muted text-start mb-2">RCC, RAR, DEV y FNC vinculados por SERIEFAC / NOFAC</p>
         ${this.renderAbonosTableHtml(abonos, row)}
         <p class="text-end mt-2 mb-0 small"><strong>Total: ${this.escapeHtml(this.formatMoney(totalMov))}</strong></p>
@@ -2765,6 +2789,11 @@ const CuentasPorCobrarView = {
       showCancelButton: true,
       cancelButtonText: CatalogosUI.cancelButtonHtml('Cerrar'),
       didOpen: () => {
+        document.getElementById('cxc-historial-export')?.addEventListener('click', () => {
+          this.exportHistorialExcel(row.CODDOC, row.CORRELATIVO).catch((err) =>
+            F.toast(err.message || 'No se pudo exportar', 'error')
+          );
+        });
         document.querySelectorAll('.cxp-print-recibo-btn').forEach((btn) => {
           btn.addEventListener('click', async (e) => {
             e.stopPropagation();

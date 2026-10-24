@@ -5,8 +5,10 @@
 const DocPrint = {
   FORMATO_OPCION: 'FORMATO IMPRESION C O T',
   PESO_OPCION: 'MUESTRA PESO EN DOCUMENTOS',
+  MARCAS_OPCION: 'MUESTRA MARCAS EN DOCUMENTOS',
   _formatoCache: null,
   _muestraPesoCache: null,
+  _muestraMarcasCache: null,
 
   escapeHtml(value) {
     return PrintReport.escapeHtml(value);
@@ -51,11 +53,39 @@ const DocPrint = {
         _: String(Date.now()),
       });
       const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
-      this._muestraPesoCache = String(data?.valor || 'NO').trim().toUpperCase() === 'SI';
+      this._muestraPesoCache = String(data?.sino ?? data?.valor ?? 'NO').trim().toUpperCase() === 'SI';
     } catch {
       this._muestraPesoCache = false;
     }
     return this._muestraPesoCache;
+  },
+
+  async fetchMuestraMarcas(force = false) {
+    if (!force && this._muestraMarcasCache != null) return this._muestraMarcasCache;
+    try {
+      const params = new URLSearchParams({
+        opcion: this.MARCAS_OPCION,
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+      this._muestraMarcasCache = String(data?.sino ?? data?.valor ?? 'NO').trim().toUpperCase() === 'SI';
+    } catch {
+      this._muestraMarcasCache = false;
+    }
+    return this._muestraMarcasCache;
+  },
+
+  lineDescHtml(ln, { ticket = false, muestraMarcas = false } = {}) {
+    const des = this.escapeHtml(ln.DESPROD || '');
+    const marca = String(ln.DESMARCA || '').trim();
+    const marcaBlock =
+      muestraMarcas && marca
+        ? `<div class="doc-line-marca"><strong>${this.escapeHtml(marca)}</strong></div>`
+        : '';
+    if (ticket) {
+      return `<span class="col-desc">${des}${marcaBlock}</span>`;
+    }
+    return `${des}${marcaBlock}`;
   },
 
   async fetchFormatoImpresion(force = false) {
@@ -111,9 +141,11 @@ const DocPrint = {
         th{background:#f3f3f3}
         .text-end{text-align:right}
         @media print{
-          html,body{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+          html,body{width:100%!important;max-width:80mm!important;margin:0 auto!important;padding:0!important}
           body{padding:1mm 1.5mm!important;font-size:11px!important}
+          img{max-width:100%!important;height:auto!important}
         }
+        .doc-prioridad-badge{display:none!important;visibility:hidden!important}
         @media screen{
           html,body{width:100%!important;max-width:none!important;margin:0!important;box-sizing:border-box}
           body{padding:1.25rem 1.75rem!important;font-size:15px!important;line-height:1.35!important}
@@ -127,7 +159,6 @@ const DocPrint = {
           .doc-totals-row.grand{font-size:1.15rem!important}
           .doc-footer{font-size:12px!important}
         }
-        ${this.prioridadBadgeCss()}
       `;
     }
     return `
@@ -146,6 +177,7 @@ const DocPrint = {
       .doc-lines-table{margin-top:.5rem}
       .doc-lines-table th{background:#1e3a5f;color:#fff;border-color:#1e3a5f;font-weight:600;font-size:11px}
       .doc-lines-table td{border-color:#d1d5db;font-size:11px}
+      .doc-line-marca{font-size:10px;line-height:1.25;margin-top:2px}
       .doc-lines-table tbody tr:nth-child(even){background:#f9fafb}
       .doc-totals{margin-top:.75rem;padding:.65rem .75rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.35rem}
       .doc-totals-row{display:flex;justify-content:space-between;gap:1rem;font-size:12px;margin:.1rem 0}
@@ -163,12 +195,10 @@ const DocPrint = {
     return `<div class="doc-meta-item"><strong>${this.escapeHtml(label)}:</strong> ${this.escapeHtml(value)}</div>`;
   },
 
-  buildLinesTableHtml(lines, { ticket = false, includePrecio = false, muestraPeso = false } = {}) {
+  buildLinesTableHtml(lines, { ticket = false, includePrecio = false, muestraPeso = false, muestraMarcas = false } = {}) {
     const rows = (lines || [])
       .map((ln) => {
-        const desc = ticket
-          ? `<span class="col-desc">${this.escapeHtml(ln.DESPROD || '')}</span>`
-          : this.escapeHtml(ln.DESPROD || '');
+        const desc = this.lineDescHtml(ln, { ticket, muestraMarcas });
         const precioCell = includePrecio
           ? `<td class="text-end">${this.escapeHtml(this.formatMoney(ln.PRECIO))}</td>`
           : '';
@@ -205,7 +235,7 @@ const DocPrint = {
       </table>`;
   },
 
-  buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '', muestraPeso = false }, formato = 'CARTA') {
+  buildDocumentHtml({ title, header, lines, extraMeta = [], footerNote = '', muestraPeso = false, muestraMarcas = false }, formato = 'CARTA') {
     const h = header || {};
     const ticket = this.isTicket(formato);
     const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
@@ -248,7 +278,7 @@ const DocPrint = {
         ? `<div class="doc-totals-row"><span>Peso total</span><span>${this.escapeHtml(this.formatPeso(totalPeso))}</span></div>`
         : '';
     const anulado = this.isAnulado(h) ? this.anuladoStampHtml() : '';
-    const prioridadBadge = this.prioridadBadgeHtml(h.PRIORIDAD);
+    const prioridadBadge = ticket ? '' : this.prioridadBadgeHtml(h.PRIORIDAD);
 
     return `
       <div class="doc-print-sheet">
@@ -260,7 +290,7 @@ const DocPrint = {
         })}
         <div class="doc-meta-grid">${meta}</div>
         ${obs}
-        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true, muestraPeso })}
+        ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true, muestraPeso, muestraMarcas })}
         <div class="doc-totals">
           ${pesoTotalHtml}
           <div class="doc-totals-row grand">
@@ -372,9 +402,9 @@ const DocPrint = {
     });
   },
 
-  windowFeaturesFor(_formato) {
-    if (typeof PrintReport !== 'undefined' && PrintReport.maximizedFeatures) {
-      return PrintReport.maximizedFeatures();
+  windowFeaturesFor(formato) {
+    if (typeof PrintReport !== 'undefined') {
+      if (PrintReport.maximizedFeatures) return PrintReport.maximizedFeatures();
     }
     const w = Math.max(800, Number(window.screen?.availWidth) || 1200);
     const h = Math.max(600, Number(window.screen?.availHeight) || 800);
@@ -446,6 +476,7 @@ const DocPrint = {
   async printDocument({ title, header, lines, extraMeta, footerNote, formato }) {
     const fmt = formato || (await this.fetchFormatoImpresion());
     const muestraPeso = await this.fetchMuestraPeso();
+    const muestraMarcas = await this.fetchMuestraMarcas();
     const h = header || {};
     const coddoc = h.CODDOC;
     const correlativo = h.CORRELATIVO;
@@ -466,12 +497,18 @@ const DocPrint = {
       }
     }
 
+    if (this.isTicket(fmt)) {
+      throw new Error(
+        'No se pudo renderizar el ticket. En Formatos de impresión, revise la plantilla TICKET del tipo de documento o pulse «Cargar default del sistema».'
+      );
+    }
+
     await PrintReport.openAndPrint(
       () =>
         this.wrapHtml({
           title,
           bodyHtml: this.buildDocumentHtml(
-            { title, header, lines, extraMeta, footerNote, muestraPeso },
+            { title, header, lines, extraMeta, footerNote, muestraPeso, muestraMarcas },
             fmt
           ),
           formato: fmt,
