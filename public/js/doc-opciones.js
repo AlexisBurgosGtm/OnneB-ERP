@@ -353,6 +353,12 @@ const DocOpciones = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
+      operation: {
+        area: 'fel-certificar',
+        label: 'Certificación FEL',
+        coddoc,
+        correlativo,
+      },
     });
     const fel = data.fel || {};
     F.toast(
@@ -369,14 +375,21 @@ const DocOpciones = {
    * @param {{ onImprimirSistema?: () => Promise<void>|void, silentError?: boolean }} [opts]
    */
   async certificarYMostrarFormatos(coddoc, correlativo, opts = {}) {
-    const data = await this.certificar(coddoc, correlativo);
-    const fel = data.fel || {};
-    const felUuid = String(fel.uuid || fel.UUID || data.FEL_UUDI || '').trim();
-    await this.mostrarFormatosTrasCertificar({
-      felUuid,
-      onImprimirSistema: opts.onImprimirSistema,
-    });
-    return data;
+    try {
+      const data = await this.certificar(coddoc, correlativo);
+      const fel = data.fel || {};
+      const felUuid = String(fel.uuid || fel.UUID || data.FEL_UUDI || '').trim();
+      await this.mostrarFormatosTrasCertificar({
+        felUuid,
+        onImprimirSistema: opts.onImprimirSistema,
+      });
+      return data;
+    } catch (err) {
+      if (!opts.silentError && typeof F !== 'undefined' && typeof LastOperationError !== 'undefined') {
+        F.toast('Revise el detalle en Asistente → Último error', 'info');
+      }
+      throw err;
+    }
   },
 
   buildWhatsappDetalleText(doc, row) {

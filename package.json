@@ -21,6 +21,7 @@
     "seed:updater:tipodoc-plantilla-impresion": "node scripts/seed-update-query-tipodoc-plantilla-impresion.js",
     "seed:updater:fel-frase-tipodoc-obs": "node scripts/seed-update-query-fel-frase-tipodoc-obs.js",
     "seed:updater:voz-login-estilo": "node scripts/seed-update-query-voz-login-estilo.js",
+    "seed:updater:permite-modificar-descripcion-ventas": "node scripts/seed-update-query-permite-modificar-descripcion-ventas.js",
     "seed:updater:community-costo-promedio": "node scripts/seed-update-query-community-costo-promedio.js",
     "seed:updater:documentos-mesa-restaurante": "node scripts/seed-update-query-documentos-mesa-restaurante.js",
     "dist:client": "node scripts/dist-client.js",

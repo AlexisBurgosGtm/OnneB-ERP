@@ -40,10 +40,43 @@
     if (el) el.hidden = true;
   }
 
+  /** Instalaciones típicas: localhost / LAN por HTTP (aunque no haya beforeinstallprompt). */
+  function isLocalInstallContext() {
+    const host = String(window.location.hostname || '').toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    return window.location.protocol === 'http:';
+  }
+
+  function syncBannerChromeTip() {
+    const tip = document.getElementById('onneb-pwa-http-tip');
+    const originEl = document.getElementById('onneb-pwa-origin-example');
+    if (originEl) originEl.textContent = window.location.origin || 'http://localhost:6500';
+    if (tip) tip.hidden = false;
+    bindChromeFlagLink();
+  }
+
+  function syncInstallButtonState() {
+    const btnInstall = document.getElementById('onneb-pwa-install-btn');
+    if (!btnInstall) return;
+    const canPrompt = Boolean(deferredPrompt);
+    btnInstall.disabled = !canPrompt;
+    btnInstall.title = canPrompt
+      ? 'Instalar OnneB PLUS como aplicación'
+      : 'Use el menú del navegador (Instalar aplicación) si no aparece el diálogo';
+  }
+
   function showBannerIfReady() {
-    if (isStandalone() || isDismissed() || !deferredPrompt) return;
+    if (isStandalone() || isDismissed()) return;
+    const showForInstall = Boolean(deferredPrompt);
+    const showForLocalHelp = isLocalInstallContext();
+    if (!showForInstall && !showForLocalHelp) return;
     const el = document.getElementById('onneb-pwa-install-banner');
-    if (el) el.hidden = false;
+    if (!el) return;
+    el.hidden = false;
+    syncBannerChromeTip();
+    syncInstallButtonState();
   }
 
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -60,7 +93,7 @@
     }
     if (!deferredPrompt) {
       if (typeof F !== 'undefined') {
-        F.toast('Use el menú del navegador para instalar o abra en Chrome/Edge', 'info');
+        F.toast('Use el menú del navegador → Instalar aplicación (Chrome/Edge)', 'info');
       }
       return false;
     }
@@ -72,8 +105,28 @@
     return outcome === 'accepted';
   };
 
+  const CHROME_INSECURE_FLAG_URL = 'chrome://flags/#unsafely-treat-insecure-origin-as-secure';
+
+  function bindChromeFlagLink() {
+    const link = document.getElementById('onneb-pwa-chrome-flag-link');
+    if (!link || link.dataset.bound === '1') return;
+    link.dataset.bound = '1';
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const opened = window.open(CHROME_INSECURE_FLAG_URL, '_blank');
+      if (!opened) {
+        window.location.assign(CHROME_INSECURE_FLAG_URL);
+      }
+      if (typeof F !== 'undefined' && typeof F.toast === 'function') {
+        F.toast(
+          'Si no se abrió, pegue en la barra de Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure',
+          'info'
+        );
+      }
+    });
+  }
+
   function bindBannerUi() {
-    const banner = document.getElementById('onneb-pwa-install-banner');
     const btnInstall = document.getElementById('onneb-pwa-install-btn');
     const btnClose = document.getElementById('onneb-pwa-install-close');
     btnInstall?.addEventListener('click', () => {
@@ -81,6 +134,7 @@
     });
     btnClose?.addEventListener('click', () => dismissBanner());
     showBannerIfReady();
+    window.setTimeout(showBannerIfReady, 800);
   }
 
   if (document.readyState === 'loading') {

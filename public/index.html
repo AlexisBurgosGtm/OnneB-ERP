@@ -77,15 +77,29 @@
 <body>
   <div id="onneb-pwa-install-banner" class="onneb-pwa-install-banner" hidden aria-live="polite">
     <div class="onneb-pwa-install-banner__inner">
-      <img src="/icons/icon-192.png" alt="" class="onneb-pwa-install-banner__icon" width="40" height="40">
-      <div class="onneb-pwa-install-banner__text">
-        <strong>Instalar OnneB PLUS</strong>
-        <span class="small d-block text-muted">Acceso rápido como aplicación</span>
+      <div class="onneb-pwa-install-banner__row">
+        <img src="/icons/icon-192.png" alt="" class="onneb-pwa-install-banner__icon" width="40" height="40">
+        <div class="onneb-pwa-install-banner__text">
+          <strong>Instalar OnneB PLUS</strong>
+          <span class="small d-block text-muted">Acceso rápido como aplicación</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" id="onneb-pwa-install-btn">Instalar</button>
+        <button type="button" class="btn btn-sm btn-link text-muted onneb-pwa-install-banner__close" id="onneb-pwa-install-close" aria-label="Cerrar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-      <button type="button" class="btn btn-sm btn-primary" id="onneb-pwa-install-btn">Instalar</button>
-      <button type="button" class="btn btn-sm btn-link text-muted onneb-pwa-install-banner__close" id="onneb-pwa-install-close" aria-label="Cerrar">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <p class="onneb-pwa-install-banner__http-tip small mb-0" id="onneb-pwa-http-tip">
+        Muchas instalaciones usan <strong>localhost</strong> por HTTP; Chrome puede mostrar el sitio como «No seguro».
+        En Chrome o Edge, abra
+        <a
+          href="chrome://flags/#unsafely-treat-insecure-origin-as-secure"
+          class="onneb-pwa-install-flag-link"
+          id="onneb-pwa-chrome-flag-link"
+          title="Abrir configuración de flags en Chrome"
+        >chrome://flags/#unsafely-treat-insecure-origin-as-secure</a>,
+        active <em>Insecure origins treated as secure</em> y agregue la URL de este ERP
+        (por ejemplo <code id="onneb-pwa-origin-example"></code>), luego reinicie el navegador.
+      </p>
     </div>
   </div>
   <script>
@@ -104,7 +118,12 @@
       ajax: {
         trackMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
         trackWebSockets: false,
-        ignoreURLs: [/socket\.io/i, /\/socket\.io\//i],
+        ignoreURLs: [
+          /socket\.io/i,
+          /\/socket\.io\//i,
+          /\/api\/community\/empresas-sync-sedes/i,
+          /\/api\/community\/stock-sedes/i,
+        ],
       },
       document: true,
       eventLag: false,
@@ -190,17 +209,10 @@
           <span class="login-empresas-loader-spinner" aria-hidden="true"></span>
           <span id="login-empresas-loader-text">Cargando sedes remotas…</span>
         </div>
-        <button type="button" id="btn-login-remote-mode" style="visibility: hidden;" class="login-mode-toggle" title="Conectar a otra sede">
+        <button type="button" id="btn-login-remote-mode" style="visibility: hidden;" class="login-mode-toggle" title="Abrir sedes en la nube">
           <i class="fa-solid fa-cloud" aria-hidden="true"></i>
           Modo Remoto
         </button>
-        <div id="login-remote-banner" class="login-remote-banner" hidden>
-          <i class="fa-solid fa-satellite-dish" aria-hidden="true"></i>
-          <div class="login-remote-banner-text">
-            <strong>Modo remoto</strong>
-            <span>Seleccione la sede e ingrese con las credenciales de esa base de datos.</span>
-          </div>
-        </div>
         <div class="login-logo-wrap">
           <img src="/logo.png" alt="OnneB" class="logo-app" width="120" height="120">
         </div>
@@ -233,10 +245,6 @@
           <button type="button" class="btn btn-outline-light w-100 mt-2" id="login-passkey-btn" style="display:none">
             <i class="fa-solid fa-fingerprint me-1" aria-hidden="true"></i>
             Usar huella / passkey
-          </button>
-          <button type="button" class="btn btn-outline-light w-100 mt-2" id="btn-login-local-mode" hidden>
-            <i class="fa-solid fa-house me-1" aria-hidden="true"></i>
-            Volver a login local
           </button>
         </form>
       </div>
@@ -649,6 +657,7 @@
   <script src="/vendor/sweetalert2/sweetalert2.all.min.js"></script>
   <script src="/vendor/jsstore/jsstore.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/last-operation-error.js"></script>
   <script src="/js/F.js"></script>
   <script src="/js/fpago-match.js"></script>
   <script src="/js/themes.js"></script>
@@ -707,6 +716,7 @@
   <script src="/js/doc-print.js"></script>
   <script src="/js/barcode-scanner-ui.js"></script>
   <script src="/js/pos-product-keyboard-ui.js"></script>
+  <script src="/js/pos-product-remote-stock.js"></script>
   <script src="/js/pos-doc-search-ui.js"></script>
   <script src="/js/cliente-historial-precios-ui.js"></script>
   <script src="/js/doc-tipo-select.js"></script>
@@ -796,6 +806,27 @@
   <script src="/js/companion-voice-reports.js"></script>
   <script src="/js/modo-telefono.js"></script>
   <script src="/js/app.js"></script>
+  <div class="modal fade" id="login-sedes-modal" tabindex="-1" aria-labelledby="login-sedes-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable login-sedes-modal-dialog">
+      <div class="modal-content login-sedes-modal-content">
+        <div class="modal-header border-0 pb-0">
+          <h2 class="modal-title h5" id="login-sedes-modal-title">
+            <i class="fa-solid fa-cloud me-2 text-success" aria-hidden="true"></i>Sedes — Modo remoto
+          </h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body pt-2">
+          <p class="small text-muted mb-3">Seleccione una sucursal con enlace para abrirla en una nueva pestaña.</p>
+          <div id="login-sedes-loader" class="login-sedes-loader" hidden>
+            <span class="login-empresas-loader-spinner" aria-hidden="true"></span>
+            <span>Cargando sedes…</span>
+          </div>
+          <div id="login-sedes-list" class="login-sedes-list" role="list"></div>
+          <p id="login-sedes-empty" class="small text-muted mb-0 text-center" hidden>Sin sedes configuradas para este TOKEN.</p>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="modo-telefono-shell" hidden>
     <div class="modo-telefono-inner">
       <button type="button" class="btn btn-outline-secondary btn-sm modo-telefono-exit" id="btn-modo-telefono-exit">

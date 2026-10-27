@@ -170,6 +170,9 @@ const MenuFavoritos = {
                 <button type="button" class="asistente-tab" data-asist-tab="precios" role="tab" aria-selected="false">
                   <i class="fa-solid fa-tags" aria-hidden="true"></i>PRECIOS
                 </button>
+                <button type="button" class="asistente-tab" data-asist-tab="error" role="tab" aria-selected="false">
+                  <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>ÚLTIMO ERROR
+                </button>
               </div>
               <div class="asistente-tab-panels">
                 <div class="asistente-tab-panel is-active" data-asist-panel="calcular" role="tabpanel">
@@ -220,6 +223,10 @@ const MenuFavoritos = {
                   </div>
                   <div id="asist-prod-result" class="asistente-prod-result small text-muted">Escriba y pulse Buscar o Enter (máx. 10 productos).</div>
                 </div>
+                <div class="asistente-tab-panel" data-asist-panel="error" role="tabpanel" hidden>
+                  <p class="small text-muted mb-2">Solo se guarda el error más reciente (certificación FEL, finalizar, etc.).</p>
+                  <div id="asist-last-error-panel" class="asistente-last-error-panel"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -241,6 +248,9 @@ const MenuFavoritos = {
         });
         this.bindAsistenteTools(popup);
         this.bindAsistenteTabs(popup);
+        if (typeof LastOperationError !== 'undefined') {
+          LastOperationError.bindPanel(popup.querySelector('#asist-last-error-panel'));
+        }
       },
     });
   },
@@ -287,7 +297,11 @@ const MenuFavoritos = {
         calcular: '#asist-costo',
         documentos: '#asist-coddoc',
         precios: '#asist-prod-q',
+        error: '#asist-error-copy',
       };
+      if (key === 'error' && typeof LastOperationError !== 'undefined') {
+        LastOperationError.bindPanel(popup.querySelector('#asist-last-error-panel'));
+      }
       popup.querySelector(focusMap[key] || '')?.focus();
     };
 

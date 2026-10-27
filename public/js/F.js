@@ -380,6 +380,10 @@ let F = {
    */
   async fetchJson(url, options = {}) {
     const isMutation = this.isMutationMethod(options.method);
+    const method = String(options.method || 'GET').toUpperCase();
+    const trackError =
+      options.trackLastError !== false &&
+      (isMutation || String(url).includes('/api/fel/'));
     if (isMutation) this.beginMutation();
     try {
       const headers = { Accept: 'application/json', ...options.headers };
@@ -394,20 +398,55 @@ let F = {
       const empnit = options.empnit || this.getEmpNit();
       if (dbMode === 'remote') headers['X-Db-Mode'] = 'remote';
       if (empnit) headers['X-Emp-Nit'] = String(empnit);
-      const res = await fetch(url, {
-        cache: options.cache ?? 'no-store',
-        ...options,
-        headers,
-      });
+      let res;
+      try {
+        res = await fetch(url, {
+          cache: options.cache ?? 'no-store',
+          ...options,
+          headers,
+        });
+      } catch (fetchErr) {
+        if (trackError && typeof LastOperationError !== 'undefined') {
+          LastOperationError.recordFromFetchFailure({
+            url,
+            method,
+            message: fetchErr.message || 'Error de red',
+            operation: options.operation,
+          });
+        }
+        throw fetchErr;
+      }
       if (!res.ok) {
         let message = `HTTP ${res.status}`;
         let payload = null;
+        let rawText = null;
+        const errRaw = await res.text();
         try {
-          const errBody = await res.json();
+          const errBody = JSON.parse(errRaw);
           payload = errBody;
           if (errBody.error) message = errBody.error;
+          if (
+            errBody.details &&
+            typeof LastOperationError !== 'undefined' &&
+            typeof LastOperationError.summarizeInfileDetails === 'function'
+          ) {
+            const infileExtra = LastOperationError.summarizeInfileDetails(errBody.details);
+            if (infileExtra) message = `${message}\n\n${infileExtra}`;
+          }
         } catch {
-          /* respuesta no JSON */
+          rawText = errRaw;
+          if (errRaw && errRaw.trim()) message = errRaw.trim().slice(0, 800);
+        }
+        if (trackError && typeof LastOperationError !== 'undefined') {
+          LastOperationError.recordFromFetchFailure({
+            url,
+            method,
+            message,
+            httpStatus: res.status,
+            payload,
+            rawText,
+            operation: options.operation,
+          });
         }
         const err = new Error(message);
         if (payload) err.payload = payload;

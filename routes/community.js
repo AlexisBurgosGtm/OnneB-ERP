@@ -21,6 +21,7 @@ const {
   findCommunityTrasladoForDestino,
 } = require('../lib/community-traslado-visibility');
 const { assertAdminPass } = require('../lib/config-auth');
+const { fetchStockAcrossSedes } = require('../lib/community-remote-stock');
 
 const router = express.Router();
 
@@ -151,7 +152,84 @@ router.get('/empresas-sync', async (req, res) => {
 });
 
 /**
- * Empresas con conexión remota configurada (login Modo Remoto).
+ * Sedes del TOKEN en COMMUNITY_EMPRESAS_SYNC (nombre + enlace web).
+ * Para el modal «Modo Remoto» en login — no expone credenciales de SQL.
+ */
+router.get('/empresas-sync-sedes', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const token = getAppToken();
+  if (!token) {
+    return res.status(503).json({ error: 'TOKEN no configurado en .env' });
+  }
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+  try {
+    const pool = await getUpdateDbPool();
+    const tokenCheck = await checkTokenActivo(pool, token);
+    if (!tokenCheck.ok) {
+      const status = tokenCheck.code === 'TOKEN_INACTIVE' ? 403 : 503;
+      return res.status(status).json({
+        error: tokenCheck.error || TOKEN_NO_NUBE_MSG,
+        code: tokenCheck.code,
+      });
+    }
+    const col = await pool.request().query(`
+      SELECT COL_LENGTH('dbo.COMMUNITY_EMPRESAS_SYNC', 'LINK') AS linkLen
+    `);
+    const hasLink = col.recordset?.[0]?.linkLen != null;
+    const linkSelect = hasLink
+      ? `NULLIF(LTRIM(RTRIM(CAST(LINK AS NVARCHAR(500)))), '') AS LINK`
+      : `CAST(NULL AS NVARCHAR(500)) AS LINK`;
+    const result = await pool
+      .request()
+      .input('TOKEN', sql.VarChar, token)
+      .query(`
+        SELECT
+          LTRIM(RTRIM(ISNULL(EMPNOMBRE, ''))) AS EMPNOMBRE,
+          ${linkSelect}
+        FROM dbo.COMMUNITY_EMPRESAS_SYNC
+        WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
+        ORDER BY EMPNOMBRE
+      `);
+    res.json({
+      token,
+      rows: result.recordset || [],
+    });
+  } catch (err) {
+    console.warn('[API GET /community/empresas-sync-sedes]', err.message);
+    res.status(500).json({ error: err.message || 'Error al consultar sedes' });
+  }
+});
+
+/**
+ * Existencia del mismo CODPROD en todas las sedes con LINK (consulta externa por sede).
+ */
+router.get('/stock-sedes', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isUpdateDbConfigured()) {
+    return res.status(503).json({
+      error: 'Base de datos de actualizaciones no configurada (UPDATE_* en .env)',
+    });
+  }
+  const codprod = String(req.query.codprod || req.query.CODPROD || '').trim();
+  if (!codprod) {
+    return res.status(400).json({ error: 'codprod requerido' });
+  }
+  try {
+    const data = await fetchStockAcrossSedes(codprod);
+    res.json(data);
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) console.warn('[API GET /community/stock-sedes]', err.message);
+    res.status(status).json({ error: err.message });
+  }
+});
+
+/**
+ * Empresas con conexión remota configurada (sesión remota / companion).
  * Solo EMPNIT / EMPNOMBRE — sin credenciales de servidor.
  */
 router.get('/empresas-sync-remoto', async (req, res) => {

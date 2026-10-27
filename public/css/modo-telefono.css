@@ -11,52 +11,77 @@ body.modo-telefono-active #btn-favoritos-fab {
   pointer-events: none !important;
 }
 
+/* Tokens --app-* (no --login-text del body ni --bs-body-bg por defecto claro) */
 #modo-telefono-shell {
   position: fixed;
   inset: 0;
   z-index: 99990;
-  background: var(--bs-body-bg, #f8fafc);
+  background: var(--app-bg, #f8fafc);
+  color: var(--app-text, #1e293b);
   overflow: auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
 
-.modo-telefono-inner {
+#modo-telefono-shell .modo-telefono-inner {
   max-width: 520px;
   margin: 0 auto;
   padding: 1rem 1rem 2rem;
 }
 
-.modo-telefono-title {
+#modo-telefono-shell .modo-telefono-title {
   font-size: 1.35rem;
   font-weight: 700;
   margin-bottom: 0.25rem;
+  color: var(--app-text, #1e293b);
 }
 
-.modo-telefono-sub {
-  color: var(--bs-secondary-color);
+#modo-telefono-shell .modo-telefono-sub {
+  color: var(--app-text-muted, #64748b);
   font-size: 0.9rem;
   margin-bottom: 1.25rem;
 }
 
-.modo-telefono-card {
-  background: var(--bs-body-bg);
-  border: 1px solid var(--bs-border-color);
+#modo-telefono-shell .modo-telefono-card {
+  background: var(--app-surface, #ffffff);
+  border: 1px solid var(--app-border, #e2e8f0);
   border-radius: 0.75rem;
   padding: 1rem;
   margin-bottom: 1rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: var(
+    --app-shadow,
+    0 1px 2px color-mix(in srgb, #000 4%, transparent),
+    0 6px 18px color-mix(in srgb, #000 5%, transparent)
+  );
+  color: var(--app-text, #1e293b);
 }
 
-.modo-telefono-card h2 {
+#modo-telefono-shell .modo-telefono-card h2 {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
+  color: var(--app-text, #1e293b);
 }
 
-.modo-telefono-exit {
+#modo-telefono-shell .modo-telefono-exit {
   width: 100%;
   margin-bottom: 1rem;
+}
+
+#modo-telefono-shell .btn-outline-secondary {
+  color: var(--app-text, #1e293b);
+  border-color: var(--app-border, #cbd5e1);
+  background: var(--app-surface, #ffffff);
+}
+
+#modo-telefono-shell .btn-outline-secondary:hover {
+  color: var(--app-text, #1e293b);
+  background: color-mix(in srgb, var(--app-text, #1e293b) 6%, var(--app-surface, #fff));
+  border-color: var(--app-border, #cbd5e1);
+}
+
+#modo-telefono-shell .text-muted {
+  color: var(--app-text-muted, #64748b) !important;
 }
 
 #modo-telefono-reports-grid {
@@ -65,29 +90,29 @@ body.modo-telefono-active #btn-favoritos-fab {
   gap: 0.65rem;
 }
 
-.companion-report-btn {
+#modo-telefono-shell .companion-report-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
   min-height: 5.25rem;
   padding: 0.65rem 0.5rem;
-  border: 1px solid var(--bs-border-color);
+  border: 1px solid var(--app-border, #e2e8f0);
   border-radius: 0.85rem;
-  background: var(--bs-tertiary-bg, #eef2ff);
-  color: inherit;
+  background: color-mix(in srgb, var(--onneb-brand, #7c3aed) 9%, var(--app-surface, #ffffff));
+  color: var(--app-text, #1e293b);
   font-size: 0.78rem;
   font-weight: 600;
   line-height: 1.2;
   text-align: center;
 }
 
-.companion-report-btn.is-loading {
+#modo-telefono-shell .companion-report-btn.is-loading {
   opacity: 0.65;
   pointer-events: none;
 }
 
-.companion-report-icon {
+#modo-telefono-shell .companion-report-icon {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.65rem;
@@ -95,10 +120,15 @@ body.modo-telefono-active #btn-favoritos-fab {
   align-items: center;
   justify-content: center;
   font-size: 1.1rem;
-  background: color-mix(in srgb, var(--bs-primary, #6366f1) 18%, transparent);
-  color: var(--bs-primary, #6366f1);
+  background: color-mix(in srgb, var(--onneb-brand, #7c3aed) 20%, var(--app-surface, #fff));
+  color: var(--onneb-brand, #7c3aed);
 }
 
-.companion-report-btn:active {
+#modo-telefono-shell .companion-report-label {
+  color: var(--app-text, #1e293b);
+}
+
+#modo-telefono-shell .companion-report-btn:active {
   transform: scale(0.98);
+  background: color-mix(in srgb, var(--onneb-brand, #7c3aed) 16%, var(--app-surface, #ffffff));
 }

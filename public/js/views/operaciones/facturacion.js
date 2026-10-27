@@ -1091,7 +1091,7 @@ const FacturacionView = {
     }
   },
 
-  async agregarLinea(codprod, codmedida, cantidad = 1, precio = undefined) {
+  async agregarLinea(codprod, codmedida, cantidad = 1, precio = undefined, desprodOverride = undefined) {
     const key = this.docKey();
     if (!key) {
       F.toast('No hay pedido activo', 'warning');
@@ -1111,6 +1111,8 @@ const FacturacionView = {
     if (precio !== undefined && precio !== null) {
       body.PRECIO = precio;
     }
+    const desOverride = String(desprodOverride ?? '').trim();
+    if (desOverride) body.DESPROD = desOverride.slice(0, 80);
     const res = await F.fetchJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1330,6 +1332,10 @@ const FacturacionView = {
     return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
   },
 
+  permiteModificarDescripcionVentas() {
+    return String(this._config?.permiteModificarDescripcionVentas || 'NO').trim().toUpperCase() === 'SI';
+  },
+
   solicitaAutorizaciones() {
     return String(this._config?.solicitaAutorizaciones || 'NO').trim().toUpperCase() === 'SI';
   },
@@ -1350,7 +1356,9 @@ const FacturacionView = {
     );
     const defaultPrecio = priceByMedida[String(defaultMedida)] ?? 0;
     const permiteCambiarPrecio = this.permiteCambiarPrecioPedido();
+    const permiteModificarDescripcion = this.permiteModificarDescripcionVentas();
     const solicitaAuth = this.solicitaAutorizaciones();
+    const descripcionBase = String(row.DESPROD || row.CODPROD || '').trim();
     const options = precios
       .map((p) => {
         const selected = String(p.CODMEDIDA) === String(defaultMedida) ? ' selected' : '';
@@ -1360,8 +1368,15 @@ const FacturacionView = {
     let authGate = null;
     const { value: picked } = await Swal.fire({
       ...CatalogosUI.modalBase(),
-      title: row.DESPROD || row.CODPROD,
+      title: row.CODPROD,
       html: `
+        ${
+          permiteModificarDescripcion
+            ? `<label class="form-label small mb-0" for="fac-swal-desprod">Descripción en documento</label>
+        <input type="text" id="fac-swal-desprod" class="form-control form-control-sm mb-2" maxlength="200"
+          value="${this.escapeHtml(descripcionBase)}" maxlength="80" autocomplete="off">`
+            : ''
+        }
         <label class="form-label small mb-0">Medida</label>
         <select id="fac-swal-medida" class="form-select form-select-sm">${options}</select>
         <div class="row g-2 mt-2 align-items-end">
@@ -1424,11 +1439,17 @@ const FacturacionView = {
             priceByMedida,
             permiteCambiarPrecio,
             solicitaAutorizaciones: true,
-            buildDescripcion: ({ precio, cantidad, medida }) =>
-              `${AutorizacionesUI.usuario()} quiere agregar el producto ${cantidad} ${medida} ${row.DESPROD || row.CODPROD} al precio ${AutorizacionesUI.formatPrecioDesc(precio)}`,
+            buildDescripcion: ({ precio, cantidad, medida }) => {
+              const desLine =
+                document.getElementById('fac-swal-desprod')?.value?.trim() || row.DESPROD || row.CODPROD;
+              return `${AutorizacionesUI.usuario()} quiere agregar el producto ${cantidad} ${medida} ${desLine} al precio ${AutorizacionesUI.formatPrecioDesc(precio)}`;
+            },
           });
         }
-        PosProductKeyboardUI.focusInput(cantInp);
+        const focusEl = permiteModificarDescripcion
+          ? document.getElementById('fac-swal-desprod')
+          : cantInp;
+        PosProductKeyboardUI.focusInput(focusEl || cantInp);
         PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: precioInp, popup });
       },
       willClose: () => {
@@ -1445,6 +1466,14 @@ const FacturacionView = {
           Swal.showValidationMessage('Seleccione una medida');
           return false;
         }
+        let desprod = null;
+        if (permiteModificarDescripcion) {
+          desprod = String(document.getElementById('fac-swal-desprod')?.value ?? '').trim();
+          if (!desprod) {
+            Swal.showValidationMessage('Indique la descripción del producto');
+            return false;
+          }
+        }
         if (permiteCambiarPrecio) {
           const precio = Number(document.getElementById('fac-swal-precio')?.value);
           if (!Number.isFinite(precio) || precio < 0) {
@@ -1460,13 +1489,13 @@ const FacturacionView = {
             Swal.showValidationMessage('Espere la autorización del administrador');
             return false;
           }
-          return { medida, cantidad: cant, precio };
+          return { medida, cantidad: cant, precio, desprod };
         }
-        return { medida, cantidad: cant };
+        return { medida, cantidad: cant, desprod };
       },
     });
     if (picked?.medida) {
-      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio);
+      await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio, picked.desprod);
       if (solicitaAuth && picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
         AutorizacionesUI.consumePrecioGrant();
       }
@@ -1499,6 +1528,7 @@ const FacturacionView = {
             <div class="pos-prod-meta text-end">
               <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
               <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.PRECIO))}</div>
+              <div class="pos-prod-remote">${PosDocSearchUI.remoteStockButton(p.CODPROD, (v) => this.escapeHtml(v))}</div>
             </div>
           </div>
         `

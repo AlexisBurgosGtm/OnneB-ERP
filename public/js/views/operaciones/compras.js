@@ -1110,6 +1110,7 @@ const ComprasView = {
             <div class="pos-prod-meta text-end">
               <div class="pos-prod-stock small text-muted">Exist. ${this.escapeHtml(this.formatQty(p.EXISTENCIA))}</div>
               <div class="pos-prod-price">${this.escapeHtml(this.formatMoney(p.COSTO))}</div>
+              <div class="pos-prod-remote">${PosDocSearchUI.remoteStockButton(p.CODPROD, (v) => this.escapeHtml(v))}</div>
             </div>
           </div>
         `

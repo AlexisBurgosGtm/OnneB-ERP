@@ -695,6 +695,10 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const permiteModificarDescripcionVentas = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MODIFICAR_DESCRIPCION_VENTAS
+    );
     const solicitaAutorizaciones = await getSettingSino(
       pool,
       SETTING_OPCION.SOLICITA_AUTORIZACIONES
@@ -720,6 +724,7 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      permiteModificarDescripcionVentas,
       solicitaAutorizaciones,
       muestraDesprod2,
       muestraPesoEnDocumentos,
@@ -1492,6 +1497,14 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       }
       equivale = Number(prod.EQUIVALE) || 1;
       desprod = prod.DESPROD;
+      const permiteModificarDescripcion = await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_MODIFICAR_DESCRIPCION_VENTAS
+      );
+      if (permiteModificarDescripcion === 'SI') {
+        const customDes = String(req.body?.DESPROD || '').trim();
+        if (customDes) desprod = customDes.slice(0, 80);
+      }
       exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
       peso = pesoFromPreciosRow(prod);
     }

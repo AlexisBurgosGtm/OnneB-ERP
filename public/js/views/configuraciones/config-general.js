@@ -13,6 +13,7 @@ const ConfigGeneralView = {
     MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
     CONFIGURACION_IVA: 'CONFIGURACION IVA',
     PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
+    PERMITE_MODIFICAR_DESCRIPCION_VENTAS: 'PERMITE MODIFICAR DESCR VENTAS',
     SOLICITA_AUTORIZACIONES: 'SOLICITA AUTORIZACIONES',
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
@@ -92,6 +93,13 @@ const ConfigGeneralView = {
       icon: 'fa-tag',
       fallbackDesc:
         'Permite modificar el precio al agregar productos en pedidos de mostrador y facturas (FAC/FEF/FEC/FES)',
+    },
+    {
+      opcion: 'PERMITE MODIFICAR DESCR VENTAS',
+      title: 'Permite modificar descripción en ventas',
+      icon: 'fa-pen-to-square',
+      fallbackDesc:
+        'En facturas normales y FEL (FAC/FEF/FEC/FES), al agregar un producto muestra la descripción editable en el modal de cantidad',
     },
     {
       opcion: 'SOLICITA AUTORIZACIONES',
@@ -402,6 +410,7 @@ const ConfigGeneralView = {
       'IMPRIME TICKET AL GUARDAR VENTA': 'operacion',
       'MUESTRA DATOS EN CORTE DE CAJA': 'operacion',
       'PERMITE CAMBIAR PRECIO EN PEDIDOS': 'operacion',
+      'PERMITE MODIFICAR DESCR VENTAS': 'operacion',
       'SOLICITA AUTORIZACIONES': 'seguridad',
       'CERTIFICA AL FINALIZAR': 'electronica',
       'PERMITE FRACCIONAMIENTO FACTURAS': 'electronica',
@@ -996,9 +1005,12 @@ const ConfigGeneralView = {
         const estado = r.implementado
           ? '<span class="badge text-bg-success">Activo</span>'
           : '<span class="badge text-bg-secondary">Próximamente</span>';
+        const tipoResp = r.jsonResponse
+          ? ' <span class="badge text-bg-info">JSON</span>'
+          : '';
         return `
           <tr>
-            <td>${this.escapeHtml(r.nombre)} ${estado}</td>
+            <td>${this.escapeHtml(r.nombre)} ${estado}${tipoResp}</td>
             <td><code class="small">${this.escapeHtml(params)}</code></td>
             <td class="text-break">
               <code class="small user-select-all" id="consulta-ext-url-${this.escapeHtml(r.codigo)}">${this.escapeHtml(fullUrl)}</code>
@@ -1021,8 +1033,9 @@ const ConfigGeneralView = {
             <i class="fa-solid fa-link me-1 text-primary"></i>API de consultas externas
           </h6>
           <p class="card-text small text-muted mb-3">
-            Endpoints GET públicos (sin token) que devuelven <code>{ "mensaje": "…" }</code>.
-            Use la URL en otro servicio; <strong>empnit</strong> y <strong>ventadia</strong> identifican empresa y reporte.
+            Endpoints GET públicos (sin token). La mayoría devuelve <code>{ "mensaje": "…" }</code>;
+            <strong>EXISTENCIA DE PRODUCTO</strong> devuelve JSON con <code>CODPROD</code>, <code>DESPROD</code>, <code>DESMARCA</code>, <code>EXISTENCIA</code> y <code>FISICO</code>.
+            Use la URL en otro servicio; <strong>empnit</strong> y <strong>ventadia</strong> (o <strong>codprod</strong>) identifican la consulta.
             ${emp ? `Empresa actual: <code>${this.escapeHtml(emp)}</code>.` : 'Inicie sesión con empresa para ver URLs con EMPNIT.'}
           </p>
           <div class="table-responsive">

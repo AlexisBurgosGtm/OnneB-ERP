@@ -6,6 +6,7 @@ const {
   normalizeReportCode,
   resolveReportMensaje,
 } = require('../lib/consultas-externas');
+const { fetchProductoInventario } = require('../lib/consultas-externas-producto');
 
 const router = express.Router();
 
@@ -17,6 +18,32 @@ router.get('/catalog', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const empnit = getEmpNit(req);
   res.json({ reports: listReportsCatalog(empnit) });
+});
+
+router.get('/producto', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+
+  const empnit = getEmpNit(req);
+  const codprod = String(req.query.codprod || req.query.CODPROD || '').trim();
+  if (!empnit) {
+    return res.status(400).json({ error: 'EMPNIT requerido' });
+  }
+  if (!codprod) {
+    return res.status(400).json({ error: 'codprod requerido' });
+  }
+
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const data = await fetchProductoInventario(pool, sql, empnit, codprod);
+    res.json(data);
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) console.warn('[API GET /consultas-externas/producto]', err.message);
+    res.status(status).json({ error: err.message });
+  }
 });
 
 router.get('/mensaje', async (req, res) => {

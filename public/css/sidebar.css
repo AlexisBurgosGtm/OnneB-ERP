@@ -333,6 +333,29 @@
   background: #b45309;
 }
 
+.asistente-tab[data-asist-tab='error'] {
+  background: #b91c1c;
+}
+
+.asistente-last-error-panel {
+  max-height: min(42vh, 22rem);
+  overflow: auto;
+}
+
+.asistente-last-error-pre {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  padding: 0.5rem 0.6rem;
+  margin: 0;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--app-text, #111) 6%, var(--app-surface, #fff));
+  border: 1px solid var(--app-border, #e5e7eb);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 14rem;
+  overflow: auto;
+}
+
 .asistente-tab-panel[hidden] {
   display: none !important;
 }

@@ -138,6 +138,7 @@
       HourlyVoice.stop();
     }
     setViewImmediate(true);
+    refreshLoginRemoteButtonVisibility().catch(() => {});
     loadLoginEmpresas();
   }
 
@@ -431,22 +432,159 @@
     loginRemoteMode = Boolean(remote);
   };
 
-  async function setLoginRemoteMode(remote) {
+  function setLoginRemoteMode(remote) {
     loginRemoteMode = Boolean(remote);
     const card = document.getElementById('login-card');
-    const banner = document.getElementById('login-remote-banner');
-    const btnRemote = document.getElementById('btn-login-remote-mode');
-    const btnLocal = document.getElementById('btn-login-local-mode');
     card?.classList.toggle('is-remote', loginRemoteMode);
-    if (banner) banner.hidden = !loginRemoteMode;
-    if (btnRemote) btnRemote.hidden = loginRemoteMode;
-    if (btnLocal) btnLocal.hidden = !loginRemoteMode;
     updateLoginPasskeyButton();
-    setLoginEmpresasLoading(
-      true,
-      loginRemoteMode ? 'Cargando sedes remotas…' : 'Cargando empresas locales…'
-    );
-    await loadLoginEmpresas();
+    if (loginRemoteMode) {
+      setLoginEmpresasLoading(true, 'Cargando sedes remotas…');
+      loadLoginEmpresas().catch((err) => console.warn('[Login] empresas remotas:', err));
+    } else {
+      loadLoginEmpresas().catch((err) => console.warn('[Login] empresas:', err));
+    }
+  }
+
+  let loginSedesModal = null;
+
+  function escapeLoginHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function isSafeSedeLink(raw) {
+    const link = String(raw ?? '').trim();
+    if (!link) return null;
+    try {
+      const url = new URL(link, window.location.origin);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      return url.href;
+    } catch {
+      return null;
+    }
+  }
+
+  function renderLoginSedesList(rows) {
+    const list = document.getElementById('login-sedes-list');
+    const empty = document.getElementById('login-sedes-empty');
+    if (!list) return;
+    const items = (rows || [])
+      .map((row) => {
+        const nombre = String(row.EMPNOMBRE ?? '').trim() || 'Sucursal';
+        const href = isSafeSedeLink(row.LINK);
+        return { nombre, href };
+      })
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    if (!items.length) {
+      list.innerHTML = '';
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = 'Sin sedes configuradas para este TOKEN.';
+      }
+      return;
+    }
+    if (empty) empty.hidden = true;
+    list.innerHTML = items
+      .map((item) => {
+        const label = escapeLoginHtml(item.nombre);
+        if (item.href) {
+          return `<button type="button" class="login-sede-card is-active" role="listitem" data-sede-link="${escapeLoginHtml(item.href)}">${label}</button>`;
+        }
+        return `<div class="login-sede-card" role="listitem" aria-disabled="true">${label}</div>`;
+      })
+      .join('');
+    list.querySelectorAll('[data-sede-link]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const href = btn.getAttribute('data-sede-link');
+        if (!href) return;
+        window.open(href, '_blank', 'noopener,noreferrer');
+      });
+    });
+  }
+
+  function ensureLoginSedesModalHost() {
+    const el = document.getElementById('login-sedes-modal');
+    if (!el) return null;
+    if (el.parentElement !== document.body) {
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function bindLoginSedesModalEvents(el) {
+    if (!el || el.dataset.sedesModalBound === '1') return;
+    el.dataset.sedesModalBound = '1';
+    el.addEventListener('show.bs.modal', () => {
+      document.body.classList.add('login-sedes-modal-open');
+      if (window.OnnebPace) window.OnnebPace.stop();
+    });
+    el.addEventListener('hidden.bs.modal', () => {
+      document.body.classList.remove('login-sedes-modal-open');
+      if (window.OnnebPace) window.OnnebPace.stop();
+    });
+  }
+
+  async function loadLoginSedesModal() {
+    const loader = document.getElementById('login-sedes-loader');
+    const list = document.getElementById('login-sedes-list');
+    const empty = document.getElementById('login-sedes-empty');
+    if (window.OnnebPace) window.OnnebPace.stop();
+    if (loader) loader.hidden = false;
+    if (list) list.innerHTML = '';
+    if (empty) {
+      empty.hidden = true;
+      empty.textContent = 'Sin sedes configuradas para este TOKEN.';
+    }
+    try {
+      const data = await F.fetchJson(`/api/community/empresas-sync-sedes?_=${Date.now()}`, {
+        cache: 'no-store',
+        trackLastError: false,
+      });
+      renderLoginSedesList(data.rows || []);
+    } catch (err) {
+      if (list) list.innerHTML = '';
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent = err.message || 'No se pudieron cargar las sedes';
+      }
+    } finally {
+      if (loader) loader.hidden = true;
+      if (window.OnnebPace) window.OnnebPace.stop();
+    }
+  }
+
+  function openLoginSedesModal() {
+    const el = ensureLoginSedesModalHost();
+    if (!el || typeof bootstrap === 'undefined') return;
+    bindLoginSedesModalEvents(el);
+    if (!loginSedesModal) {
+      loginSedesModal = bootstrap.Modal.getOrCreateInstance(el);
+    }
+    if (window.OnnebPace) window.OnnebPace.stop();
+    loginSedesModal.show();
+    loadLoginSedesModal();
+  }
+
+  async function refreshLoginRemoteButtonVisibility() {
+    const btn = document.getElementById('btn-login-remote-mode');
+    if (!btn) return;
+    const token = F.getToken();
+    if (!token) {
+      btn.style.visibility = 'hidden';
+      return;
+    }
+    try {
+      const status = await F.fetchJson(`/api/community/token-status?_=${Date.now()}`, {
+        cache: 'no-store',
+        trackLastError: false,
+      });
+      btn.style.visibility = status.ok && status.activo ? 'visible' : 'hidden';
+    } catch {
+      btn.style.visibility = 'hidden';
+    }
   }
 
   async function fetchEmpresasForLogin() {
@@ -703,18 +841,8 @@
     });
 
     const btnRemoteMode = document.getElementById('btn-login-remote-mode');
-    const btnLocalMode = document.getElementById('btn-login-local-mode');
     btnRemoteMode?.addEventListener('click', () => {
-      setLoginRemoteMode(true).catch((err) => {
-        console.warn('[Login] modo remoto:', err);
-        F.toast(err.message || 'No se pudo activar modo remoto', 'error');
-      });
-    });
-    btnLocalMode?.addEventListener('click', () => {
-      setLoginRemoteMode(false).catch((err) => {
-        console.warn('[Login] modo local:', err);
-        F.toast(err.message || 'No se pudo volver al login local', 'error');
-      });
+      openLoginSedesModal();
     });
 
     const passkeyBtn = document.getElementById('login-passkey-btn');
@@ -1281,6 +1409,7 @@
     }
 
     ensureLoginView();
+    await refreshLoginRemoteButtonVisibility();
     await loadLoginEmpresas();
 
     if (F.isLoggedIn()) {

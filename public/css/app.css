@@ -449,7 +449,7 @@ body.onneb-mutation-busy .swal2-container button {
   top: 0.65rem;
   left: 0.65rem;
   z-index: 1060;
-  max-width: min(22rem, calc(100vw - 1.25rem));
+  max-width: min(28rem, calc(100vw - 1.25rem));
   pointer-events: none;
 }
 
@@ -459,13 +459,36 @@ body.onneb-mutation-busy .swal2-container button {
 
 .onneb-pwa-install-banner__inner {
   display: flex;
-  align-items: center;
-  gap: 0.65rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.5rem 0.65rem;
   background: var(--app-surface, #fff);
   border: 1px solid var(--app-border, #e5e7eb);
   border-radius: var(--app-radius-sm, 0.5rem);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+}
+
+.onneb-pwa-install-banner__row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.onneb-pwa-install-banner__http-tip {
+  line-height: 1.35;
+  color: var(--app-text-muted, #64748b);
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--app-border, #e5e7eb) 85%, transparent);
+}
+
+.onneb-pwa-install-banner__http-tip code {
+  font-size: 0.78em;
+  word-break: break-all;
+}
+
+.onneb-pwa-install-flag-link {
+  font-weight: 600;
+  word-break: break-all;
 }
 
 .onneb-pwa-install-banner__icon {

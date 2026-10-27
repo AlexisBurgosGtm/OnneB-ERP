@@ -209,7 +209,7 @@ app.use(licenseMiddleware);
 const publicDir = require('./lib/app-paths').publicDir();
 const dataDir = require('./lib/app-paths').writableDataDir();
 const fotosProductosDir = require('./lib/app-paths').fotosProductosDir();
-const { metaPathForServe, ensureBuildMetaSeeded } = require('./lib/build-meta');
+const { getBuildMetaForServe, ensureBuildMetaSeeded } = require('./lib/build-meta');
 ensureBuildMetaSeeded();
 
 if (!fs.existsSync(fotosProductosDir)) {
@@ -261,9 +261,9 @@ app.use(
 app.get('/api/build-meta', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  const buildMetaPath = metaPathForServe();
-  if (fs.existsSync(buildMetaPath)) {
-    res.sendFile(buildMetaPath);
+  const meta = getBuildMetaForServe();
+  if (meta) {
+    res.json(meta);
   } else {
     res.json({ buildCount: 0, buildDate: null });
   }

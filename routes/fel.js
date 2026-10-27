@@ -8,6 +8,7 @@ const {
   TIPODOC_CERTIFICABLES,
   TIPODOC_FEL_DESCRIPCION,
 } = require('../lib/fel/constants');
+const { buildFelApiErrorDetails } = require('../lib/fel/infile-error');
 
 const router = express.Router();
 
@@ -80,7 +81,14 @@ router.post('/certificar/:coddoc/:correlativo', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.warn('[API POST /fel/certificar]', err.message);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (err.infileBody) {
+      console.warn('[API POST /fel/certificar] Infile body:', String(err.infileBody).slice(0, 2000));
+    }
+    const details = buildFelApiErrorDetails(err, coddoc, correlativo);
+    res.status(err.statusCode || 500).json({
+      error: err.message,
+      details,
+    });
   }
 });
 
@@ -109,7 +117,14 @@ router.post('/anular/:coddoc/:correlativo', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.warn('[API POST /fel/anular]', err.message);
-    res.status(err.statusCode || 500).json({ error: err.message });
+    if (err.infileBody) {
+      console.warn('[API POST /fel/anular] Infile body:', String(err.infileBody).slice(0, 2000));
+    }
+    const details = buildFelApiErrorDetails(err, coddoc, correlativo);
+    res.status(err.statusCode || 500).json({
+      error: err.message,
+      details,
+    });
   }
 });
 

@@ -801,6 +801,29 @@ body.pos-product-sheet-open {
   min-width: 4.5rem;
 }
 
+.pos-product-item .pos-prod-remote {
+  line-height: 1;
+  margin-top: 0.2rem;
+}
+
+.pos-remote-stock-btn {
+  color: var(--onneb-brand, #7c3aed) !important;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+
+.pos-remote-stock-btn:hover {
+  color: color-mix(in srgb, var(--onneb-brand, #7c3aed) 80%, #000) !important;
+}
+
+body.pos-remote-stock-modal-open #pos-remote-stock-modal {
+  z-index: 10060 !important;
+}
+
+body.pos-remote-stock-modal-open .modal-backdrop.show {
+  z-index: 10055 !important;
+}
+
 .pos-product-item .pos-prod-stock {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

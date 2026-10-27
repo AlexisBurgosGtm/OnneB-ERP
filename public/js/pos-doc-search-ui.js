@@ -4,6 +4,12 @@
 const PosDocSearchUI = {
   breakpoint: 992,
 
+  /** Botón wifi — existencia en otras sedes (PosProductListUI). */
+  remoteStockButton(codprod, escapeHtml) {
+    if (typeof PosProductListUI === 'undefined') return '';
+    return PosProductListUI.remoteStockButtonHtml(codprod, escapeHtml);
+  },
+
   searchPlaceholder: 'Código o descripción… (Enter)',
 
   searchHintHtml() {

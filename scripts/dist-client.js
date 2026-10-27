@@ -335,6 +335,11 @@ async function main() {
     fs.copyFileSync(buildMetaSrc, path.join(OUT, 'build-meta.json'));
     log('build-meta.json copiado junto al .exe');
   }
+  const buildCounterSrc = path.join(ROOT, 'build-counter.json');
+  if (fs.existsSync(buildCounterSrc)) {
+    fs.copyFileSync(buildCounterSrc, path.join(OUT, 'build-counter.json'));
+    log('build-counter.json copiado junto al .exe');
+  }
 
   log(`Listo: ${OUT}`);
   log(`Cliente: copie .env junto a ${EXE_NAME}`);
