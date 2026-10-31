@@ -6,9 +6,12 @@ const {
   SQL_TIPODOC_VENTA_IN,
   SQL_TIPODOC_DEV_IN,
   SQL_REPORTES_VENTAS_WHERE,
-  SQL_SIGNO_DOC_IMPORTE,
+  SQL_REPORTES_VENTAS_WHERE_DOCS,
+  SQL_DOC_IMPORTE_REPORTE,
+  SQL_DOC_COSTO_REPORTE,
   SQL_SIGNO_LINEA_UNIDADES,
   SQL_SIGNO_LINEA_IMPORTE,
+  SQL_SIGNO_LINEA_COSTO,
 } = require('../lib/reportes-ventas-neto');
 
 const router = express.Router();
@@ -54,7 +57,26 @@ function resolveRango(req) {
 }
 
 const SQL_BASE_WHERE = SQL_REPORTES_VENTAS_WHERE;
-const SQL_SIGNO_IMPORTE = SQL_SIGNO_DOC_IMPORTE;
+const SQL_DOCS_WHERE = SQL_REPORTES_VENTAS_WHERE_DOCS;
+
+function pctUtilidad(importe, utilidad) {
+  const i = Number(importe);
+  const u = Number(utilidad);
+  if (!Number.isFinite(i) || Math.abs(i) < 0.0005) return null;
+  return roundMoney((u / i) * 100);
+}
+
+function mapCostoUtilidad(importeRaw, costoRaw) {
+  const importe = roundMoney(importeRaw);
+  const totalcosto = roundMoney(costoRaw);
+  const utilidad = roundMoney(importe - totalcosto);
+  return {
+    IMPORTE: importe,
+    TOTALCOSTO: totalcosto,
+    UTILIDAD: utilidad,
+    PCT_UTILIDAD: pctUtilidad(importe, utilidad),
+  };
+}
 
 router.get('/', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -74,6 +96,8 @@ router.get('/', async (req, res) => {
         SELECT
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(d.TOTALPRECIO, 0) ELSE 0 END) AS VENTAS,
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN ISNULL(d.TOTALPRECIO, 0) ELSE 0 END) AS DEVOLUCIONES,
+          SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(d.TOTALCOSTO, 0) ELSE 0 END) AS COSTO_VENTAS,
+          SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN ISNULL(d.TOTALCOSTO, 0) ELSE 0 END) AS COSTO_DEVOLUCIONES,
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN 1 ELSE 0 END) AS DOCS_VENTA,
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN 1 ELSE 0 END) AS DOCS_DEV
         FROM dbo.DOCUMENTOS d
@@ -89,10 +113,11 @@ router.get('/', async (req, res) => {
           ISNULL(d.STATUS, '') AS STATUS,
           UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) AS TIPODOC,
           ISNULL(t.DESDOC, '') AS DESDOC,
-          (${SQL_SIGNO_IMPORTE}) AS IMPORTE
+          (${SQL_DOC_IMPORTE_REPORTE}) AS IMPORTE,
+          (${SQL_DOC_COSTO_REPORTE}) AS TOTALCOSTO
         FROM dbo.DOCUMENTOS d
         INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
-        WHERE ${SQL_BASE_WHERE}
+        WHERE ${SQL_DOCS_WHERE}
         ORDER BY d.FECHA, d.CODDOC, d.CORRELATIVO
       `),
       baseReq().query(`
@@ -100,7 +125,8 @@ router.get('/', async (req, res) => {
           LTRIM(RTRIM(dp.CODPROD)) AS CODPROD,
           MAX(LTRIM(RTRIM(ISNULL(dp.DESPROD, '')))) AS DESPROD,
           SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS TOTALUNIDADES,
-          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS IMPORTE
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS IMPORTE,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
         INNER JOIN dbo.DOCUMENTOS d
           ON dp.EMPNIT = d.EMPNIT AND dp.CODDOC = d.CODDOC AND dp.CORRELATIVO = d.CORRELATIVO
@@ -114,7 +140,8 @@ router.get('/', async (req, res) => {
           ISNULL(p.CODMARCA, 0) AS CODMARCA,
           ISNULL(NULLIF(LTRIM(RTRIM(m.DESMARCA)), ''), 'Sin marca') AS DESMARCA,
           SUM(${SQL_SIGNO_LINEA_UNIDADES}) AS TOTALUNIDADES,
-          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS IMPORTE
+          SUM(${SQL_SIGNO_LINEA_IMPORTE}) AS IMPORTE,
+          SUM(${SQL_SIGNO_LINEA_COSTO}) AS TOTALCOSTO
         FROM dbo.DOCPRODUCTOS dp
         INNER JOIN dbo.DOCUMENTOS d
           ON dp.EMPNIT = d.EMPNIT AND dp.CODDOC = d.CODDOC AND dp.CORRELATIVO = d.CORRELATIVO
@@ -131,32 +158,40 @@ router.get('/', async (req, res) => {
     const r = resumenRes.recordset[0] || {};
     const ventas = roundMoney(r.VENTAS);
     const devoluciones = roundMoney(r.DEVOLUCIONES);
+    const costoVentas = roundMoney(r.COSTO_VENTAS);
+    const costoDevoluciones = roundMoney(r.COSTO_DEVOLUCIONES);
+    const neto = roundMoney(ventas - devoluciones);
+    const netoCosto = roundMoney(costoVentas - costoDevoluciones);
+    const utilidad = roundMoney(neto - netoCosto);
 
-    const documentos = normalizeDocumentoRows(docsRes.recordset || []).map((row) => ({
-      ID: row.ID,
-      FECHA: fechaIsoFromRow(row) || null,
-      CODDOC: row.CODDOC,
-      CORRELATIVO: row.CORRELATIVO,
-      CLIENTE: row.DOC_NOMCLIE || '',
-      TIPODOC: String(row.TIPODOC || '').trim().toUpperCase(),
-      DESDOC: row.DESDOC || '',
-      TOTALPRECIO: roundMoney(row.TOTALPRECIO),
-      IMPORTE: roundMoney(row.IMPORTE),
-      STATUS: String(row.STATUS || '').trim().toUpperCase(),
-    }));
+    const documentos = normalizeDocumentoRows(docsRes.recordset || []).map((row) => {
+      const metrics = mapCostoUtilidad(row.IMPORTE, row.TOTALCOSTO);
+      return {
+        ID: row.ID,
+        FECHA: fechaIsoFromRow(row) || null,
+        CODDOC: row.CODDOC,
+        CORRELATIVO: row.CORRELATIVO,
+        CLIENTE: row.DOC_NOMCLIE || '',
+        TIPODOC: String(row.TIPODOC || '').trim().toUpperCase(),
+        DESDOC: row.DESDOC || '',
+        TOTALPRECIO: roundMoney(row.TOTALPRECIO),
+        STATUS: String(row.STATUS || '').trim().toUpperCase(),
+        ...metrics,
+      };
+    });
 
     const productos = (prodsRes.recordset || []).map((row) => ({
       CODPROD: row.CODPROD,
       DESPROD: row.DESPROD || '',
       TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
-      IMPORTE: roundMoney(row.IMPORTE),
+      ...mapCostoUtilidad(row.IMPORTE, row.TOTALCOSTO),
     }));
 
     const marcas = (marcasRes.recordset || []).map((row) => ({
       CODMARCA: row.CODMARCA,
       DESMARCA: row.DESMARCA || 'Sin marca',
       TOTALUNIDADES: roundQty(row.TOTALUNIDADES),
-      IMPORTE: roundMoney(row.IMPORTE),
+      ...mapCostoUtilidad(row.IMPORTE, row.TOTALCOSTO),
     }));
 
     res.json({
@@ -165,7 +200,10 @@ router.get('/', async (req, res) => {
       resumen: {
         ventas,
         devoluciones,
-        neto: roundMoney(ventas - devoluciones),
+        neto,
+        netoCosto,
+        utilidad,
+        pctUtilidad: pctUtilidad(neto, utilidad),
         docsVenta: Number(r.DOCS_VENTA) || 0,
         docsDev: Number(r.DOCS_DEV) || 0,
       },

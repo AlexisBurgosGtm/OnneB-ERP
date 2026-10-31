@@ -18,6 +18,7 @@ const {
   pesoFromPreciosRow,
   calcLinePeso,
 } = require('../lib/producto-precio-linea');
+const { bonoFromPrecioRow, bindDocproductosBonoInput } = require('../lib/docproductos-bono');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
@@ -703,6 +704,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
 
+  let lineBono = 0;
   try {
     const pool = await req.app.locals.getDbPool();
     const docCheck = await pool
@@ -775,6 +777,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       desprod = prod.DESPROD;
       exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
       peso = pesoFromPreciosRow(prod);
+      lineBono = bonoFromPrecioRow(prod, equivale);
     }
 
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
@@ -791,7 +794,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     try {
       const tipom = await getTipomDocumento(transaction, empnit, coddoc);
       const ent = valoresEntregadosIniciales(coddoc, totalUnidades, totalCosto, totalPrecio);
-      const ins = await transaction
+      const insReq = transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('ANIO', sql.Int, parts.anio)
@@ -817,8 +820,9 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TIPOPRECIO', sql.VarChar, tipoprecio)
         .input('PESO', sql.Decimal(18, 3), peso)
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
-        .input('TIPOM', sql.Int, tipom)
-        .query(`
+        .input('TIPOM', sql.Int, tipom);
+      bindDocproductosBonoInput(insReq, sql, lineBono);
+      const ins = await insReq.query(`
           INSERT INTO dbo.DOCPRODUCTOS (
             EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
             CANTIDAD, CANTIDADBONIF, EQUIVALE, TOTALUNIDADES, TOTALBONIF,
@@ -826,7 +830,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -834,7 +838,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @ENT_U, @ENT_C, @ENT_P,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);

@@ -14,6 +14,12 @@ const { parseFechaInput, applyDocumentoFecha, nowParts, normalizePedidoResponse,
 const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-auth');
 const { DocumentoDeleteError } = require('../lib/documento-delete');
 const { calcLinePeso } = require('../lib/producto-precio-linea');
+const {
+  assertPermiteCambioFechaDocumento,
+  loadTipodocDocumento,
+  resolveFechaAltaDocumentoAsync,
+} = require('../lib/documento-fecha-servidor');
+const { bindDocproductosBonoInput, resolveDocproductosBono } = require('../lib/docproductos-bono');
 const { abonoSuperaSaldo, aplicarAbonoSobreSaldo } = require('../lib/cuentas-saldo-centavos');
 const { actualizarNotaDatosGenerales } = require('../lib/notas-datos-generales');
 const {
@@ -710,15 +716,10 @@ router.post('/pedidos', async (req, res) => {
       return res.status(404).json({ error: 'Factura de referencia no encontrada, no operada o no permitida para esta serie' });
     }
     assertFacturaReferenciaPermitida(tipo.TIPODOC, facturaRef.TIPODOC);
-    const now = nowParts();
-    let parts = now;
-    if (req.body?.FECHA !== undefined && String(req.body.FECHA).trim() !== '') {
-      const fechaParts = parseFechaInput(req.body.FECHA);
-      if (!fechaParts) {
-        return res.status(400).json({ error: 'Fecha inválida (use YYYY-MM-DD)' });
-      }
-      parts = { ...now, ...fechaParts };
+    if (req.body?.FECHA !== undefined && String(req.body.FECHA).trim() !== '' && !parseFechaInput(req.body.FECHA)) {
+      return res.status(400).json({ error: 'Fecha inválida (use YYYY-MM-DD)' });
     }
+    const parts = await resolveFechaAltaDocumentoAsync(pool, tipo.TIPODOC, req.body?.FECHA);
     const coddoc = tipo.CODDOC;
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -825,6 +826,14 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       return res.status(400).json({
         error: mensajeDocumentoNoEditable(docMetaPre.STATUS, docMetaPre.CORTE),
       });
+    }
+    if (fechaParts) {
+      try {
+        const tipodoc = await loadTipodocDocumento(pool, empnit, coddoc);
+        await assertPermiteCambioFechaDocumento(pool, empnit, tipodoc);
+      } catch (fechaErr) {
+        return res.status(fechaErr.statusCode || 403).json({ error: fechaErr.message });
+      }
     }
 
     const transaction = new sql.Transaction(pool);
@@ -992,6 +1001,9 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const lineTotals = calcLineTotals(cantidad, selected.COSTO, selected.PRECIO, selected.EQUIVALE);
     const parts = nowParts();
     const totalPeso = calcLinePeso(cantidad, selected.PESO);
+    const lineBono = await resolveDocproductosBono(pool, sql, empnit, selected.CODPROD, {
+      equivale: Number(selected.EQUIVALE) || 1,
+    });
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -1003,7 +1015,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         lineTotals.totalCosto,
         lineTotals.totalPrecio
       );
-      const ins = await transaction
+      const insReq = transaction
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('ANIO', sql.Int, parts.anio)
@@ -1029,8 +1041,9 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TIPOPRECIO', sql.VarChar, String(selected.TIPOPRECIO || 'P'))
         .input('PESO', sql.Decimal(18, 3), Number(selected.PESO) || 0)
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
-        .input('TIPOM', sql.Int, tipom)
-        .query(`
+        .input('TIPOM', sql.Int, tipom);
+      bindDocproductosBonoInput(insReq, sql, lineBono);
+      const ins = await insReq.query(`
           INSERT INTO dbo.DOCPRODUCTOS (
             EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
             CANTIDAD, CANTIDADBONIF, EQUIVALE, TOTALUNIDADES, TOTALBONIF,
@@ -1038,7 +1051,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -1046,7 +1059,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @ENT_U, @ENT_C, @ENT_P,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);

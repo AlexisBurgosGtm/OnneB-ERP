@@ -9,10 +9,13 @@ const AutorizacionesUI = {
   TIPO_ANULAR_DOCUMENTO: 'ANULAR DOCUMENTO',
   TIPO_ELIMINAR_REGISTRO: 'ELIMINAR REGISTRO',
   OPCION_SOLICITA: 'SOLICITA AUTORIZACIONES',
+  OPCION_CLAVE_EDITAR_DOCUMENTOS: 'SOLICITA CLAVE AL EDITAR DOCUMENTOS',
 
   _socketBound: false,
   _enabledCache: null,
   _enabledCacheAt: 0,
+  _claveEditarDocCache: null,
+  _claveEditarDocCacheAt: 0,
   _waiters: new Map(),
   _listaListeners: new Set(),
   /** Grant solo válido mientras el modal de precio sigue abierto. */
@@ -234,6 +237,65 @@ const AutorizacionesUI = {
     return this._enabledCache;
   },
 
+  async isSolicitaClaveEditarDocumentos({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && this._claveEditarDocCache != null && now - this._claveEditarDocCacheAt < 15000) {
+      return this._claveEditarDocCache;
+    }
+    try {
+      const params = new URLSearchParams({
+        opcion: this.OPCION_CLAVE_EDITAR_DOCUMENTOS,
+        _: String(Date.now()),
+      });
+      const data = await F.fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+      this._claveEditarDocCache =
+        String(data.sino || 'NO').trim().toUpperCase() === 'SI';
+    } catch {
+      this._claveEditarDocCache = false;
+    }
+    this._claveEditarDocCacheAt = now;
+    return this._claveEditarDocCache;
+  },
+
+  /**
+   * Valida baja de precio (menor al de lista): autorización en línea o clave admin.
+   * @returns {Promise<boolean>}
+   */
+  async gateCambioPrecioUnitario({ precio, catalogo, descripcion = '', adminPass = null } = {}) {
+    if (typeof F !== 'undefined' && F.isAdminOrSuperUser()) return true;
+    const p = Number(precio);
+    const c = Number(catalogo);
+    if (!Number.isFinite(p) || !Number.isFinite(c) || p >= c - 0.0005) return true;
+
+    const desc =
+      String(descripcion || '').trim() ||
+      `${this.usuario()} solicita cambiar el precio a ${this.formatPrecioDesc(p)} (lista ${this.formatPrecioDesc(c)})`;
+
+    if (await this.isEnabled()) {
+      const result = await this.solicitarYEsperar({
+        tipo: this.TIPO_CAMBIO_PRECIO,
+        descripcion: desc,
+        title: 'Esperando autorización — Precio',
+        waitingMessage:
+          'Se está solicitando autorización a un administrador para aplicar este precio. Mantenga este aviso abierto hasta que le autoricen.',
+      });
+      if (!result.ok || result.cancelled) return false;
+      const authId = result.row?.ID ?? result.data?.id;
+      const quien =
+        result.data?.usuarioAutoriza || result.data?.USUARIOAUTORIZA || 'administrador';
+      this.markPrecioAuthorized(p, authId, quien);
+      return true;
+    }
+
+    if (typeof CatalogosUI === 'undefined') return false;
+    const pass = adminPass != null ? String(adminPass).trim() : '';
+    if (!pass) return false;
+    const ok = await CatalogosUI.verifyConfigPass(pass, CatalogosUI.ADMIN_PASS_CONFIG_ID);
+    if (!ok) return false;
+    this.markPrecioAuthorized(p, 0, 'administrador');
+    return true;
+  },
+
   /**
    * Inserta en AUTORIZACIONES (EMPNIT, FECHA, HORA, TIPO, DESCRIPCION, USUARIO).
    * AUTORIZADO = NO por defecto. Dispara socket de notificación a administradores.
@@ -330,7 +392,7 @@ const AutorizacionesUI = {
     const confirmBtn =
       (popup && popup.querySelector('.swal2-confirm')) ||
       (typeof Swal !== 'undefined' ? Swal.getConfirmButton() : null);
-    if (!confirmBtn || !permiteCambiarPrecio || !solicitaAutorizaciones) {
+    if (!confirmBtn || !permiteCambiarPrecio) {
       return {
         dispose() {},
         isReady() {
@@ -338,12 +400,27 @@ const AutorizacionesUI = {
         },
       };
     }
+    if (typeof F !== 'undefined' && F.isAdminOrSuperUser()) {
+      return {
+        dispose() {},
+        isReady() {
+          return true;
+        },
+      };
+    }
+    const useAuth = !!solicitaAutorizaciones;
+    const useClave = !useAuth;
 
     let disposed = false;
     let requestSeq = 0;
     let unsub = null;
     let precioAutorizado = null;
     let lastRequestedPrecio = null;
+    let claveWrap = null;
+    let claveInp = null;
+    let claveFeedback = null;
+    let claveVerifySeq = 0;
+    let claveUiWired = false;
 
     const statusEl =
       (statusElId && popup?.querySelector(`#${statusElId}`)) ||
@@ -407,6 +484,104 @@ const AutorizacionesUI = {
       return name || 'administrador';
     };
 
+    const resetClaveUi = () => {
+      if (claveInp) claveInp.value = '';
+      if (claveFeedback) {
+        claveFeedback.textContent = '';
+        claveFeedback.className = 'small mt-1';
+      }
+      claveWrap?.classList.add('d-none');
+    };
+
+    const ensureClaveUi = () => {
+      if (!useClave || claveUiWired || !popup) return;
+      const container = popup.querySelector('.swal2-html-container');
+      if (!container) return;
+      claveWrap = document.createElement('div');
+      claveWrap.id = 'authz-precio-clave-wrap';
+      claveWrap.className = 'text-start mt-2 pt-2 border-top d-none';
+      const secretField =
+        typeof CatalogosUI !== 'undefined'
+          ? CatalogosUI.secretInputFieldHtml({
+              inputId: 'authz-precio-clave-input',
+              name: 'onneb-precio-admin-pass',
+            })
+          : `<label class="form-label small mb-0" for="authz-precio-clave-input">Clave de administrador</label>
+        <input type="text" id="authz-precio-clave-input" class="form-control form-control-sm config-pass-mask"
+          autocomplete="new-password" name="onneb-precio-admin-pass">`;
+      claveWrap.innerHTML = `
+        <form class="secret-input-modal" autocomplete="off" novalidate onsubmit="return false">
+          ${secretField}
+          <div id="authz-precio-clave-feedback" class="small mt-1" aria-live="polite"></div>
+        </form>`;
+      container.appendChild(claveWrap);
+      claveInp = claveWrap.querySelector('#authz-precio-clave-input');
+      claveFeedback = claveWrap.querySelector('#authz-precio-clave-feedback');
+      if (typeof CatalogosUI !== 'undefined') {
+        CatalogosUI.wireSecretInput('authz-precio-clave-input');
+      }
+
+      const verifyClaveInline = async () => {
+        if (disposed || !precioRequiereAuth()) return;
+        const pass = claveInp?.value ?? '';
+        if (!pass) {
+          if (claveFeedback) {
+            claveFeedback.textContent = '';
+            claveFeedback.className = 'small mt-1';
+          }
+          precioAutorizado = null;
+          this._precioAuthGranted = null;
+          setConfirmEnabled(false);
+          return;
+        }
+        if (typeof CatalogosUI === 'undefined') return;
+        const seq = ++claveVerifySeq;
+        try {
+          const ok = await CatalogosUI.verifyConfigPass(pass, CatalogosUI.ADMIN_PASS_CONFIG_ID);
+          if (disposed || seq !== claveVerifySeq) return;
+          const precioSnap = currentPrecio();
+          if (ok) {
+            precioAutorizado = precioSnap;
+            this.markPrecioAuthorized(precioSnap, 0, 'administrador');
+            if (claveFeedback) {
+              claveFeedback.className = 'small mt-1 text-success';
+              claveFeedback.textContent = 'Clave correcta';
+            }
+            setConfirmEnabled(true);
+            setStatus('Cambio de precio autorizado', 'text-success');
+          } else {
+            precioAutorizado = null;
+            this._precioAuthGranted = null;
+            if (claveFeedback) {
+              claveFeedback.className = 'small mt-1 text-danger';
+              claveFeedback.textContent = 'Clave incorrecta';
+            }
+            setConfirmEnabled(false);
+            setStatus('Clave incorrecta', 'text-danger');
+          }
+        } catch (err) {
+          if (disposed || seq !== claveVerifySeq) return;
+          precioAutorizado = null;
+          this._precioAuthGranted = null;
+          setConfirmEnabled(false);
+          setStatus(err.message || 'Error al validar clave', 'text-danger');
+        }
+      };
+
+      const debouncedVerify =
+        typeof F !== 'undefined' && typeof F.debounce === 'function'
+          ? F.debounce(verifyClaveInline, 350)
+          : verifyClaveInline;
+      claveInp?.addEventListener('input', () => {
+        precioAutorizado = null;
+        this._precioAuthGranted = null;
+        setConfirmEnabled(false);
+        debouncedVerify();
+      });
+      claveInp?.addEventListener('blur', verifyClaveInline);
+      claveUiWired = true;
+    };
+
     /** Solo actualiza UI; no envía solicitud (esperar blur/Enter). */
     const syncGateUi = () => {
       if (disposed) return;
@@ -416,6 +591,7 @@ const AutorizacionesUI = {
         precioAutorizado = null;
         lastRequestedPrecio = null;
         this._precioAuthGranted = null;
+        resetClaveUi();
         setConfirmEnabled(true);
         setStatus('');
         return;
@@ -434,6 +610,14 @@ const AutorizacionesUI = {
         precioAutorizado = precioSnap;
         setConfirmEnabled(true);
         setStatus('Cambio de precio autorizado', 'text-success');
+        return;
+      }
+
+      if (useClave) {
+        ensureClaveUi();
+        claveWrap?.classList.remove('d-none');
+        setStatus('Precio bajo lista: ingrese la clave de administrador', 'text-warning');
+        setConfirmEnabled(false);
         return;
       }
 
@@ -474,10 +658,17 @@ const AutorizacionesUI = {
         return;
       }
 
+      if (useClave) {
+        syncGateUi();
+        claveInp?.focus();
+        return;
+      }
+
       setConfirmEnabled(false);
-      setStatus('Solicitando autorización…', 'text-warning');
       lastRequestedPrecio = precioNow;
       const seq = ++requestSeq;
+
+      setStatus('Solicitando autorización…', 'text-warning');
 
       try {
         const desc =
@@ -537,6 +728,11 @@ const AutorizacionesUI = {
       ) {
         precioAutorizado = null;
         this._precioAuthGranted = null;
+        if (claveInp) claveInp.value = '';
+        if (claveFeedback) {
+          claveFeedback.textContent = '';
+          claveFeedback.className = 'small mt-1';
+        }
       }
       syncGateUi();
     };
@@ -546,6 +742,11 @@ const AutorizacionesUI = {
       if (e?.type === 'keydown') {
         e.preventDefault();
         e.stopPropagation();
+      }
+      if (useClave) {
+        syncGateUi();
+        claveInp?.focus();
+        return;
       }
       requestAuth();
     };
@@ -558,8 +759,11 @@ const AutorizacionesUI = {
       lastRequestedPrecio = null;
       precioAutorizado = null;
       this._precioAuthGranted = null;
+      if (claveInp) claveInp.value = '';
       syncGateUi();
     });
+
+    syncGateUi();
 
     return {
       dispose() {

@@ -20,6 +20,7 @@ const {
 } = require('../lib/producto-fotos');
 const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 const { cambiarCodigoProducto } = require('../lib/producto-cambiar-codigo');
+const { productoLastUpdateColumnExists } = require('../lib/producto-schema');
 
 const router = express.Router();
 const uploadFoto = multer({
@@ -882,6 +883,7 @@ router.post('/', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const hasUsaLotes = await productoUsaLotesColumnExists(pool);
+    const hasLastUpdate = await productoLastUpdateColumnExists(pool);
     if (hasUsaLotes && data.USA_LOTES === undefined) data.USA_LOTES = 'NO';
     if (!hasUsaLotes) delete data.USA_LOTES;
     const dup = await pool
@@ -923,6 +925,8 @@ router.post('/', async (req, res) => {
       if (hasUsaLotes) {
         insReq = insReq.input('USA_LOTES', sql.VarChar, normalizeHabilitado(data.USA_LOTES, 'NO'));
       }
+      const lastUpdateCol = hasLastUpdate ? ', LASTUPDATE' : '';
+      const lastUpdateVal = hasLastUpdate ? ', CAST(GETDATE() AS DATE)' : '';
       await insReq.query(
           hasUsaLotes
             ? `
@@ -930,12 +934,12 @@ router.post('/', async (req, res) => {
             EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
             CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE, USA_LOTES,
             PORCDESCUENTO, INVMINIMO, INVMAXIMO, EXENTO, NF, TIPOPROD, EXISTENCIA, FACTURAR, BONO,
-            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO
+            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO${lastUpdateCol}
           ) VALUES (
             @EMPNIT, @CODPROD, @CODPROD2, @DESPROD, @DESPROD2, @DESPROD3, @UXC, @CODMEDIDACOMPRA, @COSTO,
             @CODMARCA, @CODCLAUNO, @CODCLADOS, @CODCLATRES, @HABILITADO, @VENCIMIENTO, @SERIE, @USA_LOTES,
             @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
-            0, 0, 0
+            0, 0, 0${lastUpdateVal}
           )
         `
             : `
@@ -943,12 +947,12 @@ router.post('/', async (req, res) => {
             EMPNIT, CODPROD, CODPROD2, DESPROD, DESPROD2, DESPROD3, UXC, CODMEDIDACOMPRA, COSTO,
             CODMARCA, CODCLAUNO, CODCLADOS, CODCLATRES, HABILITADO, VENCIMIENTO, SERIE,
             PORCDESCUENTO, INVMINIMO, INVMAXIMO, EXENTO, NF, TIPOPROD, EXISTENCIA, FACTURAR, BONO,
-            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO
+            FISICO, COSTO_ANTERIOR, COSTO_PROMEDIO${lastUpdateCol}
           ) VALUES (
             @EMPNIT, @CODPROD, @CODPROD2, @DESPROD, @DESPROD2, @DESPROD3, @UXC, @CODMEDIDACOMPRA, @COSTO,
             @CODMARCA, @CODCLAUNO, @CODCLADOS, @CODCLATRES, @HABILITADO, @VENCIMIENTO, @SERIE,
             @PORCDESCUENTO, @INVMINIMO, @INVMAXIMO, @EXENTO, @NF, @TIPOPROD, 0, @FACTURAR, @BONO,
-            0, 0, 0
+            0, 0, 0${lastUpdateVal}
           )
         `
         );
@@ -979,6 +983,7 @@ router.put('/:codprod', async (req, res) => {
     const pool = await req.app.locals.getDbPool();
     const { productoUsaLotesColumnExists } = require('../lib/lote-schema');
     const hasUsaLotes = await productoUsaLotesColumnExists(pool);
+    const hasLastUpdate = await productoLastUpdateColumnExists(pool);
     if (!hasUsaLotes) delete data.USA_LOTES;
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit).input('CODPROD', sql.VarChar, codprod);
     const setParts = [];
@@ -995,6 +1000,7 @@ router.put('/:codprod', async (req, res) => {
       request.input(key, type, val);
       setParts.push(`${key} = @${key}`);
     }
+    if (hasLastUpdate) setParts.push('LASTUPDATE = CAST(GETDATE() AS DATE)');
     if (!setParts.length) return res.status(400).json({ error: 'Sin campos para actualizar' });
     const result = await request.query(`
       UPDATE dbo.PRODUCTOS SET ${setParts.join(', ')}

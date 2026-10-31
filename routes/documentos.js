@@ -5,7 +5,8 @@ const { assertAdminPass, assertEliminacionRegistro } = require('../lib/config-au
 const { deleteDocumentoOperado, DocumentoDeleteError } = require('../lib/documento-delete');
 const { usuarioFromReq } = require('../lib/documentos-eliminados');
 const { InventarioError } = require('../lib/inventario');
-const { parseFechaInput, applyDocumentoFecha, fechaIsoFromRow, fechaIsoFromValue } = require('../lib/documento-fecha');
+const { parseFechaInput, applyDocumentoFecha, fechaIsoFromRow, fechaIsoFromValue, APP_TIMEZONE } = require('../lib/documento-fecha');
+const { assertPermiteCambioFechaPorCoddoc, serverFechaParts } = require('../lib/documento-fecha-servidor');
 const {
   listSeriesAlternas,
   cambiarSerieInterna,
@@ -528,6 +529,31 @@ router.get('/detalle/:coddoc/:correlativo', async (req, res) => {
   }
 });
 
+router.get('/fecha-servidor', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  try {
+    const parts = serverFechaParts();
+    res.json({
+      empnit,
+      timezone: APP_TIMEZONE,
+      FECHA: parts.fecha,
+      ANIO: parts.anio,
+      MES: parts.mes,
+      DIA: parts.dia,
+      HORA: parts.hora,
+      MINUTO: parts.minuto,
+    });
+  } catch (err) {
+    console.warn('[API GET /documentos/fecha-servidor]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/:coddoc/:correlativo/fecha', async (req, res) => {
   if (!isDbConfigured()) {
     return res.status(503).json({ error: 'Base de datos no configurada' });
@@ -552,6 +578,7 @@ router.patch('/:coddoc/:correlativo/fecha', async (req, res) => {
     if (!meta) return res.status(404).json({ error: 'Documento no encontrado' });
     assertSinCertificacionFel(meta);
     assertDocumentoOperado(meta);
+    await assertPermiteCambioFechaPorCoddoc(pool, empnit, coddoc);
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();

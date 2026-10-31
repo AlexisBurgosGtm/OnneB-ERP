@@ -364,6 +364,10 @@
   background: linear-gradient(135deg, #60a5fa, #2563eb);
 }
 
+.theme-swatch-corporativo {
+  background: linear-gradient(135deg, #2e7bb8, #004b87);
+}
+
 .theme-swatch-bw {
   background: linear-gradient(135deg, #d4d4d4, #2a2a2a);
 }

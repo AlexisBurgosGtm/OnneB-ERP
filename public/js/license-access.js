@@ -80,8 +80,6 @@ const LicenseAccess = {
     const allowed = this.allowedMenus();
     if (!allowed) return true;
     if (allowed.has(key)) return true;
-    // Fraccionamiento usable desde la vista Facturación (mismo flujo operativo).
-    if (key === 'fraccionamiento-fac' && allowed.has('facturacion-completa')) return true;
     return false;
   },
 
@@ -197,7 +195,7 @@ const LicenseAccess = {
         if (li) li.hidden = false;
         return;
       }
-      if (!licensed.has(key)) {
+      if (!this.canAccessMenu(key)) {
         const li = link.closest('li');
         if (li) li.hidden = true;
       }

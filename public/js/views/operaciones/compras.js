@@ -1302,7 +1302,7 @@ const ComprasView = {
   renderListTableBodyHtml() {
     const rows = this.filteredComprasList();
     if (!rows.length) {
-      return `<tr><td colspan="9" class="text-center text-muted py-4">No hay compras en esta fecha</td></tr>`;
+      return `<tr><td colspan="10" class="text-center text-muted py-4">No hay compras en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1313,6 +1313,7 @@ const ComprasView = {
           <tr class="compras-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}"
             data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
+            <td class="text-center text-nowrap">${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}</td>
             <td>${this.escapeHtml(proveedor)}</td>
             <td class="small text-muted doc-list-col-optional">${this.escapeHtml(meta)}</td>
             <td class="fac-fel-col doc-list-col-optional">${this.formatFelCell(r)}</td>
@@ -1334,6 +1335,7 @@ const ComprasView = {
             <thead class="table-light sticky-top">
               <tr>
                 <th scope="col">Documento</th>
+                <th scope="col" class="text-center">Estado</th>
                 <th scope="col">Proveedor</th>
                 <th scope="col" class="doc-list-col-optional">Empresa</th>
                 <th scope="col" class="doc-list-col-optional">FEL</th>

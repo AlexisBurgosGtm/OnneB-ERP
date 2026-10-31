@@ -773,9 +773,8 @@ const DocOpciones = {
       return false;
     }
 
-    if (typeof AutorizacionesUI !== 'undefined') {
-      const allowed = await AutorizacionesUI.gateAccionDocumento({
-        accion: 'editar',
+    if (typeof CatalogosUI !== 'undefined') {
+      const allowed = await CatalogosUI.gateEditarDocumento({
         coddoc,
         correlativo,
         tipodoc: t,

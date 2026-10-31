@@ -183,20 +183,30 @@ router.get('/empresas-sync-sedes', async (req, res) => {
     const linkSelect = hasLink
       ? `NULLIF(LTRIM(RTRIM(CAST(LINK AS NVARCHAR(500)))), '') AS LINK`
       : `CAST(NULL AS NVARCHAR(500)) AS LINK`;
+    const excludeEmpnit = String(req.query.excludeEmpnit || req.query.exclude_empnit || '')
+      .trim()
+      .toUpperCase();
     const result = await pool
       .request()
       .input('TOKEN', sql.VarChar, token)
       .query(`
         SELECT
+          LTRIM(RTRIM(CAST(EMPNIT AS VARCHAR(50)))) AS EMPNIT,
           LTRIM(RTRIM(ISNULL(EMPNOMBRE, ''))) AS EMPNOMBRE,
           ${linkSelect}
         FROM dbo.COMMUNITY_EMPRESAS_SYNC
         WHERE LTRIM(RTRIM(CAST(TOKEN AS VARCHAR(100)))) = LTRIM(RTRIM(@TOKEN))
         ORDER BY EMPNOMBRE
       `);
+    let rows = result.recordset || [];
+    if (excludeEmpnit) {
+      rows = rows.filter(
+        (r) => String(r.EMPNIT || '').trim().toUpperCase() !== excludeEmpnit
+      );
+    }
     res.json({
       token,
-      rows: result.recordset || [],
+      rows,
     });
   } catch (err) {
     console.warn('[API GET /community/empresas-sync-sedes]', err.message);

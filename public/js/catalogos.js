@@ -119,14 +119,52 @@ const CatalogosUI = {
       </form>`;
   },
 
+  /**
+   * Campo enmascarado suelto (p. ej. dentro de otro modal Swal) — evita guardar contraseña del navegador.
+   */
+  secretInputFieldHtml({
+    inputId,
+    label = 'Clave de administrador',
+    placeholder = 'Clave de administrador',
+    name = 'onneb-secret-auth',
+    inputClass = 'form-control form-control-sm',
+  } = {}) {
+    return `
+        <label class="form-label small mb-0" for="${this.escapeAttr(inputId)}">${label}</label>
+        <input
+          type="text"
+          id="${this.escapeAttr(inputId)}"
+          class="${this.escapeAttr(inputClass)} config-pass-mask"
+          autocomplete="new-password"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          inputmode="text"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-bwignore="true"
+          data-form-type="other"
+          name="${this.escapeAttr(name)}"
+          placeholder="${this.escapeAttr(placeholder)}"
+        >`;
+  },
+
   /** Enfoca el input y permite confirmar con Enter sin ocultar el botón Aceptar/Continuar. */
   wireSecretInputModal(inputId, { onInput } = {}) {
     const form = Swal.getPopup()?.querySelector('.secret-input-modal');
     form?.setAttribute('autocomplete', 'off');
-    const input = document.getElementById(inputId);
+    const input = this.wireSecretInput(inputId, { onInput, enterConfirmsSwal: true });
     input?.focus();
+    return input;
+  },
+
+  wireSecretInput(inputId, { onInput, enterConfirmsSwal = false } = {}) {
+    const input = document.getElementById(inputId);
+    const form = input?.closest('form');
+    form?.setAttribute('autocomplete', 'off');
+    input?.setAttribute('autocomplete', 'new-password');
     input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && enterConfirmsSwal && typeof Swal !== 'undefined') {
         e.preventDefault();
         Swal.clickConfirm();
       }
@@ -354,6 +392,40 @@ const CatalogosUI = {
    * - SOLICITA AUTORIZACIONES = NO → solicita clave de administrador
    * @returns {Promise<{ pass: string|null }|null>} null si cancela
    */
+  /**
+   * Gate para abrir un documento en edición.
+   * Admin/superusuario: sin gate. SOLICITA AUTORIZACIONES = SI → espera autorización.
+   * Si no hay autorizaciones y SOLICITA CLAVE AL EDITAR DOCUMENTOS = SI → clave admin.
+   * @returns {Promise<boolean>}
+   */
+  async gateEditarDocumento({ coddoc, correlativo, tipodoc = '', label = '' } = {}) {
+    if (typeof F !== 'undefined' && F.isAdminOrSuperUser()) return true;
+    const authUi = typeof AutorizacionesUI !== 'undefined' ? AutorizacionesUI : null;
+    const docLabel =
+      String(label || '').trim() || `${String(coddoc || '').trim()} #${correlativo ?? ''}`.trim();
+
+    if (authUi && (await authUi.isEnabled())) {
+      return authUi.gateAccionDocumento({
+        accion: 'editar',
+        coddoc,
+        correlativo,
+        tipodoc,
+        label: docLabel,
+      });
+    }
+
+    if (authUi && (await authUi.isSolicitaClaveEditarDocumentos())) {
+      const pass = await this.solicitarClaveAdmin({
+        title: 'Autorizar edición',
+        text: `Ingrese la clave de administrador para editar el documento ${docLabel}.`,
+        confirmText: 'Continuar',
+      });
+      return !!pass;
+    }
+
+    return true;
+  },
+
   async authorizeEliminarRegistro({
     label = '',
     tipo = 'registro',
@@ -452,4 +524,5 @@ if (typeof F !== 'undefined') {
   F.ADMIN_PASS_CONFIG_ID = CatalogosUI.ADMIN_PASS_CONFIG_ID;
   F.authorizeEliminarRegistro = (opts) => CatalogosUI.authorizeEliminarRegistro(opts);
   F.confirmEliminarDocumento = (opts) => CatalogosUI.confirmEliminarDocumento(opts);
+  F.gateEditarDocumento = (opts) => CatalogosUI.gateEditarDocumento(opts);
 }

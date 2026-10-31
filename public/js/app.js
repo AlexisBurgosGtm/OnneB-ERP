@@ -482,7 +482,10 @@
       list.innerHTML = '';
       if (empty) {
         empty.hidden = false;
-        empty.textContent = 'Sin sedes configuradas para este TOKEN.';
+        const loginEmp = normEmpNit(document.getElementById('login-empresa')?.value);
+        empty.textContent = loginEmp
+          ? 'No hay otras sedes remotas (se omitió la empresa del login).'
+          : 'Sin sedes configuradas para este TOKEN.';
       }
       return;
     }
@@ -539,7 +542,10 @@
       empty.textContent = 'Sin sedes configuradas para este TOKEN.';
     }
     try {
-      const data = await F.fetchJson(`/api/community/empresas-sync-sedes?_=${Date.now()}`, {
+      const loginEmp = normEmpNit(document.getElementById('login-empresa')?.value);
+      const params = new URLSearchParams({ _: String(Date.now()) });
+      if (loginEmp) params.set('excludeEmpnit', loginEmp);
+      const data = await F.fetchJson(`/api/community/empresas-sync-sedes?${params.toString()}`, {
         cache: 'no-store',
         trackLastError: false,
       });
@@ -941,6 +947,7 @@
     'facturas-electronicas': 'Facturas Electrónicas',
     'facturas-electronicas-extraordinarias': 'Facturación Electrónica Extraordinaria',
     'facturacion-completa': 'Facturación',
+    'facturacion-pos': 'Facturacion POS',
     'notas-credito': 'Notas de Credito (clientes)',
     'notas-abono': 'Notas de Abono',
     compras: 'Compras',
@@ -1086,6 +1093,8 @@
       FacturasElectronicasExtraordinariasView.load(host);
     } else if (key === 'facturacion-completa' && typeof FacturacionCompletaView !== 'undefined') {
       FacturacionCompletaView.load(host);
+    } else if (key === 'facturacion-pos' && typeof FacturacionPosView !== 'undefined') {
+      FacturacionPosView.load(host);
     } else if (key === 'notas-credito' && typeof NotasCreditoView !== 'undefined') {
       NotasCreditoView.load(host);
     } else if (key === 'notas-abono' && typeof NotasAbonoView !== 'undefined') {

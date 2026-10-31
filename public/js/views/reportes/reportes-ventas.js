@@ -50,6 +50,77 @@ const ReportesVentasView = {
     return n.toLocaleString('es-GT', { maximumFractionDigits: 4 });
   },
 
+  formatPct(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return `${n.toLocaleString('es-GT', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  },
+
+  statusHtml(status) {
+    const s = String(status || '').trim().toUpperCase();
+    const cls = s === 'A' ? 'repven-status-anulado' : '';
+    return `<span class="${cls}">${this.escapeHtml(s || '—')}</span>`;
+  },
+
+  sumMoneyRows(rows, key) {
+    return (rows || []).reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
+  },
+
+  pctFromTotals(importe, utilidad) {
+    const i = Number(importe);
+    const u = Number(utilidad);
+    if (!Number.isFinite(i) || Math.abs(i) < 0.0005) return null;
+    return Math.round(((u / i) * 100) * 1000) / 1000;
+  },
+
+  documentoRowHtml(r) {
+    const neg = Number(r.IMPORTE) < 0;
+    const anulado = String(r.STATUS || '').trim().toUpperCase() === 'A';
+    const rowCls = [neg ? 'repven-row-dev' : '', anulado ? 'repven-row-anulado' : '']
+      .filter(Boolean)
+      .join(' ');
+    return `
+          <tr class="${rowCls}">
+            <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
+            <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
+            <td>${this.escapeHtml(r.CODDOC || '—')}</td>
+            <td class="text-end">${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
+            <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.UTILIDAD))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatPct(r.PCT_UTILIDAD))}</td>
+            <td class="text-center">${this.statusHtml(r.STATUS)}</td>
+          </tr>`;
+  },
+
+  productoRowHtml(r) {
+    return `
+          <tr>
+            <td>${this.escapeHtml(r.CODPROD || '—')}</td>
+            <td>${this.escapeHtml(r.DESPROD || '—')}</td>
+            <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.UTILIDAD))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatPct(r.PCT_UTILIDAD))}</td>
+          </tr>`;
+  },
+
+  marcaRowHtml(r) {
+    return `
+          <tr>
+            <td class="text-end">${this.escapeHtml(r.CODMARCA ?? '—')}</td>
+            <td>${this.escapeHtml(r.DESMARCA || 'Sin marca')}</td>
+            <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.UTILIDAD))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatPct(r.PCT_UTILIDAD))}</td>
+          </tr>`;
+  },
+
   readFilters() {
     const d = this._container?.querySelector('#repven-desde');
     const h = this._container?.querySelector('#repven-hasta');
@@ -73,9 +144,129 @@ const ReportesVentasView = {
       ventas: 0,
       devoluciones: 0,
       neto: 0,
+      utilidad: 0,
+      pctUtilidad: null,
       docsVenta: 0,
       docsDev: 0,
     };
+  },
+
+  renderSearchToolbar(tab, placeholder, q) {
+    return `
+      <div class="d-flex justify-content-end align-items-center gap-2 mb-2 repven-search-row">
+        <input type="search" class="form-control form-control-sm repven-search flex-grow-1" data-tab="${tab}"
+          style="max-width: 320px;" placeholder="${this.escapeHtml(placeholder)}" value="${this.escapeHtml(q)}">
+        <button type="button" class="btn btn-sm btn-outline-success repven-export-excel flex-shrink-0" data-tab="${tab}"
+          title="Exportar a Excel" aria-label="Exportar a Excel">
+          <i class="fa-solid fa-file-excel"></i>
+        </button>
+      </div>`;
+  },
+
+  csvCell(value) {
+    const s = value === null || value === undefined ? '' : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  },
+
+  downloadCsv(filename, headers, rows) {
+    const lines = [
+      headers.map((h) => this.csvCell(h)).join(','),
+      ...rows.map((r) => r.map((c) => this.csvCell(c)).join(',')),
+    ];
+    const blob = new Blob(['\ufeff', lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportTabExcel(tab) {
+    if (!this._data) {
+      F.toast('Consulte el reporte primero', 'warning');
+      return;
+    }
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
+    if (tab === 'documentos') {
+      const rows = this.filterRows(this._data.documentos || [], [
+        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'TIPODOC', 'DESDOC',
+        'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD', 'STATUS',
+      ], this._filters.documentos);
+      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+      this.downloadCsv(
+        `reporte_ventas_documentos_${stamp}.csv`,
+        ['Fecha', 'Tipo', 'Coddoc', 'Correlativo', 'Cliente', 'Total costo', 'Importe', 'Utilidad', '%', 'Status'],
+        [
+          ...rows.map((r) => [
+            this.formatFecha(r.FECHA),
+            r.TIPODOC || '',
+            r.CODDOC || '',
+            r.CORRELATIVO ?? '',
+            r.CLIENTE || '',
+            Number(r.TOTALCOSTO) || 0,
+            Number(r.IMPORTE) || 0,
+            Number(r.UTILIDAD) || 0,
+            r.PCT_UTILIDAD ?? '',
+            r.STATUS || '',
+          ]),
+          ['', '', '', '', 'Totales', totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? '', ''],
+        ]
+      );
+      return;
+    }
+    if (tab === 'productos') {
+      const rows = this.filterRows(this._data.productos || [], [
+        'CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+      ], this._filters.productos);
+      const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+      this.downloadCsv(
+        `reporte_ventas_productos_${stamp}.csv`,
+        ['Código', 'Producto', 'Unidades', 'Total costo', 'Importe', 'Utilidad', '%'],
+        [
+          ...rows.map((r) => [
+            r.CODPROD || '',
+            r.DESPROD || '',
+            Number(r.TOTALUNIDADES) || 0,
+            Number(r.TOTALCOSTO) || 0,
+            Number(r.IMPORTE) || 0,
+            Number(r.UTILIDAD) || 0,
+            r.PCT_UTILIDAD ?? '',
+          ]),
+          ['', 'Totales', totalUn, totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? ''],
+        ]
+      );
+      return;
+    }
+    const rows = this.filterRows(this._data.marcas || [], [
+      'CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+    ], this._filters.marcas);
+    const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+    this.downloadCsv(
+      `reporte_ventas_marcas_${stamp}.csv`,
+      ['Cod. marca', 'Marca', 'Unidades', 'Total costo', 'Importe', 'Utilidad', '%'],
+      [
+        ...rows.map((r) => [
+          r.CODMARCA ?? '',
+          r.DESMARCA || '',
+          Number(r.TOTALUNIDADES) || 0,
+          Number(r.TOTALCOSTO) || 0,
+          Number(r.IMPORTE) || 0,
+          Number(r.UTILIDAD) || 0,
+          r.PCT_UTILIDAD ?? '',
+        ]),
+        ['', 'Totales', totalUn, totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? ''],
+      ]
+    );
   },
 
   filterRows(rows, keys, q) {
@@ -114,6 +305,14 @@ const ReportesVentasView = {
           <div class="repven-card-value">${this.escapeHtml(this.formatMoney(r.neto))}</div>
           <div class="repven-card-sub text-muted">Ventas − Devoluciones</div>
         </div>
+        <div class="repven-card repven-card-util">
+          <div class="repven-card-label">Utilidad</div>
+          <div class="repven-card-value-row">
+            <span class="repven-card-value">${this.escapeHtml(this.formatMoney(r.utilidad))}</span>
+            <span class="repven-card-pct">${this.escapeHtml(this.formatPct(r.pctUtilidad))}</span>
+          </div>
+          <div class="repven-card-sub text-muted">Neto − costo</div>
+        </div>
       </div>`;
   },
 
@@ -126,33 +325,22 @@ const ReportesVentasView = {
       'CLIENTE',
       'TIPODOC',
       'DESDOC',
+      'TOTALCOSTO',
       'IMPORTE',
+      'UTILIDAD',
+      'PCT_UTILIDAD',
       'STATUS',
     ], q);
-    const total = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+    const totalPct = this.pctFromTotals(totalI, totalU);
     const body = !rows.length
-      ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin documentos</td></tr>`
-      : rows
-          .map((r) => {
-            const neg = Number(r.IMPORTE) < 0;
-            return `
-          <tr class="${neg ? 'repven-row-dev' : ''}">
-            <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
-            <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
-            <td>${this.escapeHtml(r.CODDOC || '—')}</td>
-            <td class="text-end">${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
-            <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-            <td class="text-center">${this.escapeHtml(r.STATUS || '—')}</td>
-          </tr>`;
-          })
-          .join('');
+      ? `<tr><td colspan="10" class="text-center text-muted py-3">Sin documentos</td></tr>`
+      : rows.map((r) => this.documentoRowHtml(r)).join('');
 
     return `
-      <div class="d-flex justify-content-end mb-2">
-        <input type="search" class="form-control form-control-sm repven-search" data-tab="documentos"
-          placeholder="Buscar documentos…" value="${this.escapeHtml(q)}">
-      </div>
+      ${this.renderSearchToolbar('documentos', 'Buscar documentos…', q)}
       <div class="table-responsive repven-table-scroll">
         <table class="table table-sm table-hover align-middle mb-0 repven-table">
           <thead>
@@ -162,15 +350,21 @@ const ReportesVentasView = {
               <th>Coddoc</th>
               <th class="text-end">Correlativo</th>
               <th>Cliente</th>
+              <th class="text-end">Total costo</th>
               <th class="text-end">Importe</th>
+              <th class="text-end">Utilidad</th>
+              <th class="text-end">%</th>
               <th class="text-center">Status</th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
           <tfoot>
             <tr>
-              <td colspan="5" class="text-end fw-semibold">Total neto docs</td>
-              <td class="text-end fw-semibold" id="repven-total-docs">${this.escapeHtml(this.formatMoney(total))}</td>
+              <td colspan="5" class="text-end fw-semibold">Totales (vista filtrada)</td>
+              <td class="text-end fw-semibold" id="repven-total-docs-costo">${this.escapeHtml(this.formatMoney(totalC))}</td>
+              <td class="text-end fw-semibold" id="repven-total-docs">${this.escapeHtml(this.formatMoney(totalI))}</td>
+              <td class="text-end fw-semibold" id="repven-total-docs-util">${this.escapeHtml(this.formatMoney(totalU))}</td>
+              <td class="text-end fw-semibold" id="repven-total-docs-pct">${this.escapeHtml(this.formatPct(totalPct))}</td>
               <td></td>
             </tr>
           </tfoot>
@@ -180,28 +374,20 @@ const ReportesVentasView = {
 
   renderProductos() {
     const q = this._filters.productos;
-    const rows = this.filterRows(this._data?.productos || [], ['CODPROD', 'DESPROD', 'TOTALUNIDADES', 'IMPORTE'], q);
-    const totalU = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-    const totalI = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+    const rows = this.filterRows(this._data?.productos || [], [
+      'CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+    ], q);
+    const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+    const totalPct = this.pctFromTotals(totalI, totalU);
     const body = !rows.length
-      ? `<tr><td colspan="4" class="text-center text-muted py-3">Sin productos</td></tr>`
-      : rows
-          .map(
-            (r) => `
-          <tr>
-            <td>${this.escapeHtml(r.CODPROD || '—')}</td>
-            <td>${this.escapeHtml(r.DESPROD || '—')}</td>
-            <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-          </tr>`
-          )
-          .join('');
+      ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin productos</td></tr>`
+      : rows.map((r) => this.productoRowHtml(r)).join('');
 
     return `
-      <div class="d-flex justify-content-end mb-2">
-        <input type="search" class="form-control form-control-sm repven-search" data-tab="productos"
-          placeholder="Buscar productos…" value="${this.escapeHtml(q)}">
-      </div>
+      ${this.renderSearchToolbar('productos', 'Buscar productos…', q)}
       <div class="table-responsive repven-table-scroll">
         <table class="table table-sm table-hover align-middle mb-0 repven-table">
           <thead>
@@ -209,15 +395,21 @@ const ReportesVentasView = {
               <th>Código</th>
               <th>Producto</th>
               <th class="text-end">Unidades</th>
+              <th class="text-end">Total costo</th>
               <th class="text-end">Importe</th>
+              <th class="text-end">Utilidad</th>
+              <th class="text-end">%</th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
           <tfoot>
             <tr>
               <td colspan="2" class="text-end fw-semibold">Totales</td>
-              <td class="text-end fw-semibold" id="repven-total-unid">${this.escapeHtml(this.formatQty(totalU))}</td>
+              <td class="text-end fw-semibold" id="repven-total-unid">${this.escapeHtml(this.formatQty(totalUn))}</td>
+              <td class="text-end fw-semibold" id="repven-total-prod-costo">${this.escapeHtml(this.formatMoney(totalC))}</td>
               <td class="text-end fw-semibold" id="repven-total-prod">${this.escapeHtml(this.formatMoney(totalI))}</td>
+              <td class="text-end fw-semibold" id="repven-total-prod-util">${this.escapeHtml(this.formatMoney(totalU))}</td>
+              <td class="text-end fw-semibold" id="repven-total-prod-pct">${this.escapeHtml(this.formatPct(totalPct))}</td>
             </tr>
           </tfoot>
         </table>
@@ -226,28 +418,20 @@ const ReportesVentasView = {
 
   renderMarcas() {
     const q = this._filters.marcas;
-    const rows = this.filterRows(this._data?.marcas || [], ['CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'IMPORTE'], q);
-    const totalU = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-    const totalI = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+    const rows = this.filterRows(this._data?.marcas || [], [
+      'CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+    ], q);
+    const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+    const totalPct = this.pctFromTotals(totalI, totalU);
     const body = !rows.length
-      ? `<tr><td colspan="4" class="text-center text-muted py-3">Sin marcas</td></tr>`
-      : rows
-          .map(
-            (r) => `
-          <tr>
-            <td class="text-end">${this.escapeHtml(r.CODMARCA ?? '—')}</td>
-            <td>${this.escapeHtml(r.DESMARCA || 'Sin marca')}</td>
-            <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-          </tr>`
-          )
-          .join('');
+      ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin marcas</td></tr>`
+      : rows.map((r) => this.marcaRowHtml(r)).join('');
 
     return `
-      <div class="d-flex justify-content-end mb-2">
-        <input type="search" class="form-control form-control-sm repven-search" data-tab="marcas"
-          placeholder="Buscar marcas…" value="${this.escapeHtml(q)}">
-      </div>
+      ${this.renderSearchToolbar('marcas', 'Buscar marcas…', q)}
       <div class="table-responsive repven-table-scroll">
         <table class="table table-sm table-hover align-middle mb-0 repven-table">
           <thead>
@@ -255,15 +439,21 @@ const ReportesVentasView = {
               <th class="text-end">Cod. marca</th>
               <th>Marca</th>
               <th class="text-end">Unidades</th>
+              <th class="text-end">Total costo</th>
               <th class="text-end">Importe</th>
+              <th class="text-end">Utilidad</th>
+              <th class="text-end">%</th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
           <tfoot>
             <tr>
               <td colspan="2" class="text-end fw-semibold">Totales</td>
-              <td class="text-end fw-semibold" id="repven-total-munid">${this.escapeHtml(this.formatQty(totalU))}</td>
+              <td class="text-end fw-semibold" id="repven-total-munid">${this.escapeHtml(this.formatQty(totalUn))}</td>
+              <td class="text-end fw-semibold" id="repven-total-marca-costo">${this.escapeHtml(this.formatMoney(totalC))}</td>
               <td class="text-end fw-semibold" id="repven-total-marca">${this.escapeHtml(this.formatMoney(totalI))}</td>
+              <td class="text-end fw-semibold" id="repven-total-marca-util">${this.escapeHtml(this.formatMoney(totalU))}</td>
+              <td class="text-end fw-semibold" id="repven-total-marca-pct">${this.escapeHtml(this.formatPct(totalPct))}</td>
             </tr>
           </tfoot>
         </table>
@@ -290,7 +480,7 @@ const ReportesVentasView = {
           <div>
             <h2 class="pos-list-title mb-0">Reportes de Ventas</h2>
             <p class="pos-list-sub text-muted mb-0">
-              Ventas (FAC/FEF/FEC/FES) − Devoluciones (DEV/FNC/FNA) · sin anulados · sin REPORTES=NO
+              Ventas (FAC/FEF/FEC/FES) − Devoluciones (DEV/FNC/FNA) · anulados (A) con importe/costo 0 · sin REPORTES=NO
             </p>
           </div>
         </div>
@@ -359,75 +549,67 @@ const ReportesVentasView = {
 
     if (this._tab === 'documentos') {
       const rows = this.filterRows(this._data.documentos || [], [
-        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'TIPODOC', 'DESDOC', 'IMPORTE', 'STATUS',
+        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'TIPODOC', 'DESDOC',
+        'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD', 'STATUS',
       ], this._filters.documentos);
-      const total = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+      const totalPct = this.pctFromTotals(totalI, totalU);
       tbody.innerHTML = !rows.length
-        ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin documentos</td></tr>`
-        : rows
-            .map((r) => {
-              const neg = Number(r.IMPORTE) < 0;
-              return `
-            <tr class="${neg ? 'repven-row-dev' : ''}">
-              <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
-              <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
-              <td>${this.escapeHtml(r.CODDOC || '—')}</td>
-              <td class="text-end">${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
-              <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
-              <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-              <td class="text-center">${this.escapeHtml(r.STATUS || '—')}</td>
-            </tr>`;
-            })
-            .join('');
+        ? `<tr><td colspan="10" class="text-center text-muted py-3">Sin documentos</td></tr>`
+        : rows.map((r) => this.documentoRowHtml(r)).join('');
+      el.querySelector('#repven-total-docs-costo')?.replaceChildren(document.createTextNode(this.formatMoney(totalC)));
       const tot = el.querySelector('#repven-total-docs');
-      if (tot) tot.textContent = this.formatMoney(total);
+      if (tot) tot.textContent = this.formatMoney(totalI);
+      el.querySelector('#repven-total-docs-util')?.replaceChildren(document.createTextNode(this.formatMoney(totalU)));
+      const pctEl = el.querySelector('#repven-total-docs-pct');
+      if (pctEl) pctEl.textContent = this.formatPct(totalPct);
       return;
     }
 
     if (this._tab === 'productos') {
-      const rows = this.filterRows(this._data.productos || [], ['CODPROD', 'DESPROD', 'TOTALUNIDADES', 'IMPORTE'], this._filters.productos);
-      const totalU = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-      const totalI = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+      const rows = this.filterRows(this._data.productos || [], [
+        'CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+      ], this._filters.productos);
+      const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+      const totalPct = this.pctFromTotals(totalI, totalU);
       tbody.innerHTML = !rows.length
-        ? `<tr><td colspan="4" class="text-center text-muted py-3">Sin productos</td></tr>`
-        : rows
-            .map(
-              (r) => `
-            <tr>
-              <td>${this.escapeHtml(r.CODPROD || '—')}</td>
-              <td>${this.escapeHtml(r.DESPROD || '—')}</td>
-              <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-              <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-            </tr>`
-            )
-            .join('');
+        ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin productos</td></tr>`
+        : rows.map((r) => this.productoRowHtml(r)).join('');
       const u = el.querySelector('#repven-total-unid');
+      if (u) u.textContent = this.formatQty(totalUn);
+      el.querySelector('#repven-total-prod-costo')?.replaceChildren(document.createTextNode(this.formatMoney(totalC)));
       const i = el.querySelector('#repven-total-prod');
-      if (u) u.textContent = this.formatQty(totalU);
       if (i) i.textContent = this.formatMoney(totalI);
+      el.querySelector('#repven-total-prod-util')?.replaceChildren(document.createTextNode(this.formatMoney(totalU)));
+      const pctEl = el.querySelector('#repven-total-prod-pct');
+      if (pctEl) pctEl.textContent = this.formatPct(totalPct);
       return;
     }
 
-    const rows = this.filterRows(this._data.marcas || [], ['CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'IMPORTE'], this._filters.marcas);
-    const totalU = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-    const totalI = rows.reduce((s, r) => s + (Number(r.IMPORTE) || 0), 0);
+    const rows = this.filterRows(this._data.marcas || [], [
+      'CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
+    ], this._filters.marcas);
+    const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
+    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
+    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
+    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
+    const totalPct = this.pctFromTotals(totalI, totalU);
     tbody.innerHTML = !rows.length
-      ? `<tr><td colspan="4" class="text-center text-muted py-3">Sin marcas</td></tr>`
-      : rows
-          .map(
-            (r) => `
-          <tr>
-            <td class="text-end">${this.escapeHtml(r.CODMARCA ?? '—')}</td>
-            <td>${this.escapeHtml(r.DESMARCA || 'Sin marca')}</td>
-            <td class="text-end">${this.escapeHtml(this.formatQty(r.TOTALUNIDADES))}</td>
-            <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
-          </tr>`
-          )
-          .join('');
+      ? `<tr><td colspan="7" class="text-center text-muted py-3">Sin marcas</td></tr>`
+      : rows.map((r) => this.marcaRowHtml(r)).join('');
     const u = el.querySelector('#repven-total-munid');
+    if (u) u.textContent = this.formatQty(totalUn);
+    el.querySelector('#repven-total-marca-costo')?.replaceChildren(document.createTextNode(this.formatMoney(totalC)));
     const i = el.querySelector('#repven-total-marca');
-    if (u) u.textContent = this.formatQty(totalU);
     if (i) i.textContent = this.formatMoney(totalI);
+    el.querySelector('#repven-total-marca-util')?.replaceChildren(document.createTextNode(this.formatMoney(totalU)));
+    const pctEl = el.querySelector('#repven-total-marca-pct');
+    if (pctEl) pctEl.textContent = this.formatPct(totalPct);
   },
 
   bindSearch() {
@@ -440,6 +622,14 @@ const ReportesVentasView = {
         this._filters[tab] = input.value || '';
         clearTimeout(timer);
         timer = setTimeout(() => this.refreshTabBody(), 120);
+      });
+    });
+    this._container?.querySelectorAll('.repven-export-excel').forEach((btn) => {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab') || this._tab;
+        this.exportTabExcel(tab);
       });
     });
   },

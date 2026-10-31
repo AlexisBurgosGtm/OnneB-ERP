@@ -17,6 +17,7 @@ const {
   buildRemainingProductPool,
   poolRestanteTotal,
 } = require('../lib/fraccionamiento-product-pool');
+const { bindDocproductosBonoInput, resolveDocproductosBono } = require('../lib/docproductos-bono');
 
 const router = express.Router();
 const DEFAULT_BODEGA = 0;
@@ -205,7 +206,7 @@ async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, 
         ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
         COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
         DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
       )
       SELECT
         l.EMPNIT, @ANIO, @MES, @DIA, @CODDOC_DST, @CORR_DST,
@@ -217,7 +218,7 @@ async function copyDocProductos(transaction, empnit, srcCoddoc, srcCorrelativo, 
         ISNULL(l.CODBODEGAENTRADA, ${DEFAULT_BODEGA}), ISNULL(l.CODBODEGASALIDA, ${DEFAULT_BODEGA}),
         ISNULL(l.DESCUENTO, 0), ISNULL(l.PORCDESCUENTO, 0), ISNULL(l.NOSERIE, 'SN'), ISNULL(l.EXENTO, 0), ISNULL(l.OBS, 'SN'),
         ISNULL(l.TIPOPROD, 'P'), ISNULL(l.TIPOPRECIO, 'P'), ISNULL(l.PESO, 0), ISNULL(l.TOTALPESO, 0),
-        @TIPOM, CAST(GETDATE() AS DATE)
+        @TIPOM, CAST(GETDATE() AS DATE), ISNULL(l.BONO, 0)
       FROM dbo.DOCPRODUCTOS l
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC_SRC AND l.CORRELATIVO = @CORR_SRC
     `);
@@ -345,6 +346,7 @@ function allocateFromPool(pool, minimo, maximo) {
 
 async function insertAllocatedDocProductos(
   transaction,
+  pool,
   empnit,
   dstCoddoc,
   dstCorrelativo,
@@ -379,8 +381,12 @@ async function insertAllocatedDocProductos(
     const { gravable, iva } = splitIvaFromTotal(totalPrecio, !exentoFlag, ivaFactor);
     const obs = `FFACSRC:${l.ID}`;
     const ent = valoresEntregadosIniciales(dstCoddoc, totalUnidades, totalCosto, totalPrecio);
+    const lineBono = await resolveDocproductosBono(pool, sql, empnit, l.CODPROD, {
+      lineBono: l.BONO,
+      equivale,
+    });
 
-    await new sql.Request(transaction)
+    const reqIns = new sql.Request(transaction)
       .input('EMPNIT', sql.VarChar, empnit)
       .input('ANIO', sql.Int, parts.anio)
       .input('MES', sql.Int, parts.mes)
@@ -417,8 +423,9 @@ async function insertAllocatedDocProductos(
       .input('TIPOPRECIO', sql.VarChar, l.TIPOPRECIO || 'P')
       .input('PESO', sql.Decimal(18, 3), peso)
       .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
-      .input('TIPOM', sql.Int, tipom)
-      .query(`
+      .input('TIPOM', sql.Int, tipom);
+    bindDocproductosBonoInput(reqIns, sql, lineBono);
+    await reqIns.query(`
         INSERT INTO dbo.DOCPRODUCTOS (
           EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
           CANTIDAD, CANTIDADBONIF, EQUIVALE, TOTALUNIDADES, TOTALBONIF,
@@ -426,7 +433,7 @@ async function insertAllocatedDocProductos(
           ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
           COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
           DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-          TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+          TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
         ) VALUES (
           @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
           @CANTIDAD, @CANTIDADBONIF, @EQUIVALE, @TOTALUNIDADES, @TOTALBONIF,
@@ -434,7 +441,7 @@ async function insertAllocatedDocProductos(
           @ENT_U, @ENT_C, @ENT_P,
           @COSTOANTERIOR, @COSTOPROMEDIO, @CODBODEGAENTRADA, @CODBODEGASALIDA,
           @DESCUENTO, @PORCDESCUENTO, @NOSERIE, @EXENTO, @OBS,
-          @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
+          @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO
         )
       `);
   }
@@ -1084,6 +1091,7 @@ router.post('/:id/fraccionar-cf', async (req, res) => {
       });
       await insertAllocatedDocProductos(
         tx,
+        pool,
         empnit,
         coddocCert,
         correlativoCert,

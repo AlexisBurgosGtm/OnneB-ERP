@@ -186,6 +186,7 @@
 .login-theme-mark--purple { background: linear-gradient(135deg, #7c3aed, #4c1d95); }
 .login-theme-mark--carbon { background: linear-gradient(135deg, #3f3f46, #18181b); }
 .login-theme-mark--blue { background: linear-gradient(135deg, #3b82f6, #1e3a8a); }
+.login-theme-mark--corporativo { background: linear-gradient(135deg, #2e7bb8, #003566); }
 .login-theme-mark--bw { background: linear-gradient(135deg, #e5e5e5, #171717); color: #171717; }
 .login-theme-mark--mustard { background: linear-gradient(135deg, #eab308, #854d0e); }
 .login-theme-mark--fire { background: linear-gradient(135deg, #ef4444, #7f1d1d); }

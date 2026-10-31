@@ -18,6 +18,8 @@ const NotasCreditoView = {
   _cajaDefault: null,
   _selectedCodcaja: null,
   _urlFel: '',
+  _obligaFechaServidor: false,
+  _fechaServidorIso: '',
 
   FEL_TIPOS_CERTIFICABLES: ['FNC'],
   FEL_URL_OPCION: 'URL FEL',
@@ -162,6 +164,7 @@ const NotasCreditoView = {
   },
 
   async guardarFechaDocumento(fecha) {
+    if (this._obligaFechaServidor) return;
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const actual = DocFecha.inputValueFromHeader(this._pedido.header);
@@ -1022,11 +1025,12 @@ const NotasCreditoView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="10" class="text-center text-muted py-4">No hay notas de crédito en esta fecha</td></tr>`;
+      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay notas de crédito en esta fecha</td></tr>`;
     }
     return rows.map((r) => `
       <tr class="nc-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
         <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+        <td class="text-center text-nowrap">${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}</td>
         <td class="text-nowrap">${this.escapeHtml(r.SERIEFAC || '')}-${this.escapeHtml(r.NOFAC || '')}</td>
         <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || 'Sin cliente')}</td>
         <td class="text-center">${Number(r.LINEAS) || 0}</td>
@@ -1048,6 +1052,7 @@ const NotasCreditoView = {
             <thead class="table-light sticky-top">
               <tr>
                 <th>Documento</th>
+                <th class="text-center">Estado</th>
                 <th>Factura referencia</th>
                 <th>Cliente</th>
                 <th class="text-center">Líneas</th>
@@ -1244,7 +1249,10 @@ const NotasCreditoView = {
               <div class="pos-header-doc-label small fw-semibold" id="nc-header-doc">${this.escapeHtml(this.docLabel())}</div>
               <div class="d-flex flex-wrap align-items-end gap-2">
                 ${this.renderCajaField()}
-                ${DocFecha.renderField('nc-doc-fecha', this._pedido?.header)}
+                ${DocFecha.renderField('nc-doc-fecha', this._pedido?.header, {
+                  lockServerDate: this._obligaFechaServidor,
+                  serverDateIso: this._fechaServidorIso,
+                })}
               </div>
               <div class="ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="nc-header-total">Q 0.00</h3>
@@ -1623,7 +1631,16 @@ const NotasCreditoView = {
 
     container.innerHTML = '<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando Notas de crédito…</div>';
     try {
-      const [config] = await Promise.all([this.fetchConfig(), this.fetchUrlFel().catch(() => '')]);
+      const [config, fechaPol] = await Promise.all([
+        this.fetchConfig(),
+        DocFecha.loadPoliticaFechaServidorFacturas(
+          (url, opts) => F.fetchJson(url, opts),
+          () => F.getEmpNit()
+        ).catch(() => ({ activa: false, fechaIso: '' })),
+        this.fetchUrlFel().catch(() => ''),
+      ]);
+      this._obligaFechaServidor = Boolean(fechaPol?.activa);
+      this._fechaServidorIso = String(fechaPol?.fechaIso || '').slice(0, 10);
       this._config = config;
       DocTipoSelect.initView(this);
       if (!this._config?.coddocDefault) {

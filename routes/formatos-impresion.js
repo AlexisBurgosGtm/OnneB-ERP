@@ -195,6 +195,67 @@ async function ensureFelTicketFormats(pool, empnit, usuario = 'SISTEMA') {
   }
 }
 
+async function ensureFacCartaFormat(pool, empnit, usuario = 'SISTEMA') {
+  const tpl = getDefaultTemplate('CARTA', 'FAC');
+  const existing = await findFormato(pool, empnit, 'FAC', 'CARTA');
+  const dirLine =
+    '<div class="doc-meta-item"><strong>Dirección:</strong> {{DOC.DOC_DIRCLIE}}</div>';
+  const dirWithPhone = `${dirLine}
+    {{#DOC.DOC_TELEFONO}}<div class="doc-meta-item"><strong>Tel. cliente:</strong> {{DOC.DOC_TELEFONO}}</div>{{/DOC.DOC_TELEFONO}}`;
+
+  if (existing) {
+    let html = String(existing.HTML || '');
+    if (!html.includes('DOC.DOC_TELEFONO') && html.includes(dirLine)) {
+      html = html.replace(dirLine, dirWithPhone);
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ID', sql.Int, existing.ID)
+        .input('HTML', sql.NVarChar(sql.MAX), html)
+        .input('USUARIO_MOD', sql.VarChar, usuario)
+        .query(`
+          UPDATE dbo.FORMATOS_IMPRESION
+          SET HTML = @HTML, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
+          WHERE EMPNIT = @EMPNIT AND ID = @ID
+        `);
+    } else if (!html.includes('DOC.DOC_TELEFONO') && !html.includes('fac-carta-cliente-tel-v1')) {
+      await pool
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ID', sql.Int, existing.ID)
+        .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+        .input('NOMBRE', sql.VarChar, tpl.NOMBRE)
+        .input('USUARIO_MOD', sql.VarChar, usuario)
+        .query(`
+          UPDATE dbo.FORMATOS_IMPRESION
+          SET HTML = @HTML, NOMBRE = @NOMBRE, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
+          WHERE EMPNIT = @EMPNIT AND ID = @ID
+        `);
+    }
+    return;
+  }
+  await pool
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('TIPODOC', sql.VarChar, 'FAC')
+    .input('PAPEL', sql.VarChar, 'CARTA')
+    .input('NOMBRE', sql.VarChar, tpl.NOMBRE)
+    .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+    .input('CSS', sql.NVarChar(sql.MAX), tpl.CSS)
+    .input('ACTIVO', sql.VarChar, 'SI')
+    .input('USUARIO_MOD', sql.VarChar, usuario)
+    .query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM dbo.FORMATOS_IMPRESION
+        WHERE EMPNIT = @EMPNIT AND TIPODOC = 'FAC' AND PAPEL = 'CARTA'
+      )
+      INSERT INTO dbo.FORMATOS_IMPRESION
+        (EMPNIT, TIPODOC, PAPEL, NOMBRE, HTML, CSS, ACTIVO, FECHA_MOD, USUARIO_MOD)
+      VALUES
+        (@EMPNIT, 'FAC', 'CARTA', @NOMBRE, @HTML, @CSS, 'SI', GETDATE(), @USUARIO_MOD)
+    `);
+}
+
 async function ensureFacTicketFormat(pool, empnit, usuario = 'SISTEMA') {
   const tpl = getDefaultTemplate('TICKET', 'FAC');
   const existing = await findFormato(pool, empnit, 'FAC', 'TICKET');
@@ -205,7 +266,9 @@ async function ensureFacTicketFormat(pool, empnit, usuario = 'SISTEMA') {
       html.includes('doc-meta-grid') || html.includes('doc-lines-table') || html.includes('report-header');
     const needsFacTicketLayout = looksLikeCartaOnTicket || !html.includes('fel-ticket');
     const needsFacLogoV2 = !css.includes('fac-ticket-logo-v2') || !html.includes('fac-ticket-doc');
-    if (needsFacTicketLayout || needsFacLogoV2) {
+    const needsFacTicketClienteEntrega =
+      !html.includes('fac-ticket-cliente-entrega-v1') || !html.includes('DOC.DOC_TELEFONO');
+    if (needsFacTicketLayout || needsFacLogoV2 || needsFacTicketClienteEntrega) {
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -253,6 +316,7 @@ async function loadDocumentoPrintData(pool, empnit, coddoc, correlativo) {
     .query(`
       SELECT d.*, t.DESDOC, t.TIPODOC, t.OBS AS TIPODOC_OBS,
         c.NEGOCIO AS CLI_NEGOCIO,
+        LTRIM(RTRIM(ISNULL(c.TELEFONOCLIENTE, ''))) AS TELEFONOCLIENTE,
         ISNULL(emp.NOMEMPLEADO, '') AS VENDEDOR,
         ISNULL(emp.TELEFONOS, '') AS VENDEDOR_TELEFONO,
         ISNULL(cj.DESCAJA, '') AS DESCAJA
@@ -559,6 +623,7 @@ router.get('/variables', (_req, res) => {
           'DOC.DOC_NOMCLIE',
           'DOC.DOC_NIT',
           'DOC.DOC_DIRCLIE',
+          'DOC.DOC_TELEFONO',
           'DOC.F_ENTREGA',
           'DOC.DIRENTREGA',
           'DOC.NEGOCIO',
@@ -686,6 +751,7 @@ router.get('/', async (req, res) => {
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
     await ensureFacTicketFormat(pool, empnit);
+    await ensureFacCartaFormat(pool, empnit);
     const tipodoc = normalizeTipodoc(req.query.tipodoc);
     const request = pool.request().input('EMPNIT', sql.VarChar, empnit);
     let filter = '';
@@ -818,6 +884,7 @@ router.get('/resolve', async (req, res) => {
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
     await ensureFacTicketFormat(pool, empnit);
+    await ensureFacCartaFormat(pool, empnit);
     const found = await findFormato(pool, empnit, tipodoc, papel);
     if (found) return res.json(found);
     const def = getDefaultTemplate(papel, tipodoc);
@@ -856,6 +923,7 @@ async function handleRender(req, res) {
     await ensureTable(pool);
     await ensureFelTicketFormats(pool, empnit);
     await ensureFacTicketFormat(pool, empnit);
+    await ensureFacCartaFormat(pool, empnit);
     const doc = await loadDocumentoPrintData(pool, empnit, coddoc, correlativo);
     if (!doc) return res.status(404).json({ error: 'Documento no encontrado' });
 

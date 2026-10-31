@@ -18,6 +18,7 @@ const {
   pesoFromPreciosRow,
   calcLinePeso,
 } = require('../lib/producto-precio-linea');
+const { bonoFromPrecioRow, bindDocproductosBonoInput } = require('../lib/docproductos-bono');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
@@ -750,6 +751,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       precio = roundMoney(customPrecio);
     }
     const equivale = Number(prod.EQUIVALE) || 1;
+    const lineBono = bonoFromPrecioRow(prod, equivale);
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
       cantidad,
       costo,
@@ -795,6 +797,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
         .input('TIPOM', sql.Int, tipom)
         .input('OBS', sql.VarChar, String(req.body?.OBS || '').trim() || 'SN');
+      bindDocproductosBonoInput(reqIns, sql, lineBono);
       if (withSol) reqIns.input('SOLICITADO', sql.Int, 0);
       const ins = await reqIns.query(
         withSol
@@ -806,7 +809,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, SOLICITADO
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO, SOLICITADO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -814,7 +817,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @ENT_U, @ENT_C, @ENT_P,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, @OBS,
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @SOLICITADO
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO, @SOLICITADO
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `
@@ -826,7 +829,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -834,7 +837,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @ENT_U, @ENT_C, @ENT_P,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, @OBS,
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `

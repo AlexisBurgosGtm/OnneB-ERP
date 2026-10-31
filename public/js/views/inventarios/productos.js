@@ -238,9 +238,9 @@ const ProductosView = {
     });
   },
 
-  async loadLookups() {
+  async loadLookups(force = false) {
     const empNit = F.getEmpNit() || '';
-    if (this._lookups && this._lookupsEmpNit === empNit) return this._lookups;
+    if (!force && this._lookups && this._lookupsEmpNit === empNit) return this._lookups;
     const data = await F.fetchJson(`${this.apiBase('/lookups')}&_=${Date.now()}`, { cache: 'no-store' });
     const mapOpts = (rows, codeKey, labelKey) =>
       (rows || []).map((r) => ({
@@ -757,6 +757,7 @@ const ProductosView = {
     this._formRow = {};
     if (!this._container) return;
     try {
+      await this.loadLookups(true);
       await Promise.all([this.fetchStats(), this.fetchList()]);
     } catch (err) {
       F.toast(err.message, 'error');
@@ -777,6 +778,7 @@ const ProductosView = {
     if (codprod) this._filterQuery = String(codprod);
 
     try {
+      await this.loadLookups(true);
       await Promise.all([this.fetchStats(), this.fetchList()]);
       if (codprod && !this.findRow(codprod)) {
         const row = await this.fetchProductDetail(codprod);
@@ -803,7 +805,7 @@ const ProductosView = {
 
   async showForm(codprod = null) {
     this._screen = 'form';
-    await this.loadLookups();
+    await this.loadLookups(true);
     const isEdit = Boolean(codprod);
     this._formMode = isEdit ? 'edit' : 'new';
     this._formCodprod = codprod;
@@ -1079,7 +1081,7 @@ const ProductosView = {
   },
 
   async showPrecioForm(title, row = {}, isEdit = false) {
-    await this.loadLookups();
+    await this.loadLookups(true);
     const cod = this.activeCodprod();
     const costoUnitario = cod ? await this.getProductoCostoUnitarioAsync(cod) : 0;
     const medidasCount = (this._lookups?.medidas || []).length;
@@ -1263,7 +1265,7 @@ const ProductosView = {
    */
   async showFormCopyFrom(sourceCodprod) {
     this._screen = 'form';
-    await this.loadLookups();
+    await this.loadLookups(true);
     this._formMode = 'new';
     this._formCodprod = null;
     this._selectedCodprod = null;
@@ -2192,7 +2194,6 @@ const ProductosView = {
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando productos…</div>`;
 
     try {
-      await this.loadLookups();
       await this.showList();
     } catch (err) {
       container.innerHTML = `

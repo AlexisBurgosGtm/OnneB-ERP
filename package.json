@@ -16,6 +16,7 @@
     "seed:updater:nomina": "node scripts/seed-update-query-nomina-all.js",
     "seed:updater:lotes": "node scripts/seed-update-query-invsaldo-lote.js",
     "seed:updater:productos-usa-lotes": "node scripts/seed-update-query-productos-usa-lotes.js",
+    "seed:updater:productos-lastupdate": "node scripts/seed-update-query-productos-lastupdate.js",
     "seed:updater:lotes-all": "npm run seed:updater:lotes && npm run seed:updater:productos-usa-lotes",
     "seed:updater:asistencia-almuerzo": "node scripts/seed-update-query-asistencia-almuerzo.js",
     "seed:updater:tipodoc-plantilla-impresion": "node scripts/seed-update-query-tipodoc-plantilla-impresion.js",

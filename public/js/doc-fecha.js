@@ -67,14 +67,36 @@ const DocFecha = {
     return this.dateOnlyString(d.getFullYear(), d.getMonth() + 1, d.getDate());
   },
 
-  renderField(id, header) {
+  renderField(id, header, opts = {}) {
+    const lock = Boolean(opts.lockServerDate);
     const val = DocFecha.inputValueFromHeader(header);
-    const disabled = DocFecha.editableStatus(header?.STATUS) ? '' : ' disabled';
+    const editable = DocFecha.editableStatus(header?.STATUS);
+    const disabled = !editable || lock;
+    const title = lock
+      ? 'Fecha fijada al día del servidor (configuración activa)'
+      : 'Fecha del documento';
     return `
       <div class="pos-doc-fecha-wrap">
         <label class="form-label small mb-0" for="${id}">Fecha</label>
         <input type="date" class="form-control form-control-sm" id="${id}"
-          value="${val}"${disabled} aria-label="Fecha del documento">
+          value="${val}"${disabled ? ' disabled' : ''}${lock ? ' readonly' : ''}
+          title="${title}" aria-label="Fecha del documento">
       </div>`;
+  },
+
+  /** Carga SI/NO y, si aplica, la fecha calendario del servidor ERP. */
+  async loadPoliticaFechaServidorFacturas(fetchJson, getEmpNit) {
+    const emp = getEmpNit();
+    if (!emp) return { activa: false, fechaIso: '' };
+    const opcion = 'OBLIGA FECHA SERVIDOR EN FAC FEL NC';
+    const params = new URLSearchParams({ empnit: emp, opcion, _: String(Date.now()) });
+    const sino = await fetchJson(`/api/config/sino?${params}`, { cache: 'no-store' });
+    const activa = String(sino?.sino || '').trim().toUpperCase() === 'SI';
+    if (!activa) return { activa: false, fechaIso: '' };
+    const srv = await fetchJson(
+      `/api/documentos/fecha-servidor?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+    return { activa: true, fechaIso: String(srv?.FECHA || '').slice(0, 10) };
   },
 };

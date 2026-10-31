@@ -15,6 +15,7 @@ const ConfigGeneralView = {
     PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
     PERMITE_MODIFICAR_DESCRIPCION_VENTAS: 'PERMITE MODIFICAR DESCR VENTAS',
     SOLICITA_AUTORIZACIONES: 'SOLICITA AUTORIZACIONES',
+    SOLICITA_CLAVE_EDITAR_DOCUMENTOS: 'SOLICITA CLAVE AL EDITAR DOCUMENTOS',
     FORMATO_IMPRESION: 'FORMATO IMPRESION C O T',
     CERTIFICA_AL_FINALIZAR: 'CERTIFICA AL FINALIZAR',
     FACTURA_SE_PASA_A_FRACCIONAMIENTO_AUTOM: 'FACTURA SE PASA A FRACCIONAMIENTO AUTOM',
@@ -28,6 +29,7 @@ const ConfigGeneralView = {
     CONTROL_ASISTENCIA_ALMUERZO: 'CONTROL ASISTENCIA ALMUERZO',
     DICE_LA_HORA_EN_VOZ_ALTA: 'DICE LA HORA EN VOZ ALTA',
     ESTILO_DEL_LOGIN: 'ESTILO DEL LOGIN',
+    OBLIGA_FECHA_SERVIDOR_FACTURAS: 'OBLIGA FECHA SERVIDOR EN FAC FEL NC',
   },
 
   TEXT_CARDS: [
@@ -109,10 +111,24 @@ const ConfigGeneralView = {
         'Si está en SI, las eliminaciones de registros/documentos clave piden autorización y luego confirmación Sí/No. Si está en NO, piden la clave de administrador. No aplica a quitar ítems de un documento.',
     },
     {
+      opcion: 'SOLICITA CLAVE AL EDITAR DOCUMENTOS',
+      title: 'Solicita clave al editar documentos',
+      icon: 'fa-key',
+      fallbackDesc:
+        'Si está en SI, al abrir un documento existente para editarlo (excepto administrador y superusuario) se pide clave de administrador cuando no aplica la autorización en línea (SOLICITA AUTORIZACIONES = SI).',
+    },
+    {
       opcion: 'CERTIFICA AL FINALIZAR',
       title: 'Certifica al finalizar',
       icon: 'fa-certificate',
       fallbackDesc: 'Al finalizar un documento FEL (FEF/FEC/FNC), certifica automáticamente ante SAT',
+    },
+    {
+      opcion: 'OBLIGA FECHA SERVIDOR EN FAC FEL NC',
+      title: 'Fecha del servidor en facturas y notas crédito',
+      icon: 'fa-calendar-day',
+      fallbackDesc:
+        'En FAC, FEF, FEC, FES, DEV y FNC la fecha del documento queda fijada al día del servidor ERP; el usuario no puede cambiarla (evita desfases con el cuadre de caja)',
     },
     {
       opcion: 'PERMITE FRACCIONAMIENTO FACTURAS',
@@ -412,6 +428,7 @@ const ConfigGeneralView = {
       'PERMITE CAMBIAR PRECIO EN PEDIDOS': 'operacion',
       'PERMITE MODIFICAR DESCR VENTAS': 'operacion',
       'SOLICITA AUTORIZACIONES': 'seguridad',
+      'SOLICITA CLAVE AL EDITAR DOCUMENTOS': 'seguridad',
       'CERTIFICA AL FINALIZAR': 'electronica',
       'PERMITE FRACCIONAMIENTO FACTURAS': 'electronica',
       'FACTURA SE PASA A FRACCIONAMIENTO AUTOM': 'electronica',

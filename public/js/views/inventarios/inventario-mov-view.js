@@ -252,7 +252,7 @@ function createInventarioMovView(cfg) {
     renderListRowsHtml() {
       const rows = this.filteredDocsList();
       if (!rows.length) {
-        const colSpan = cfg.showDestinoCol ? 7 : 6;
+        const colSpan = (cfg.showDestinoCol ? 7 : 6) + 1;
         return `<tr><td colspan="${colSpan}" class="text-center text-muted py-4">No hay documentos en ${this._listMes}/${this._listAnio}</td></tr>`;
       }
       return rows
@@ -260,6 +260,7 @@ function createInventarioMovView(cfg) {
           return `
           <tr class="inv-doc-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="small fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+            <td class="text-center text-nowrap">${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}</td>
             <td class="small text-nowrap">${this.escapeHtml(this.formatFecha(r))}</td>
             <td class="small doc-list-col-optional">${this.escapeHtml(r.USUARIO || '—')}</td>
             ${
@@ -308,8 +309,9 @@ function createInventarioMovView(cfg) {
           return `
           <div class="pos-pedido-card inv-doc-card" data-coddoc="${this.escapeHtml(r.CODDOC)}"
             data-correlativo="${r.CORRELATIVO}">
-            <div class="pos-pedido-card-top">
+            <div class="pos-pedido-card-top d-flex align-items-center gap-2 flex-wrap">
               <span class="pos-pedido-card-doc">${this.escapeHtml(label)}</span>
+              ${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}
             </div>
             <div class="pos-pedido-card-meta">${this.escapeHtml(r.USUARIO || '—')} · ${this.escapeHtml(this.formatFecha(r))}</div>
             ${
@@ -1747,6 +1749,7 @@ function createInventarioMovView(cfg) {
               <thead class="table-light sticky-top">
                 <tr>
                   <th>Documento</th>
+                  <th class="text-center">Estado</th>
                   <th>Fecha</th>
                   <th class="doc-list-col-optional">Usuario</th>
                   ${cfg.showDestinoCol ? `<th class="doc-list-col-optional">${this.escapeHtml(this.destinoColTitle())}</th>` : ''}

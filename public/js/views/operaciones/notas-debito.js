@@ -980,11 +980,12 @@ const NotasDebitoView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="10" class="text-center text-muted py-4">No hay notas de crédito proveedor en esta fecha</td></tr>`;
+      return `<tr><td colspan="11" class="text-center text-muted py-4">No hay notas de crédito proveedor en esta fecha</td></tr>`;
     }
     return rows.map((r) => `
       <tr class="nd-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
         <td class="fw-semibold text-nowrap">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+        <td class="text-center text-nowrap">${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}</td>
         <td class="text-nowrap">${this.escapeHtml(r.SERIEFAC || '')}-${this.escapeHtml(r.NOFAC || '')}</td>
         <td>${this.escapeHtml(r.DOC_NOMCLIE || r.NEGOCIO || 'Sin proveedor')}</td>
         <td class="text-center">${Number(r.LINEAS) || 0}</td>
@@ -1006,6 +1007,7 @@ const NotasDebitoView = {
             <thead class="table-light sticky-top">
               <tr>
                 <th>Documento</th>
+                <th class="text-center">Estado</th>
                 <th>Compra referencia</th>
                 <th>Proveedor</th>
                 <th class="text-center">Líneas</th>

@@ -167,12 +167,9 @@ const DocumentosView = {
       return this.escapeHtml(documentosFormatDateDdMmYyyy(value));
     }
     if (col?.type === 'status') {
-      const s = String(value ?? '').trim().toUpperCase() || '—';
-      const cls =
-        s === 'A'
-          ? 'documentos-status badge documentos-status-anulado'
-          : 'documentos-status badge text-bg-light border';
-      return `<span class="${cls}">${this.escapeHtml(s)}</span>`;
+      return typeof DocStatus !== 'undefined'
+        ? DocStatus.badgeHtml(value, (v) => this.escapeHtml(v))
+        : this.escapeHtml(String(value ?? '').trim() || '—');
     }
     if (value === null || value === undefined || value === '') return '—';
     if (col?.type === 'money') {

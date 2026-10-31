@@ -22,6 +22,13 @@ const {
 } = require('../lib/producto-precio-linea');
 const { searchMovimientoProductos } = require('../lib/movimiento-productos-search');
 const {
+  isTipodocFel,
+  productoPermiteFacturacionFiscal,
+  sqlProductoSoloFacturablesWhere,
+  facturacionRequiereProductosFacturables,
+} = require('../lib/producto-facturar');
+const { bonoFromPrecioRow, bindDocproductosBonoInput } = require('../lib/docproductos-bono');
+const {
   insertLoteSqlParts,
   bindDocproductosLoteInputsIfEnabled,
   inventarioOptsFromLoteFieldsIfEnabled,
@@ -35,6 +42,10 @@ const {
 } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
 const { getSettingSino, getSettingPermiteFraccionamientoFacturas, SETTING_OPCION } = require('../lib/settings');
+const {
+  assertPermiteCambioFechaDocumento,
+  resolveFechaAltaDocumentoAsync,
+} = require('../lib/documento-fecha-servidor');
 const {
   fuenteTieneRestante,
   CODEMBARQUE_FRACCIONADA,
@@ -502,7 +513,7 @@ async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCor
         ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
         COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
         DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE
+        TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
       )
       SELECT
         l.EMPNIT, @ANIO, @MES, @DIA, @CODDOC_DST, @CORR_DST,
@@ -514,7 +525,7 @@ async function copyDocProductosFromPedido(transaction, empnit, srcCoddoc, srcCor
         ISNULL(l.CODBODEGAENTRADA, ${DEFAULT_BODEGA}), ISNULL(l.CODBODEGASALIDA, ${DEFAULT_BODEGA}),
         ISNULL(l.DESCUENTO, 0), ISNULL(l.PORCDESCUENTO, 0), ISNULL(l.NOSERIE, 'SN'), ISNULL(l.EXENTO, 0), ISNULL(l.OBS, 'SN'),
         ISNULL(l.TIPOPROD, 'P'), ISNULL(l.TIPOPRECIO, 'P'), ISNULL(l.PESO, 0), ISNULL(l.TOTALPESO, 0),
-        @TIPOM, CAST(GETDATE() AS DATE)
+        @TIPOM, CAST(GETDATE() AS DATE), ISNULL(l.BONO, 0)
       FROM dbo.DOCPRODUCTOS l
       WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC_SRC AND l.CORRELATIVO = @CORR_SRC
     `);
@@ -744,6 +755,10 @@ router.get('/productos', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const campoPrecio = normalizePreciosField(req.query.campoPrecio);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || DEFAULT_LIMIT, 1), SEARCH_LIMIT);
+  const grupo = resolveFacturacionGrupo(req);
+  const coddocCtx = String(req.query.coddoc || '').trim();
+  const soloFacturables = facturacionRequiereProductosFacturables(grupo, coddocCtx);
+  const extraWhereSql = soloFacturables ? sqlProductoSoloFacturablesWhere('p') : '';
   try {
     const pool = await req.app.locals.getDbPool();
     const result = await searchMovimientoProductos(pool, {
@@ -752,6 +767,8 @@ router.get('/productos', async (req, res) => {
       limit,
       campoPrecio,
       includeMayoreo: true,
+      extraWhereSql,
+      allowEmptyQ: !q && String(req.query.preload || '').trim() === '1',
     });
     res.json(result);
   } catch (err) {
@@ -1183,7 +1200,10 @@ router.post('/pedidos', async (req, res) => {
       if (vendedor) codven = vendedor.CODEMPLEADO;
     }
 
-    const parts = nowParts();
+    let parts = await resolveFechaAltaDocumentoAsync(pool, tipo.TIPODOC, req.body?.FECHA);
+    if (req.body?.FECHA !== undefined && String(req.body.FECHA).trim() !== '' && !parseFechaInput(req.body.FECHA)) {
+      return res.status(400).json({ error: 'Fecha inválida (use YYYY-MM-DD)' });
+    }
     const transaction = new sql.Transaction(pool);
     await ensureDocumentosEntregadoColumn(pool);
     await transaction.begin();
@@ -1322,6 +1342,13 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
         error: mensajeDocumentoNoEditable(docMetaPre.STATUS, docMetaPre.CORTE),
       });
     }
+    if (fechaParts) {
+      try {
+        await assertPermiteCambioFechaDocumento(pool, empnit, docMetaPre.TIPODOC);
+      } catch (fechaErr) {
+        return res.status(fechaErr.statusCode || 403).json({ error: fechaErr.message });
+      }
+    }
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -1424,6 +1451,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
   }
   if (cantidad <= 0) return res.status(400).json({ error: 'Cantidad debe ser mayor a cero' });
 
+  let lineBono = 0;
   try {
     const pool = await req.app.locals.getDbPool();
     const docCheck = await pool
@@ -1479,6 +1507,25 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       });
       if (!found) return res.status(404).json({ error: 'Producto o precio no encontrado' });
       const prod = found.row;
+      const tipodocDoc = String(docMetaLine.TIPODOC || coddoc || '').trim().toUpperCase();
+      if (isTipodocFel(tipodocDoc)) {
+        const factRow = await pool
+          .request()
+          .input('EMPNIT', sql.VarChar, empnit)
+          .input('CODPROD', sql.VarChar, codprod)
+          .query(`
+            SELECT TOP 1 UPPER(RTRIM(ISNULL(FACTURAR, 'SI'))) AS FACTURAR
+            FROM dbo.PRODUCTOS
+            WHERE EMPNIT = @EMPNIT AND LTRIM(RTRIM(CODPROD)) = LTRIM(RTRIM(@CODPROD))
+          `);
+        const facturar = factRow.recordset[0]?.FACTURAR ?? 'SI';
+        if (!productoPermiteFacturacionFiscal(facturar)) {
+          return res.status(400).json({
+            error:
+              'Este producto tiene Facturar = NO y no puede usarse en facturas electrónicas (FEL).',
+          });
+        }
+      }
       medidaLinea = found.codmedida;
       const campoPrecio = normalizePreciosField(req.body?.CAMPO_PRECIO);
       ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
@@ -1507,6 +1554,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       }
       exento = Number(prod.EXENTO) ? Number(prod.EXENTO) : 0;
       peso = pesoFromPreciosRow(prod);
+      lineBono = bonoFromPrecioRow(prod, equivale);
     }
 
     const { totalUnidades, totalCosto, totalPrecio } = calcLineTotals(
@@ -1556,6 +1604,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
         .input('PESO', sql.Decimal(18, 3), peso)
         .input('TOTALPESO', sql.Decimal(18, 3), totalPeso)
         .input('TIPOM', sql.Int, tipom);
+      bindDocproductosBonoInput(insReq, sql, lineBono);
       bindDocproductosLoteInputsIfEnabled(insReq, {});
       const ins = await insReq.query(`
           INSERT INTO dbo.DOCPRODUCTOS (
@@ -1565,7 +1614,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
             COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
             DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
-            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE${loteSql.columns}
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @CODDOC, @CORRELATIVO, @CODPROD, @DESPROD, @CODMEDIDA,
             @CANTIDAD, 0, @EQUIVALE, @TOTALUNIDADES, 0,
@@ -1573,7 +1622,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
             @ENT_U, @ENT_C, @ENT_P,
             0, 0, ${DEFAULT_BODEGA}, ${DEFAULT_BODEGA},
             0, 0, 'SN', @EXENTO, 'SN',
-            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE)${loteSql.values}
+            @TIPOPROD, @TIPOPRECIO, @PESO, @TOTALPESO, @TIPOM, CAST(GETDATE() AS DATE), @BONO
           );
           SELECT SCOPE_IDENTITY() AS ID;
         `);

@@ -26,6 +26,8 @@ const FacturacionView = {
   _pedidoEnvModalOpen: false,
   _pedidoEnvFilter: '',
   _promoActiva: false,
+  _obligaFechaServidor: false,
+  _fechaServidorIso: '',
 
   PRECIO_CAMPO_OPTIONS: [
     { value: 'PRECIO', label: 'PRECIO PUBLICO' },
@@ -551,11 +553,18 @@ const FacturacionView = {
     );
   },
 
+  productSearchCoddocParam() {
+    if (this._grupo === 'fac') return {};
+    const cod = String(this._pedido?.header?.CODDOC || this.activeCoddoc() || '').trim();
+    return cod ? { coddoc: cod } : {};
+  },
+
   async fetchProductos(q) {
     return F.fetchJson(
       this.apiUrl('/productos', {
         limit: '40',
         campoPrecio: this._precioCampo,
+        ...this.productSearchCoddocParam(),
         ...(q ? { q } : {}),
         _: String(Date.now()),
       })
@@ -1284,35 +1293,97 @@ const FacturacionView = {
     this.renderOrderSummary();
   },
 
+  async catalogPrecioForLine(line) {
+    const codprod = String(line?.CODPROD || '').trim();
+    const codmedida = String(line?.CODMEDIDA || '').trim();
+    if (!codprod) return Number(line?.PRECIO) || 0;
+    try {
+      const data = await this.fetchProductos(codprod);
+      const rows = data?.productos || [];
+      const campo = this._precioCampo || 'PRECIO';
+      const match = rows.find(
+        (p) =>
+          String(p.CODPROD) === codprod &&
+          (!codmedida || String(p.CODMEDIDA) === codmedida)
+      );
+      if (match) return Number(match[campo] ?? match.PRECIO) || 0;
+    } catch (_) {
+      /* ignore */
+    }
+    return Number(line?.PRECIO) || 0;
+  },
+
   async promptEditarPrecioLinea(line) {
     const current = Number(line?.PRECIO) || 0;
     const label = `${line?.CODPROD || ''} ${line?.DESPROD || ''}`.trim();
+    const catalogo = await this.catalogPrecioForLine(line);
+    const solicitaAuth = this.solicitaAutorizaciones();
     const result = await Swal.fire({
       ...(typeof CatalogosUI !== 'undefined' ? CatalogosUI.modalBase() : {}),
       title: 'Cambiar precio unitario',
       html: `<p class="small text-muted mb-2">${this.escapeHtml(label)}</p>
         <label class="form-label small mb-0" for="fac-cart-precio-edit">Precio</label>
-        <input type="number" id="fac-cart-precio-edit" class="form-control form-control-sm" value="${current}" min="0" step="any">`,
+        <input type="number" id="fac-cart-precio-edit" class="form-control form-control-sm" value="${current}" min="0" step="any">
+        <div id="fac-cart-precio-clave-wrap" class="d-none mt-2">
+          <form class="secret-input-modal" autocomplete="off" novalidate onsubmit="return false">
+            ${
+              typeof CatalogosUI !== 'undefined'
+                ? CatalogosUI.secretInputFieldHtml({
+                    inputId: 'fac-cart-precio-clave',
+                    name: 'onneb-cart-precio-admin-pass',
+                  })
+                : ''
+            }
+          </form>
+        </div>`,
       showCancelButton: true,
       confirmButtonText:
         typeof CatalogosUI !== 'undefined' ? CatalogosUI.guardarButtonHtml('Guardar') : 'Guardar',
       cancelButtonText: 'Cancelar',
       focusConfirm: false,
       didOpen: () => {
+        CatalogosUI?.wireSecretInput('fac-cart-precio-clave');
         const inp = document.getElementById('fac-cart-precio-edit');
         inp?.focus();
         inp?.select();
       },
-      preConfirm: () => {
+      preConfirm: async () => {
         const precio = Number(document.getElementById('fac-cart-precio-edit')?.value);
         if (!Number.isFinite(precio) || precio < 0) {
           Swal.showValidationMessage('Precio inválido');
+          return false;
+        }
+        if (
+          typeof AutorizacionesUI !== 'undefined' &&
+          AutorizacionesUI.precioChangeAllowed(precio, catalogo)
+        ) {
+          return precio;
+        }
+        const adminPass = document.getElementById('fac-cart-precio-clave')?.value ?? '';
+        if (!solicitaAuth && !String(adminPass).trim()) {
+          document.getElementById('fac-cart-precio-clave-wrap')?.classList.remove('d-none');
+          Swal.showValidationMessage('Ingrese la clave de administrador');
+          return false;
+        }
+        const ok = await AutorizacionesUI.gateCambioPrecioUnitario({
+          precio,
+          catalogo,
+          adminPass: solicitaAuth ? null : adminPass,
+          descripcion: `${AutorizacionesUI.usuario()} solicita cambiar ${label} al precio ${AutorizacionesUI.formatPrecioDesc(precio)}`,
+        });
+        if (!ok) {
+          Swal.showValidationMessage(
+            solicitaAuth
+              ? 'No se obtuvo autorización para el precio'
+              : 'Clave de administrador incorrecta'
+          );
           return false;
         }
         return precio;
       },
     });
     if (!result.isConfirmed) return null;
+    if (typeof AutorizacionesUI !== 'undefined') AutorizacionesUI.consumePrecioGrant();
     return result.value;
   },
 
@@ -1430,7 +1501,7 @@ const FacturacionView = {
         if (permiteCambiarPrecio) {
           precioInp?.addEventListener('input', updateTotal);
         }
-        if (permiteCambiarPrecio && solicitaAuth && typeof AutorizacionesUI !== 'undefined') {
+        if (permiteCambiarPrecio && typeof AutorizacionesUI !== 'undefined') {
           authGate = AutorizacionesUI.wirePrecioAuthGate({
             popup,
             precioInput: precioInp,
@@ -1438,7 +1509,7 @@ const FacturacionView = {
             cantidadInput: cantInp,
             priceByMedida,
             permiteCambiarPrecio,
-            solicitaAutorizaciones: true,
+            solicitaAutorizaciones: solicitaAuth,
             buildDescripcion: ({ precio, cantidad, medida }) => {
               const desLine =
                 document.getElementById('fac-swal-desprod')?.value?.trim() || row.DESPROD || row.CODPROD;
@@ -1482,11 +1553,14 @@ const FacturacionView = {
           }
           const catalog = Number(priceByMedida[String(medida)] ?? 0) || 0;
           if (
-            solicitaAuth &&
             typeof AutorizacionesUI !== 'undefined' &&
             !AutorizacionesUI.precioChangeAllowed(precio, catalog)
           ) {
-            Swal.showValidationMessage('Espere la autorización del administrador');
+            Swal.showValidationMessage(
+              solicitaAuth
+                ? 'Espere la autorización del administrador'
+                : 'Ingrese la clave de administrador en el mismo modal'
+            );
             return false;
           }
           return { medida, cantidad: cant, precio, desprod };
@@ -1496,7 +1570,7 @@ const FacturacionView = {
     });
     if (picked?.medida) {
       await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio, picked.desprod);
-      if (solicitaAuth && picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
+      if (picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
         AutorizacionesUI.consumePrecioGrant();
       }
     }
@@ -1623,6 +1697,10 @@ const FacturacionView = {
     const fechaInp = this._container?.querySelector('#fac-doc-fecha');
     if (fechaInp && h && !fechaInp.matches(':focus')) {
       fechaInp.value = DocFecha.inputValueFromHeader(h);
+      if (this._obligaFechaServidor) {
+        fechaInp.disabled = true;
+        fechaInp.readOnly = true;
+      }
     }
     const vendedorSel = this._container?.querySelector('#fac-doc-vendedor');
     if (vendedorSel && h && document.activeElement !== vendedorSel) {
@@ -1839,7 +1917,7 @@ const FacturacionView = {
   renderListTableBodyHtml() {
     const rows = this.filteredPedidosList();
     if (!rows.length) {
-      return `<tr><td colspan="12" class="text-center text-muted py-4">No hay facturas en esta fecha</td></tr>`;
+      return `<tr><td colspan="13" class="text-center text-muted py-4">No hay facturas en esta fecha</td></tr>`;
     }
     return rows
       .map((r) => {
@@ -1855,6 +1933,7 @@ const FacturacionView = {
         return `
           <tr class="fac-list-row" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${r.CORRELATIVO}">
             <td class="fw-semibold text-nowrap">${this.escapeHtml(label)}</td>
+            <td class="text-center text-nowrap">${DocStatus.badgeHtml(r.STATUS, (v) => this.escapeHtml(v))}</td>
             <td>${this.escapeHtml(cliente)}</td>
             <td class="small text-muted doc-list-col-optional">${this.escapeHtml(negocio)}</td>
             <td class="small doc-list-col-optional">${this.escapeHtml(vendedor)}</td>
@@ -1879,6 +1958,7 @@ const FacturacionView = {
             <thead class="table-light sticky-top">
               <tr>
                 <th scope="col">Documento</th>
+                <th scope="col" class="text-center">Estado</th>
                 <th scope="col">Cliente</th>
                 <th scope="col" class="doc-list-col-optional">Negocio</th>
                 <th scope="col" class="doc-list-col-optional">Vendedor</th>
@@ -2209,7 +2289,10 @@ const FacturacionView = {
               </div>
               <div class="pos-header-doc-label small fw-semibold" id="fac-header-doc">${this.escapeHtml(this.docLabel())}</div>
               <div class="pos-doc-meta-fields d-flex flex-wrap align-items-end gap-2">
-                ${DocFecha.renderField('fac-doc-fecha', this._pedido?.header)}
+                ${DocFecha.renderField('fac-doc-fecha', this._pedido?.header, {
+                  lockServerDate: this._obligaFechaServidor,
+                  serverDateIso: this._fechaServidorIso,
+                })}
                 ${this.renderVendedorField()}
               </div>
               <div class="pos-header-summary-wrap ms-auto d-flex flex-wrap align-items-end gap-3">
@@ -2576,6 +2659,7 @@ const FacturacionView = {
   },
 
   async guardarFechaDocumento(fecha) {
+    if (this._obligaFechaServidor) return;
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
     const actual = DocFecha.inputValueFromHeader(this._pedido.header);
@@ -2727,9 +2811,8 @@ const FacturacionView = {
 
   async showEditor(coddoc, correlativo, opts = {}) {
     if (!opts.skipAuth && coddoc != null && correlativo != null && correlativo !== '') {
-      if (typeof AutorizacionesUI !== 'undefined') {
-        const allowed = await AutorizacionesUI.gateAccionDocumento({
-          accion: 'editar',
+      if (typeof CatalogosUI !== 'undefined') {
+        const allowed = await CatalogosUI.gateEditarDocumento({
           coddoc,
           correlativo,
           tipodoc: this._grupo === 'fel' ? 'FEL' : this._grupo === 'mixto' ? 'FAC/FEL' : 'FAC',
@@ -2790,11 +2873,17 @@ const FacturacionView = {
     container.innerHTML = `<div class="text-center text-muted py-4 w-100"><i class="fa-solid fa-spinner fa-spin me-2"></i>Cargando ${this.escapeHtml(this._tituloModulo || 'Facturación')}…</div>`;
 
     try {
-      const [config] = await Promise.all([
+      const [config, fechaPol] = await Promise.all([
         this.fetchConfig(),
+        DocFecha.loadPoliticaFechaServidorFacturas(
+          (url, opts) => F.fetchJson(url, opts),
+          () => F.getEmpNit()
+        ).catch(() => ({ activa: false, fechaIso: '' })),
         this.fetchUrlFel().catch(() => ''),
         this.fetchPromoActiva().catch(() => false),
       ]);
+      this._obligaFechaServidor = Boolean(fechaPol?.activa);
+      this._fechaServidorIso = String(fechaPol?.fechaIso || '').slice(0, 10);
       this._selectedCoddoc = '';
       this._config = config;
       DocTipoSelect.initView(this);
