@@ -234,7 +234,11 @@ const CotizacionesView = {
   },
 
   permiteCambiarPrecioPedido() {
-    return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
+    return DocPrecioConfig.puedeCambiarPrecio(this._config);
+  },
+
+  requiereAutorizacionPrecio() {
+    return DocPrecioConfig.requiereAutorizacionPrecio(this._config);
   },
 
   solicitaAutorizaciones() {
@@ -598,7 +602,9 @@ const CotizacionesView = {
               typeof CatalogosUI !== 'undefined'
                 ? CatalogosUI.secretInputFieldHtml({
                     inputId: 'pos-cart-precio-clave',
-                    name: 'onneb-cart-precio-admin-pass',
+                    name: 'onneb-cart-precio-operador-pass',
+                    label: 'Clave de operador',
+                    placeholder: 'Clave de operador',
                   })
                 : ''
             }
@@ -621,6 +627,7 @@ const CotizacionesView = {
           Swal.showValidationMessage('Precio inválido');
           return false;
         }
+        if (!this.requiereAutorizacionPrecio()) return precio;
         if (
           typeof AutorizacionesUI !== 'undefined' &&
           AutorizacionesUI.precioChangeAllowed(precio, catalogo)
@@ -630,7 +637,7 @@ const CotizacionesView = {
         const adminPass = document.getElementById('pos-cart-precio-clave')?.value ?? '';
         if (!solicitaAuth && !String(adminPass).trim()) {
           document.getElementById('pos-cart-precio-clave-wrap')?.classList.remove('d-none');
-          Swal.showValidationMessage('Ingrese la clave de administrador');
+          Swal.showValidationMessage('Ingrese la clave de operador');
           return false;
         }
         const ok = await AutorizacionesUI.gateCambioPrecioUnitario({
@@ -643,7 +650,7 @@ const CotizacionesView = {
           Swal.showValidationMessage(
             solicitaAuth
               ? 'No se obtuvo autorización para el precio'
-              : 'Clave de administrador incorrecta'
+              : 'Clave de operador incorrecta'
           );
           return false;
         }
@@ -651,7 +658,9 @@ const CotizacionesView = {
       },
     });
     if (!result.isConfirmed) return null;
-    if (typeof AutorizacionesUI !== 'undefined') AutorizacionesUI.consumePrecioGrant();
+    if (this.requiereAutorizacionPrecio() && typeof AutorizacionesUI !== 'undefined') {
+      AutorizacionesUI.consumePrecioGrant();
+    }
     return result.value;
   },
 
@@ -763,7 +772,11 @@ const CotizacionesView = {
         if (permiteCambiarPrecio) {
           precioInp?.addEventListener('input', updateTotal);
         }
-        if (permiteCambiarPrecio && typeof AutorizacionesUI !== 'undefined') {
+        if (
+          permiteCambiarPrecio &&
+          this.requiereAutorizacionPrecio() &&
+          typeof AutorizacionesUI !== 'undefined'
+        ) {
           authGate = AutorizacionesUI.wirePrecioAuthGate({
             popup,
             precioInput: precioInp,
@@ -801,13 +814,14 @@ const CotizacionesView = {
           }
           const catalog = Number(priceByMedida[String(medida)] ?? 0) || 0;
           if (
+            this.requiereAutorizacionPrecio() &&
             typeof AutorizacionesUI !== 'undefined' &&
             !AutorizacionesUI.precioChangeAllowed(precio, catalog)
           ) {
             Swal.showValidationMessage(
               solicitaAuth
                 ? 'Espere la autorización del administrador'
-                : 'Ingrese la clave de administrador en el mismo modal'
+                : 'Ingrese la clave de operador en el mismo modal'
             );
             return false;
           }
@@ -818,7 +832,11 @@ const CotizacionesView = {
     });
     if (picked?.medida) {
       await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio);
-      if (picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
+      if (
+        picked.precio != null &&
+        this.requiereAutorizacionPrecio() &&
+        typeof AutorizacionesUI !== 'undefined'
+      ) {
         AutorizacionesUI.consumePrecioGrant();
       }
     }
@@ -1006,7 +1024,10 @@ const CotizacionesView = {
 
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
-    PosDocSearchUI.syncControls(this._container, 'pos', editable);
+    PosDocSearchUI.syncControls(this._container, 'pos', editable, {
+      viewKey: 'cotizaciones',
+      permiteMover: this._config?.permiteMoverBotonFinalizarEnDocumentos,
+    });
     [
       '#pos-cliente-search',
       '#pos-doc-fecha',
@@ -1022,7 +1043,9 @@ const CotizacionesView = {
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-pos-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (fab && !DocFinalizarFab?.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos)) {
+      fab.style.display = editable ? '' : 'none';
+    }
     this.syncClienteSearchEmphasis();
     this.syncVendedorEmphasis();
   },

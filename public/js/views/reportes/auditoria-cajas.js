@@ -25,7 +25,7 @@ const AuditoriaCajasView = {
   DOC_COLSPAN: 13,
   TIPODOC_FAC: ['FAC'],
   TIPODOC_FEL: ['FEF', 'FES', 'FEC'],
-  TIPODOC_FACTURA: ['FAC', 'FEF', 'FES', 'FEC'],
+  TIPODOC_FACTURA: ['FAC', 'FPC', 'FEF', 'FES', 'FEC'],
   TIPODOC_DEVOLUCION: ['DEV', 'FNC'],
   TIPODOC_RECIBOS: ['RCC', 'PRC'],
 
@@ -873,6 +873,7 @@ const AuditoriaCajasView = {
     this._container.innerHTML =
       this._section === 'detail' ? this.renderDetailHtml() : this.renderListHtml();
     this.bindEvents();
+    ReportTableExport.enhanceTables(this._container, 'auditoria_cajas');
   },
 
   refreshGruposPanel() {
@@ -882,6 +883,7 @@ const AuditoriaCajasView = {
     const rubroLabel = this._container?.querySelector('#audcaja-detalle-rubro');
     if (rubroLabel) rubroLabel.textContent = this.rubroTitulo(this._selectedRubro);
     this.bindDetailGrupoEvents();
+    ReportTableExport.enhanceTables(scroll, 'auditoria_cajas_detalle');
   },
 
   bindDocPrintButtons(root) {

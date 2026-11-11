@@ -1673,11 +1673,17 @@ function createInventarioMovView(cfg) {
 
     syncEditorControls() {
       const editable = this.docEditable(this._documento?.header);
-      PosDocSearchUI.syncControls(this._container, NS, editable);
+      PosDocSearchUI.syncControls(this._container, NS, editable, {
+        viewKey: NS,
+        finalizarId: `${NS}-btn-finalizar`,
+        permiteMover: this._config?.permiteMoverBotonFinalizarEnDocumentos,
+      });
       const fecha = this._container?.querySelector(`#${NS}-doc-fecha`);
       if (fecha) fecha.disabled = !editable;
       const fab = this._container?.querySelector(`#${NS}-btn-finalizar`);
-      if (fab) fab.style.display = editable ? '' : 'none';
+      if (fab && !DocFinalizarFab?.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos)) {
+        fab.style.display = editable ? '' : 'none';
+      }
     },
 
     renderListToolbar() {

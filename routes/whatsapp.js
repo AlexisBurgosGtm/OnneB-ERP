@@ -30,6 +30,24 @@ function decodeImageBase64(raw) {
 
 const router = express.Router();
 
+if (String(process.env.WHATSAPP_PKG_SMOKE || '').trim() === '1') {
+  router.get('/__pkg_smoke_pdf', async (_req, res) => {
+    try {
+      const { writeSectionsPdf } = require('../lib/whatsapp-pdf');
+      const pdf = await writeSectionsPdf({
+        empresa: 'Smoke',
+        title: 'Reporte programado (test)',
+        sections: [{ title: 'Prueba', lines: ['PDF OK'] }],
+        fileName: 'smoke-whatsapp-prog.pdf',
+      });
+      const stat = fs.statSync(pdf.filePath);
+      res.json({ ok: true, filePath: pdf.filePath, bytes: stat.size });
+    } catch (err) {
+      res.status(500).json({ error: err.message, stack: err.stack });
+    }
+  });
+}
+
 router.get('/status', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json(getStatus());

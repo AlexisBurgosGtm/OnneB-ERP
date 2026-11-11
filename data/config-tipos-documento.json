@@ -3,6 +3,7 @@
   "description": "Catálogo maestro de TIPODOC (campo Tipo documento en TIPODOCUMENTOS). Fuente de referencia para nuevos tipos.",
   "tipos": [
     { "TIPODOC": "FAC", "DESCRIPCION": "Factura interna" },
+    { "TIPODOC": "FPC", "DESCRIPCION": "Factura electrónica pequeño contribuyente (SAT FPEQ)" },
     { "TIPODOC": "ENV", "DESCRIPCION": "Pedidos / mostrador" },
     { "TIPODOC": "COT", "DESCRIPCION": "Cotizaciones" },
     { "TIPODOC": "CRS", "DESCRIPCION": "Comanda Restaurante" },    

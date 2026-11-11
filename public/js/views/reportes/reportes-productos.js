@@ -357,9 +357,12 @@ const ReportesProductosView = {
       return `<div class="repprod-empty py-2">Sin documentos con este producto</div>`;
     }
     const q = this._filters.documentos;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repprod-search mb-2" data-section="documentos"
         placeholder="Buscar facturas…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_productos_facturas_${this._selectedCod || 'det'}_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repprod-table">
           <thead class="table-light sticky-top">
@@ -377,6 +380,7 @@ const ReportesProductosView = {
           </thead>
           <tbody id="repprod-docs-tbody">${this.renderDocumentosBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 
@@ -418,9 +422,12 @@ const ReportesProductosView = {
       return `<div class="repprod-empty py-2">Sin clientes con compras de este producto</div>`;
     }
     const q = this._filters.clientes;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repprod-search mb-2" data-section="clientes"
         placeholder="Buscar clientes…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_productos_clientes_${this._selectedCod || 'det'}_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repprod-table">
           <thead class="table-light sticky-top">
@@ -435,6 +442,7 @@ const ReportesProductosView = {
           </thead>
           <tbody id="repprod-clientes-tbody">${this.renderClientesBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 

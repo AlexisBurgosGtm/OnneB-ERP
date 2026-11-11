@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 220" aria-hidden="true">
+  <title>Santa</title>
+  <ellipse cx="100" cy="208" rx="72" ry="10" fill="rgba(0,0,0,0.14)"/>
+  <!-- boots -->
+  <path fill="#1e293b" d="M72 188h24v18H68c-4 0-8-4-8-8v-6c0-2 2-4 4-4h8z"/>
+  <path fill="#1e293b" d="M104 188h24l4 4v14c0 4-4 8-8 8H104v-18z"/>
+  <!-- legs / pants trim -->
+  <path fill="#fef2f2" d="M76 168h48l4 22H72l4-22z"/>
+  <!-- coat body -->
+  <path fill="#b91c1c" d="M52 96c8-36 48-52 96-44 18 4 32 18 38 36l4 56c2 18-10 34-28 38H62c-18-4-28-22-24-40l14-46z"/>
+  <!-- white trim -->
+  <path fill="#fef2f2" d="M48 128c12-8 92-8 104 0v14c-32-10-72-10-104 0v-14z"/>
+  <!-- belt -->
+  <rect x="58" y="148" width="84" height="14" rx="3" fill="#1e293b"/>
+  <rect x="94" y="146" width="12" height="18" rx="2" fill="#fbbf24"/>
+  <!-- arm wave -->
+  <path fill="#b91c1c" d="M44 108c-8-14-4-32 8-40 10-6 22-4 30 4l-6 20c-6-6-16-6-24 0-6 10-2 22 8 26l-16 14z"/>
+  <circle cx="30" cy="96" r="12" fill="#fde8d8"/>
+  <!-- head -->
+  <circle cx="100" cy="72" r="28" fill="#fde8d8"/>
+  <!-- cheeks -->
+  <ellipse cx="82" cy="80" rx="8" ry="5" fill="#fecaca" opacity="0.7"/>
+  <ellipse cx="118" cy="80" rx="8" ry="5" fill="#fecaca" opacity="0.7"/>
+  <!-- eyes -->
+  <ellipse cx="90" cy="70" rx="4" ry="5" fill="#1e293b"/>
+  <ellipse cx="110" cy="70" rx="4" ry="5" fill="#1e293b"/>
+  <circle cx="91" cy="68" r="1.4" fill="#fff"/>
+  <circle cx="111" cy="68" r="1.4" fill="#fff"/>
+  <!-- nose -->
+  <ellipse cx="100" cy="80" rx="5" ry="4" fill="#fca5a5"/>
+  <!-- smile -->
+  <path fill="none" stroke="#7f1d1d" stroke-width="2.2" stroke-linecap="round" d="M88 92c6 6 18 6 24 0"/>
+  <!-- beard -->
+  <path fill="#f8fafc" d="M72 84c4 8 12 12 28 12s24-4 28-12c10 14 18 38 14 58-4 18-22 30-42 30s-38-12-42-30c-4-20 4-44 12-58z"/>
+  <!-- mustache -->
+  <path fill="#f8fafc" d="M100 88c-10 0-18 6-20 14 8-6 18-6 20-2 2-4 12-4 20 2-2-8-10-14-20-14z"/>
+  <!-- hat -->
+  <path fill="#b91c1c" d="M62 58c10-24 38-34 62-28 16 4 28 16 32 30l-2 8H64l-2-10z"/>
+  <ellipse cx="100" cy="62" rx="50" ry="10" fill="#fef2f2"/>
+  <circle cx="100" cy="34" r="10" fill="#fef2f2"/>
+  <!-- pom -->
+  <circle cx="148" cy="46" r="9" fill="#fef2f2"/>
+</svg>

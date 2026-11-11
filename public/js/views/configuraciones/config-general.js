@@ -13,6 +13,7 @@ const ConfigGeneralView = {
     MUESTRA_DATOS_CORTE: 'MUESTRA DATOS EN CORTE DE CAJA',
     CONFIGURACION_IVA: 'CONFIGURACION IVA',
     PERMITE_CAMBIAR_PRECIO_PEDIDOS: 'PERMITE CAMBIAR PRECIO EN PEDIDOS',
+    SOLICITA_CLAVE_CAMBIAR_PRECIOS: 'SOLICITA CLAVE AL CAMBIAR PRECIOS',
     PERMITE_MODIFICAR_DESCRIPCION_VENTAS: 'PERMITE MODIFICAR DESCR VENTAS',
     SOLICITA_AUTORIZACIONES: 'SOLICITA AUTORIZACIONES',
     SOLICITA_CLAVE_EDITAR_DOCUMENTOS: 'SOLICITA CLAVE AL EDITAR DOCUMENTOS',
@@ -30,6 +31,7 @@ const ConfigGeneralView = {
     DICE_LA_HORA_EN_VOZ_ALTA: 'DICE LA HORA EN VOZ ALTA',
     ESTILO_DEL_LOGIN: 'ESTILO DEL LOGIN',
     OBLIGA_FECHA_SERVIDOR_FACTURAS: 'OBLIGA FECHA SERVIDOR EN FAC FEL NC',
+    PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS: 'PERMITE MOVER BOTON FINALIZAR EN DOCS',
   },
 
   TEXT_CARDS: [
@@ -81,7 +83,7 @@ const ConfigGeneralView = {
       title: 'Imprime ticket al guardar venta',
       icon: 'fa-receipt',
       fallbackDesc:
-        'Al finalizar FAC, DEV o FNA, muestra el ticket/formato del sistema. No aplica a documentos FEL (FEF/FEC/FES/FNC): ahí solo «Muestra formato FEL online» al certificar.',
+        'Al finalizar FAC, DEV o FNA, muestra el ticket/formato del sistema. No aplica a FEF/FEC/FPC/FNC: ahí solo «Muestra formato FEL online» al certificar.',
     },
     {
       opcion: 'MUESTRA DATOS EN CORTE DE CAJA',
@@ -97,11 +99,25 @@ const ConfigGeneralView = {
         'Permite modificar el precio al agregar productos en pedidos de mostrador y facturas (FAC/FEF/FEC/FES)',
     },
     {
+      opcion: 'SOLICITA CLAVE AL CAMBIAR PRECIOS',
+      title: 'Solicita clave al cambiar precios',
+      icon: 'fa-key',
+      fallbackDesc:
+        'En Sí, al bajar el precio bajo el catálogo pide clave de operador (CLAVE OPERADOR) o autorización en línea si Solicita autorizaciones está activo. En No, usuarios no administradores pueden cambiar precios sin clave.',
+    },
+    {
       opcion: 'PERMITE MODIFICAR DESCR VENTAS',
       title: 'Permite modificar descripción en ventas',
       icon: 'fa-pen-to-square',
       fallbackDesc:
         'En facturas normales y FEL (FAC/FEF/FEC/FES), al agregar un producto muestra la descripción editable en el modal de cantidad',
+    },
+    {
+      opcion: 'PERMITE MOVER BOTON FINALIZAR EN DOCS',
+      title: 'Permite mover botón finalizar en documentos',
+      icon: 'fa-up-down-left-right',
+      fallbackDesc:
+        'En Sí, el botón Finalizar de pedidos, facturas, compras, cotizaciones y documentos similares se puede arrastrar; la posición se guarda por vista en este equipo',
     },
     {
       opcion: 'SOLICITA AUTORIZACIONES',
@@ -121,7 +137,7 @@ const ConfigGeneralView = {
       opcion: 'CERTIFICA AL FINALIZAR',
       title: 'Certifica al finalizar',
       icon: 'fa-certificate',
-      fallbackDesc: 'Al finalizar un documento FEL (FEF/FEC/FNC), certifica automáticamente ante SAT',
+      fallbackDesc: 'Al finalizar FEF, FEC o FPC, certifica automáticamente ante SAT (Infile)',
     },
     {
       opcion: 'OBLIGA FECHA SERVIDOR EN FAC FEL NC',
@@ -216,9 +232,22 @@ const ConfigGeneralView = {
         NAVIDAD: 'Navidad',
         'DIA CARINO': 'Día del cariño',
         'ANO NUEVO': 'Año nuevo',
+        'REGRESO A CLASES': 'Regreso a clases',
+        VACACIONES: 'Vacaciones',
+        INVIERNO: 'Invierno',
       },
       defaultValue: 'TEMA',
-      values: ['TEMA', 'DEFAULT', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'],
+      values: [
+        'TEMA',
+        'DEFAULT',
+        'HALLOWEEN',
+        'NAVIDAD',
+        'DIA CARINO',
+        'ANO NUEVO',
+        'REGRESO A CLASES',
+        'VACACIONES',
+        'INVIERNO',
+      ],
     },
   ],
 
@@ -260,7 +289,7 @@ const ConfigGeneralView = {
       title: 'Muestra formato FEL online',
       icon: 'fa-file-invoice',
       fallbackDesc:
-        'Al certificar: NO = solo formato del sistema · SI = solo FEL online · AMBOS = los dos',
+        'Al certificar FEF/FEC/FPC/FNC: NO = solo formato del sistema · SI = solo FEL online · AMBOS = los dos',
       labels: { NO: 'NO', SI: 'SI', AMBOS: 'AMBOS' },
       defaultValue: 'NO',
       values: ['NO', 'SI', 'AMBOS'],
@@ -278,9 +307,10 @@ const ConfigGeneralView = {
         FEF: 'FACTURA FEL NORMAL',
         FAC: 'ENVIO',
         FEC: 'FACTURA FEL CAMBIARIA',
+        FPC: 'FACTURA PEQUEÑO CONTRIBUYENTE (FPC)',
       },
       defaultValue: 'FEF',
-      values: ['FEF', 'FAC', 'FEC'],
+      values: ['FEF', 'FAC', 'FEC', 'FPC'],
     },
   ],
 
@@ -426,7 +456,9 @@ const ConfigGeneralView = {
       'IMPRIME TICKET AL GUARDAR VENTA': 'operacion',
       'MUESTRA DATOS EN CORTE DE CAJA': 'operacion',
       'PERMITE CAMBIAR PRECIO EN PEDIDOS': 'operacion',
+      'SOLICITA CLAVE AL CAMBIAR PRECIOS': 'operacion',
       'PERMITE MODIFICAR DESCR VENTAS': 'operacion',
+      'PERMITE MOVER BOTON FINALIZAR EN DOCS': 'operacion',
       'SOLICITA AUTORIZACIONES': 'seguridad',
       'SOLICITA CLAVE AL EDITAR DOCUMENTOS': 'seguridad',
       'CERTIFICA AL FINALIZAR': 'electronica',
@@ -631,7 +663,19 @@ const ConfigGeneralView = {
     s = s.replace(/Ñ/g, 'N').replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U');
     if (s === 'DIA DEL CARINO') return 'DIA CARINO';
     if (s === 'AÑO NUEVO') return 'ANO NUEVO';
-    const allowed = ['DEFAULT', 'TEMA', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'];
+    if (s === 'REGRESO CLASES' || s === 'REGRESO-CLASES') return 'REGRESO A CLASES';
+    if (s === 'VACACION') return 'VACACIONES';
+    const allowed = [
+      'DEFAULT',
+      'TEMA',
+      'HALLOWEEN',
+      'NAVIDAD',
+      'DIA CARINO',
+      'ANO NUEVO',
+      'REGRESO A CLASES',
+      'VACACIONES',
+      'INVIERNO',
+    ];
     return allowed.includes(s) ? s : 'TEMA';
   },
 
@@ -644,7 +688,19 @@ const ConfigGeneralView = {
   renderLoginEstiloCard(option, meta = {}) {
     const desc = meta.descripcion || option.fallbackDesc;
     const estilo = this.normalizeLoginEstilo(meta.estilo || option.defaultValue || 'DEFAULT');
-    const values = option.values || ['DEFAULT', 'TEMA', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'];
+    const values =
+      option.values ||
+      [
+        'DEFAULT',
+        'TEMA',
+        'HALLOWEEN',
+        'NAVIDAD',
+        'DIA CARINO',
+        'ANO NUEVO',
+        'REGRESO A CLASES',
+        'VACACIONES',
+        'INVIERNO',
+      ];
     const options = values
       .map((val) => {
         const label = this.getLoginEstiloLabel(option, val);

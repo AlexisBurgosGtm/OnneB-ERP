@@ -329,12 +329,15 @@ const ControlFletesView = {
             </button>
           </div>
         </div>
+        <div class="report-export-wrap" data-report-export-wrap>
+          ${ReportTableExport.toolbarHtml(`control_fletes_${this._mes}_${this._anio}.xlsx`)}
         <div class="table-responsive">
           <table class="table table-sm table-hover table-striped control-fletes-table">
             <thead><tr>${headers}</tr></thead>
             <tbody id="control-fletes-tbody">${this.renderTableBodyHtml(filtered)}</tbody>
             <tfoot id="control-fletes-tfoot">${this.renderFooterHtml(filtered)}</tfoot>
           </table>
+        </div>
         </div>
         ${CatalogosUI.btnNuevoFab('btn-control-fletes-nuevo')}
       </div>

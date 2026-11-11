@@ -3,6 +3,9 @@
  * Usa plantillas por EMPNIT + TIPODOC cuando existen; si no, formato built-in.
  */
 const DocPrint = {
+  /** Ticket SAT / representación gráfica (mismo set que servidor). */
+  FEL_TICKET_TIPODOCS: ['FEF', 'FEC', 'FES', 'FPC', 'FNC'],
+
   FORMATO_OPCION: 'FORMATO IMPRESION C O T',
   PESO_OPCION: 'MUESTRA PESO EN DOCUMENTOS',
   MARCAS_OPCION: 'MUESTRA MARCAS EN DOCUMENTOS',
@@ -31,6 +34,10 @@ const DocPrint = {
 
   normalizeFormato(value) {
     return String(value || 'CARTA').trim().toUpperCase() === 'TICKET' ? 'TICKET' : 'CARTA';
+  },
+
+  isFelTicketTipodoc(tipodoc) {
+    return this.FEL_TICKET_TIPODOCS.includes(String(tipodoc || '').trim().toUpperCase());
   },
 
   formatPeso(value) {
@@ -107,6 +114,27 @@ const DocPrint = {
     return this.normalizeFormato(formato) === 'TICKET';
   },
 
+  docObsCardHtml(obsText, ticket = false) {
+    const text = String(obsText ?? '').trim();
+    if (!text) return '';
+    const body = this.escapeHtml(text);
+    if (ticket) {
+      return `<div class="fel-obs fel-obs-card fel-obs-doc fel-c"><div class="fel-obs-title">Observaciones</div><div class="fel-obs-body">${body}</div></div>`;
+    }
+    return `<div class="doc-obs-card doc-obs-doc"><div class="doc-obs-label">Observaciones</div><p class="doc-obs-body">${body}</p></div>`;
+  },
+
+  docObsCardStyles() {
+    return `
+      .doc-obs-card.doc-obs-doc{margin:.45rem 0;padding:.35rem .55rem;background:#fff;border:1px solid #d1d5db;border-radius:.3rem;box-shadow:none}
+      .doc-obs-card.doc-obs-doc .doc-obs-label{font-size:9px;font-weight:700;color:#111;margin:0 0 .12rem;text-transform:uppercase;letter-spacing:.03em}
+      .doc-obs-card.doc-obs-doc .doc-obs-body{font-size:10px;color:#111;margin:0;line-height:1.32;white-space:pre-line}
+      .fel-obs-card.fel-obs-doc{margin:5px 0;padding:4px 6px;background:#fff;border:1px dashed #999;border-radius:2px}
+      .fel-obs-card.fel-obs-doc .fel-obs-title{font-size:8px;font-weight:700;margin-bottom:1px;text-transform:uppercase;color:#111}
+      .fel-obs-card.fel-obs-doc .fel-obs-body{font-size:8.5px;font-weight:400;line-height:1.28;white-space:pre-line;text-transform:none;color:#111}
+    `;
+  },
+
   layoutStyles(formato) {
     if (this.isTicket(formato)) {
       return `
@@ -136,6 +164,24 @@ const DocPrint = {
         .doc-lines-table .col-desc{max-width:none;word-break:break-word}
         .doc-totals{font-size:10px}
         .doc-footer{margin-top:.5rem;font-size:9px;text-align:center;color:#555}
+        .fel-ticket.fac-ticket-doc .fel-logo{max-height:104px;max-width:140px;object-fit:contain;margin:0 auto 4px;display:block}
+        .fel-sep{border:0;border-top:1px dashed #666;margin:6px 0}
+        .fel-c{text-align:center}.fel-l{text-align:left}.fel-r{text-align:right}
+        .fel-nombre{font-size:13px;font-weight:700;text-transform:uppercase;margin:2px 0}
+        .fel-muted{font-size:9.5px;margin:1px 0;word-break:break-word}
+        .fel-dte-tipo{font-size:11px;font-weight:700;margin:0 0 6px;text-transform:uppercase}
+        .fel-meta{font-size:10.5px;margin:2px 0}
+        .fel-detalle-title{font-size:11px;font-weight:700;margin:8px 0 4px;letter-spacing:.04em}
+        .fel-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 6px}
+        .fel-table th{font-size:9px;font-weight:700;padding:2px 1px;border-bottom:1px solid #333}
+        .fel-table td{font-size:9.5px;padding:3px 1px;vertical-align:top;word-break:break-word}
+        .fel-totals-row{display:flex;justify-content:flex-end;gap:10px;font-size:10.5px;margin:2px 0}
+        .fel-totals-row.grand{font-size:12px;font-weight:700}
+        .fel-totals-row.grand.fel-totals-row-letras{justify-content:space-between;width:100%;align-items:flex-start;gap:8px;flex-wrap:nowrap}
+        .fel-totals-row.grand .fel-totals-letras-text{flex:1;min-width:0;text-align:left;font-size:9px;font-weight:400!important;line-height:1.35;color:#444;text-transform:none;padding-right:6px;margin-right:2px;border-right:1px dashed #bbb}
+        .fel-totals-grand-right{flex-shrink:0;display:flex;justify-content:space-between;gap:8px;min-width:38%;font-size:inherit;font-weight:inherit}
+        .doc-tipodoc-obs{margin:.35rem 0;font-size:9.5px;line-height:1.32;white-space:pre-line}
+        ${this.docObsCardStyles()}
         table{width:100%;border-collapse:collapse;margin-top:.35rem}
         th,td{border:1px solid #ccc}
         th{background:#f3f3f3}
@@ -182,6 +228,12 @@ const DocPrint = {
       .doc-totals{margin-top:.75rem;padding:.65rem .75rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:.35rem}
       .doc-totals-row{display:flex;justify-content:space-between;gap:1rem;font-size:12px;margin:.1rem 0}
       .doc-totals-row.grand{font-size:1rem;font-weight:700;color:#1e3a5f;margin-top:.35rem;padding-top:.35rem;border-top:1px solid #bae6fd}
+      .doc-totals-row-letras{align-items:flex-start;flex-wrap:nowrap;gap:1rem}
+      .doc-totals-row.grand .doc-totals-letras-text{flex:1;min-width:0;text-align:left;font-size:10px;font-weight:400!important;line-height:1.4;color:#64748b;text-transform:none;padding-right:.85rem;margin-right:.1rem;border-right:1px solid #cbd5e1}
+      .doc-totals-grand-right{flex-shrink:0;display:flex;justify-content:space-between;gap:1rem;min-width:8.5rem;font-size:inherit;font-weight:inherit;color:inherit}
+      .doc-tipodoc-obs{margin:.65rem 0 0;padding-top:.45rem;border-top:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center}
+      .doc-tipodoc-obs-body{margin:0;white-space:pre-line;line-height:1.35}
+      ${this.docObsCardStyles()}
       .doc-footer{margin-top:1.25rem;padding-top:.5rem;border-top:1px solid #e5e7eb;font-size:10px;color:#6b7280;text-align:center}
       table{width:100%;border-collapse:collapse}
       th,td{padding:5px 8px}
@@ -193,6 +245,167 @@ const DocPrint = {
   metaItem(label, value) {
     if (value === null || value === undefined || value === '') return '';
     return `<div class="doc-meta-item"><strong>${this.escapeHtml(label)}:</strong> ${this.escapeHtml(value)}</div>`;
+  },
+
+  tipodocShowsTotalLetras(tipodoc) {
+    return ['FAC', 'FPC', 'FEF', 'FEC', 'FES'].includes(String(tipodoc || '').trim().toUpperCase());
+  },
+
+  amountInWords(value) {
+    const fn =
+      (typeof AmountInWordsGt !== 'undefined' && AmountInWordsGt.amount) ||
+      (typeof F !== 'undefined' && F.AmountInWordsGt?.amount);
+    return fn ? fn(value) : '';
+  },
+
+  documentObsText(header) {
+    const h = header || {};
+    return String(h.OBS ?? h.obs ?? '').trim();
+  },
+
+  tipodocObsFooterHtml(text, ticket = false) {
+    const t = String(text ?? '').trim();
+    if (!t) return '';
+    const body = this.escapeHtml(t);
+    if (ticket) {
+      return `<div class="fel-muted fel-c doc-tipodoc-obs">${body}</div>`;
+    }
+    return `<div class="doc-tipodoc-obs"><p class="doc-tipodoc-obs-body">${body}</p></div>`;
+  },
+
+  computeSubtotalDescuento(header, lines) {
+    const h = header || {};
+    const total = Number(h.TOTALPRECIO) || 0;
+    const descuento = Number(h.TOTALDESCUENTO) || 0;
+    const sumLineas = (lines || []).reduce((s, ln) => s + (Number(ln.TOTALPRECIO) || 0), 0);
+    const subtotal = sumLineas > 0 ? sumLineas : Math.max(0, total + descuento);
+    return { subtotal, descuento, total };
+  },
+
+  buildGrandTotalHtml(header, { ticket = false, tipodoc = '' } = {}) {
+    const h = header || {};
+    const totalFmt = this.escapeHtml(this.formatMoney(h.TOTALPRECIO));
+    const letras = this.tipodocShowsTotalLetras(tipodoc)
+      ? this.escapeHtml(this.amountInWords(h.TOTALPRECIO))
+      : '';
+    if (ticket && letras) {
+      return `<div class="fel-totals-row grand fel-totals-row-letras">
+        <span class="fel-totals-letras-text">${letras}</span>
+        <div class="fel-totals-grand-right">
+          <span>TOTAL</span>
+          <span>${totalFmt}</span>
+        </div>
+      </div>`;
+    }
+    if (!ticket && letras) {
+      return `<div class="doc-totals-row grand doc-totals-row-letras">
+        <span class="doc-totals-letras-text">${letras}</span>
+        <div class="doc-totals-grand-right">
+          <span>Total</span>
+          <span>${totalFmt}</span>
+        </div>
+      </div>`;
+    }
+    if (ticket) {
+      return `<div class="fel-totals-row grand"><span>TOTAL</span><span>${totalFmt}</span></div>`;
+    }
+    return `<div class="doc-totals-row grand"><span>Total</span><span>${totalFmt}</span></div>`;
+  },
+
+  buildFacTicketHtml({ title, header, lines, footerNote = '', muestraMarcas = false }) {
+    const h = header || {};
+    const tot = this.computeSubtotalDescuento(h, lines);
+    const obs = this.docObsCardHtml(this.documentObsText(h), true);
+    const tipodocObs = this.tipodocObsFooterHtml(h.TIPODOC_OBS, true);
+    const docLabel = `${h.CODDOC || ''} #${h.CORRELATIVO ?? ''}`.trim();
+    const serie = String(h.FEL_SERIE || h.SERIEFAC || '').trim();
+    const numero = String(h.FEL_NUMERO ?? h.NOFAC ?? '').trim();
+    const concre = String(h.CONCRE || 'CON').trim().toUpperCase() === 'CRE' ? 'Crédito' : 'Contado';
+    const logo = typeof PrintReport !== 'undefined' ? PrintReport.logoBlockHtml('fel-logo') : '';
+    const nombre =
+      typeof PrintReport !== 'undefined' ? this.escapeHtml(PrintReport.getEmpresaNombre()) : '—';
+    const dirEntrega = (() => {
+      const dir = String(h.DIRENTREGA || '').trim();
+      if (!dir || dir.toUpperCase() === 'SN') return '';
+      return dir;
+    })();
+    const telClie = String(h.DOC_TELEFONO ?? h.TELEFONOCLIENTE ?? '').trim();
+    const lineRows = (lines || [])
+      .map(
+        (ln) => `<tr>
+        <td class="fel-l">${Number(ln.CANTIDAD) || 0}</td>
+        <td class="fel-l">${this.lineDescHtml(ln, { ticket: true, muestraMarcas })}</td>
+        <td class="fel-r">${this.escapeHtml(this.formatMoney(ln.TOTALPRECIO))}</td>
+      </tr>`
+      )
+      .join('');
+    const grand = this.buildGrandTotalHtml(h, { ticket: true, tipodoc: 'FAC' });
+    return `<div class="doc-print-sheet fel-ticket fac-ticket-doc">
+      <div class="fel-c">
+        ${logo}
+        <div class="fel-nombre">${nombre}</div>
+      </div>
+      <hr class="fel-sep">
+      <div class="fel-c">
+        <div class="fel-dte-tipo">${this.escapeHtml(title)}</div>
+        <div class="fel-meta"><strong>Doc.:</strong> ${this.escapeHtml(docLabel)}</div>
+      </div>
+      <div class="fel-l">
+        ${serie ? `<div class="fel-meta"><strong>Serie:</strong> ${this.escapeHtml(serie)}</div>` : ''}
+        ${numero ? `<div class="fel-meta"><strong>No.:</strong> ${this.escapeHtml(numero)}</div>` : ''}
+        <div class="fel-meta"><strong>Fecha:</strong> ${this.escapeHtml(this.formatFecha(h.FECHA))}</div>
+        <div class="fel-meta"><strong>Cliente:</strong> ${this.escapeHtml(h.DOC_NOMCLIE || '')}</div>
+        <div class="fel-meta"><strong>NIT:</strong> ${this.escapeHtml(h.DOC_NIT || '')}</div>
+        ${
+          telClie
+            ? `<div class="fel-meta"><strong>Tel. cliente:</strong> ${this.escapeHtml(telClie)}</div>`
+            : ''
+        }
+        ${
+          h.F_ENTREGA
+            ? `<div class="fel-meta"><strong>Entrega:</strong> ${this.escapeHtml(h.F_ENTREGA)}</div>`
+            : ''
+        }
+        ${
+          dirEntrega
+            ? `<div class="fel-meta"><strong>Dir. entrega:</strong> ${this.escapeHtml(dirEntrega)}</div>`
+            : ''
+        }
+        ${
+          h.VENDEDOR || h.NOMEMPLEADO
+            ? `<div class="fel-meta"><strong>Vendedor:</strong> ${this.escapeHtml(h.VENDEDOR || h.NOMEMPLEADO)}</div>`
+            : ''
+        }
+        <div class="fel-meta"><strong>Pago:</strong> ${this.escapeHtml(concre)}</div>
+      </div>
+      <div class="fel-c fel-detalle-title">DETALLE</div>
+      <table class="fel-table">
+        <thead><tr>
+          <th class="col-cant fel-l">Cant.</th>
+          <th class="col-desc fel-l">Descripción</th>
+          <th class="col-tot fel-r">Total</th>
+        </tr></thead>
+        <tbody>${lineRows || '<tr><td colspan="3" class="fel-c">Sin líneas</td></tr>'}</tbody>
+      </table>
+      <hr class="fel-sep fel-sep-totals">
+      <div class="fel-totals">
+        <div class="fel-totals-row"><span>Subtotal</span><span>${this.escapeHtml(this.formatMoney(tot.subtotal))}</span></div>
+        <div class="fel-totals-row"><span>Descuento</span><span>${this.escapeHtml(this.formatMoney(tot.descuento))}</span></div>
+        ${grand}
+      </div>
+      ${obs}
+      ${tipodocObs}
+      <div class="fel-muted fel-c">${this.escapeHtml(footerNote || 'Documento generado por POS OnneB')}</div>
+    </div>`;
+  },
+
+  buildInternalDocumentHtml(opts, formato = 'CARTA') {
+    const h = opts.header || {};
+    const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
+    if (this.isTicket(formato) && tipodoc === 'FAC') {
+      return this.buildFacTicketHtml(opts);
+    }
+    return this.buildDocumentHtml(opts, formato);
   },
 
   buildLinesTableHtml(lines, { ticket = false, includePrecio = false, muestraPeso = false, muestraMarcas = false } = {}) {
@@ -271,7 +484,8 @@ const DocPrint = {
       .filter(Boolean)
       .join('');
 
-    const obs = h.OBS ? `<p class="doc-obs"><em>${this.escapeHtml(h.OBS)}</em></p>` : '';
+    const obs = this.docObsCardHtml(this.documentObsText(h), ticket);
+    const tipodocObs = this.tipodocObsFooterHtml(h.TIPODOC_OBS, ticket);
     const totalPeso = (lines || []).reduce((s, ln) => s + this.lineTotalPeso(ln), 0);
     const pesoTotalHtml =
       muestraPeso && totalPeso > 0
@@ -293,11 +507,9 @@ const DocPrint = {
         ${this.buildLinesTableHtml(lines, { ticket, includePrecio: true, muestraPeso, muestraMarcas })}
         <div class="doc-totals">
           ${pesoTotalHtml}
-          <div class="doc-totals-row grand">
-            <span>Total</span>
-            <span>${this.escapeHtml(this.formatMoney(h.TOTALPRECIO))}</span>
-          </div>
+          ${this.buildGrandTotalHtml(h, { ticket, tipodoc })}
         </div>
+        ${tipodocObs}
         ${footerNote ? `<div class="doc-footer">${footerNote}</div>` : '<div class="doc-footer">Documento generado por POS OnneB</div>'}
       </div>`;
   },
@@ -404,11 +616,12 @@ const DocPrint = {
 
   windowFeaturesFor(formato) {
     if (typeof PrintReport !== 'undefined') {
-      if (PrintReport.maximizedFeatures) return PrintReport.maximizedFeatures();
+      if (this.isTicket(formato) && PrintReport.ticketFeatures) return PrintReport.ticketFeatures();
+      if (PrintReport.cartaFeatures) return PrintReport.cartaFeatures();
     }
-    const w = Math.max(800, Number(window.screen?.availWidth) || 1200);
-    const h = Math.max(600, Number(window.screen?.availHeight) || 800);
-    return `left=0,top=0,width=${w},height=${h}`;
+    const w = Math.max(640, Math.min(920, (Number(window.screen?.availWidth) || 1200) - 120));
+    const h = Math.max(520, Math.min(860, (Number(window.screen?.availHeight) || 800) - 100));
+    return `left=48,top=40,width=${w},height=${h},scrollbars=yes,resizable=yes`;
   },
 
   printOptionsFor(formato) {
@@ -497,7 +710,8 @@ const DocPrint = {
       }
     }
 
-    if (this.isTicket(fmt)) {
+    const tipodoc = String(h.TIPODOC || '').trim().toUpperCase();
+    if (this.isTicket(fmt) && tipodoc !== 'FAC' && !this.isFelTicketTipodoc(tipodoc)) {
       throw new Error(
         'No se pudo renderizar el ticket. En Formatos de impresión, revise la plantilla TICKET del tipo de documento o pulse «Cargar default del sistema».'
       );
@@ -507,7 +721,7 @@ const DocPrint = {
       () =>
         this.wrapHtml({
           title,
-          bodyHtml: this.buildDocumentHtml(
+          bodyHtml: this.buildInternalDocumentHtml(
             { title, header, lines, extraMeta, footerNote, muestraPeso, muestraMarcas },
             fmt
           ),

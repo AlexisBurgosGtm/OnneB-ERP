@@ -189,84 +189,9 @@ const ReportesVentasView = {
       return;
     }
     const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
-    if (tab === 'documentos') {
-      const rows = this.filterRows(this._data.documentos || [], [
-        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'TIPODOC', 'DESDOC',
-        'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD', 'STATUS',
-      ], this._filters.documentos);
-      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
-      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
-      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
-      this.downloadCsv(
-        `reporte_ventas_documentos_${stamp}.csv`,
-        ['Fecha', 'Tipo', 'Coddoc', 'Correlativo', 'Cliente', 'Total costo', 'Importe', 'Utilidad', '%', 'Status'],
-        [
-          ...rows.map((r) => [
-            this.formatFecha(r.FECHA),
-            r.TIPODOC || '',
-            r.CODDOC || '',
-            r.CORRELATIVO ?? '',
-            r.CLIENTE || '',
-            Number(r.TOTALCOSTO) || 0,
-            Number(r.IMPORTE) || 0,
-            Number(r.UTILIDAD) || 0,
-            r.PCT_UTILIDAD ?? '',
-            r.STATUS || '',
-          ]),
-          ['', '', '', '', 'Totales', totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? '', ''],
-        ]
-      );
-      return;
-    }
-    if (tab === 'productos') {
-      const rows = this.filterRows(this._data.productos || [], [
-        'CODPROD', 'DESPROD', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
-      ], this._filters.productos);
-      const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-      const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
-      const totalI = this.sumMoneyRows(rows, 'IMPORTE');
-      const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
-      this.downloadCsv(
-        `reporte_ventas_productos_${stamp}.csv`,
-        ['Código', 'Producto', 'Unidades', 'Total costo', 'Importe', 'Utilidad', '%'],
-        [
-          ...rows.map((r) => [
-            r.CODPROD || '',
-            r.DESPROD || '',
-            Number(r.TOTALUNIDADES) || 0,
-            Number(r.TOTALCOSTO) || 0,
-            Number(r.IMPORTE) || 0,
-            Number(r.UTILIDAD) || 0,
-            r.PCT_UTILIDAD ?? '',
-          ]),
-          ['', 'Totales', totalUn, totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? ''],
-        ]
-      );
-      return;
-    }
-    const rows = this.filterRows(this._data.marcas || [], [
-      'CODMARCA', 'DESMARCA', 'TOTALUNIDADES', 'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD',
-    ], this._filters.marcas);
-    const totalUn = rows.reduce((s, r) => s + (Number(r.TOTALUNIDADES) || 0), 0);
-    const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
-    const totalI = this.sumMoneyRows(rows, 'IMPORTE');
-    const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
-    this.downloadCsv(
-      `reporte_ventas_marcas_${stamp}.csv`,
-      ['Cod. marca', 'Marca', 'Unidades', 'Total costo', 'Importe', 'Utilidad', '%'],
-      [
-        ...rows.map((r) => [
-          r.CODMARCA ?? '',
-          r.DESMARCA || '',
-          Number(r.TOTALUNIDADES) || 0,
-          Number(r.TOTALCOSTO) || 0,
-          Number(r.IMPORTE) || 0,
-          Number(r.UTILIDAD) || 0,
-          r.PCT_UTILIDAD ?? '',
-        ]),
-        ['', 'Totales', totalUn, totalC, totalI, totalU, this.pctFromTotals(totalI, totalU) ?? ''],
-      ]
-    );
+    const activeTab = tab || this._tab || 'documentos';
+    const table = this._container?.querySelector('#repven-tab-body table');
+    ReportTableExport.exportTable(table, `reporte_ventas_${activeTab}_${stamp}.xlsx`);
   },
 
   filterRows(rows, keys, q) {

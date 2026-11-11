@@ -6,7 +6,8 @@ const { STATUS_ANULADO, SQL_TIPODOC_REPORTES_SI } = require('../lib/documento-st
 
 const router = express.Router();
 
-const TIPODOC_VENTA = ['FAC', 'FEF', 'FEC', 'FES'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOC_VENTA = ['FAC', TIPODOC_FPC, 'FEF', 'FEC', 'FES'];
 const SQL_TIPODOC_VENTA_IN = TIPODOC_VENTA.map((t) => `'${t}'`).join(', ');
 
 function getEmpNitFromReq(req) {

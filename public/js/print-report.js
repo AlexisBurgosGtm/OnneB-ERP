@@ -127,6 +127,15 @@ const PrintReport = {
     return `left=0,top=0,width=${w},height=${h}`;
   },
 
+  /** Ventana de impresión carta: no pantalla completa para no tapar el POS. */
+  cartaFeatures() {
+    const availW = Number(window.screen?.availWidth) || 1200;
+    const availH = Number(window.screen?.availHeight) || 800;
+    const w = Math.min(920, Math.max(640, availW - 120));
+    const h = Math.min(860, Math.max(520, availH - 100));
+    return `left=48,top=40,width=${w},height=${h},scrollbars=yes,resizable=yes`;
+  },
+
   /** Ventana estrecha: el diálogo de impresión carga más rápido en ticketeras (p. ej. Epson TM-T20). */
   ticketFeatures() {
     const h = Math.min(900, Math.max(640, Number(window.screen?.availHeight) || 800));
@@ -194,13 +203,108 @@ const PrintReport = {
     }
   },
 
+  /** Cierra ventana emergente / iframe de la impresión anterior (evita “modal” bloqueado). */
+  _disposePrintSurfaces() {
+    const w = this._activePrintWin;
+    this._activePrintWin = null;
+    if (w && !w.closed) {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    const frame = document.getElementById('onneb-print-frame');
+    if (frame) this._removePrintFrame(frame);
+  },
+
+  /**
+   * Al cerrar el diálogo de impresión (imprimir o cancelar), ejecuta cleanup.
+   * afterprint no siempre dispara al cancelar → matchMedia('print') + focus en opener.
+   */
+  _bindPrintDialogDismiss(targetWin, onDone, options = {}) {
+    let done = false;
+    const teardown = [];
+    const finish = () => {
+      if (done) return;
+      done = true;
+      teardown.forEach((fn) => {
+        try {
+          fn();
+        } catch {
+          /* ignore */
+        }
+      });
+      try {
+        onDone?.();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    if (!targetWin) {
+      finish();
+      return finish;
+    }
+
+    try {
+      targetWin.addEventListener('afterprint', finish, { once: true });
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const mq = targetWin.matchMedia?.('print');
+      if (mq) {
+        const onPrintChange = () => {
+          if (!mq.matches) window.setTimeout(finish, 120);
+        };
+        if (typeof mq.addEventListener === 'function') {
+          mq.addEventListener('change', onPrintChange);
+          teardown.push(() => mq.removeEventListener('change', onPrintChange));
+        } else if (typeof mq.addListener === 'function') {
+          mq.addListener(onPrintChange);
+          teardown.push(() => mq.removeListener(onPrintChange));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const onOpenerFocus = () => {
+      window.setTimeout(() => {
+        try {
+          if (targetWin.closed) {
+            finish();
+            return;
+          }
+          const mqPrint = targetWin.matchMedia?.('print');
+          if (mqPrint?.matches) return;
+        } catch {
+          /* ignore */
+        }
+        finish();
+      }, 180);
+    };
+    window.setTimeout(() => {
+      window.addEventListener('focus', onOpenerFocus, { once: true });
+      teardown.push(() => window.removeEventListener('focus', onOpenerFocus));
+    }, 0);
+
+    const maxMs = options.maxMs ?? 10 * 60 * 1000;
+    const maxTimer = window.setTimeout(finish, maxMs);
+    teardown.push(() => window.clearTimeout(maxTimer));
+
+    return finish;
+  },
+
   /**
    * Espera documento + imágenes (logo, QR) antes de window.print().
    * Evita tickets en blanco o preview colgado en impresoras térmicas.
    */
   async _waitForPrintReady(win, options = {}) {
     const ticket = this.isTicketPrintOptions(options);
-    const timeoutMs = ticket ? 2200 : 14000;
+    const timeoutMs = ticket ? 2200 : 4000;
     const minDelayMs = ticket ? 60 : 150;
 
     return new Promise((resolve) => {
@@ -278,79 +382,11 @@ const PrintReport = {
   },
 
   /**
-   * Cierra la ventana emergente del ticket cuando el usuario termina el diálogo de impresión.
-   * No usar timeout corto: cerraría la ventana mientras el preview sigue abierto.
-   */
-  _closeTicketPopupWhenPrintDone(targetWin) {
-    if (!targetWin) return;
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      try {
-        targetWin.close();
-      } catch {
-        /* ignore */
-      }
-    };
-    try {
-      targetWin.addEventListener('afterprint', finish, { once: true });
-    } catch {
-      /* ignore */
-    }
-    try {
-      const mq = targetWin.matchMedia?.('print');
-      if (mq) {
-        const onPrintChange = () => {
-          if (!mq.matches) {
-            try {
-              mq.removeEventListener('change', onPrintChange);
-            } catch {
-              mq.removeListener?.(onPrintChange);
-            }
-            window.setTimeout(finish, 120);
-          }
-        };
-        if (typeof mq.addEventListener === 'function') {
-          mq.addEventListener('change', onPrintChange);
-        } else if (typeof mq.addListener === 'function') {
-          mq.addListener(onPrintChange);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    window.setTimeout(finish, 10 * 60 * 1000);
-  },
-
-  /**
-   * Tras imprimir (o cancelar), limpia ventana/iframe.
-   * En móvil afterprint no siempre dispara → timeout de respaldo.
-   */
-  _afterPrintCleanup(targetWin, cleanup, delayMs = 1200) {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      try {
-        cleanup?.();
-      } catch {
-        /* ignore */
-      }
-    };
-    try {
-      targetWin?.addEventListener?.('afterprint', finish, { once: true });
-    } catch {
-      /* ignore */
-    }
-    window.setTimeout(finish, delayMs);
-  },
-
-  /**
    * Ticket en ventana emergente: vista del formato y diálogo de impresión del navegador.
    * Al cerrar el preview (imprimir o cancelar), se cierra la ventana emergente; el POS sigue abierto.
    */
   async openTicketPreviewWindow(html, windowFeatures, options = {}) {
+    this._disposePrintSurfaces();
     const features = windowFeatures || this.ticketFeatures();
     let w = null;
     try {
@@ -390,24 +426,28 @@ const PrintReport = {
       }),
     ]);
     this._forceZoom100(w);
-    this._closeTicketPopupWhenPrintDone(w);
-    try {
-      w.focus();
-      w.print();
-    } catch {
+    this._activePrintWin = w;
+    const releaseWin = () => {
       try {
         w.close();
       } catch {
         /* ignore */
       }
+      if (this._activePrintWin === w) this._activePrintWin = null;
+    };
+    try {
+      w.focus();
+      w.print();
+      this._bindPrintDialogDismiss(w, releaseWin);
+    } catch {
+      releaseWin();
     }
     return true;
   },
 
   /** Impresión sin salir de la app (pantallas pequeñas / popup bloqueado). */
   async _printViaIframe(html, options = {}) {
-    const existing = document.getElementById('onneb-print-frame');
-    if (existing) this._removePrintFrame(existing);
+    this._disposePrintSurfaces();
 
     const ticket = this.isTicketPrintOptions(options);
     const frame = document.createElement('iframe');
@@ -443,12 +483,16 @@ const PrintReport = {
 
     await this._waitForPrintReady(win, options);
     this._forceZoom100(win);
-    this._afterPrintCleanup(win, () => this._removePrintFrame(frame), 2200);
+    const releaseFrame = () => {
+      this._removePrintFrame(frame);
+      if (this._activePrintWin === win) this._activePrintWin = null;
+    };
     try {
       win.focus();
       win.print();
+      this._bindPrintDialogDismiss(win, releaseFrame);
     } catch {
-      this._removePrintFrame(frame);
+      releaseFrame();
       if (typeof F !== 'undefined') F.toast('No se pudo abrir el diálogo de impresión', 'warning');
       return false;
     }
@@ -456,6 +500,7 @@ const PrintReport = {
   },
 
   async _openPrintWindow(html, windowFeatures, options = {}) {
+    this._disposePrintSurfaces();
     const ticket = this.isTicketPrintOptions(options);
     if (ticket) {
       return this.openTicketPreviewWindow(html, windowFeatures, options);
@@ -465,44 +510,38 @@ const PrintReport = {
       return this._printViaIframe(html, options);
     }
 
-    const features = windowFeatures || this.maximizedFeatures();
+    const features = windowFeatures || this.cartaFeatures();
     const w = window.open('about:blank', '_blank', features);
     if (!w) {
       return this._printViaIframe(html, options);
     }
-    this._maximizeWindow(w);
+    this._activePrintWin = w;
     w.document.write(html);
     w.document.close();
     this._forceZoom100(w);
-    this._maximizeWindow(w);
     w.focus();
 
+    const readyCapMs = 4500;
     await Promise.race([
       this._waitForPrintReady(w, options),
       new Promise((resolve) => {
-        window.setTimeout(resolve, 15000);
+        window.setTimeout(resolve, readyCapMs);
       }),
     ]);
     this._forceZoom100(w);
-    this._afterPrintCleanup(
-      w,
-      () => {
-        try {
-          w.close();
-        } catch {
-          /* ignore */
-        }
-      },
-      1600
-    );
-    try {
-      w.print();
-    } catch {
+    const releaseWin = () => {
       try {
         w.close();
       } catch {
         /* ignore */
       }
+      if (this._activePrintWin === w) this._activePrintWin = null;
+    };
+    try {
+      w.print();
+      this._bindPrintDialogDismiss(w, releaseWin);
+    } catch {
+      releaseWin();
     }
     return true;
   },
@@ -515,6 +554,7 @@ const PrintReport = {
    * @param {{ ticket?: boolean, papel?: string, formato?: string }} [options]
    */
   async openAndPrint(htmlOrBuilder, windowFeatures, options = {}) {
+    this._disposePrintSurfaces();
     await this.ensureLogo();
     let html = typeof htmlOrBuilder === 'function' ? htmlOrBuilder() : htmlOrBuilder;
     if (html != null && typeof html.then === 'function') {

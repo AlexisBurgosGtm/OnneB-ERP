@@ -16,7 +16,7 @@ Repo / historial de FS-SV aparte de OnneB GT.
 ## Estado
 
 - Clon poblado desde OnneB (sin `.git` de GT). Motor FEL GT eliminado del clon.
-- Licencias en Mariandre: sección **Licencias FS ERP** (`/licencias-fserp`), ajena a OnneB (catálogo `FSERP_ROOT` / FS-SV). Claves solo en Mariandre (`license-keys-fserp/`). No hay `GENERADOR LICENCIAS` en OnneB ni en FS-SV.
+- Licencias FS-SV: catálogo en el proyecto correspondiente (`FSERP_ROOT`); OnneB no incluye generador ni carpetas de claves de ese producto. No hay `GENERADOR LICENCIAS` en OnneB ni en FS-SV.
 - Icono instalable: `iconos.png` → `npm run icons`.
 - Puerto típico FS-SV: **6501** (OnneB: 6500).
 

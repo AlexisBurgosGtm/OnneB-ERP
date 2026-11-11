@@ -80,6 +80,48 @@ function todayDateOnly() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const TIPO_EMPLEADO_ADMIN = 1;
+
+/** Costos en Excel solo administrador (o superusuario). Resto: existencias sin valorización. */
+function inventarioExportIncluirCosto(req) {
+  if (String(req.headers['x-super-user'] || req.query.superUser || '').trim() === '1') {
+    return true;
+  }
+  const cod = parseInt(req.headers['x-codtipo-empleado'], 10);
+  if (Number.isFinite(cod) && cod > 0) {
+    return cod === TIPO_EMPLEADO_ADMIN;
+  }
+  return false;
+}
+
+const INVENTARIO_EXPORT_COLUMNS_FULL = [
+  { header: 'Código', key: 'CODPROD', width: 14 },
+  { header: 'Descripción', key: 'DESPROD', width: 32 },
+  { header: 'Marca', key: 'DESMARCA', width: 18 },
+  { header: 'Tipo', key: 'TIPOPROD', width: 10 },
+  { header: 'Saldo', key: 'SALDO', width: 12 },
+  { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
+  { header: 'Físico', key: 'FISICO', width: 12 },
+  { header: 'Costo prom.', key: 'COSTO_PROMEDIO', width: 12, cost: true },
+  { header: 'Costo', key: 'COSTO', width: 12, cost: true },
+  { header: 'Total costo', key: 'TOTALCOSTO', width: 14, cost: true },
+  { header: 'Total costo prom.', key: 'TOTALCOSTO_PROMEDIO', width: 16, cost: true },
+  { header: 'Habilitado', key: 'HABILITADO', width: 12 },
+];
+
+function inventarioExportColumns(incluirCosto) {
+  if (incluirCosto) return INVENTARIO_EXPORT_COLUMNS_FULL;
+  return INVENTARIO_EXPORT_COLUMNS_FULL.filter((c) => !c.cost);
+}
+
+function inventarioExportPickRow(row, columns) {
+  const out = {};
+  for (const c of columns) {
+    out[c.key] = row[c.key];
+  }
+  return out;
+}
+
 function bindSaldoFilters(request, empnit, q, qLike, codmarca, habilitado) {
   request.input('EMPNIT', sql.VarChar, empnit);
   request.input('q', sql.NVarChar, q || null);
@@ -308,31 +350,20 @@ router.get('/saldo/export', async (req, res) => {
       ${sqlParts.where}
     `);
     const totalsRow = totalsResult.recordset[0] || {};
+    const incluirCosto = inventarioExportIncluirCosto(req);
+    const columns = inventarioExportColumns(incluirCosto);
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Inventario');
-    sheet.columns = [
-      { header: 'Código', key: 'CODPROD', width: 14 },
-      { header: 'Descripción', key: 'DESPROD', width: 32 },
-      { header: 'Marca', key: 'DESMARCA', width: 18 },
-      { header: 'Tipo', key: 'TIPOPROD', width: 10 },
-      { header: 'Saldo', key: 'SALDO', width: 12 },
-      { header: 'Existencia', key: 'EXISTENCIA', width: 12 },
-      { header: 'Físico', key: 'FISICO', width: 12 },
-      { header: 'Costo prom.', key: 'COSTO_PROMEDIO', width: 12 },
-      { header: 'Costo', key: 'COSTO', width: 12 },
-      { header: 'Total costo', key: 'TOTALCOSTO', width: 14 },
-      { header: 'Total costo prom.', key: 'TOTALCOSTO_PROMEDIO', width: 16 },
-      { header: 'Habilitado', key: 'HABILITADO', width: 12 },
-    ];
+    sheet.columns = columns.map(({ header, key, width }) => ({ header, key, width }));
     sheet.getRow(1).font = { bold: true };
 
     for (const row of listResult.recordset) {
-      sheet.addRow(row);
+      sheet.addRow(inventarioExportPickRow(row, columns));
     }
 
     if (listResult.recordset.length) {
-      const totalRow = sheet.addRow({
+      const totals = {
         CODPROD: '',
         DESPROD: '',
         DESMARCA: '',
@@ -340,12 +371,15 @@ router.get('/saldo/export', async (req, res) => {
         SALDO: totalsRow.SUM_SALDO ?? 0,
         EXISTENCIA: '',
         FISICO: '',
-        COSTO_PROMEDIO: '',
-        COSTO: '',
-        TOTALCOSTO: totalsRow.SUM_TOTALCOSTO ?? 0,
-        TOTALCOSTO_PROMEDIO: totalsRow.SUM_TOTALCOSTO_PROMEDIO ?? 0,
         HABILITADO: '',
-      });
+      };
+      if (incluirCosto) {
+        totals.COSTO_PROMEDIO = '';
+        totals.COSTO = '';
+        totals.TOTALCOSTO = totalsRow.SUM_TOTALCOSTO ?? 0;
+        totals.TOTALCOSTO_PROMEDIO = totalsRow.SUM_TOTALCOSTO_PROMEDIO ?? 0;
+      }
+      const totalRow = sheet.addRow(inventarioExportPickRow(totals, columns));
       totalRow.font = { bold: true };
     }
 
@@ -827,7 +861,8 @@ router.get('/relleno/export', async (req, res) => {
 
 /** Facturas de venta (FAC + FEL: FEF/FES/FEC). */
 /** Ventas válidas FAC / FEL (TIPOM salida, no anuladas). */
-const TIPODOC_VENTA_VALIDAS = ['FAC', 'FEF', 'FES', 'FEC'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOC_VENTA_VALIDAS = ['FAC', TIPODOC_FPC, 'FEF', 'FES', 'FEC'];
 const SQL_TIPODOC_VENTA_IN = TIPODOC_VENTA_VALIDAS.map((t) => `'${t}'`).join(', ');
 
 function parseMesesSinMovQuery(req) {

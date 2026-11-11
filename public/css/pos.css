@@ -191,6 +191,31 @@
   cursor: not-allowed;
 }
 
+.pos-fab-finalizar.doc-finalizar-draggable,
+.btn.pos-fab-btn.doc-finalizar-draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.pos-fab-finalizar.doc-finalizar-draggable.is-dragging,
+.btn.pos-fab-btn.doc-finalizar-draggable.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.doc-finalizar-fab-portal {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1050;
+  overflow: hidden;
+}
+
+.doc-finalizar-fab-portal .doc-finalizar-draggable,
+.doc-finalizar-fab-portal .pos-fab-btn.doc-finalizar-draggable {
+  pointer-events: auto;
+}
+
 .pos-fab-barcode {
   position: fixed;
   bottom: 1.25rem;

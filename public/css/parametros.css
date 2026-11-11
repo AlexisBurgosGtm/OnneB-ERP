@@ -1,0 +1,8 @@
+.parametros-wrap .parametros-presence-table th {
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+.parametros-wrap .parametros-presence-table td {
+  font-size: 0.8125rem;
+}

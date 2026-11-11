@@ -19,7 +19,8 @@ const { assertFacSinFraccionadasParaAnular } = require('../lib/fraccionamiento-f
 
 const router = express.Router();
 
-const TIPODOCS_FACTURA = ['FAC', 'FEF', 'FEC', 'FES'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOCS_FACTURA = ['FAC', TIPODOC_FPC, 'FEF', 'FEC', 'FES'];
 const TIPODOCS_RECIBO = ['RCC', 'PRC'];
 
 function tipodocsForKind(kind) {

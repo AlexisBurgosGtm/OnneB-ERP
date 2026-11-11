@@ -405,9 +405,12 @@ const ReportesMarcasView = {
       return `<div class="repmar-empty py-2">Sin productos de esta marca</div>`;
     }
     const q = this._filters.productos;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repmar-search mb-2" data-section="productos"
         placeholder="Buscar productos…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_marcas_productos_${this._selectedCod || 'det'}_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repmar-table">
           <thead class="table-light sticky-top">
@@ -423,6 +426,7 @@ const ReportesMarcasView = {
           </thead>
           <tbody id="repmar-prods-tbody">${this.renderProductosBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 
@@ -464,9 +468,12 @@ const ReportesMarcasView = {
       return `<div class="repmar-empty py-2">Sin ventas de clientes para esta marca</div>`;
     }
     const q = this._filters.clientes;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repmar-search mb-2" data-section="clientes"
         placeholder="Buscar clientes…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_marcas_clientes_${this._selectedCod || 'det'}_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repmar-table">
           <thead class="table-light sticky-top">
@@ -481,6 +488,7 @@ const ReportesMarcasView = {
           </thead>
           <tbody id="repmar-clientes-tbody">${this.renderClientesBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 
@@ -519,9 +527,12 @@ const ReportesMarcasView = {
       return `<div class="repmar-empty py-2">Sin compras COM/COP de esta marca</div>`;
     }
     const q = this._filters.proveedores;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repmar-search mb-2" data-section="proveedores"
         placeholder="Buscar proveedores…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_marcas_proveedores_${this._selectedCod || 'det'}_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repmar-table">
           <thead class="table-light sticky-top">
@@ -534,6 +545,7 @@ const ReportesMarcasView = {
           </thead>
           <tbody id="repmar-prov-tbody">${this.renderProveedoresBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 

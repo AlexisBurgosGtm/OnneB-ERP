@@ -20,7 +20,8 @@ const path = require('path');
 
 const router = express.Router();
 
-const TIPODOCS = ['FAC', 'FEF', 'FEC', 'FES', 'FEL'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOCS = ['FAC', TIPODOC_FPC, 'FEF', 'FEC', 'FES', 'FEL'];
 const SQL_TIPODOCS = TIPODOCS.map((t) => `'${t}'`).join(', ');
 const DEFAULT_LIMIT = 2000;
 

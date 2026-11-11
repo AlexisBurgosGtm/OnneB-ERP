@@ -23,7 +23,12 @@ const { searchMovimientoProductos } = require('../lib/movimiento-productos-searc
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
-const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
+const {
+  getSettingSino,
+  effectivePermiteCambiarPrecioPedidos,
+  getSettingSolicitaClaveCambiarPrecios,
+  SETTING_OPCION,
+} = require('../lib/settings');
 const {
   STATUS_OPERADO,
   STATUS_BLOQUEADO,
@@ -352,9 +357,14 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const solicitaClaveCambiarPrecios = await getSettingSolicitaClaveCambiarPrecios(pool);
     const muestraDesprod2 = await getSettingSino(
       pool,
       SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
+    const permiteMoverBotonFinalizarEnDocumentos = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
     );
     res.json({
       empnit,
@@ -367,7 +377,9 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      solicitaClaveCambiarPrecios,
       muestraDesprod2,
+      permiteMoverBotonFinalizarEnDocumentos,
     });
   } catch (err) {
     console.warn('[API GET /comandas-restaurante/config]', err.message);
@@ -739,10 +751,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
     const { tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio);
     const costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
     let precio = getPrecioFromPreciosRow(prod, campoPrecio);
-    const permiteCambiarPrecio = await getSettingSino(
-      pool,
-      SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-    );
+    const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
     if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
       const customPrecio = Number(req.body.PRECIO);
       if (!Number.isFinite(customPrecio) || customPrecio < 0) {

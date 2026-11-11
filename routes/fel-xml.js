@@ -9,6 +9,7 @@ const {
   getDefaultTemplate,
   renderTemplate,
   isFelTicketTipodoc,
+  preparePrintTemplateHtml,
 } = require('../lib/formato-impresion-engine');
 const { getSettingValue, SETTING_OPCION } = require('../lib/settings');
 
@@ -107,7 +108,10 @@ router.post('/render', async (req, res) => {
       muestraPeso: false,
     });
 
-    const bodyHtml = renderTemplate(formato.HTML, ctx);
+    const bodyHtml = renderTemplate(
+      preparePrintTemplateHtml(formato.HTML, { papel, tipodoc }),
+      ctx
+    );
     const fullHtml = wrapPreviewHtml({ title, bodyHtml, css: formato.CSS, papel });
 
     res.json({

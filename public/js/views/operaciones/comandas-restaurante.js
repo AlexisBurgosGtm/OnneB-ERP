@@ -230,7 +230,7 @@ const ComandasRestauranteView = {
   },
 
   permiteCambiarPrecioPedido() {
-    return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
+    return DocPrecioConfig.puedeCambiarPrecio(this._config);
   },
 
   async enviarACocina() {
@@ -723,13 +723,18 @@ const ComandasRestauranteView = {
 
   syncEditorControls() {
     const editable = this.docEditable(this._pedido?.header);
-    PosDocSearchUI.syncControls(this._container, 'pos', editable);
+    PosDocSearchUI.syncControls(this._container, 'pos', editable, {
+      viewKey: 'comandas-restaurante',
+      permiteMover: this._config?.permiteMoverBotonFinalizarEnDocumentos,
+    });
     ['#pos-cliente-search', '#pos-doc-fecha', '#pos-doc-vendedor', '#pos-precio-campo', '#pos-cliente-nuevo', '.btn-refresh-vendedores'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-pos-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (fab && !DocFinalizarFab?.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos)) {
+      fab.style.display = editable ? '' : 'none';
+    }
     const enviarFab = this._container?.querySelector('#btn-pos-enviar-cocina');
     if (enviarFab) enviarFab.style.display = editable ? '' : 'none';
     this.syncClienteSearchEmphasis();
@@ -1124,7 +1129,6 @@ const ComandasRestauranteView = {
     PosDocSearchUI.bind(this, 'pos', {
       getEditable: () => true,
       allowEmptySearch: true,
-      keepProductSearchAfterAdd: true,
       buscarProductos: this.buscarProductos,
       onProductPick: (row) => this.onProductClick(row),
     });

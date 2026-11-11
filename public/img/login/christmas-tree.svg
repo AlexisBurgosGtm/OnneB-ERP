@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 200" aria-hidden="true">
+  <defs>
+    <filter id="star-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <ellipse cx="70" cy="192" rx="36" ry="6" fill="rgba(0,0,0,0.1)"/>
+  <rect x="62" y="148" width="16" height="42" rx="3" fill="#5c4033"/>
+  <path fill="#14532d" d="M70 44 L118 116 H92 L112 148 H86 L106 178 H34 L54 148 H28 L48 116 H22z"/>
+  <path fill="#166534" d="M70 56 L102 108 H78 L96 136 H74 L88 158 H52 L66 136 H44 L62 108 H38z"/>
+  <g filter="url(#star-glow)">
+    <path fill="#fef08a" d="M70 6 L76 22 L94 24 L80 36 L84 54 L70 44 L56 54 L60 36 L46 24 L64 22z"/>
+    <path fill="#fbbf24" d="M70 10 L74 22 L84 23 L76 32 L78 44 L70 38 L62 44 L64 32 L56 23 L66 22z"/>
+  </g>
+</svg>

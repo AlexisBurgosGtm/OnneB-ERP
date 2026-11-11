@@ -1,5 +1,5 @@
 /**
- * Vista Facturación — Facturas normales (TIPODOC=FAC) o Electrónicas (FEF/FEC/FES).
+ * Vista Facturación — FAC/FPC (operativo; FPC certifica SAT FPEQ) o FEL IVA (FEF/FEC/FES).
  */
 const FacturacionView = {
   _grupo: 'fac',
@@ -71,7 +71,7 @@ const FacturacionView = {
     if (this._grupo === 'fel' || this._grupo === 'fel-extra') {
       return '<strong>FEF</strong>, <strong>FES</strong> o <strong>FEC</strong>';
     }
-    return '<strong>FAC</strong>';
+    return '<strong>FAC</strong> o <strong>FPC</strong> (pequeño contribuyente FEL)';
   },
 
   showsTipofacEnTomarDatos() {
@@ -187,26 +187,84 @@ const FacturacionView = {
     return s || '—';
   },
 
-  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
-
   felUudiValue(row) {
+    if (typeof DocOpciones !== 'undefined' && DocOpciones.felUudiValue) {
+      return DocOpciones.felUudiValue(row);
+    }
     return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
   },
 
   needsCertificar(row) {
+    if (typeof DocOpciones !== 'undefined' && DocOpciones.estaCertificadoFel(row)) return false;
     if (this.felUudiValue(row)) return false;
     const tipodoc = String(row?.TIPODOC || '').trim().toUpperCase();
-    return this.FEL_TIPOS_CERTIFICABLES.includes(tipodoc);
+    return typeof DocOpciones !== 'undefined' && DocOpciones.esTipoCertificableFelFacturacion(tipodoc);
+  },
+
+  patchPedidoListFel(coddoc, correlativo, data) {
+    if (!Array.isArray(this._pedidosList) || !data) return;
+    const corr = Number(correlativo);
+    const cod = String(coddoc || '').trim();
+    const row = this._pedidosList.find(
+      (r) => String(r.CODDOC || '').trim() === cod && Number(r.CORRELATIVO) === corr
+    );
+    if (!row) return;
+    if (typeof DocOpciones !== 'undefined') {
+      DocOpciones.applyFelCertificacionToRow(row, data);
+    }
+  },
+
+  async sincronizarFelPedidoEnLista(coddoc, correlativo) {
+    try {
+      const pedido = await F.fetchJson(
+        this.apiUrl(`/pedidos/${encodeURIComponent(coddoc)}/${correlativo}`, { _: Date.now() })
+      );
+      const h = pedido?.header || {};
+      this.patchPedidoListFel(coddoc, correlativo, {
+        fel: {
+          uuid: h.FEL_UUDI,
+          serie: h.FEL_SERIE,
+          numero: h.FEL_NUMERO,
+        },
+      });
+      this.refreshListDom();
+    } catch (_) {
+      /* ignore */
+    }
+  },
+
+  felCertificarHooks(coddoc, correlativo) {
+    return {
+      onCertificado: (data) => {
+        this.patchPedidoListFel(coddoc, correlativo, data);
+        this.refreshListDom();
+      },
+      onYaCertificado: async () => {
+        await this.fetchPedidosList();
+        await this.sincronizarFelPedidoEnLista(coddoc, correlativo);
+        F.toast('La factura ya estaba certificada; listado actualizado', 'info');
+      },
+    };
   },
 
   formatFelCell(row) {
     const v = this.felUudiValue(row);
-    if (!v) return '—';
-    const label =
-      v.length <= 16 ? this.escapeHtml(v) : this.escapeHtml(`${v.slice(0, 8)}…${v.slice(-4)}`);
+    const serie = String(row?.FEL_SERIE ?? '').trim();
+    const numero = String(row?.FEL_NUMERO ?? '').trim();
+    const serieLabel = serie && numero ? `${serie}-${numero}` : serie || numero || '';
+    if (!v && !serieLabel) return '—';
+    const label = serieLabel
+      ? this.escapeHtml(serieLabel)
+      : v.length <= 16
+        ? this.escapeHtml(v)
+        : this.escapeHtml(`${v.slice(0, 8)}…${v.slice(-4)}`);
+    const openUuid = v || '';
+    if (!openUuid) {
+      return `<span class="badge text-bg-success" title="Certificado SAT">${label}</span>`;
+    }
     return `<button type="button" class="btn btn-link btn-sm p-0 fac-fel-link text-start"
-      data-action="fel-open" data-fel-uudi="${this.escapeHtml(v)}"
-      title="Abrir documento FEL (${this.escapeHtml(v)})">${label}</button>`;
+      data-action="fel-open" data-fel-uudi="${this.escapeHtml(openUuid)}"
+      title="Abrir documento FEL (${this.escapeHtml(openUuid)})">${label}</button>`;
   },
 
   joinFelUrl(baseUrl, felValue) {
@@ -244,10 +302,10 @@ const FacturacionView = {
   showsPromoScan() {
     if (!this._promoActiva) return false;
     const td = String(this._pedido?.header?.TIPODOC || '').trim().toUpperCase();
-    if (this._grupo === 'fac') return td === 'FAC';
+    if (this._grupo === 'fac') return td === 'FAC' || td === 'FPC';
     if (this._grupo === 'fel' || this._grupo === 'fel-extra') return td === 'FEF' || td === 'FEC' || td === 'FES';
     if (this._grupo === 'mixto') {
-      return td === 'FAC' || td === 'FEF' || td === 'FEC' || td === 'FES';
+      return td === 'FAC' || td === 'FPC' || td === 'FEF' || td === 'FEC' || td === 'FES';
     }
     return false;
   },
@@ -644,12 +702,13 @@ const FacturacionView = {
   },
 
   isFacturaNormal(header) {
-    return String(header?.TIPODOC || '').trim().toUpperCase() === 'FAC';
+    const td = String(header?.TIPODOC || '').trim().toUpperCase();
+    return td === 'FAC' || td === 'FPC';
   },
 
   isFacturaVenta(header) {
     const tipo = String(header?.TIPODOC || '').trim().toUpperCase();
-    return tipo === 'FAC' || tipo === 'FEF' || tipo === 'FEC' || tipo === 'FES';
+    return tipo === 'FAC' || tipo === 'FPC' || tipo === 'FEF' || tipo === 'FEC' || tipo === 'FES';
   },
 
   docTieneCorte(header) {
@@ -1046,7 +1105,9 @@ const FacturacionView = {
 
   async maybeAutoCertificarTrasFinalizar(coddoc, correlativo, tipodoc) {
     const tipo = String(tipodoc || '').trim().toUpperCase();
-    if (!DocOpciones.esTipoCertificableFel(tipo)) return { certifico: false, printedSistema: false };
+    if (!DocOpciones.esTipoCertificableFelFacturacion(tipo)) {
+      return { certifico: false, printedSistema: false };
+    }
     let auto = false;
     try {
       auto = await DocOpciones.fetchCertificaAlFinalizar();
@@ -1061,6 +1122,7 @@ const FacturacionView = {
           printedSistema = true;
           await this.imprimirPedido(coddoc, correlativo);
         },
+        ...this.felCertificarHooks(coddoc, correlativo),
       });
       await this.fetchPedidosList();
       this.refreshListDom();
@@ -1330,7 +1392,9 @@ const FacturacionView = {
               typeof CatalogosUI !== 'undefined'
                 ? CatalogosUI.secretInputFieldHtml({
                     inputId: 'fac-cart-precio-clave',
-                    name: 'onneb-cart-precio-admin-pass',
+                    name: 'onneb-cart-precio-operador-pass',
+                    label: 'Clave de operador',
+                    placeholder: 'Clave de operador',
                   })
                 : ''
             }
@@ -1353,6 +1417,7 @@ const FacturacionView = {
           Swal.showValidationMessage('Precio inválido');
           return false;
         }
+        if (!this.requiereAutorizacionPrecio()) return precio;
         if (
           typeof AutorizacionesUI !== 'undefined' &&
           AutorizacionesUI.precioChangeAllowed(precio, catalogo)
@@ -1362,7 +1427,7 @@ const FacturacionView = {
         const adminPass = document.getElementById('fac-cart-precio-clave')?.value ?? '';
         if (!solicitaAuth && !String(adminPass).trim()) {
           document.getElementById('fac-cart-precio-clave-wrap')?.classList.remove('d-none');
-          Swal.showValidationMessage('Ingrese la clave de administrador');
+          Swal.showValidationMessage('Ingrese la clave de operador');
           return false;
         }
         const ok = await AutorizacionesUI.gateCambioPrecioUnitario({
@@ -1375,7 +1440,7 @@ const FacturacionView = {
           Swal.showValidationMessage(
             solicitaAuth
               ? 'No se obtuvo autorización para el precio'
-              : 'Clave de administrador incorrecta'
+              : 'Clave de operador incorrecta'
           );
           return false;
         }
@@ -1383,7 +1448,9 @@ const FacturacionView = {
       },
     });
     if (!result.isConfirmed) return null;
-    if (typeof AutorizacionesUI !== 'undefined') AutorizacionesUI.consumePrecioGrant();
+    if (this.requiereAutorizacionPrecio() && typeof AutorizacionesUI !== 'undefined') {
+      AutorizacionesUI.consumePrecioGrant();
+    }
     return result.value;
   },
 
@@ -1400,7 +1467,11 @@ const FacturacionView = {
   },
 
   permiteCambiarPrecioPedido() {
-    return String(this._config?.permiteCambiarPrecio || 'NO').trim().toUpperCase() === 'SI';
+    return DocPrecioConfig.puedeCambiarPrecio(this._config);
+  },
+
+  requiereAutorizacionPrecio() {
+    return DocPrecioConfig.requiereAutorizacionPrecio(this._config);
   },
 
   permiteModificarDescripcionVentas() {
@@ -1501,7 +1572,11 @@ const FacturacionView = {
         if (permiteCambiarPrecio) {
           precioInp?.addEventListener('input', updateTotal);
         }
-        if (permiteCambiarPrecio && typeof AutorizacionesUI !== 'undefined') {
+        if (
+          permiteCambiarPrecio &&
+          this.requiereAutorizacionPrecio() &&
+          typeof AutorizacionesUI !== 'undefined'
+        ) {
           authGate = AutorizacionesUI.wirePrecioAuthGate({
             popup,
             precioInput: precioInp,
@@ -1553,13 +1628,14 @@ const FacturacionView = {
           }
           const catalog = Number(priceByMedida[String(medida)] ?? 0) || 0;
           if (
+            this.requiereAutorizacionPrecio() &&
             typeof AutorizacionesUI !== 'undefined' &&
             !AutorizacionesUI.precioChangeAllowed(precio, catalog)
           ) {
             Swal.showValidationMessage(
               solicitaAuth
                 ? 'Espere la autorización del administrador'
-                : 'Ingrese la clave de administrador en el mismo modal'
+                : 'Ingrese la clave de operador en el mismo modal'
             );
             return false;
           }
@@ -1570,7 +1646,11 @@ const FacturacionView = {
     });
     if (picked?.medida) {
       await this.agregarLinea(row.CODPROD, picked.medida, picked.cantidad, picked.precio, picked.desprod);
-      if (picked.precio != null && typeof AutorizacionesUI !== 'undefined') {
+      if (
+        picked.precio != null &&
+        this.requiereAutorizacionPrecio() &&
+        typeof AutorizacionesUI !== 'undefined'
+      ) {
         AutorizacionesUI.consumePrecioGrant();
       }
     }
@@ -1797,15 +1877,19 @@ const FacturacionView = {
   syncEditorControls() {
     const h = this._pedido?.header;
     const editable = this.docEditable(h);
-    PosDocSearchUI.syncControls(this._container, 'fac', editable);
+    const fabVisible = editable && !this.docTieneCorte(h);
+    PosDocSearchUI.syncControls(this._container, 'fac', editable, {
+      viewKey: 'facturacion',
+      permiteMover: this._config?.permiteMoverBotonFinalizarEnDocumentos,
+      visible: fabVisible,
+    });
     ['#fac-cliente-search', '#fac-cliente-nuevo', '#fac-doc-fecha', '#fac-doc-vendedor', '#fac-doc-caja', '#fac-precio-campo', '#fac-btn-agregar-pse', '.btn-refresh-vendedores'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-fac-finalizar');
-    if (fab) {
-      // No re-finalizar documentos que ya entraron a corte de caja.
-      fab.style.display = editable && !this.docTieneCorte(h) ? '' : 'none';
+    if (fab && !DocFinalizarFab?.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos)) {
+      fab.style.display = fabVisible ? '' : 'none';
     }
     this.syncClienteSearchEmphasis();
     this.syncVendedorEmphasis();
@@ -1834,6 +1918,7 @@ const FacturacionView = {
     try {
       await DocOpciones.certificarYMostrarFormatos(coddoc, correlativo, {
         onImprimirSistema: () => this.imprimirPedido(coddoc, correlativo),
+        ...this.felCertificarHooks(coddoc, correlativo),
       });
       await this.fetchPedidosList();
       this.refreshListDom();

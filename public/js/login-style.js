@@ -4,7 +4,17 @@
 (function loginStyleModule() {
   'use strict';
 
-  const STYLES = ['DEFAULT', 'TEMA', 'HALLOWEEN', 'NAVIDAD', 'DIA CARINO', 'ANO NUEVO'];
+  const STYLES = [
+    'DEFAULT',
+    'TEMA',
+    'HALLOWEEN',
+    'NAVIDAD',
+    'DIA CARINO',
+    'ANO NUEVO',
+    'REGRESO A CLASES',
+    'VACACIONES',
+    'INVIERNO',
+  ];
   const CLASS_SUFFIX = {
     DEFAULT: 'default',
     TEMA: 'tema',
@@ -12,6 +22,9 @@
     NAVIDAD: 'navidad',
     'DIA CARINO': 'dia-carino',
     'ANO NUEVO': 'ano-nuevo',
+    'REGRESO A CLASES': 'regreso-clases',
+    VACACIONES: 'vacaciones',
+    INVIERNO: 'invierno',
   };
   const CLASS_PREFIX = 'login-style-';
   let cachedEstilo = 'TEMA';
@@ -28,6 +41,8 @@
     s = s.replace(/Ñ/g, 'N').replace(/Á/g, 'A').replace(/É/g, 'E').replace(/Í/g, 'I').replace(/Ó/g, 'O').replace(/Ú/g, 'U');
     if (s === 'DIA DEL CARINO') return 'DIA CARINO';
     if (s === 'AÑO NUEVO') return 'ANO NUEVO';
+    if (s === 'REGRESO CLASES' || s === 'REGRESO-CLASES') return 'REGRESO A CLASES';
+    if (s === 'VACACION') return 'VACACIONES';
     return STYLES.includes(s) ? s : 'TEMA';
   }
 
@@ -86,6 +101,133 @@
       flake.style.fontSize = `${0.65 + Math.random() * 0.9}rem`;
       flake.style.opacity = String(0.35 + Math.random() * 0.55);
       frag.appendChild(flake);
+    }
+    const extraFigures = [
+      {
+        kind: 'img',
+        src: '/img/login/christmas-tree.svg',
+        cls: 'login-festive-figure login-festive-figure--arbol',
+      },
+      {
+        kind: 'img',
+        src: '/img/login/navidad-ornament.svg',
+        cls: 'login-festive-figure login-festive-figure--ornament login-festive-figure--ornament1',
+      },
+      {
+        kind: 'img',
+        src: '/img/login/navidad-ornament.svg',
+        cls: 'login-festive-figure login-festive-figure--ornament login-festive-figure--ornament2',
+      },
+      {
+        kind: 'img',
+        src: '/img/login/navidad-ornament.svg',
+        cls: 'login-festive-figure login-festive-figure--ornament login-festive-figure--ornament3',
+      },
+      {
+        kind: 'img',
+        src: '/img/login/santa-boots.svg',
+        cls: 'login-festive-figure login-festive-figure--botas',
+      },
+      {
+        kind: 'img',
+        src: '/img/login/santa-hat.svg',
+        cls: 'login-festive-figure login-festive-figure--sombrero',
+      },
+    ];
+    extraFigures.forEach((fig) => {
+      if (fig.kind === 'img') {
+        const im = document.createElement('img');
+        im.className = fig.cls;
+        im.src = fig.src;
+        im.alt = '';
+        im.decoding = 'async';
+        im.loading = 'lazy';
+        im.setAttribute('aria-hidden', 'true');
+        frag.appendChild(im);
+      }
+    });
+    container.appendChild(frag);
+  }
+
+  function buildRegresoClasesDecor(container) {
+    const icons = [
+      { cls: 'fa-solid fa-graduation-cap', color: '#fde047' },
+      { cls: 'fa-solid fa-book-open', color: '#93c5fd' },
+      { cls: 'fa-solid fa-pen-to-square', color: '#fcd34d' },
+      { cls: 'fa-solid fa-calculator', color: '#a78bfa' },
+      { cls: 'fa-solid fa-chalkboard-user', color: '#f9a8d4' },
+    ];
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 18; i += 1) {
+      const pick = icons[i % icons.length];
+      const el = document.createElement('i');
+      el.className = `${pick.cls} login-festive-icon login-festive-icon--clases`;
+      el.setAttribute('aria-hidden', 'true');
+      el.style.color = pick.color;
+      el.style.left = `${3 + Math.random() * 90}%`;
+      el.style.top = `${3 + Math.random() * 88}%`;
+      el.style.fontSize = `${1.05 + Math.random() * 1.35}rem`;
+      el.style.opacity = String(0.45 + Math.random() * 0.35);
+      el.style.animationDelay = `${Math.random() * 4}s`;
+      frag.appendChild(el);
+    }
+    container.appendChild(frag);
+  }
+
+  function buildVacacionesDecor(container) {
+    const frag = document.createDocumentFragment();
+    const sun = document.createElement('div');
+    sun.className = 'login-vacaciones-sun';
+    sun.setAttribute('aria-hidden', 'true');
+    frag.appendChild(sun);
+    const umbrellas = [
+      { src: '/img/login/beach-umbrella.svg', cls: 'login-vacaciones-umbrella login-vacaciones-umbrella--1' },
+      { src: '/img/login/beach-umbrella.svg', cls: 'login-vacaciones-umbrella login-vacaciones-umbrella--2' },
+      { src: '/img/login/beach-umbrella.svg', cls: 'login-vacaciones-umbrella login-vacaciones-umbrella--3' },
+    ];
+    umbrellas.forEach((fig) => {
+      const im = document.createElement('img');
+      im.className = fig.cls;
+      im.src = fig.src;
+      im.alt = '';
+      im.decoding = 'async';
+      im.loading = 'lazy';
+      im.setAttribute('aria-hidden', 'true');
+      frag.appendChild(im);
+    });
+    container.appendChild(frag);
+  }
+
+  function buildInviernoDecor(container) {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 36; i += 1) {
+      const flake = document.createElement('span');
+      flake.className = 'login-snowflake login-snowflake--soft';
+      flake.textContent = '❄';
+      flake.style.left = `${Math.random() * 100}%`;
+      flake.style.animationDuration = `${5 + Math.random() * 10}s`;
+      flake.style.animationDelay = `${Math.random() * 7}s`;
+      flake.style.fontSize = `${0.55 + Math.random() * 0.75}rem`;
+      flake.style.opacity = String(0.25 + Math.random() * 0.45);
+      frag.appendChild(flake);
+    }
+    const icons = [
+      { cls: 'fa-regular fa-snowflake', color: 'rgba(255,255,255,0.75)' },
+      { cls: 'fa-solid fa-wind', color: 'rgba(226,232,240,0.65)' },
+      { cls: 'fa-solid fa-cloud', color: 'rgba(203,213,225,0.55)' },
+    ];
+    for (let i = 0; i < 10; i += 1) {
+      const pick = icons[i % icons.length];
+      const el = document.createElement('i');
+      el.className = `${pick.cls} login-festive-icon login-festive-icon--invierno`;
+      el.setAttribute('aria-hidden', 'true');
+      el.style.color = pick.color;
+      el.style.left = `${4 + Math.random() * 88}%`;
+      el.style.top = `${4 + Math.random() * 88}%`;
+      el.style.fontSize = `${1 + Math.random() * 1.2}rem`;
+      el.style.opacity = String(0.35 + Math.random() * 0.3);
+      el.style.animationDelay = `${Math.random() * 4}s`;
+      frag.appendChild(el);
     }
     container.appendChild(frag);
   }
@@ -177,6 +319,15 @@
     } else if (estilo === 'NAVIDAD') {
       layer.hidden = false;
       buildNavidadDecor(layer);
+    } else if (estilo === 'REGRESO A CLASES') {
+      layer.hidden = false;
+      buildRegresoClasesDecor(layer);
+    } else if (estilo === 'VACACIONES') {
+      layer.hidden = false;
+      buildVacacionesDecor(layer);
+    } else if (estilo === 'INVIERNO') {
+      layer.hidden = false;
+      buildInviernoDecor(layer);
     } else if (estilo === 'DIA CARINO') {
       layer.hidden = false;
       buildDiaCarinoDecor(layer);

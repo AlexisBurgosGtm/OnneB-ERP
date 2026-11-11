@@ -290,6 +290,10 @@ function createInventarioDocsRouter(tipodocOrList, logPrefix) {
         tiposDocumento: tipos.recordset,
         bodegaDefault: DEFAULT_BODEGA,
         muestraDesprod2: await getSettingSino(pool, SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS),
+        permiteMoverBotonFinalizarEnDocumentos: await getSettingSino(
+          pool,
+          SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
+        ),
       });
     } catch (err) {
       console.warn(`[API GET /${logPrefix}/config]`, err.message);

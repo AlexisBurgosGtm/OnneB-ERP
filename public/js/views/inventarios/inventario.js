@@ -210,6 +210,23 @@ const InventarioView = {
     return `/api/inventario/saldo/export?${params.toString()}`;
   },
 
+  exportFetchHeaders() {
+    const headers = { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+    try {
+      const user = F.session('user') || {};
+      if (user.superUser) headers['X-Super-User'] = '1';
+      const cod = user.codtipoempleado;
+      if (cod != null && String(cod).trim() !== '') {
+        headers['X-Codtipo-Empleado'] = String(cod);
+      }
+      const empNit = F.getEmpNit();
+      if (empNit) headers['X-Emp-Nit'] = String(empNit);
+    } catch {
+      /* sesión no disponible */
+    }
+    return headers;
+  },
+
   printFetchUrl() {
     const params = this.buildListParams({ limit: '2000' });
     return `/api/inventario/saldo?${params.toString()}`;
@@ -258,7 +275,7 @@ const InventarioView = {
                 </button>
               </div>
             </div>
-            <div class="inventario-filter-export"${this.isUsuarioVentas() ? ' hidden' : ''}>
+            <div class="inventario-filter-export">
               <label class="form-label small mb-1 d-block inventario-export-label" aria-hidden="true">&nbsp;</label>
               <button type="button" class="btn btn-sm btn-outline-success" id="btn-inventario-export">
                 <i class="fa-solid fa-file-excel me-1" aria-hidden="true"></i>Exportar (xlsx)
@@ -439,10 +456,6 @@ const InventarioView = {
   },
 
   async onExportExcel() {
-    if (this.isUsuarioVentas()) {
-      F.toast('No tiene permiso para exportar inventario', 'warning');
-      return;
-    }
     if (this._exporting) return;
     const empNit = F.getEmpNit();
     if (!empNit) {
@@ -454,7 +467,10 @@ const InventarioView = {
     this._exporting = true;
     if (btn) btn.disabled = true;
     try {
-      const res = await fetch(this.exportUrl(), { cache: 'no-store' });
+      const res = await fetch(this.exportUrl(), {
+        cache: 'no-store',
+        headers: this.exportFetchHeaders(),
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || res.statusText);

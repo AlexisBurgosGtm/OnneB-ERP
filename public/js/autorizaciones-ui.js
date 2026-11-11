@@ -258,7 +258,7 @@ const AutorizacionesUI = {
   },
 
   /**
-   * Valida baja de precio (menor al de lista): autorización en línea o clave admin.
+   * Valida baja de precio (menor al de lista): autorización en línea o clave de operador.
    * @returns {Promise<boolean>}
    */
   async gateCambioPrecioUnitario({ precio, catalogo, descripcion = '', adminPass = null } = {}) {
@@ -290,9 +290,9 @@ const AutorizacionesUI = {
     if (typeof CatalogosUI === 'undefined') return false;
     const pass = adminPass != null ? String(adminPass).trim() : '';
     if (!pass) return false;
-    const ok = await CatalogosUI.verifyConfigPass(pass, CatalogosUI.ADMIN_PASS_CONFIG_ID);
+    const ok = await CatalogosUI.verifyOperadorPass(pass);
     if (!ok) return false;
-    this.markPrecioAuthorized(p, 0, 'administrador');
+    this.markPrecioAuthorized(p, 0, 'operador');
     return true;
   },
 
@@ -504,11 +504,13 @@ const AutorizacionesUI = {
         typeof CatalogosUI !== 'undefined'
           ? CatalogosUI.secretInputFieldHtml({
               inputId: 'authz-precio-clave-input',
-              name: 'onneb-precio-admin-pass',
+              name: 'onneb-precio-operador-pass',
+              label: 'Clave de operador',
+              placeholder: 'Clave de operador',
             })
-          : `<label class="form-label small mb-0" for="authz-precio-clave-input">Clave de administrador</label>
+          : `<label class="form-label small mb-0" for="authz-precio-clave-input">Clave de operador</label>
         <input type="text" id="authz-precio-clave-input" class="form-control form-control-sm config-pass-mask"
-          autocomplete="new-password" name="onneb-precio-admin-pass">`;
+          autocomplete="new-password" name="onneb-precio-operador-pass">`;
       claveWrap.innerHTML = `
         <form class="secret-input-modal" autocomplete="off" novalidate onsubmit="return false">
           ${secretField}
@@ -537,12 +539,12 @@ const AutorizacionesUI = {
         if (typeof CatalogosUI === 'undefined') return;
         const seq = ++claveVerifySeq;
         try {
-          const ok = await CatalogosUI.verifyConfigPass(pass, CatalogosUI.ADMIN_PASS_CONFIG_ID);
+          const ok = await CatalogosUI.verifyOperadorPass(pass);
           if (disposed || seq !== claveVerifySeq) return;
           const precioSnap = currentPrecio();
           if (ok) {
             precioAutorizado = precioSnap;
-            this.markPrecioAuthorized(precioSnap, 0, 'administrador');
+            this.markPrecioAuthorized(precioSnap, 0, 'operador');
             if (claveFeedback) {
               claveFeedback.className = 'small mt-1 text-success';
               claveFeedback.textContent = 'Clave correcta';
@@ -616,7 +618,7 @@ const AutorizacionesUI = {
       if (useClave) {
         ensureClaveUi();
         claveWrap?.classList.remove('d-none');
-        setStatus('Precio bajo lista: ingrese la clave de administrador', 'text-warning');
+        setStatus('Precio bajo lista: ingrese la clave de operador', 'text-warning');
         setConfirmEnabled(false);
         return;
       }

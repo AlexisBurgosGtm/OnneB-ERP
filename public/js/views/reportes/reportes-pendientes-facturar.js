@@ -462,6 +462,7 @@ const ReportesPendientesFacturarView = {
       const [trazData, detData] = await Promise.all([F.fetchJson(trazUrl), F.fetchJson(detUrl)]);
       if (paneTraz) paneTraz.innerHTML = this.renderTrazabilidadHtml(trazData?.rows || []);
       if (paneDet) paneDet.innerHTML = this.renderDetalleLineasHtml(detData?.lineas || [], detData?.header);
+      ReportTableExport.enhanceTables(modalEl, 'pendientes_facturar_modal');
     } catch (err) {
       const msg = this.escapeHtml(err.message || 'Error al cargar');
       if (paneTraz) paneTraz.innerHTML = `<p class="text-danger small mb-0">${msg}</p>`;
@@ -573,6 +574,7 @@ const ReportesPendientesFacturarView = {
         if (body) {
           body.innerHTML = this.renderTabBody();
           this.bindSearch();
+          ReportTableExport.enhanceTables(body, 'pendientes_facturar');
         }
       });
     });
@@ -630,6 +632,7 @@ const ReportesPendientesFacturarView = {
         this._loading = false;
         this._container.innerHTML = this.renderHtml();
         this.bindEvents();
+        ReportTableExport.enhanceTables(this._container, 'pendientes_facturar');
       }
     };
 
@@ -647,6 +650,7 @@ const ReportesPendientesFacturarView = {
         if (body) {
           body.innerHTML = this.renderTabBody();
           this.bindSearch();
+          ReportTableExport.enhanceTables(body, 'pendientes_facturar');
         }
       });
     });
@@ -667,5 +671,6 @@ const ReportesPendientesFacturarView = {
     this._modalTab = 'trazabilidad';
     container.innerHTML = this.renderHtml();
     this.bindEvents();
+    ReportTableExport.enhanceTables(this._container, 'pendientes_facturar');
   },
 };

@@ -16,4 +16,4 @@ Cuando el usuario diga **Los ERP**, se refiere a estos dos proyectos del workspa
 
 - Pedido a **Los ERP** → implementar / corregir en **ambos**, salvo que acote a uno solo.
 - Pedido a **OnneB** o **FS-SV** → solo ese producto.
-- Licencias: solo Mariandre (Generador Licencias / Licencias FS ERP). No mezclar FEL GT en FS-SV.
+- Licencias GT: catálogo en OnneB (`MENU_GROUPS`); emisión desde el proyecto que consume este repo. No mezclar FEL GT en FS-SV.

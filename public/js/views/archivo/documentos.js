@@ -49,8 +49,8 @@ const DocumentosView = {
   _loading: false,
   _urlFel: '',
 
-  FEL_TIPOS_ANULABLES: ['FEF', 'FEC', 'FNC'],
-  FEL_TIPOS_LISTA: ['FEF', 'FEC', 'FNC', 'FES'],
+  FEL_TIPOS_ANULABLES: ['FEF', 'FEC', 'FNC', 'FPC'],
+  FEL_TIPOS_LISTA: ['FEF', 'FEC', 'FNC', 'FES', 'FPC'],
 
   tableColumns: [
     { key: 'FECHA', label: 'Fecha doc.', type: 'date' },
@@ -382,6 +382,9 @@ const DocumentosView = {
           btn.addEventListener('click', async () => {
             const action = btn.getAttribute('data-doc-action');
             Swal.close();
+            await new Promise((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            });
             await this.handleDocMenuAction(action, row);
           });
         });

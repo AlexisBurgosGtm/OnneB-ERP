@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 100" aria-hidden="true">
+  <ellipse cx="40" cy="92" rx="18" ry="5" fill="rgba(0,0,0,0.15)"/>
+  <path fill="#cbd5e1" d="M38 8h4v10h-4z"/>
+  <circle cx="40" cy="6" r="4" fill="#e2e8f0"/>
+  <circle cx="40" cy="52" r="32" fill="url(#orn-ball)"/>
+  <ellipse cx="32" cy="42" rx="10" ry="14" fill="rgba(255,255,255,0.35)"/>
+  <defs>
+    <radialGradient id="orn-ball" cx="35%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#fca5a5"/>
+      <stop offset="45%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </radialGradient>
+  </defs>
+</svg>

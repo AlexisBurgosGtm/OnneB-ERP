@@ -45,6 +45,7 @@ const {
 } = require('../lib/documento-status');
 const { listCajasAbiertasConDefault } = require('../lib/empleado-coddoc-preferido');
 const { valoresEntregadosIniciales } = require('../lib/documentos-entregado');
+const { getSettingSino, SETTING_OPCION } = require('../lib/settings');
 
 const router = express.Router();
 
@@ -493,6 +494,10 @@ router.get('/config', async (req, res) => {
         ORDER BY CODDOC
       `);
     const def = tipos.recordset[0] || null;
+    const permiteMoverBotonFinalizarEnDocumentos = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
+    );
     res.json({
       empnit,
       tipodocs: TIPODOC_NOTAS_DEBITO,
@@ -502,6 +507,7 @@ router.get('/config', async (req, res) => {
       coddocDefault: def?.CODDOC || null,
       tiposDocumento: tipos.recordset,
       bodegaDefault: DEFAULT_BODEGA,
+      permiteMoverBotonFinalizarEnDocumentos,
     });
   } catch (err) {
     console.warn('[API GET /notas-debito/config]', err.message);

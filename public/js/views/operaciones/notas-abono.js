@@ -1188,7 +1188,15 @@ const NotasAbonoView = {
     this.renderOrderSummary();
     const editable = this.docEditable(this._pedido?.header);
     const fab = this._container?.querySelector('#btn-na-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (typeof DocFinalizarFab !== 'undefined') {
+      DocFinalizarFab.sync({
+        btn: fab,
+        viewKey: 'notas-abono',
+        enabled: DocFinalizarFab.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos),
+        visible: editable,
+        scope: this._container,
+      });
+    } else if (fab) fab.style.display = editable ? '' : 'none';
   },
 
   refreshListDom() {

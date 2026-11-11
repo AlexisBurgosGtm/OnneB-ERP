@@ -156,6 +156,110 @@ const FraccionamientoFacView = {
       st.classList.remove('text-warning');
     }
     this.updateTimerBadge();
+    this.updateProcessControlButton();
+  },
+
+  isProcessControlStopMode() {
+    return Boolean(
+      this._fraccionando ||
+      this._fraccionQueue.length ||
+      this._paramsLocked ||
+      (this._nextAt && this._nextAt > Date.now())
+    );
+  },
+
+  updateProcessControlButton() {
+    const btn = this._container?.querySelector('#ffac-btn-proceso');
+    if (!btn) return;
+    const stop = this.isProcessControlStopMode();
+    if (stop) {
+      btn.className = 'btn btn-sm btn-outline-danger';
+      btn.innerHTML = '<i class="fa-solid fa-stop me-1"></i>Detener proceso';
+      btn.title = 'Detiene el fraccionamiento y libera los parámetros';
+    } else {
+      btn.className = 'btn btn-sm btn-success';
+      btn.innerHTML = '<i class="fa-solid fa-play me-1"></i>Iniciar proceso';
+      btn.title = 'Reanuda el fraccionamiento pendiente con los parámetros guardados';
+    }
+  },
+
+  forceStopProcess() {
+    this._runGeneration += 1;
+    this._fraccionCancel = true;
+    if (!this._fraccionando) {
+      this._fraccionando = false;
+      this._fraccionandoId = null;
+      this._fraccionQueue = [];
+      this._nextAt = null;
+      this._fraccionCancel = false;
+      this._paramsSnapshot = null;
+      this.stopTimerBadge();
+      this.clearProcessState();
+      this.setParamsLocked(false);
+      this.setProgress(
+        '<i class="fa-solid fa-ban me-1"></i>Proceso detenido. Parámetros liberados.',
+        true
+      );
+      this.refreshTable();
+      F.toast('Proceso de fraccionamiento detenido', 'success');
+      setTimeout(() => this.setProgress('', false), 6000);
+      return;
+    }
+    this.setProgress('<i class="fa-solid fa-ban me-1"></i>Deteniendo proceso…', true);
+    F.toast('Deteniendo proceso…', 'info');
+  },
+
+  async resumeProcess() {
+    if (this._fraccionando) {
+      F.toast('El proceso ya está en ejecución', 'info');
+      return;
+    }
+    const params = this._paramsSnapshot
+      ? { ...this._paramsSnapshot }
+      : this.readParamsFromDom();
+    const err = this.validateParams(params);
+    if (err) {
+      F.alert('Parámetros', err, 'warning');
+      return;
+    }
+    if (!this._paramsLocked) {
+      params = this.lockParamsFromCurrent();
+    } else {
+      params = { ...this._paramsSnapshot };
+    }
+    let id =
+      this._fraccionandoId != null
+        ? Number(this._fraccionandoId)
+        : null;
+    if (id == null) {
+      const saved = this.loadProcessState();
+      if (saved?.empnit === (F.getEmpNit() || '') && saved?.currentId != null) {
+        id = Number(saved.currentId);
+      }
+    }
+    if (id == null && this._fraccionQueue.length) {
+      id = Number(this._fraccionQueue[0]);
+    }
+    if (id == null) {
+      F.toast(
+        'Use «Fraccionar en CF» en una fila de la tabla, o elija una factura con fraccionamiento a medio terminar.',
+        'info'
+      );
+      if (!this._fraccionQueue.length) {
+        this.unlockParamsIfIdle();
+      }
+      return;
+    }
+    const stillThere = this._rows.some((r) => Number(r.ID) === id);
+    if (!stillThere) {
+      F.toast('Esa factura ya no está en la cola de trabajo.', 'warning');
+      this.unlockParamsIfIdle();
+      return;
+    }
+    this._fraccionCancel = false;
+    this.saveProcessState();
+    const skipFirstWait = Boolean(this._nextAt && this._nextAt > Date.now());
+    await this.runFraccionamiento(id, params, { skipFirstWait: !skipFirstWait });
   },
 
   lockParamsFromCurrent() {
@@ -568,6 +672,10 @@ const FraccionamientoFacView = {
                   </select>
                 </div>
                 <div class="d-flex align-items-center gap-2 ms-md-auto flex-shrink-0 pb-1">
+                  <button type="button" class="btn btn-sm btn-success" id="ffac-btn-proceso"
+                    title="Iniciar o detener el fraccionamiento automático">
+                    <i class="fa-solid fa-play me-1"></i>Iniciar proceso
+                  </button>
                   <span id="ffac-timer-badge" class="d-none"></span>
                   <span class="small text-muted" id="ffac-param-status"></span>
                 </div>
@@ -690,6 +798,14 @@ const FraccionamientoFacView = {
       this.refreshTable();
     });
     this.bindParamEvents();
+    this._container.querySelector('#ffac-btn-proceso')?.addEventListener('click', () => {
+      if (this.isProcessControlStopMode()) {
+        this.forceStopProcess();
+      } else {
+        this.resumeProcess().catch((err) => F.alert('Error', err.message, 'error'));
+      }
+    });
+    this.updateProcessControlButton();
     this._container.querySelector('#ffac-tbody')?.addEventListener('click', (ev) => {
       const btn = ev.target.closest('[data-action]');
       if (!btn || btn.disabled) return;
@@ -908,6 +1024,7 @@ const FraccionamientoFacView = {
       }
       this._fraccionQueue.push(Number(id));
       this.saveProcessState();
+      this.updateProcessControlButton();
       this.refreshTable();
       F.toast(
         `${label} agregada a la cola. Se iniciará tras el timer / factura en curso.`,
@@ -1235,6 +1352,7 @@ const FraccionamientoFacView = {
 
       await this.reloadCorrelativoParam();
       this.refreshTable();
+      this.updateProcessControlButton();
 
       // Reanudar loop si estaba persistido y no hay loop vivo
       if (

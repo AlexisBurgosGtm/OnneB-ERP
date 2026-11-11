@@ -284,6 +284,8 @@ const ReportesRestauranteView = {
         <div class="card shadow-sm">
           <div class="card-header py-2 small fw-semibold">Facturas</div>
           <div class="card-body p-2">
+          <div class="report-export-wrap" data-report-export-wrap>
+            ${ReportTableExport.toolbarHtml(`reporte_restaurante_facturas_${this._desde}_${this._hasta}.xlsx`)}
           <table class="table table-sm table-hover mb-0">
             <thead class="table-light">
               <tr>
@@ -314,10 +316,13 @@ const ReportesRestauranteView = {
             </tbody>
           </table>
           </div>
+          </div>
         </div>
         <div class="card shadow-sm">
           <div class="card-header py-2 small fw-semibold">Productos vendidos (documentos operados)</div>
           <div class="card-body p-2">
+          <div class="report-export-wrap" data-report-export-wrap>
+            ${ReportTableExport.toolbarHtml(`reporte_restaurante_productos_${this._desde}_${this._hasta}.xlsx`)}
           <table class="table table-sm table-striped mb-0">
             <thead class="table-light">
               <tr>
@@ -363,6 +368,7 @@ const ReportesRestauranteView = {
                 : ''
             }
           </table>
+          </div>
           </div>
         </div>
       </div>`;

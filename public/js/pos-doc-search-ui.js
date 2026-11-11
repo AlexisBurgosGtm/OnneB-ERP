@@ -112,6 +112,16 @@ const PosDocSearchUI = {
   },
 
   productSheetHtml(prefix) {
+    const closeBtn =
+      prefix === 'vp'
+        ? `<button type="button" class="btn btn-danger btn-sm px-3" id="${prefix}-product-sheet-close"
+              aria-label="Cerrar búsqueda">Cerrar <span aria-hidden="true">×</span></button>`
+        : `<button type="button" class="btn-close" id="${prefix}-product-sheet-close"
+              aria-label="Cerrar búsqueda"></button>`;
+    const vpAddedBadge =
+      prefix === 'vp'
+        ? `<div class="vp-product-search-feedback mb-1" aria-live="polite"><span class="vp-product-added-flash" id="${prefix}-product-added-flash-modal"></span></div>`
+        : '';
     return `
       <div class="pos-product-sheet d-none" id="${prefix}-product-sheet" role="dialog" aria-modal="true"
         aria-labelledby="${prefix}-product-sheet-label" aria-hidden="true">
@@ -120,10 +130,10 @@ const PosDocSearchUI = {
             <h6 class="pos-product-sheet-title" id="${prefix}-product-sheet-label">
               <i class="fa-solid fa-magnifying-glass me-1"></i>Buscar producto
             </h6>
-            <button type="button" class="btn-close" id="${prefix}-product-sheet-close"
-              aria-label="Cerrar búsqueda"></button>
+            ${closeBtn}
           </div>
           <div class="pos-product-sheet-body">
+            ${vpAddedBadge}
             <div class="input-group input-group-sm mb-2 pos-search-group flex-shrink-0">
               <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
               <input type="search" class="form-control pos-search-glow" id="${prefix}-product-search-modal"
@@ -320,7 +330,8 @@ const PosDocSearchUI = {
     const container = view._container;
     if (!container) return;
 
-    view._posDocSearchKeepAfterAdd = !!opts.keepProductSearchAfterAdd;
+    /** Por defecto no vaciar lista/término al agregar (mismo criterio que vendedor-pedidos móvil). */
+    view._posDocSearchKeepAfterAdd = opts.keepProductSearchAfterAdd !== false;
 
     const getEditable = opts.getEditable || (() => true);
     const buscarProductos = opts.buscarProductos || (() => {});
@@ -454,7 +465,7 @@ const PosDocSearchUI = {
     this.focusProductSearch(container, prefix, view);
   },
 
-  syncControls(container, prefix, editable) {
+  syncControls(container, prefix, editable, finalizarOpts) {
     this.searchInputs(container, prefix).forEach((inp) => {
       if (inp) inp.disabled = !editable;
     });
@@ -469,5 +480,25 @@ const PosDocSearchUI = {
       barcodeFab.style.display = editable ? '' : 'none';
     }
     this.layoutMobileSearchFab(container, prefix);
+
+    const opts = finalizarOpts && typeof finalizarOpts === 'object' ? finalizarOpts : {};
+    if (typeof DocFinalizarFab !== 'undefined') {
+      const fid = opts.finalizarId || `btn-${prefix}-finalizar`;
+      const btn =
+        container?.querySelector(`#${fid}`) ||
+        (typeof document !== 'undefined' ? document.getElementById(fid) : null);
+      const visible =
+        typeof opts.visible === 'boolean' ? opts.visible : editable;
+      DocFinalizarFab.sync({
+        btn,
+        viewKey: opts.viewKey || prefix,
+        enabled: DocFinalizarFab.isEnabled(opts.permiteMover),
+        visible,
+        scope: container,
+      });
+      if (btn && !DocFinalizarFab.isEnabled(opts.permiteMover)) {
+        btn.style.display = visible ? '' : 'none';
+      }
+    }
   },
 };

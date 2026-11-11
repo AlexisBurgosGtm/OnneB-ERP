@@ -1,5 +1,5 @@
 ---
-description: Al crear vistas/submenús, integrarlos en licencias (MENU_GROUPS) — emisión solo en Mariandre
+description: Al crear vistas/submenús, integrarlos en licencias (MENU_GROUPS) — catálogo consumido desde fuera del repo
 alwaysApply: true
 ---
 
@@ -7,17 +7,17 @@ alwaysApply: true
 
 Cuando agregues una **vista nueva**, un **`data-menu`**, o un **submenú del sidebar** en **OnneB**, debes dejarlo cubierto por el sistema de licencias (instalación completa).
 
-El generador permite marcar **módulo completo** o **vistas individuales** (ej. Operaciones sin Compras). Ambas salen de `MENU_GROUPS`.
+El generador externo permite marcar **módulo completo** o **vistas individuales** (ej. Operaciones sin Compras). Ambas salen de `MENU_GROUPS`.
 
 ## Fuente de verdad
 
 El catálogo **no se duplica**: vive en `MENU_GROUPS` vía `lib/license-modules.js` → `lib/roles-usuarios.js`.
 
-**Única UI de emisión:** Mariandre → **Generador Licencias** (lee OnneB en vivo vía `ONNEB_ROOT` / carpeta hermana). Para FS-SV: Mariandre → **Licencias FS ERP**.
+La **emisión de licencias** se hace desde el proyecto que consume este repositorio (ruta configurada como `ONNEB_ROOT` u origen equivalente). En este workspace **no** se agregan tareas ni reglas específicas de otros proyectos.
 
 No hay generador local en el repo del POS (`GENERADOR LICENCIAS` eliminado).
 
-Si el menú no está en `MENU_GROUPS`, **no aparecerá** en Mariandre (ni como módulo ni como vista suelta).
+Si el menú no está en `MENU_GROUPS`, el catálogo quedará incompleto para quien lea este repo.
 
 ## Checklist obligatorio (mismo PR / misma tarea)
 
@@ -32,11 +32,11 @@ Si el menú no está en `MENU_GROUPS`, **no aparecerá** en Mariandre (ni como m
    - `module`: id del grupo
    - `menus`: array con el `data-menu` de esa vista (o varias si la API es compartida)
 6. Script de la vista + CSS si corresponde.
-7. **Verificar** — al completar, confirmar que la vista aparece en Mariandre (Generador Licencias / Licencias FS ERP según el producto).
+7. Tras publicar, actualizar el catálogo de licencias en el proyecto que emite claves (lee este mismo `MENU_GROUPS`).
 
 ## No hacer
 
-- No recrear un generador de licencias dentro de OnneB ni de FS-SV.
+- No recrear un generador de licencias dentro de OnneB ni duplicar el catálogo fuera de `MENU_GROUPS`.
 - No dejar APIs nuevas sin mapear a `menus`: quedarían sin control fino de licencia.
 - No usar un `id` de módulo distinto al de `MENU_GROUPS`.
 

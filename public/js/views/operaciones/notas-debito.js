@@ -1273,7 +1273,15 @@ const NotasDebitoView = {
     }
     const editable = this.docEditable(h);
     const fab = this._container?.querySelector('#btn-nd-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (typeof DocFinalizarFab !== 'undefined') {
+      DocFinalizarFab.sync({
+        btn: fab,
+        viewKey: 'notas-debito',
+        enabled: DocFinalizarFab.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos),
+        visible: editable,
+        scope: this._container,
+      });
+    } else if (fab) fab.style.display = editable ? '' : 'none';
   },
 
   async guardarFechaDocumento(fecha) {

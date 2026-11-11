@@ -5,6 +5,11 @@ const { verifySettingPass, SETTING_OPCION } = require('../lib/settings');
 const { cambiarEmpnitEnTodasLasTablas } = require('../lib/cambiar-empnit');
 const { scanEmpnitDataSummary, deleteEmpnitData } = require('../lib/eliminar-empnit');
 const { getDefaultEmpnit } = require('../lib/default-empnit');
+const {
+  loadEmpresaRegimenFel,
+  persistEmpresaRegimenFel,
+  empresasTieneRegimenFel,
+} = require('../lib/empresa-regimen-fel');
 
 const router = express.Router();
 
@@ -19,6 +24,7 @@ const FIELDS = [
   'EMPCONTACTO',
   'EMPTELCONTACTO',
   'CODTIPOEMPRESA',
+  'EMPREGIMENFEL',
   'OBJETIVO',
   'PRESUPUESTO',
 ];
@@ -41,10 +47,18 @@ function parseLogo(raw) {
   return hex;
 }
 
-function mapEmpresaRow(r, { includeLogo = false } = {}) {
+function fieldsForSql(hasRegimenCol) {
+  return hasRegimenCol ? FIELDS : FIELDS.filter((f) => f !== 'EMPREGIMENFEL');
+}
+
+function mapEmpresaRow(r, { includeLogo = false, regimenFel = null } = {}) {
   const row = {};
   for (const key of FIELDS) {
-    row[key] = r[key] ?? null;
+    if (key === 'EMPREGIMENFEL' && regimenFel != null) {
+      row[key] = regimenFel;
+    } else {
+      row[key] = r[key] ?? null;
+    }
   }
   if (includeLogo) {
     row.LOGO = r.EMPLOGO ?? r.LOGO ?? null;
@@ -52,12 +66,19 @@ function mapEmpresaRow(r, { includeLogo = false } = {}) {
   return row;
 }
 
+function parseEmpregimenfel(raw) {
+  const v = String(raw ?? 'GEN').trim().toUpperCase();
+  return v === 'PEQ' ? 'PEQ' : 'GEN';
+}
+
 function parseBody(body) {
   const data = {};
   for (const key of FIELDS) {
     const raw = body[key];
     if (raw === undefined || raw === '') {
-      data[key] = null;
+      data[key] = key === 'EMPREGIMENFEL' ? 'GEN' : null;
+    } else if (key === 'EMPREGIMENFEL') {
+      data[key] = parseEmpregimenfel(raw);
     } else if (INT_FIELDS.includes(key)) {
       const n = Number(raw);
       data[key] = Number.isNaN(n) ? null : n;
@@ -71,8 +92,8 @@ function parseBody(body) {
   return data;
 }
 
-function bindFields(request, data) {
-  for (const key of FIELDS) {
+function bindFields(request, data, fieldList = FIELDS) {
+  for (const key of fieldList) {
     const value = data[key];
     if (INT_FIELDS.includes(key)) {
       request.input(key, sql.Int, value);
@@ -84,11 +105,20 @@ function bindFields(request, data) {
   }
 }
 
-const insertCols = FIELDS.join(', ');
-const insertVals = FIELDS.map((k) => `@${k}`).join(', ');
-const updateSet = FIELDS.filter((k) => k !== 'EMPNIT')
-  .map((k) => `${k} = @${k}`)
-  .join(', ');
+function insertColsSql(fieldList) {
+  return fieldList.join(', ');
+}
+
+function insertValsSql(fieldList) {
+  return fieldList.map((k) => `@${k}`).join(', ');
+}
+
+function updateSetSql(fieldList) {
+  return fieldList
+    .filter((k) => k !== 'EMPNIT')
+    .map((k) => `${k} = @${k}`)
+    .join(', ');
+}
 
 /** LOGO o EMPLOGO en dbo.Empresas; false si no existe ninguna. */
 let logoColumnCache;
@@ -251,11 +281,17 @@ router.get('/', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
-    const cols = FIELDS.join(', ');
+    const hasRegimenCol = await empresasTieneRegimenFel(pool);
+    const cols = fieldsForSql(hasRegimenCol).join(', ');
     const result = await pool
       .request()
       .query(`SELECT ${cols} FROM dbo.Empresas ORDER BY EMPNOMBRE`);
-    res.json({ rows: result.recordset, total: result.recordset.length });
+    const rows = [];
+    for (const r of result.recordset) {
+      const regimenFel = await loadEmpresaRegimenFel(pool, r.EMPNIT);
+      rows.push(mapEmpresaRow(r, { regimenFel }));
+    }
+    res.json({ rows, total: rows.length });
   } catch (err) {
     console.warn('[API GET /empresas]', err.message);
     res.status(500).json({ error: err.message });
@@ -415,13 +451,18 @@ router.get('/:empnit', async (req, res) => {
   if (!empNit) return res.status(400).json({ error: 'EMPNIT inválido' });
   try {
     const pool = await req.app.locals.getDbPool();
-    const cols = FIELDS.join(', ');
+    const hasRegimenCol = await empresasTieneRegimenFel(pool);
+    const cols = fieldsForSql(hasRegimenCol).join(', ');
     const logoCol = await resolveLogoColumn(pool);
     const logoSelect = logoCol ? `, ${logoCol}` : '';
     const result = await pool
       .request()
       .input('EMPNIT', sql.VarChar, empNit)
-      .query(`SELECT ${cols}${logoSelect} FROM dbo.Empresas WHERE EMPNIT = @EMPNIT`);
+      .query(`
+        SELECT ${cols}${logoSelect}
+        FROM dbo.Empresas
+        WHERE UPPER(LTRIM(RTRIM(ISNULL(EMPNIT, '')))) = UPPER(LTRIM(RTRIM(@EMPNIT)))
+      `);
     if (!result.recordset.length) {
       return res.status(404).json({ error: 'Empresa no encontrada' });
     }
@@ -430,7 +471,8 @@ router.get('/:empnit', async (req, res) => {
       row.LOGO = row[logoCol];
       row.EMPLOGO = row[logoCol];
     }
-    res.json(mapEmpresaRow(row, { includeLogo: Boolean(logoCol) }));
+    const regimenFel = await loadEmpresaRegimenFel(pool, row.EMPNIT || empNit);
+    res.json(mapEmpresaRow(row, { includeLogo: Boolean(logoCol), regimenFel }));
   } catch (err) {
     console.warn('[API GET /empresas/:empnit]', err.message);
     res.status(500).json({ error: err.message });
@@ -453,8 +495,12 @@ router.post('/', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const hasRegimenCol = await empresasTieneRegimenFel(pool);
+    const fieldList = fieldsForSql(hasRegimenCol);
     const request = pool.request();
-    bindFields(request, data);
+    bindFields(request, data, fieldList);
+    const insertCols = insertColsSql(fieldList);
+    const insertVals = insertValsSql(fieldList);
     const logoCol = await resolveLogoColumn(pool);
     if (logoHex !== undefined && logoCol) {
       request.input('LOGO_HEX', sql.VarChar(sql.MAX), logoHex);
@@ -468,6 +514,7 @@ router.post('/', async (req, res) => {
         VALUES (${insertVals})
       `);
     }
+    await persistEmpresaRegimenFel(pool, data.EMPNIT, data.EMPREGIMENFEL);
     res.status(201).json({ ok: true, EMPNIT: data.EMPNIT });
   } catch (err) {
     console.warn('[API POST /empresas]', err.message);
@@ -490,20 +537,25 @@ router.put('/:empnit', async (req, res) => {
   }
   try {
     const pool = await req.app.locals.getDbPool();
+    const hasRegimenCol = await empresasTieneRegimenFel(pool);
+    const fieldList = fieldsForSql(hasRegimenCol);
     const request = pool.request();
     request.input('EMPNIT_KEY', sql.VarChar, empNit);
-    bindFields(request, data);
+    bindFields(request, data, fieldList);
     const logoCol = await resolveLogoColumn(pool);
-    let sqlUpdate = `UPDATE dbo.Empresas SET ${updateSet}`;
+    let sqlUpdate = `UPDATE dbo.Empresas SET ${updateSetSql(fieldList)}`;
     if (logoHex !== undefined && logoCol) {
       request.input('LOGO_HEX', sql.VarChar(sql.MAX), logoHex);
       sqlUpdate += `, ${logoCol} = @LOGO_HEX`;
     }
-    sqlUpdate += ' WHERE EMPNIT = @EMPNIT_KEY';
+    sqlUpdate += `
+      WHERE UPPER(LTRIM(RTRIM(ISNULL(EMPNIT, '')))) = UPPER(LTRIM(RTRIM(@EMPNIT_KEY)))
+    `;
     const result = await request.query(sqlUpdate);
     if (result.rowsAffected[0] === 0) {
       return res.status(404).json({ error: 'Empresa no encontrada' });
     }
+    await persistEmpresaRegimenFel(pool, empNit, data.EMPREGIMENFEL);
     res.json({ ok: true, EMPNIT: empNit });
   } catch (err) {
     console.warn('[API PUT /empresas]', err.message);

@@ -41,7 +41,13 @@ const {
   F_ENTREGA_DOMICILIO,
 } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
-const { getSettingSino, getSettingPermiteFraccionamientoFacturas, SETTING_OPCION } = require('../lib/settings');
+const {
+  getSettingSino,
+  getSettingPermiteFraccionamientoFacturas,
+  effectivePermiteCambiarPrecioPedidos,
+  getSettingSolicitaClaveCambiarPrecios,
+  SETTING_OPCION,
+} = require('../lib/settings');
 const {
   assertPermiteCambioFechaDocumento,
   resolveFechaAltaDocumentoAsync,
@@ -100,7 +106,9 @@ router.use((req, _res, next) => {
 
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
-const TIPODOC_GRUPO_FAC = ['FAC'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+
+const TIPODOC_GRUPO_FAC = ['FAC', TIPODOC_FPC];
 const TIPODOC_GRUPO_FEL = ['FEF', 'FES', 'FEC'];
 const TIPODOC_FACTURACION_ALL = [...TIPODOC_GRUPO_FAC, ...TIPODOC_GRUPO_FEL];
 const TIPODOC_MOSTRADOR = 'ENV';
@@ -706,6 +714,7 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const solicitaClaveCambiarPrecios = await getSettingSolicitaClaveCambiarPrecios(pool);
     const permiteModificarDescripcionVentas = await getSettingSino(
       pool,
       SETTING_OPCION.PERMITE_MODIFICAR_DESCRIPCION_VENTAS
@@ -723,6 +732,10 @@ router.get('/config', async (req, res) => {
       SETTING_OPCION.MUESTRA_PESO_EN_DOCUMENTOS
     );
     const permiteFraccionamientoFacturas = await getSettingPermiteFraccionamientoFacturas(pool);
+    const permiteMoverBotonFinalizarEnDocumentos = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
+    );
     res.json({
       empnit,
       grupo: grupoId,
@@ -735,11 +748,13 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      solicitaClaveCambiarPrecios,
       permiteModificarDescripcionVentas,
       solicitaAutorizaciones,
       muestraDesprod2,
       muestraPesoEnDocumentos,
       permiteFraccionamientoFacturas,
+      permiteMoverBotonFinalizarEnDocumentos,
     });
   } catch (err) {
     console.warn('[API GET /facturacion/config]', err.message);
@@ -1531,10 +1546,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
       costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
       precio = getPrecioFromPreciosRow(prod, campoPrecio);
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
         const customPrecio = Number(req.body.PRECIO);
         if (!Number.isFinite(customPrecio) || customPrecio < 0) {
@@ -1706,10 +1718,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
 
     let precio = Number(line.PRECIO) || 0;
     if (req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio !== 'SI') {
         return res.status(400).json({ error: 'No está permitido cambiar el precio' });
       }

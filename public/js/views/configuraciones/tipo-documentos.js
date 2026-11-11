@@ -31,10 +31,10 @@ const TD_FORM_FIELDS = [
   { key: 'REPORTES', label: 'Reportes', type: 'select', options: contableOptions },
   {
     key: 'OBS',
-    label: 'Observaciones (ticket FEL)',
+    label: 'Notas al pie del documento',
     type: 'textarea',
     rows: 4,
-    placeholder: 'Texto legal u observaciones en el pie del ticket FEL',
+    placeholder: 'Texto al pie del documento impreso (leyendas, avisos legales, etc.)',
   },
 ];
 

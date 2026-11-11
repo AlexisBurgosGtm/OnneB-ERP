@@ -43,6 +43,41 @@ function copyDir(src, dest) {
   }
 }
 
+/**
+ * En Windows, `rename` de una carpeta entera suele fallar con EPERM si hay un proceso
+ * sirviendo `public/`, el IDE tiene archivos abiertos o antivirus bloquea.
+ * Intenta rename; si falla, copia y borra el origen.
+ */
+function sleepSyncMs(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    /* espera breve entre reintentos (Windows / carpetas bloqueadas) */
+  }
+}
+
+function moveDirWithFallback(src, dest, label = '') {
+  rmDir(dest);
+  const transient = new Set(['EPERM', 'EBUSY', 'EACCES', 'UNKNOWN']);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      fs.renameSync(src, dest);
+      return;
+    } catch (err) {
+      if (!transient.has(err.code) && err.code !== 'EXDEV') throw err;
+      if (attempt < 2) {
+        log(`rename ${label} intento ${attempt + 1}/3 (${err.code}) — reintentando…`);
+        sleepSyncMs(500);
+        continue;
+      }
+    }
+  }
+  log(
+    `rename ${label} no disponible (${label || 'carpeta'}); usando copia + borrado (más lento). Cierre el servidor (npm start) si falla al borrar.`
+  );
+  copyDir(src, dest);
+  rmDir(src);
+}
+
 function shouldMinifyJs(filePath) {
   const norm = filePath.replace(/\\/g, '/');
   if (!norm.endsWith('.js')) return false;
@@ -90,6 +125,19 @@ function writeInstallFiles() {
   ensureDir(path.join(OUT, 'Fotos_productos'));
   ensureDir(path.join(OUT, 'EMPLEADOS'));
   ensureDir(path.join(OUT, 'data'));
+  ensureDir(path.join(OUT, 'data', 'whatsapp-auth'));
+  ensureDir(path.join(OUT, 'DOCUMENTOS'));
+
+  fs.writeFileSync(
+    path.join(OUT, 'data', 'whatsapp-auth', 'LEAME.txt'),
+    'Sesión WhatsApp (Baileys).\nConserve esta carpeta al actualizar el .exe.\nNo borrar si ya vinculó el teléfono.\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(OUT, 'DOCUMENTOS', 'LEAME.txt'),
+    'PDFs e imágenes temporales para envío por WhatsApp.\n',
+    'utf8'
+  );
 
   fs.writeFileSync(
     path.join(OUT, 'Fotos_productos', 'LEAME.txt'),
@@ -218,12 +266,25 @@ En la MISMA carpeta que ${EXE_NAME} (esta carpeta de instalación).
     open-firewall-port.ps1 ← liberar puerto TCP en Windows (acceso remoto)
     Fotos_productos\\      ← fotos productos (no borrar al actualizar)
     EMPLEADOS\\            ← fotos empleados (no borrar)
-    data\\                 ← license.json aquí
+    data\\                 ← license.json, whatsapp-auth\\
+    DOCUMENTOS\\           ← adjuntos WhatsApp (temporal)
+
+WhatsApp (Baileys)
+------------------
+Tras vincular en Configuraciones → WhatsApp, conserve data\\whatsapp-auth\\
+al reemplazar solo el .exe. Si falla, ejecute el .exe desde consola con
+DEBUG_WHATSAPP=1 en .env y revise el mensaje [WhatsApp].
+
+Reportes programados (WhatsApp)
+-------------------------------
+El .exe envía solos si hay sesión en data\\whatsapp-auth y SQL en .env.
+Los PDF se generan en DOCUMENTOS\\ (la cuenta del servicio debe poder escribir ahí).
+Para ver detalle: DEBUG_WHATSAPP=1 o WHATSAPP_SCHEDULER=1 en .env (log [WhatsApp prog]).
 
 Pasos
 -----
 1. Copiar .env.example → .env y editar DB_*, TOKEN, PORT=${DEFAULT_PORT}
-2. (Opcional) data\\license.json de Mariandre
+2. (Opcional) data\\license.json del generador de licencias
 3. Probar: ejecutar ${EXE_NAME} → http://localhost:${DEFAULT_PORT}
 4. Servicio Windows: install-service.ps1 como Administrador
 
@@ -260,12 +321,11 @@ Si el .exe no arranca, revise .env y el log del servicio (WinSW) o ejecute ${EXE
 function swapPublicForPkg() {
   const live = path.join(ROOT, 'public');
   const backup = path.join(OUT, '_public_backup');
-  rmDir(backup);
-  fs.renameSync(live, backup);
-  fs.renameSync(STAGING_PUBLIC, live);
+  moveDirWithFallback(live, backup, 'public → backup');
+  moveDirWithFallback(STAGING_PUBLIC, live, 'staging → public');
   return () => {
     rmDir(live);
-    fs.renameSync(backup, live);
+    moveDirWithFallback(backup, live, 'backup → public');
   };
 }
 

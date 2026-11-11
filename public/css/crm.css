@@ -1,0 +1,58 @@
+.crm-vista-wrap {
+  max-width: 72rem;
+}
+
+.crm-cal-wrap .card-body {
+  padding: 1rem;
+}
+
+.crm-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.crm-cal-weekday {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--bs-secondary-color, #6c757d);
+  padding: 0.25rem 0;
+}
+
+.crm-cal-cell {
+  min-height: 5rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.4rem;
+  background: var(--app-surface, #fff);
+  display: flex;
+  flex-direction: column;
+}
+
+.crm-cal-cell--muted {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: transparent;
+}
+
+.crm-cal-cell--today {
+  border-color: var(--onneb-brand, #1e3a5f);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--onneb-brand, #1e3a5f) 35%, transparent);
+}
+
+.crm-cal-day {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+@media (max-width: 576px) {
+  .crm-cal-cell {
+    min-height: 3.25rem;
+    padding: 0.25rem;
+  }
+
+  .crm-cal-day {
+    font-size: 0.72rem;
+  }
+}

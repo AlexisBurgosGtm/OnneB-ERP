@@ -1,6 +1,6 @@
 /**
  * Vista Credenciales FEL — CRUD sobre dbo.FEL_CREDENCIALES (un registro por EMPNIT)
- * + configuración de adendas Perso1–Perso20 (JSON global).
+ * + adendas Perso1–Perso20 por empresa (dbo.FEL_ADENDAS_PERSO).
  */
 const CredencialesFelViewBase = createCatalogoEmpresaView({
   slug: 'credenciales-fel',
@@ -253,10 +253,6 @@ const CredencialesFelView = {
     }
   },
 
-  adendasApiUrl() {
-    return `/api/credenciales-fel/adendas?_=${Date.now()}`;
-  },
-
   defaultAdendaOptions() {
     return [
       { value: '', label: '(Sin asignar)' },
@@ -269,6 +265,7 @@ const CredencialesFelView = {
       { value: 'TELEFONO_EMPRESA', label: 'TELEFONO EMPRESA' },
       { value: 'OBSERVACIONES', label: 'OBSERVACIONES' },
       { value: 'DIRECCION_ENTREGA', label: 'DIRECCION ENTREGA' },
+      { value: 'TIPO_ENTREGA', label: 'TIPO ENTREGA' },
     ];
   },
 
@@ -290,7 +287,7 @@ const CredencialesFelView = {
     `;
   },
 
-  renderAdendaSelect(index, selected) {
+  renderAdendaTableRow(index, selected) {
     const opts = this._adendaOptions || this.defaultAdendaOptions();
     const sel = String(selected || '');
     const optionsHtml = opts
@@ -300,20 +297,16 @@ const CredencialesFelView = {
       )
       .join('');
     return `
-      <div class="row g-2 align-items-center mb-2 fel-adenda-row">
-        <div class="col-auto">
-          <span class="badge text-bg-light border fel-adenda-num">${index}</span>
-        </div>
-        <div class="col">
+      <tr class="fel-adenda-row">
+        <td class="text-center text-muted small align-middle">${index}</td>
+        <td class="small text-muted align-middle"><code>Perso${index}</code></td>
+        <td class="align-middle">
           <label class="visually-hidden" for="fel-adenda-${index}">Perso${index}</label>
           <select class="form-select form-select-sm" id="fel-adenda-${index}" data-adenda-slot="${index}">
             ${optionsHtml}
           </select>
-        </div>
-        <div class="col-auto">
-          <span class="small text-muted">Perso${index}</span>
-        </div>
-      </div>
+        </td>
+      </tr>
     `;
   },
 
@@ -321,20 +314,32 @@ const CredencialesFelView = {
     const slots = this._adendaSlots || {};
     const rows = [];
     for (let i = 1; i <= 20; i++) {
-      rows.push(this.renderAdendaSelect(i, slots[String(i)] || ''));
+      rows.push(this.renderAdendaTableRow(i, slots[String(i)] || ''));
     }
     return `
       <div class="card h-100 d-flex flex-column fel-adendas-card">
         <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
-          <span class="fw-semibold"><i class="fa-solid fa-list-ol me-2" aria-hidden="true"></i>Adendas</span>
-          <span class="small text-muted">Perso1–Perso20</span>
+          <span class="fw-semibold"><i class="fa-solid fa-table me-2" aria-hidden="true"></i>Adendas</span>
+          <span class="small text-muted">Perso1–Perso20 · por empresa</span>
         </div>
-        <div class="card-body p-3 overflow-auto flex-grow-1" style="max-height: calc(100vh - 14rem);">
-          <p class="small text-muted mb-3">
-            Configure qué dato del documento se envía en cada adenda personalizada al certificar FEL.
-            Los slots vacíos no se envían.
+        <div class="card-body p-2 p-md-3 overflow-auto flex-grow-1" style="max-height: calc(100vh - 14rem);">
+          <p class="small text-muted mb-2">
+            Indique qué dato del documento se envía en cada adenda al certificar FEL. Los vacíos no se envían.
           </p>
-          <div class="fel-adendas-list">${rows.join('')}</div>
+          <div class="table-responsive border rounded fel-adendas-table-wrap">
+            <table class="table table-sm table-striped table-hover align-middle mb-0 fel-adendas-table">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" class="text-center" style="width:2.5rem">#</th>
+                  <th scope="col" style="width:6rem">Campo</th>
+                  <th scope="col">Asignación</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
         <div class="card-footer py-2 d-flex justify-content-end">
           <button type="button" class="btn btn-sm btn-primary" id="btn-fel-adendas-guardar">
@@ -369,7 +374,9 @@ const CredencialesFelView = {
   async onGuardarAdendas() {
     const slots = this.collectAdendaSlotsFromDom();
     try {
-      const res = await F.fetchJson('/api/credenciales-fel/adendas', {
+      const base = this.apiBase('/adendas');
+      const sep = base.includes('?') ? '&' : '?';
+      const res = await F.fetchJson(`${base}${sep}_=${Date.now()}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots }),
@@ -428,9 +435,11 @@ const CredencialesFelView = {
     try {
       const baseUrl = this.apiBase();
       const cacheSep = baseUrl.includes('?') ? '&' : '?';
+      const adendasUrl = this.apiBase('/adendas');
+      const adSep = adendasUrl.includes('?') ? '&' : '?';
       const [credData, adendaData] = await Promise.all([
         F.fetchJson(`${baseUrl}${cacheSep}_=${Date.now()}`, { cache: 'no-store' }),
-        F.fetchJson(this.adendasApiUrl(), { cache: 'no-store' }),
+        F.fetchJson(`${adendasUrl}${adSep}_=${Date.now()}`, { cache: 'no-store' }),
       ]);
       if (
         typeof F !== 'undefined' &&

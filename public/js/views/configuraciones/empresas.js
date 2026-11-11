@@ -10,6 +10,11 @@ const EmpresasView = {
     { value: '2', label: 'SUCURSAL' },
   ],
 
+  regimenFelOptions: [
+    { value: 'GEN', label: 'IVA general (FEF/FEC/FNC)' },
+    { value: 'PEQ', label: 'Pequeño contribuyente (FPC / SAT FPEQ)' },
+  ],
+
   formFields: [
     { key: 'EMPNIT', label: 'NIT', required: true, type: 'text' },
     { key: 'EMPNOMBRE', label: 'Nombre', type: 'text' },
@@ -25,6 +30,13 @@ const EmpresasView = {
       type: 'select',
       options: null,
     },
+    {
+      key: 'EMPREGIMENFEL',
+      label: 'Régimen FEL emisión',
+      type: 'select',
+      options: null,
+      regimenFel: true,
+    },
     { key: 'OBJETIVO', label: 'Objetivo', type: 'number', step: '0.01' },
     { key: 'PRESUPUESTO', label: 'Presupuesto', type: 'number', step: '0.01' },
   ],
@@ -36,12 +48,19 @@ const EmpresasView = {
     { key: 'EMPTELEFONO', label: 'Teléfono' },
     { key: 'EMPEMAIL', label: 'Email' },
     { key: 'CODTIPOEMPRESA', label: 'Tipo' },
+    { key: 'EMPREGIMENFEL', label: 'Régimen FEL' },
   ],
 
   labelTipoEmpresa(value) {
     const v = value === null || value === undefined ? '' : String(value);
     const opt = this.tipoEmpresaOptions.find((o) => o.value === v);
     return opt ? opt.label : '—';
+  },
+
+  labelRegimenFel(value) {
+    const v = String(value ?? 'GEN').trim().toUpperCase();
+    const opt = this.regimenFelOptions.find((o) => o.value === v);
+    return opt ? opt.label : 'IVA general';
   },
 
   escapeHtml(value) {
@@ -55,6 +74,7 @@ const EmpresasView = {
 
   formatCell(value, key) {
     if (key === 'CODTIPOEMPRESA') return this.escapeHtml(this.labelTipoEmpresa(value));
+    if (key === 'EMPREGIMENFEL') return this.escapeHtml(this.labelRegimenFel(value));
     if (value === null || value === undefined || value === '') return '—';
     if (typeof value === 'number') {
       return Number.isInteger(value)
@@ -69,7 +89,9 @@ const EmpresasView = {
     const ro = isEdit && f.key === 'EMPNIT' ? 'readonly' : '';
 
     if (f.type === 'select') {
-      const options = f.options || this.tipoEmpresaOptions;
+      const options = f.regimenFel
+        ? this.regimenFelOptions
+        : f.options || this.tipoEmpresaOptions;
       const val = row[f.key] !== null && row[f.key] !== undefined ? String(row[f.key]) : '';
       const optsHtml = options
         .map(
@@ -120,6 +142,7 @@ const EmpresasView = {
       ${pair('EMPTELEFONO', 'EMPEMAIL')}
       ${pair('EMPCONTACTO', 'EMPTELCONTACTO')}
       ${single('CODTIPOEMPRESA')}
+      ${single('EMPREGIMENFEL')}
       ${pair('OBJETIVO', 'PRESUPUESTO')}
       ${this.logoFieldHtml()}
     `;

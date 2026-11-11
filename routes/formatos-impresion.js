@@ -11,6 +11,8 @@ const {
   isFelTicketTipodoc,
   FEL_TICKET_TIPODOCS,
   samplePrintContext,
+  preparePrintTemplateHtml,
+  ensureDocObsPrintCss,
 } = require('../lib/formato-impresion-engine');
 const { buildPrintContextAsync, loadFelCredForPrint } = require('../lib/print-document-context');
 const { sanitizeDesignerHtml } = require('../lib/formato-impresion-designer-html');
@@ -195,6 +197,15 @@ async function ensureFelTicketFormats(pool, empnit, usuario = 'SISTEMA') {
   }
 }
 
+function facStoredHtmlNeedsRefresh(html) {
+  const h = String(html || '');
+  const hasDocObsCard = h.includes('doc-obs-doc') || h.includes('fel-obs-doc');
+  const hasLetras = h.includes('TOTAL_LETRAS');
+  const hasLetrasLayout =
+    h.includes('doc-totals-grand-right') || h.includes('fel-totals-grand-right');
+  return !hasDocObsCard || !hasLetras || !hasLetrasLayout;
+}
+
 async function ensureFacCartaFormat(pool, empnit, usuario = 'SISTEMA') {
   const tpl = getDefaultTemplate('CARTA', 'FAC');
   const existing = await findFormato(pool, empnit, 'FAC', 'CARTA');
@@ -202,11 +213,32 @@ async function ensureFacCartaFormat(pool, empnit, usuario = 'SISTEMA') {
     '<div class="doc-meta-item"><strong>Dirección:</strong> {{DOC.DOC_DIRCLIE}}</div>';
   const dirWithPhone = `${dirLine}
     {{#DOC.DOC_TELEFONO}}<div class="doc-meta-item"><strong>Tel. cliente:</strong> {{DOC.DOC_TELEFONO}}</div>{{/DOC.DOC_TELEFONO}}`;
+  const entregaBlock = `    {{#DOC.F_ENTREGA}}<div class="doc-meta-item"><strong>Tipo entrega:</strong> {{DOC.F_ENTREGA}}</div>{{/DOC.F_ENTREGA}}
+    {{#DOC.DIRENTREGA}}<div class="doc-meta-item"><strong>Dirección de entrega:</strong> {{DOC.DIRENTREGA}}</div>{{/DOC.DIRENTREGA}}`;
+  const pagoLine = '<div class="doc-meta-item"><strong>Pago:</strong> {{DOC.CONCRE_LABEL}}</div>';
 
   if (existing) {
     let html = String(existing.HTML || '');
+    let htmlDirty = false;
     if (!html.includes('DOC.DOC_TELEFONO') && html.includes(dirLine)) {
       html = html.replace(dirLine, dirWithPhone);
+      htmlDirty = true;
+    }
+    if (!html.includes('DOC.F_ENTREGA') && html.includes(pagoLine)) {
+      html = html.replace(pagoLine, `${entregaBlock}\n    ${pagoLine}`);
+      htmlDirty = true;
+    }
+    if (htmlDirty && !html.includes('fac-carta-cliente-entrega-v1')) {
+      if (html.includes('fac-carta-cliente-tel-v1')) {
+        html = html.replace(
+          'fac-carta-cliente-tel-v1',
+          'fac-carta-cliente-entrega-v1'
+        );
+      } else {
+        html = `<!-- fac-carta-cliente-entrega-v1 -->\n${html}`;
+      }
+    }
+    if (htmlDirty) {
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -218,17 +250,23 @@ async function ensureFacCartaFormat(pool, empnit, usuario = 'SISTEMA') {
           SET HTML = @HTML, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
           WHERE EMPNIT = @EMPNIT AND ID = @ID
         `);
-    } else if (!html.includes('DOC.DOC_TELEFONO') && !html.includes('fac-carta-cliente-tel-v1')) {
+    } else if (
+      facStoredHtmlNeedsRefresh(html) ||
+      ((!html.includes('DOC.DOC_TELEFONO') || !html.includes('DOC.F_ENTREGA')) &&
+        !html.includes('fac-carta-cliente-entrega-v1') &&
+        !html.includes('fac-carta-cliente-tel-v1'))
+    ) {
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
         .input('ID', sql.Int, existing.ID)
         .input('HTML', sql.NVarChar(sql.MAX), tpl.HTML)
+        .input('CSS', sql.NVarChar(sql.MAX), tpl.CSS)
         .input('NOMBRE', sql.VarChar, tpl.NOMBRE)
         .input('USUARIO_MOD', sql.VarChar, usuario)
         .query(`
           UPDATE dbo.FORMATOS_IMPRESION
-          SET HTML = @HTML, NOMBRE = @NOMBRE, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
+          SET HTML = @HTML, CSS = @CSS, NOMBRE = @NOMBRE, FECHA_MOD = GETDATE(), USUARIO_MOD = @USUARIO_MOD
           WHERE EMPNIT = @EMPNIT AND ID = @ID
         `);
     }
@@ -268,7 +306,12 @@ async function ensureFacTicketFormat(pool, empnit, usuario = 'SISTEMA') {
     const needsFacLogoV2 = !css.includes('fac-ticket-logo-v2') || !html.includes('fac-ticket-doc');
     const needsFacTicketClienteEntrega =
       !html.includes('fac-ticket-cliente-entrega-v1') || !html.includes('DOC.DOC_TELEFONO');
-    if (needsFacTicketLayout || needsFacLogoV2 || needsFacTicketClienteEntrega) {
+    if (
+      needsFacTicketLayout ||
+      needsFacLogoV2 ||
+      needsFacTicketClienteEntrega ||
+      facStoredHtmlNeedsRefresh(html)
+    ) {
       await pool
         .request()
         .input('EMPNIT', sql.VarChar, empnit)
@@ -966,11 +1009,16 @@ async function handleRender(req, res) {
       felCredencial,
       tipodocObs: doc.header?.TIPODOC_OBS,
     });
-    const bodyHtml = renderTemplate(sanitizeDesignerHtml(formato.HTML), ctx);
+    const htmlForRender = preparePrintTemplateHtml(sanitizeDesignerHtml(formato.HTML), {
+      papel,
+      tipodoc,
+    });
+    const bodyHtml = renderTemplate(htmlForRender, ctx);
+    const printCss = ensureDocObsPrintCss(formato.CSS);
     const fullHtml = wrapPrintHtml({
       title,
       bodyHtml,
-      css: formato.CSS,
+      css: printCss,
       anulado: isDocAnulado(doc.header),
       prioridad: doc.header?.PRIORIDAD,
       papel,
@@ -983,7 +1031,7 @@ async function handleRender(req, res) {
       esDefault: Boolean(formato.ES_DEFAULT),
       title,
       bodyHtml,
-      css: formato.CSS || '',
+      css: printCss || '',
       html: fullHtml,
       header: doc.header,
     });
@@ -1079,8 +1127,11 @@ router.post('/preview', async (req, res) => {
     }
 
     const tipodocPreview = normalizeTipodoc(req.body?.tipodoc || ctx?.DOC?.TIPODOC);
-    const tpl = sanitizeDesignerHtml(htmlTpl || getDefaultTemplate(papel, tipodocPreview).HTML);
-    const style = css || getDefaultTemplate(papel, tipodocPreview).CSS;
+    const tpl = preparePrintTemplateHtml(
+      sanitizeDesignerHtml(htmlTpl || getDefaultTemplate(papel, tipodocPreview).HTML),
+      { papel, tipodoc: tipodocPreview }
+    );
+    const style = ensureDocObsPrintCss(css || getDefaultTemplate(papel, tipodocPreview).CSS);
     const bodyHtml = renderTemplate(tpl, ctx);
     const fullHtml = wrapPrintHtml({
       title,

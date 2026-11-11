@@ -1,6 +1,6 @@
 /**
  * Archivo → Lista Facturas
- * FAC / FEF / FEC / FES por fecha, con impresión y anulación (SAT o local).
+ * FAC / FPC / FEF / FEC / FES por fecha, con impresión y anulación (SAT o local).
  */
 const ListaFacturasView = {
   _container: null,
@@ -12,7 +12,7 @@ const ListaFacturasView = {
   _searchTimer: null,
   _urlFel: '',
 
-  FEL_TIPOS: ['FEF', 'FEC', 'FES'],
+  FEL_TIPOS: ['FEF', 'FEC', 'FES', 'FPC'],
   RECIBO_TIPOS: ['RCC', 'PRC'],
 
   escapeHtml(value) {

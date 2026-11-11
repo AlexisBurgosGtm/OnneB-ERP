@@ -494,7 +494,7 @@ router.get('/detalle/:coddoc/:correlativo', async (req, res) => {
       .input('CODDOC', sql.VarChar, coddoc)
       .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
       .query(`
-        SELECT d.*, t.DESDOC, t.TIPODOC
+        SELECT d.*, t.DESDOC, t.TIPODOC, t.OBS AS TIPODOC_OBS
         FROM dbo.DOCUMENTOS d
         JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
         WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO

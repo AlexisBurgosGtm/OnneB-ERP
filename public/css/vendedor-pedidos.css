@@ -1,0 +1,347 @@
+/**
+ * Vendedor — pedidos (copia POS): prioridad móvil, sin afectar Pedidos de mostrador.
+ */
+.vp-vendedor-pedidos {
+  --vp-touch-min: 2.75rem;
+}
+
+.vp-list-wrap {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.vp-list-title {
+  font-size: 1.15rem;
+}
+
+.vp-list-toolbar .doc-tipo-select-wrap {
+  flex: 0 0 auto;
+  min-width: min(100%, 12rem);
+}
+
+.vp-list-toolbar .vp-list-search {
+  min-width: 0;
+}
+
+.vp-list-view-toggle {
+  flex-shrink: 0;
+}
+
+.vp-pedidos-map-host {
+  width: 100%;
+  min-height: min(70vh, 520px);
+  border-radius: var(--app-radius, 0.5rem);
+  z-index: 0;
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+.vp-map-popup {
+  line-height: 1.35;
+}
+
+/* Feedback discreto al agregar producto (sin toast) */
+.vp-product-search-feedback {
+  min-height: 1.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vp-product-added-flash {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: color-mix(in srgb, #198754 88%, var(--app-text, #1a1a1a));
+  background: color-mix(in srgb, #198754 12%, transparent);
+  border: 1px solid color-mix(in srgb, #198754 28%, transparent);
+  border-radius: 10rem;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
+  pointer-events: none;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vp-product-added-flash.vp-product-added-flash--show {
+  opacity: 1;
+  transform: translateY(0);
+  animation: vp-product-added-fade 2s ease forwards;
+}
+
+@keyframes vp-product-added-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Hoja móvil de productos (vendedor): quitar max-height fijo que deja hueco sobre el pie */
+#vp-product-sheet.pos-product-sheet .pos-product-list-modal {
+  flex: 1;
+  min-height: 0;
+  max-height: none !important;
+}
+
+#vp-product-sheet.pos-product-sheet .pos-product-sheet-body {
+  padding-bottom: 0.45rem;
+}
+
+/* Móvil / tablet POS: el carrito ya no puede usar overflow:hidden en el body (bloquea scroll). */
+@media (max-width: 991.98px) {
+  .vp-vendedor-pedidos .pos-main {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    align-content: start;
+  }
+
+  /* Una sola columna: el panel del pedido debe poder desplazarse */
+  .vp-vendedor-pedidos .pos-panel-cart > .card-body {
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    /* FAB fijo abajo — padding inferior en pos.css; no recortar contenido */
+  }
+
+  .vp-vendedor-pedidos.pos-vista-wrap {
+    min-height: 0;
+    flex: 1;
+    /* Deja que main-content controle overflow; el scroll vive en el carrito */
+    overflow: visible;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .vp-list-toolbar .doc-tipo-select-wrap,
+  .vp-list-toolbar .vp-list-search {
+    width: 100%;
+  }
+
+  /*
+   * Lista de pedidos: la pantalla lista NO lleva .vp-vendedor-pedidos (solo .vp-list-screen).
+   * Ocultar columna Acciones y botones; al tocar la fila → modal (JS).
+   */
+  .vp-list-screen .fac-list-table-scroll table thead .fac-list-actions,
+  .vp-list-screen .fac-list-table-scroll table tbody .fac-list-actions {
+    display: none !important;
+  }
+
+  .vp-list-screen .fac-list-table-scroll table tbody tr.vp-list-row {
+    cursor: pointer;
+  }
+
+  /* Solo columnas esenciales en móvil (Documento, Estado, Cliente, Total) */
+  .vp-list-screen .fac-list-table-scroll table thead .doc-list-col-optional,
+  .vp-list-screen .fac-list-table-scroll table tbody .doc-list-col-optional {
+    display: none;
+  }
+
+  .vp-list-screen .fac-list-table-scroll table thead th,
+  .vp-list-screen .fac-list-table-scroll table tbody td {
+    font-size: 0.875rem;
+    vertical-align: middle;
+    padding: 0.45rem 0.35rem;
+  }
+
+  .vp-list-screen .fac-list-table-scroll .inv-card-btn {
+    min-width: 2.5rem;
+    min-height: var(--vp-touch-min);
+    padding: 0.35rem;
+  }
+
+  .vp-list-screen .pos-list-fab-nuevo {
+    width: 3.5rem;
+    height: 3.5rem;
+    font-size: 1.35rem;
+  }
+
+  /* —— Editor: cabecera compacta (fecha, vendedor, tipo, prioridad en grilla 2×2) —— */
+  .vp-vendedor-pedidos .vp-header.card .card-body.pos-header-body {
+    padding: 0.3rem 0.45rem !important;
+  }
+
+  .vp-vendedor-pedidos .vp-header-top {
+    display: grid !important;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 0.25rem 0.4rem !important;
+  }
+
+  .vp-vendedor-pedidos .pos-btn-atras {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.78rem;
+  }
+
+  .vp-vendedor-pedidos .vp-header-brand {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .vp-vendedor-pedidos .vp-header-brand .pos-header-logo,
+  .vp-vendedor-pedidos .vp-header-logo {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .vp-vendedor-pedidos .vp-header-summary {
+    grid-column: 4;
+    grid-row: 1;
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+    text-align: right !important;
+    width: auto !important;
+  }
+
+  .vp-vendedor-pedidos .vp-header-total {
+    font-size: 1rem !important;
+    line-height: 1.15;
+    margin-bottom: 0 !important;
+  }
+
+  .vp-vendedor-pedidos .vp-header-items {
+    font-size: 0.68rem;
+    line-height: 1.15;
+  }
+
+  .vp-vendedor-pedidos .vp-header-doc-label {
+    grid-column: 3;
+    grid-row: 1;
+    font-size: 0.72rem !important;
+    line-height: 1.2;
+    min-width: 0;
+  }
+
+  .vp-vendedor-pedidos .vp-doc-meta-grid {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem 0.4rem !important;
+    width: 100% !important;
+    align-items: end;
+  }
+
+  .vp-vendedor-pedidos .vp-doc-meta-grid .form-label,
+  .vp-vendedor-pedidos .vp-doc-meta-grid .doc-tipo-select-label {
+    font-size: 0.65rem !important;
+    margin-bottom: 0 !important;
+    line-height: 1.1;
+  }
+
+  .vp-vendedor-pedidos .vp-doc-meta-grid .form-select,
+  .vp-vendedor-pedidos .vp-doc-meta-grid input[type='date'],
+  .vp-vendedor-pedidos .vp-doc-meta-grid input[type='text'] {
+    font-size: 0.78rem !important;
+    padding-top: 0.15rem !important;
+    padding-bottom: 0.15rem !important;
+    min-height: 1.85rem;
+  }
+
+  .vp-vendedor-pedidos .vp-doc-vendedor-wrap .input-group-sm > .btn {
+    padding: 0.15rem 0.4rem;
+  }
+
+  .vp-vendedor-pedidos .pos-doc-fecha-wrap,
+  .vp-vendedor-pedidos .pos-doc-vendedor-wrap,
+  .vp-vendedor-pedidos .pos-doc-tipofac-wrap,
+  .vp-vendedor-pedidos .pos-doc-prioridad-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vp-vendedor-pedidos .doc-tipofac-prioridad-wrap {
+    display: contents;
+  }
+
+  .vp-vendedor-pedidos .pos-precio-campo-wrap {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .vp-vendedor-pedidos .vp-cliente-wrap .input-group {
+    flex-wrap: wrap;
+  }
+
+  .vp-vendedor-pedidos .vp-cliente-wrap .input-group > .btn {
+    min-height: var(--vp-touch-min);
+  }
+
+  .vp-vendedor-pedidos .pos-panel-cart > .card-header {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+    font-size: 0.88rem;
+  }
+
+  .vp-vendedor-pedidos .pos-panel-cart > .card-body {
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+
+  /* Búsqueda en hoja móvil: ítems más bajos */
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact {
+    padding: 0.32rem 0.45rem;
+    gap: 0.35rem;
+    align-items: center;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .vp-prod-des2 {
+    display: none;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .vp-prod-name-line {
+    font-size: 0.82rem;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .pos-prod-code {
+    font-size: 0.68rem;
+    line-height: 1.15;
+    margin-bottom: 0.05rem;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .pos-prod-stock {
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .pos-prod-price {
+    font-size: 0.82rem;
+    line-height: 1.15;
+  }
+
+  .vp-vendedor-pedidos .pos-product-sheet .pos-product-item.vp-product-item-compact .pos-prod-remote {
+    margin-top: 0.1rem;
+  }
+}

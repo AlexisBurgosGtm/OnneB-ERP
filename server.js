@@ -417,6 +417,8 @@ app.get('/api/health', async (_req, res) => {
 });
 
 registerSocketHandlers(io);
+const { registerPresenceHandlers } = require('./lib/presence-socket');
+registerPresenceHandlers(io);
 const { registerRemoteCompanionHandlers } = require('./lib/remote-companion-socket');
 registerRemoteCompanionHandlers(io);
 app.set('io', io);
@@ -425,11 +427,16 @@ function startWhatsappAfterServerReady() {
   try {
     const { setWhatsappIo, tryAutoConnect } = require('./lib/whatsapp-baileys');
     setWhatsappIo(io);
-    tryAutoConnect().catch(() => {});
+    tryAutoConnect().catch((err) => {
+      console.warn('[WhatsApp] auto-conexión al arrancar:', err.message);
+    });
     const { startWhatsappScheduler } = require('./lib/whatsapp-scheduler');
     startWhatsappScheduler(() => getDbPool());
   } catch (err) {
-    console.warn('[WhatsApp] error al iniciar sesión:', err.message);
+    console.warn('[WhatsApp] error al iniciar módulo:', err.message);
+    if (String(process.env.DEBUG_WHATSAPP || '').trim() === '1') {
+      console.warn(err.stack || err);
+    }
   }
 }
 

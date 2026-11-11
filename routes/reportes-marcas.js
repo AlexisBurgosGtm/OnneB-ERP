@@ -6,7 +6,8 @@ const { STATUS_ANULADO, SQL_TIPODOC_REPORTES_SI } = require('../lib/documento-st
 
 const router = express.Router();
 
-const TIPODOC_VENTA = ['FAC', 'FEF', 'FEC', 'FES'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOC_VENTA = ['FAC', TIPODOC_FPC, 'FEF', 'FEC', 'FES'];
 const TIPODOC_DEVOLUCION = ['DEV', 'FNC', 'FNA'];
 const TIPODOC_COMPRA = ['COM', 'COP'];
 

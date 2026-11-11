@@ -302,7 +302,7 @@ router.get('/documentos', async (req, res) => {
       truncated: total > rows.length,
       empnit,
       q: q || null,
-      tiposFactura: ['FAC', 'FEF', 'FEC', 'FES'],
+      tiposFactura: ['FAC', 'FPC', 'FEF', 'FEC', 'FES'],
     });
   } catch (err) {
     console.warn('[API GET /cuentas-cobrar/documentos]', err.message);

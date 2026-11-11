@@ -1,5 +1,5 @@
 /**
- * Estilos alternativos del login (TEMA, HALLOWEEN, NAVIDAD).
+ * Estilos alternativos del login (TEMA, HALLOWEEN, NAVIDAD, regreso a clases, vacaciones, invierno, etc.).
  */
 
 #view-login.login-style-tema {
@@ -38,7 +38,10 @@
 #view-login.login-style-halloween,
 #view-login.login-style-navidad,
 #view-login.login-style-dia-carino,
-#view-login.login-style-ano-nuevo {
+#view-login.login-style-ano-nuevo,
+#view-login.login-style-regreso-clases,
+#view-login.login-style-vacaciones,
+#view-login.login-style-invierno {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,14 +52,20 @@
 #view-login.login-style-halloween .login-parallax-host,
 #view-login.login-style-navidad .login-parallax-host,
 #view-login.login-style-dia-carino .login-parallax-host,
-#view-login.login-style-ano-nuevo .login-parallax-host {
+#view-login.login-style-ano-nuevo .login-parallax-host,
+#view-login.login-style-regreso-clases .login-parallax-host,
+#view-login.login-style-vacaciones .login-parallax-host,
+#view-login.login-style-invierno .login-parallax-host {
   display: none !important;
 }
 
 #view-login.login-style-halloween .login-layout,
 #view-login.login-style-navidad .login-layout,
 #view-login.login-style-dia-carino .login-layout,
-#view-login.login-style-ano-nuevo .login-layout {
+#view-login.login-style-ano-nuevo .login-layout,
+#view-login.login-style-regreso-clases .login-layout,
+#view-login.login-style-vacaciones .login-layout,
+#view-login.login-style-invierno .login-layout {
   position: relative;
   z-index: 4;
   display: flex;
@@ -71,7 +80,10 @@
 #view-login.login-style-halloween .login-layout > *,
 #view-login.login-style-navidad .login-layout > *,
 #view-login.login-style-dia-carino .login-layout > *,
-#view-login.login-style-ano-nuevo .login-layout > * {
+#view-login.login-style-ano-nuevo .login-layout > *,
+#view-login.login-style-regreso-clases .login-layout > *,
+#view-login.login-style-vacaciones .login-layout > *,
+#view-login.login-style-invierno .login-layout > * {
   pointer-events: auto;
 }
 
@@ -95,12 +107,174 @@
   --login-glass-border: rgba(186, 230, 253, 0.45);
   --login-btn-bg: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   --login-btn-text: #fff;
-  background-image:
-    url('/img/login/santa-silhouette.svg'),
-    var(--login-bg-gradient);
-  background-repeat: no-repeat, no-repeat;
-  background-position: right 4% bottom 6%, center;
-  background-size: min(280px, 42vw) auto, cover;
+  background-image: var(--login-bg-gradient);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
+
+.login-festive-figure {
+  position: absolute;
+  z-index: 2;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+}
+
+/* Árbol: ~media altura de pantalla (borde inferior alineado) */
+#view-login.login-style-navidad .login-festive-figure--arbol {
+  left: -2%;
+  right: auto;
+  bottom: 0;
+  width: auto;
+  height: min(52vh, 540px);
+  max-height: 85vh;
+  object-fit: contain;
+  object-position: bottom left;
+  opacity: 1;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.38)) saturate(1.08);
+}
+
+#view-login.login-style-navidad .login-festive-figure--ornament1 {
+  right: 6%;
+  bottom: 28%;
+  width: min(56px, 14vw);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+}
+
+#view-login.login-style-navidad .login-festive-figure--ornament2 {
+  right: 3%;
+  bottom: 44%;
+  width: min(64px, 16vw);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)) hue-rotate(95deg);
+}
+
+#view-login.login-style-navidad .login-festive-figure--ornament3 {
+  right: 11%;
+  bottom: 14%;
+  width: min(48px, 12vw);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)) hue-rotate(200deg);
+}
+
+#view-login.login-style-navidad .login-festive-figure--botas {
+  right: 4%;
+  bottom: 3%;
+  width: min(110px, 28vw);
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.38));
+}
+
+#view-login.login-style-navidad .login-festive-figure--sombrero {
+  right: 5%;
+  bottom: 52%;
+  width: min(100px, 26vw);
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35));
+}
+
+#view-login.login-style-regreso-clases {
+  --login-bg-base: #1e3a5f;
+  --login-bg-gradient: linear-gradient(155deg, #2563eb 0%, #1d4ed8 35%, #312e81 100%);
+  --login-glass-fg: #eff6ff;
+  --login-glass-fg-muted: rgba(239, 246, 255, 0.78);
+  --login-glass-card: rgba(15, 23, 42, 0.52);
+  --login-glass-border: rgba(147, 197, 253, 0.4);
+  --login-btn-bg: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  --login-btn-text: #fff;
+}
+
+#view-login.login-style-vacaciones {
+  --login-bg-base: #fbbf24;
+  --login-bg-gradient: linear-gradient(
+    180deg,
+    #38bdf8 0%,
+    #0ea5e9 22%,
+    #0284c7 44%,
+    #eab308 44.2%,
+    #fde047 68%,
+    #facc15 100%
+  );
+  --login-glass-fg: #0f172a;
+  --login-glass-fg-muted: rgba(15, 23, 42, 0.72);
+  --login-glass-card: rgba(255, 251, 235, 0.82);
+  --login-glass-border: rgba(251, 191, 36, 0.55);
+  --login-btn-bg: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  --login-btn-text: #fff;
+  background-image: var(--login-bg-gradient);
+  background-size: cover;
+  background-position: center;
+}
+
+.login-vacaciones-sun {
+  position: absolute;
+  right: 10%;
+  top: 6%;
+  z-index: 2;
+  width: min(20vw, 150px);
+  height: min(20vw, 150px);
+  border-radius: 50%;
+  pointer-events: none;
+  user-select: none;
+  background: radial-gradient(circle at 32% 28%, #fffef5 0%, #fef08a 28%, #fbbf24 62%, #f59e0b 100%);
+  box-shadow:
+    0 0 48px rgba(254, 240, 138, 0.95),
+    0 0 100px rgba(251, 191, 36, 0.55);
+  animation: login-vacaciones-sun-pulse 5s ease-in-out infinite;
+}
+
+@keyframes login-vacaciones-sun-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.04);
+    filter: brightness(1.08);
+  }
+}
+
+.login-vacaciones-umbrella {
+  position: absolute;
+  z-index: 2;
+  bottom: 0;
+  width: auto;
+  height: min(42vh, 340px);
+  max-height: 72vh;
+  object-fit: contain;
+  object-position: bottom center;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
+}
+
+#view-login.login-style-vacaciones .login-vacaciones-umbrella--1 {
+  left: 4%;
+  right: auto;
+}
+
+#view-login.login-style-vacaciones .login-vacaciones-umbrella--2 {
+  left: 28%;
+  right: auto;
+  height: min(36vh, 300px);
+  opacity: 0.92;
+}
+
+#view-login.login-style-vacaciones .login-vacaciones-umbrella--3 {
+  right: 6%;
+  left: auto;
+  height: min(46vh, 380px);
+}
+
+#view-login.login-style-invierno {
+  --login-bg-base: #0f172a;
+  --login-bg-gradient: linear-gradient(165deg, #334155 0%, #1e293b 42%, #0f172a 100%);
+  --login-glass-fg: #f1f5f9;
+  --login-glass-fg-muted: rgba(241, 245, 249, 0.76);
+  --login-glass-card: rgba(15, 23, 42, 0.62);
+  --login-glass-border: rgba(148, 163, 184, 0.35);
+  --login-btn-bg: linear-gradient(135deg, #475569 0%, #334155 100%);
+  --login-btn-text: #f8fafc;
 }
 
 .login-festive-decor {
@@ -144,6 +318,20 @@
   100% {
     transform: translateY(110vh) rotate(360deg);
   }
+}
+
+.login-snowflake--soft {
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 8px rgba(226, 232, 240, 0.55);
+}
+
+.login-festive-icon--clases,
+.login-festive-icon--invierno {
+  animation-duration: 5.5s;
+}
+
+#view-login.login-style-invierno .login-snowflake {
+  color: rgba(248, 250, 252, 0.88);
 }
 
 #view-login.login-style-dia-carino {
@@ -255,14 +443,42 @@
 #view-login.login-style-halloween .login-glass-card,
 #view-login.login-style-navidad .login-glass-card,
 #view-login.login-style-dia-carino .login-glass-card,
-#view-login.login-style-ano-nuevo .login-glass-card {
+#view-login.login-style-ano-nuevo .login-glass-card,
+#view-login.login-style-regreso-clases .login-glass-card,
+#view-login.login-style-vacaciones .login-glass-card,
+#view-login.login-style-invierno .login-glass-card {
   max-width: 380px;
 }
 
 @media (max-width: 480px) {
-  #view-login.login-style-navidad {
-    background-size: min(200px, 55vw) auto, cover;
-    background-position: right 2% bottom 4%, center;
+  #view-login.login-style-navidad .login-festive-figure--arbol {
+    left: -4%;
+    height: min(48vh, 380px);
+  }
+
+  #view-login.login-style-navidad .login-festive-figure--sombrero {
+    width: min(72px, 22vw);
+    bottom: 48%;
+  }
+
+  #view-login.login-style-navidad .login-festive-figure--botas {
+    width: min(88px, 26vw);
+  }
+
+  #view-login.login-style-vacaciones .login-vacaciones-umbrella--2 {
+    left: 22%;
+    height: min(32vh, 240px);
+  }
+
+  #view-login.login-style-vacaciones .login-vacaciones-umbrella--3 {
+    height: min(38vh, 280px);
+  }
+
+  .login-vacaciones-sun {
+    width: min(26vw, 100px);
+    height: min(26vw, 100px);
+    right: 6%;
+    top: 4%;
   }
 }
 
@@ -278,7 +494,9 @@
   .login-festive-icon,
   .login-snowflake,
   .login-firework,
-  .login-confetti {
+  .login-confetti,
+  .login-festive-figure,
+  .login-vacaciones-sun {
     animation: none !important;
   }
 }

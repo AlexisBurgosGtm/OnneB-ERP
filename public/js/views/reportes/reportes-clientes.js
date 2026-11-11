@@ -385,9 +385,12 @@ const ReportesClientesView = {
       return `<div class="repcli-empty py-2">Sin documentos</div>`;
     }
     const q = this._filters.documentos;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repcli-search mb-2" data-section="documentos"
         placeholder="Buscar facturas…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_clientes_documentos_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repcli-table">
           <thead class="table-light sticky-top">
@@ -404,6 +407,7 @@ const ReportesClientesView = {
           </thead>
           <tbody id="repcli-docs-tbody">${this.renderDocumentosBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 
@@ -445,9 +449,12 @@ const ReportesClientesView = {
       return `<div class="repcli-empty py-2">Sin productos</div>`;
     }
     const q = this._filters.productos;
+    const stamp = `${this._desde}_${this._hasta}`.replace(/[^\d-]/g, '');
     return `
       <input type="search" class="form-control form-control-sm repcli-search mb-2" data-section="productos"
         placeholder="Buscar productos…" value="${this.escapeHtml(q)}">
+      <div class="report-export-wrap" data-report-export-wrap>
+        ${ReportTableExport.toolbarHtml(`reporte_clientes_productos_${stamp}.xlsx`)}
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0 repcli-table">
           <thead class="table-light sticky-top">
@@ -462,6 +469,7 @@ const ReportesClientesView = {
           </thead>
           <tbody id="repcli-prods-tbody">${this.renderProductosBody()}</tbody>
         </table>
+      </div>
       </div>`;
   },
 

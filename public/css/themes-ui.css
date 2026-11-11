@@ -384,6 +384,10 @@
   background: linear-gradient(135deg, #bae6fd, #0284c7);
 }
 
+.theme-swatch-navideno {
+  background: linear-gradient(135deg, #166534 0%, #dc2626 52%, #fbbf24 100%);
+}
+
 .theme-swatch-summer {
   background: linear-gradient(135deg, #fcd34d, #38bdf8);
 }

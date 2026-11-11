@@ -176,7 +176,7 @@ const AsignacionPedidosView = {
   },
 
   /** Tipos SAT certificables (misma regla que Facturas Electrónicas / API FEL). */
-  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
+  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC', 'FPC'],
 
   tipodocOf(row) {
     return String(row?.TIPODOC || '').trim().toUpperCase();

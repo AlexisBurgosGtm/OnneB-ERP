@@ -35,7 +35,7 @@ router.get('/tipos-certificables', (_req, res) => {
   res.json({
     tipos,
     descripcion: TIPODOC_FEL_DESCRIPCION,
-    regimen: 'IVA general — pequeño contribuyente (FES) excluido',
+    regimen: 'IVA general (FEF/FEC/FNC) y pequeño contribuyente certificable (FPC → SAT FPEQ)',
   });
 });
 

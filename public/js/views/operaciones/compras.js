@@ -1209,13 +1209,18 @@ const ComprasView = {
 
   syncEditorControls() {
     const editable = this.docEditable(this._compra?.header);
-    PosDocSearchUI.syncControls(this._container, 'compras', editable);
+    PosDocSearchUI.syncControls(this._container, 'compras', editable, {
+      viewKey: 'compras',
+      permiteMover: this._config?.permiteMoverBotonFinalizarEnDocumentos,
+    });
     ['#compras-proveedor-search', '#compras-doc-fecha', '#compras-seriefac', '#compras-nofac', '#compras-btn-agregar-pse'].forEach((sel) => {
       const el = this._container?.querySelector(sel);
       if (el) el.disabled = !editable;
     });
     const fab = this._container?.querySelector('#btn-compras-finalizar');
-    if (fab) fab.style.display = editable ? '' : 'none';
+    if (fab && !DocFinalizarFab?.isEnabled(this._config?.permiteMoverBotonFinalizarEnDocumentos)) {
+      fab.style.display = editable ? '' : 'none';
+    }
   },
 
   renderAll() {

@@ -5,7 +5,10 @@ const DocOpciones = {
   /** Prefijo telefónico WhatsApp (GT OnneB / SV FS-SV). */
   WHATSAPP_DIAL_CODE: '502',
 
-  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC'],
+  /** Certificables ante Infile (incluye FNC en notas de crédito). */
+  FEL_TIPOS_CERTIFICABLES: ['FEF', 'FEC', 'FNC', 'FPC'],
+  /** Facturación: FEF/FEC/FPC — mismo flujo que FEF (certificar al finalizar + formato FEL). */
+  FEL_TIPOS_CERTIFICABLES_FACTURACION: ['FEF', 'FEC', 'FPC'],
   FEL_URL_OPCION: 'URL FEL',
   CERTIFICA_AL_FINALIZAR_OPCION: 'CERTIFICA AL FINALIZAR',
   FACTURA_SE_PASA_A_FRACCIONAMIENTO_AUTOM_OPCION: 'FACTURA SE PASA A FRACCIONAMIENTO AUTOM',
@@ -18,6 +21,7 @@ const DocOpciones = {
     CRS: { menu: 'comandas-restaurante', view: () => ComandasRestauranteView },
     COT: { menu: 'cotizaciones', view: () => CotizacionesView },
     FAC: { menu: 'facturacion', view: () => FacturacionView },
+    FPC: { menu: 'facturacion', view: () => FacturacionView },
     FEF: { menu: 'facturacion', view: () => FacturacionView },
     FEC: { menu: 'facturacion', view: () => FacturacionView },
     FES: { menu: 'facturacion', view: () => FacturacionView },
@@ -55,11 +59,32 @@ const DocOpciones = {
   },
 
   felUudiValue(row) {
-    return String(row?.FEL_UUDI ?? row?.FEL ?? '').trim();
+    return String(row?.FEL_UUDI ?? row?.FEL ?? row?.felUuid ?? '').trim();
   },
 
   estaCertificadoFel(row) {
-    return Boolean(this.felUudiValue(row));
+    if (this.felUudiValue(row)) return true;
+    const serie = String(row?.FEL_SERIE ?? '').trim();
+    const numero = String(row?.FEL_NUMERO ?? '').trim();
+    return Boolean(serie && numero);
+  },
+
+  felCertificacionFromApi(data) {
+    const fel = data?.fel && typeof data.fel === 'object' ? data.fel : {};
+    return {
+      FEL_UUDI: String(fel.uuid || fel.UUID || data?.FEL_UUDI || '').trim(),
+      FEL_SERIE: String(fel.serie || fel.Serie || data?.FEL_SERIE || '').trim(),
+      FEL_NUMERO: String(fel.numero || fel.Numero || data?.FEL_NUMERO || '').trim(),
+    };
+  },
+
+  applyFelCertificacionToRow(row, data) {
+    if (!row || !data) return row;
+    const patch = this.felCertificacionFromApi(data);
+    if (patch.FEL_UUDI) row.FEL_UUDI = patch.FEL_UUDI;
+    if (patch.FEL_SERIE) row.FEL_SERIE = patch.FEL_SERIE;
+    if (patch.FEL_NUMERO) row.FEL_NUMERO = patch.FEL_NUMERO;
+    return row;
   },
 
   puedeEditar(row) {
@@ -279,13 +304,13 @@ const DocOpciones = {
   /**
    * Tras finalizar FAC / facturación / DEV / FNA (no FEL):
    * si IMPRIME TICKET AL GUARDAR VENTA = SI → muestra formato imprimible del sistema.
-   * Documentos FEL (FEF/FEC/FES/FNC): no aplica; solo «Muestra formato FEL online» al certificar.
+   * FEF/FEC/FPC/FNC: no aplica; tras certificar usa «Muestra formato FEL online» (SI/NO/AMBOS).
    * @param {{ tipodoc?: string, alreadyPrintedSistema?: boolean, onImprimir?: () => Promise<void>|void }} opts
    */
   async maybeImprimirTicketTrasFinalizar(opts = {}) {
     if (opts.alreadyPrintedSistema) return false;
     const tipodoc = String(opts.tipodoc || '').trim().toUpperCase();
-    if (tipodoc && (this.esTipoCertificableFel(tipodoc) || tipodoc === 'FES')) {
+    if (tipodoc && (this.usaFlujoFelTrasCertificar(tipodoc) || tipodoc === 'FES')) {
       return false;
     }
     let imprime = false;
@@ -301,6 +326,16 @@ const DocOpciones = {
 
   esTipoCertificableFel(tipodoc) {
     return this.FEL_TIPOS_CERTIFICABLES.includes(String(tipodoc || '').trim().toUpperCase());
+  },
+
+  esTipoCertificableFelFacturacion(tipodoc) {
+    return this.FEL_TIPOS_CERTIFICABLES_FACTURACION.includes(String(tipodoc || '').trim().toUpperCase());
+  },
+
+  /** Certificar al finalizar + formato FEL online/local (igual que FEF). Incluye FPC. */
+  usaFlujoFelTrasCertificar(tipodoc) {
+    const t = String(tipodoc || '').trim().toUpperCase();
+    return this.FEL_TIPOS_CERTIFICABLES.includes(t);
   },
 
   async abrirFelOnline(felValue) {
@@ -347,7 +382,7 @@ const DocOpciones = {
     }
   },
 
-  async certificar(coddoc, correlativo) {
+  async certificar(coddoc, correlativo, { quiet = false } = {}) {
     const url = `/api/fel/certificar/${encodeURIComponent(coddoc)}/${encodeURIComponent(correlativo)}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     const data = await F.fetchJson(url, {
       method: 'POST',
@@ -360,12 +395,58 @@ const DocOpciones = {
         correlativo,
       },
     });
-    const fel = data.fel || {};
-    F.toast(
-      `Certificado — UUID ${fel.uuid || ''}${fel.serie ? ` · Serie ${fel.serie}` : ''}${fel.numero ? ` · No. ${fel.numero}` : ''}`,
-      'success'
-    );
+    if (!quiet) {
+      const fel = data.fel || {};
+      const felUuid = String(fel.uuid || '').trim();
+      const extra = [fel.serie, fel.numero].filter(Boolean).join(' · ');
+      const msg = felUuid
+        ? `Certificado${extra ? ` — ${extra}` : ''}`
+        : 'Certificado ante SAT';
+      F.toast(msg, 'success');
+    }
     return data;
+  },
+
+  /**
+   * Diálogo con serie/número y botón para abrir la factura FEL (además del formato online configurado).
+   */
+  async mostrarResumenTrasCertificarFel({ felUuid, serie, numero, coddoc, correlativo } = {}) {
+    const uuid = String(felUuid || '').trim();
+    if (!uuid || typeof Swal === 'undefined' || typeof CatalogosUI === 'undefined') return;
+
+    const esc = (v) =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const docLabel = [coddoc, correlativo != null ? `#${correlativo}` : ''].filter(Boolean).join(' ');
+    const serieNo = [serie, numero].filter((x) => String(x || '').trim()).join(' · ');
+    let felUrl = '';
+    try {
+      const base = await this.fetchUrlFel();
+      felUrl = this.joinFelUrl(base, uuid) || '';
+    } catch {
+      felUrl = '';
+    }
+
+    const result = await Swal.fire({
+      ...CatalogosUI.modalBase({ customClass: { confirmButton: 'btn-modal-guardar' } }),
+      icon: 'success',
+      title: 'Factura certificada (FEL)',
+      html: `
+        ${docLabel ? `<p class="mb-2 text-muted small">${esc(docLabel)}</p>` : ''}
+        ${serieNo ? `<p class="mb-2"><strong>Serie / número SAT:</strong> ${esc(serieNo)}</p>` : ''}
+        <p class="small text-muted mb-0 text-break">UUID: ${esc(uuid)}</p>
+      `,
+      confirmButtonText: 'Cerrar',
+      showDenyButton: Boolean(felUrl),
+      denyButtonText: felUrl ? 'Ver factura FEL' : undefined,
+    });
+    if (result.isDenied && felUrl) {
+      window.open(felUrl, '_blank', 'noopener,noreferrer');
+    }
   },
 
   /**
@@ -376,15 +457,30 @@ const DocOpciones = {
    */
   async certificarYMostrarFormatos(coddoc, correlativo, opts = {}) {
     try {
-      const data = await this.certificar(coddoc, correlativo);
+      const data = await this.certificar(coddoc, correlativo, { quiet: true });
       const fel = data.fel || {};
       const felUuid = String(fel.uuid || fel.UUID || data.FEL_UUDI || '').trim();
       await this.mostrarFormatosTrasCertificar({
         felUuid,
         onImprimirSistema: opts.onImprimirSistema,
       });
+      await this.mostrarResumenTrasCertificarFel({
+        felUuid,
+        serie: fel.serie,
+        numero: fel.numero,
+        coddoc,
+        correlativo,
+      });
+      if (typeof opts.onCertificado === 'function') {
+        opts.onCertificado(data);
+      }
       return data;
     } catch (err) {
+      const msg = String(err?.message || '');
+      if (/ya está certificado/i.test(msg) && typeof opts.onYaCertificado === 'function') {
+        await opts.onYaCertificado(err);
+        return null;
+      }
       if (!opts.silentError && typeof F !== 'undefined' && typeof LastOperationError !== 'undefined') {
         F.toast('Revise el detalle en Asistente → Último error', 'info');
       }
@@ -641,7 +737,7 @@ const DocOpciones = {
     }
     return DocPrint.wrapHtml({
       title,
-      bodyHtml: DocPrint.buildDocumentHtml(
+      bodyHtml: DocPrint.buildInternalDocumentHtml(
         { title, header: h, lines, footerNote, muestraPeso, muestraMarcas },
         papel
       ),
@@ -794,7 +890,7 @@ const DocOpciones = {
   },
 
   /** Tipodocs de factura aplicables a entregas parciales (Pendientes Entrega). */
-  TIPODOC_ENTREGAS: ['FAC', 'FEF', 'FEC', 'FES', 'FEL'],
+  TIPODOC_ENTREGAS: ['FAC', 'FPC', 'FEF', 'FEC', 'FES', 'FEL'],
 
   puedeHistorialEntregas(row) {
     if (!row) return false;

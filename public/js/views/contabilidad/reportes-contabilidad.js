@@ -176,6 +176,7 @@ const ReportesContabilidadView = {
       const data = await F.fetchJson(`/api/reportes-contabilidad/productos/documentos?${params}`);
       const lineas = data.lineas || [];
       if (tbody) tbody.innerHTML = this.renderDetalleBody(lineas);
+      ReportTableExport.enhanceTables(modalEl.querySelector('.modal-body'), `rep_contab_det_${codprod}`);
       const tot = data.totales || {};
       if (tfoot && lineas.length) {
         tfoot.hidden = false;
@@ -297,6 +298,8 @@ const ReportesContabilidadView = {
             </button>
           </div>
 
+          <div class="report-export-wrap" data-report-export-wrap>
+            ${ReportTableExport.toolbarHtml(`reportes_contabilidad_productos_${this._desde}_${this._hasta}.xlsx`)}
           <div class="table-responsive repcont-table-scroll">
             <table class="table table-sm table-striped table-hover repcont-table mb-0">
               <thead>
@@ -318,6 +321,7 @@ const ReportesContabilidadView = {
                 </tr>
               </tfoot>
             </table>
+          </div>
           </div>
         </div>
       </div>`;

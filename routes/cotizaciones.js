@@ -23,7 +23,13 @@ const { searchMovimientoProductos } = require('../lib/movimiento-productos-searc
 const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../lib/existencia-medida');
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
-const { getSettingSino, getSettingTipofacFinalizado, SETTING_OPCION } = require('../lib/settings');
+const {
+  getSettingSino,
+  getSettingTipofacFinalizado,
+  effectivePermiteCambiarPrecioPedidos,
+  getSettingSolicitaClaveCambiarPrecios,
+  SETTING_OPCION,
+} = require('../lib/settings');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
   resolveEmpleadoCoddocPreferido,
@@ -305,6 +311,7 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const solicitaClaveCambiarPrecios = await getSettingSolicitaClaveCambiarPrecios(pool);
     const solicitaAutorizaciones = await getSettingSino(
       pool,
       SETTING_OPCION.SOLICITA_AUTORIZACIONES
@@ -312,6 +319,10 @@ router.get('/config', async (req, res) => {
     const muestraDesprod2 = await getSettingSino(
       pool,
       SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
+    const permiteMoverBotonFinalizarEnDocumentos = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
     );
     res.json({
       empnit,
@@ -324,8 +335,10 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      solicitaClaveCambiarPrecios,
       solicitaAutorizaciones,
       muestraDesprod2,
+      permiteMoverBotonFinalizarEnDocumentos,
     });
   } catch (err) {
     console.warn('[API GET /cotizaciones/config]', err.message);
@@ -762,10 +775,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
       costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
       precio = getPrecioFromPreciosRow(prod, campoPrecio);
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
         const customPrecio = Number(req.body.PRECIO);
         if (!Number.isFinite(customPrecio) || customPrecio < 0) {
@@ -913,10 +923,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
 
     let precio = Number(line.PRECIO) || 0;
     if (req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio !== 'SI') {
         return res.status(400).json({ error: 'No está permitido cambiar el precio' });
       }

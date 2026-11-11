@@ -3,8 +3,8 @@ const sql = require('mssql');
 const { isDbConfigured } = require('../config/database');
 const {
   ADENDA_OPTIONS,
-  loadAdendasConfig,
-  saveAdendasConfig,
+  loadAdendasSlotsForEmpnit,
+  saveAdendasSlotsForEmpnit,
 } = require('../lib/fel/adendas');
 
 const router = express.Router();
@@ -138,15 +138,23 @@ router.get('/', async (req, res) => {
   }
 });
 
-/** Adendas FEL (JSON global en data/fel-adendas.json). Debe ir antes de /:empnit. */
-router.get('/adendas', (req, res) => {
+/** Adendas Perso1–20 por EMPNIT (dbo.FEL_ADENDAS_PERSO). Debe ir antes de /:empnit. */
+router.get('/adendas', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
   try {
-    const cfg = loadAdendasConfig();
+    const pool = await req.app.locals.getDbPool();
+    const slots = await loadAdendasSlotsForEmpnit(pool, empnit);
     res.json({
-      version: cfg.version,
-      slots: cfg.slots,
+      version: 1,
+      slots,
       options: ADENDA_OPTIONS,
+      empnit,
     });
   } catch (err) {
     console.warn('[API GET /credenciales-fel/adendas]', err.message);
@@ -154,14 +162,22 @@ router.get('/adendas', (req, res) => {
   }
 });
 
-router.put('/adendas', (req, res) => {
+router.put('/adendas', async (req, res) => {
+  if (!isDbConfigured()) {
+    return res.status(503).json({ error: 'Base de datos no configurada' });
+  }
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+
   try {
-    const cfg = saveAdendasConfig(req.body?.slots || req.body || {});
+    const pool = await req.app.locals.getDbPool();
+    const cfg = await saveAdendasSlotsForEmpnit(pool, empnit, req.body?.slots || req.body || {});
     res.json({
       ok: true,
       version: cfg.version,
       slots: cfg.slots,
       options: ADENDA_OPTIONS,
+      empnit,
     });
   } catch (err) {
     console.warn('[API PUT /credenciales-fel/adendas]', err.message);

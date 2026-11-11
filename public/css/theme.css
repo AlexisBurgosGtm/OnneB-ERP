@@ -513,6 +513,65 @@
   --bs-primary-rgb: 14, 165, 233;
 }
 
+[data-theme='navideno'] {
+  --onneb-brand: #dc2626;
+  --onneb-brand-dark: #14532d;
+  --onneb-brand-light: #fde047;
+  --onneb-accent-on-brand: #ffffff;
+
+  --onneb-base-black: #14532d;
+  --onneb-base-white: #f0fdf4;
+
+  --onneb-color-primary: #166534;
+  --onneb-color-secondary: #dc2626;
+  --onneb-color-accent: #fef08a;
+  --onneb-text-muted: #86efac;
+  --onneb-glass-bg: color-mix(in srgb, var(--onneb-brand) 14%, transparent);
+  --onneb-glass-border: color-mix(in srgb, var(--onneb-brand-light) 38%, transparent);
+  --onneb-sidebar-bg: linear-gradient(180deg, #14532d 0%, #7f1d1d 55%, #450a0a 100%);
+
+  --login-bg: #14532d;
+  --login-bg-base: #052e16;
+  --login-surface: #b91c1c;
+  --login-text: #ffffff;
+  --login-text-muted: rgba(255, 255, 255, 0.76);
+  --login-border: rgba(255, 255, 255, 0.32);
+  --login-input-bg: transparent;
+  --login-btn-bg: linear-gradient(90deg, #166534 0%, #dc2626 48%, #ca8a04 100%);
+  --login-btn-text: #ffffff;
+  --login-glass-fg: rgba(255, 255, 255, 0.97);
+  --login-glass-fg-muted: rgba(255, 255, 255, 0.72);
+  --login-glass-card: rgba(255, 255, 255, 0.14);
+  --login-field-line: rgba(255, 255, 255, 0.48);
+  --login-bg-gradient:
+    radial-gradient(ellipse 90% 70% at 8% 12%, color-mix(in srgb, #86efac 42%, transparent), transparent 55%),
+    radial-gradient(ellipse 85% 65% at 92% 8%, color-mix(in srgb, #fca5a5 48%, #dc2626), transparent 52%),
+    radial-gradient(ellipse 88% 75% at 50% 100%, color-mix(in srgb, #14532d 62%, #000), transparent 54%),
+    radial-gradient(ellipse 55% 45% at 78% 22%, color-mix(in srgb, #fde047 35%, transparent), transparent 50%),
+    linear-gradient(155deg, #166534 0%, var(--login-bg-base) 42%, #1e1b4b 100%);
+  --login-glass-surface: var(--login-glass-card);
+  --login-glass-border: rgba(255, 255, 255, 0.26);
+  --login-glass-shadow: color-mix(in srgb, #000 34%, transparent);
+  --login-orb-a: color-mix(in srgb, #4ade80 46%, transparent);
+  --login-orb-b: color-mix(in srgb, #f87171 44%, transparent);
+  --login-orb-c: color-mix(in srgb, #fde047 40%, transparent);
+  --login-glow: #fef08a;
+
+  --app-bg: #ffffff;
+  --app-surface: #f0fdf4;
+  --app-text: #14532d;
+  --app-text-muted: #64748b;
+  --app-border: color-mix(in srgb, #166534 16%, #bbf7d0);
+  --header-chip-bg: color-mix(in srgb, #dc2626 7%, #ffffff);
+  --header-chip-border: color-mix(in srgb, #16a34a 22%, transparent);
+  --header-chip-text: #14532d;
+
+  --fab-menu-bg: linear-gradient(145deg, #22c55e, #b91c1c);
+  --fab-menu-color: #ffffff;
+  --bs-primary: #dc2626;
+  --bs-primary-rgb: 220, 38, 38;
+}
+
 [data-theme='summer'] {
   --onneb-brand: #f59e0b;
   --onneb-brand-dark: #d97706;

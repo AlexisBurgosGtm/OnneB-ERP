@@ -311,6 +311,14 @@
       empnit: user.empNit,
       codtipoempleado: codtipo,
       codempleado: user.codempleado ?? null,
+      usuario: user.usuario,
+      nomempleado: user.nomempleado,
+      empNombre: user.empNombre,
+      email: user.email,
+      superUser: user.superUser === true,
+      dbMode: F.getDbMode(),
+      clientInstanceId:
+        typeof PresenceClient !== 'undefined' ? PresenceClient.getInstanceId() : '',
     });
   }
 
@@ -325,6 +333,9 @@
     socket.on('connect', () => {
       console.log('[Socket.IO] Conectado');
       registerSocketSession();
+      if (typeof PresenceClient !== 'undefined') {
+        PresenceClient.bindSocket(socket);
+      }
       if (typeof AutorizacionesUI !== 'undefined') {
         AutorizacionesUI.bindSocket();
       }
@@ -942,6 +953,7 @@
   const menuLabels = {
     inicio: 'Inicio',
     'pedidos-mostrador': 'Pedidos de Mostrador',
+    'vendedor-pedidos': 'Vendedor — pedidos',
     'comandas-restaurante': 'Comandas Restaurante',
     facturacion: 'Facturas normales',
     'facturas-electronicas': 'Facturas Electrónicas',
@@ -959,6 +971,8 @@
     'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
     embarques: 'Embarques (picking)',
+    'crm-visitas': 'Visitas',
+    'crm-eventos': 'Eventos',
     'asignacion-pedidos': 'Asignación de Facturas',
     'pendientes-entrega': 'Pendientes Entrega',
     'despachos-en-cocina': 'Despachos en Cocina',
@@ -1039,6 +1053,7 @@
     'mesas-restaurante': 'Mesas Restaurante',
     empresas: 'Empresas',
     'config-general': 'Config general',
+    parametros: 'Usuarios activos',
     'roles-usuarios': 'Roles de usuarios',
     'tipo-documentos': 'Tipo documentos',
     'formatos-impresion': 'Formatos de impresión',
@@ -1066,6 +1081,16 @@
 
   function mountMenuView(key, host) {
     if (!host) return;
+    if (typeof DocFinalizarFab !== 'undefined' && typeof DocFinalizarFab.onViewHostReset === 'function') {
+      DocFinalizarFab.onViewHostReset();
+    }
+    if (
+      key !== 'parametros' &&
+      typeof ParametrosView !== 'undefined' &&
+      typeof ParametrosView.unload === 'function'
+    ) {
+      ParametrosView.unload();
+    }
     host.className = 'main-content flex-grow-1 d-flex p-3';
     if (typeof PosDocSearchUI !== 'undefined') PosDocSearchUI.clearActiveDocKeyboard();
 
@@ -1080,6 +1105,8 @@
       ComprasView.load(host);
     } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
       PosView.load(host);
+    } else if (key === 'vendedor-pedidos' && typeof VendedorPedidosView !== 'undefined') {
+      VendedorPedidosView.load(host);
     } else if (key === 'comandas-restaurante' && typeof ComandasRestauranteView !== 'undefined') {
       ComandasRestauranteView.load(host);
     } else if (key === 'facturacion' && typeof FacturacionView !== 'undefined') {
@@ -1115,6 +1142,10 @@
       EmbarquesView.load(host);
     } else if (key === 'asignacion-pedidos' && typeof AsignacionPedidosView !== 'undefined') {
       AsignacionPedidosView.load(host);
+    } else if (key === 'crm-visitas' && typeof CrmVisitasView !== 'undefined') {
+      CrmVisitasView.load(host);
+    } else if (key === 'crm-eventos' && typeof CrmEventosView !== 'undefined') {
+      CrmEventosView.load(host);
     } else if (key === 'pendientes-entrega' && typeof PendientesEntregaView !== 'undefined') {
       PendientesEntregaView.load(host);
     } else if (key === 'despachos-en-cocina' && typeof DespachosEnCocinaView !== 'undefined') {
@@ -1307,6 +1338,8 @@
       ServicioMecanicaView.load(host);
     } else if (key === 'config-general' && typeof ConfigGeneralView !== 'undefined') {
       ConfigGeneralView.load(host);
+    } else if (key === 'parametros' && typeof ParametrosView !== 'undefined') {
+      ParametrosView.load(host);
     } else if (key === 'roles-usuarios' && typeof RolesUsuariosView !== 'undefined') {
       RolesUsuariosView.load(host);
     } else if (key === 'licencia' && typeof LicenciaView !== 'undefined') {

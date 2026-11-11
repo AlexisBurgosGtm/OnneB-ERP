@@ -24,7 +24,13 @@ const { SQL_INVSALDO_UNICO_JOIN_LINEA, sqlExistenciaMedidaExpr } = require('../l
 const { parseFinalizeClienteBody } = require('../lib/documento-cliente-finalize');
 const { parseFinalizeEntregaBody } = require('../lib/documento-entrega-finalize');
 const { findVendedorByClave } = require('../lib/vendedor-clave');
-const { getSettingSino, getSettingTipofacFinalizado, SETTING_OPCION } = require('../lib/settings');
+const {
+  getSettingSino,
+  getSettingTipofacFinalizado,
+  effectivePermiteCambiarPrecioPedidos,
+  getSettingSolicitaClaveCambiarPrecios,
+  SETTING_OPCION,
+} = require('../lib/settings');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
   resolveEmpleadoCoddocPreferido,
@@ -45,7 +51,8 @@ const router = express.Router();
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
 const TIPODOC_MOSTRADOR = 'ENV';
-const TIPODOC_HISTORIAL_FACTURAS = ['FAC', 'FEF', 'FEC', 'FES'];
+const { TIPODOC_FPC } = require('../lib/tipodoc-fpc');
+const TIPODOC_HISTORIAL_FACTURAS = ['FAC', TIPODOC_FPC, 'FEF', 'FEC', 'FES'];
 const DEFAULT_BODEGA = 0;
 const CODTIPO_EMPLEADO_VENDEDOR = 3;
 const HISTORIAL_FACTURAS_LIMIT = 10;
@@ -70,6 +77,15 @@ function parseCorrelativo(raw) {
 
 function roundMoney(n) {
   return Math.round(Number(n) * 1000) / 1000;
+}
+
+/** Coordenada GPS opcional (finalizar pedido). Devuelve null si no es un número finito. */
+function parseOptionalGpsCoord(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return n;
 }
 
 function calcLineTotals(cantidad, costo, precio, equivale) {
@@ -324,6 +340,7 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
     );
+    const solicitaClaveCambiarPrecios = await getSettingSolicitaClaveCambiarPrecios(pool);
     const solicitaAutorizaciones = await getSettingSino(
       pool,
       SETTING_OPCION.SOLICITA_AUTORIZACIONES
@@ -331,6 +348,10 @@ router.get('/config', async (req, res) => {
     const muestraDesprod2 = await getSettingSino(
       pool,
       SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS
+    );
+    const permiteMoverBotonFinalizarEnDocumentos = await getSettingSino(
+      pool,
+      SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
     );
     res.json({
       empnit,
@@ -343,8 +364,10 @@ router.get('/config', async (req, res) => {
       clienteDefault: cliente.recordset[0] || null,
       bodegaDefault: DEFAULT_BODEGA,
       permiteCambiarPrecio,
+      solicitaClaveCambiarPrecios,
       solicitaAutorizaciones,
       muestraDesprod2,
+      permiteMoverBotonFinalizarEnDocumentos,
     });
   } catch (err) {
     console.warn('[API GET /pos/config]', err.message);
@@ -522,6 +545,7 @@ router.get('/pedidos', async (req, res) => {
         d.CODDOC, d.CORRELATIVO, d.FECHA, d.HORA, d.MINUTO, d.STATUS,
         d.DOC_NOMCLIE, d.TOTALPRECIO, d.CODCLIENTE, d.OBS, d.DOC_DIRCLIE,
         d.F_ENTREGA, d.DIRENTREGA,
+        d.LAT, d.[LONG] AS LONG,
         c.NEGOCIO, c.TIPONEGOCIO,
         (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
          WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
@@ -905,10 +929,7 @@ router.post('/pedidos/:coddoc/:correlativo/lineas', async (req, res) => {
       ({ tipoprod, tipoprecio } = lineProductMeta(prod, campoPrecio));
       costo = Number(prod.COSTO ?? prod.COSTO_PROD) || 0;
       precio = getPrecioFromPreciosRow(prod, campoPrecio);
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio === 'SI' && req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
         const customPrecio = Number(req.body.PRECIO);
         if (!Number.isFinite(customPrecio) || customPrecio < 0) {
@@ -1063,10 +1084,7 @@ router.patch('/pedidos/:coddoc/:correlativo/lineas/:lineId', async (req, res) =>
 
     let precio = Number(line.PRECIO) || 0;
     if (req.body?.PRECIO !== undefined && req.body?.PRECIO !== null) {
-      const permiteCambiarPrecio = await getSettingSino(
-        pool,
-        SETTING_OPCION.PERMITE_CAMBIAR_PRECIO_PEDIDOS
-      );
+      const permiteCambiarPrecio = await effectivePermiteCambiarPrecioPedidos(pool);
       if (permiteCambiarPrecio !== 'SI') {
         return res.status(400).json({ error: 'No está permitido cambiar el precio' });
       }
@@ -1246,6 +1264,18 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
     return res.status(parseErr.statusCode || 400).json({ error: parseErr.message });
   }
 
+  const latFin = parseOptionalGpsCoord(req.body?.LAT ?? req.body?.lat);
+  const longFin = parseOptionalGpsCoord(
+    req.body?.LONG ?? req.body?.long ?? req.body?.longitud ?? req.body?.lng
+  );
+  let gpsUpdate = null;
+  if (latFin != null && longFin != null) {
+    if (latFin < -90 || latFin > 90 || longFin < -180 || longFin > 180) {
+      return res.status(400).json({ error: 'Coordenadas GPS inválidas (LAT / LONG)' });
+    }
+    gpsUpdate = { lat: latFin, lng: longFin };
+  }
+
   try {
     const pool = await req.app.locals.getDbPool();
     if (tipofac === null) {
@@ -1261,6 +1291,9 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
       }
       setParts.push('F_ENTREGA = @F_ENTREGA', 'DIRENTREGA = @DIRENTREGA');
       setParts.push('TIPOFAC = @TIPOFAC', 'PRIORIDAD = @PRIORIDAD');
+      if (gpsUpdate) {
+        setParts.push('LAT = @LAT', '[LONG] = @DOC_LONG');
+      }
       if (setParts.length) {
         const updReq = transaction
           .request()
@@ -1276,6 +1309,10 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
         updReq.input('DIRENTREGA', sql.VarChar, entregaFinalize.dirEntrega);
         updReq.input('TIPOFAC', sql.VarChar, tipofac);
         updReq.input('PRIORIDAD', sql.VarChar, prioridad);
+        if (gpsUpdate) {
+          updReq.input('LAT', sql.Float, gpsUpdate.lat);
+          updReq.input('DOC_LONG', sql.Float, gpsUpdate.lng);
+        }
         await updReq.query(`
             UPDATE dbo.DOCUMENTOS SET ${setParts.join(', ')}
             WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO

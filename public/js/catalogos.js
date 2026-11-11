@@ -272,12 +272,26 @@ const CatalogosUI = {
 
   /** ID Config PASS — clave de administrador (movimientos / autorización). */
   ADMIN_PASS_CONFIG_ID: 2,
+  CLAVE_OPERADOR_OPCION: 'CLAVE OPERADOR',
 
   async verifyConfigPass(pass, configId = 2) {
     const data = await F.fetchJson(`/api/config/${encodeURIComponent(configId)}/verify-pass`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pass: String(pass ?? '') }),
+    });
+    return Boolean(data?.ok);
+  },
+
+  /** Valida contra SETTINGS «CLAVE OPERADOR» (cambio de precio en pedido/factura). */
+  async verifyOperadorPass(pass) {
+    const data = await F.fetchJson('/api/config/verify-pass', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pass: String(pass ?? ''),
+        opcion: this.CLAVE_OPERADOR_OPCION,
+      }),
     });
     return Boolean(data?.ok);
   },
@@ -521,6 +535,7 @@ const CatalogosUI = {
 if (typeof F !== 'undefined') {
   F.solicitarClaveAdmin = (opts) => CatalogosUI.solicitarClaveAdmin(opts);
   F.verifyConfigPass = (pass, configId) => CatalogosUI.verifyConfigPass(pass, configId);
+  F.verifyOperadorPass = (pass) => CatalogosUI.verifyOperadorPass(pass);
   F.ADMIN_PASS_CONFIG_ID = CatalogosUI.ADMIN_PASS_CONFIG_ID;
   F.authorizeEliminarRegistro = (opts) => CatalogosUI.authorizeEliminarRegistro(opts);
   F.confirmEliminarDocumento = (opts) => CatalogosUI.confirmEliminarDocumento(opts);

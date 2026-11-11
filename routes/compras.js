@@ -518,6 +518,10 @@ router.get('/config', async (req, res) => {
       bodegaDefault: DEFAULT_BODEGA,
       muestraDesprod2: await getSettingSino(pool, SETTING_OPCION.MUESTRA_DESPROD2_EN_DOCS_Y_PRODS),
       muestraPesoEnDocumentos: await getSettingSino(pool, SETTING_OPCION.MUESTRA_PESO_EN_DOCUMENTOS),
+      permiteMoverBotonFinalizarEnDocumentos: await getSettingSino(
+        pool,
+        SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
+      ),
     });
   } catch (err) {
     console.warn('[API GET /compras/config]', err.message);
