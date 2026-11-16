@@ -356,14 +356,20 @@
     paintFestiveDecor(estilo);
 
     if (estilo === 'DEFAULT') {
+      if (typeof LoginDefaultBg !== 'undefined') LoginDefaultBg.onDefaultThemeInactive();
       showParallaxHost(view);
       view.classList.add('login-parallax-active');
       if (typeof LoginParallax !== 'undefined') LoginParallax.mount();
       return;
     }
 
+    if (typeof LoginDefaultBg !== 'undefined') LoginDefaultBg.onDefaultThemeInactive();
+
     view.classList.add(`${CLASS_PREFIX}${classSuffix(estilo)}`);
-    if (estilo === 'TEMA') showThemeScene(true);
+    if (estilo === 'TEMA') {
+      showThemeScene(true);
+      if (typeof LoginDefaultBg !== 'undefined') LoginDefaultBg.onDefaultThemeActive();
+    }
   }
 
   async function fetchEstiloFromServer() {
@@ -385,6 +391,7 @@
   function teardown() {
     paintYearBadge('');
     if (typeof LoginParallax !== 'undefined') LoginParallax.unmount();
+    if (typeof LoginDefaultBg !== 'undefined') LoginDefaultBg.onDefaultThemeInactive();
   }
 
   function getCachedEstilo() {

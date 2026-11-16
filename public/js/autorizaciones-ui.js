@@ -506,11 +506,10 @@ const AutorizacionesUI = {
               inputId: 'authz-precio-clave-input',
               name: 'onneb-precio-operador-pass',
               label: 'Clave de operador',
-              placeholder: 'Clave de operador',
             })
           : `<label class="form-label small mb-0" for="authz-precio-clave-input">Clave de operador</label>
         <input type="text" id="authz-precio-clave-input" class="form-control form-control-sm config-pass-mask"
-          autocomplete="new-password" name="onneb-precio-operador-pass">`;
+          autocomplete="off" aria-autocomplete="none" name="onneb-precio-operador-pass" readonly>`;
       claveWrap.innerHTML = `
         <form class="secret-input-modal" autocomplete="off" novalidate onsubmit="return false">
           ${secretField}

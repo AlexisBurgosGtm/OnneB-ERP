@@ -78,7 +78,6 @@ const DocVendedorClave = {
         ${CatalogosUI.secretInputFormHtml({
           inputId: this.INPUT_ID,
           label: 'Clave',
-          placeholder: 'Clave del vendedor',
           name: 'onneb-vendedor-auth',
         })}`,
       icon: 'lock',

@@ -747,6 +747,66 @@ select.login-input-line {
     inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
 }
 
+.login-custom-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: var(--login-bg-base, #0f172a);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+#view-login.login-style-tema.login-custom-bg-active #login-theme-scene .login-orb {
+  opacity: 0.35;
+}
+
+#view-login.login-style-tema.login-custom-bg-active .login-glass-card {
+  background: color-mix(in srgb, var(--login-glass-card) 48%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(1.45);
+  -webkit-backdrop-filter: blur(22px) saturate(1.45);
+  border-color: color-mix(in srgb, var(--login-glass-border) 85%, transparent) !important;
+  box-shadow:
+    0 28px 56px var(--login-glass-shadow, rgba(0, 0, 0, 0.35)),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+.login-custom-bg-btn {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.login-custom-bg-btn:hover {
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.login-custom-bg-btn:focus-visible {
+  outline: 2px solid rgba(255, 117, 90, 0.85);
+  outline-offset: 2px;
+}
+
+.login-custom-bg-btn[hidden] {
+  display: none !important;
+}
+
 #view-login.login-parallax-active .btn-login {
   background: var(--login-btn-bg) !important;
   border: none;

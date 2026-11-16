@@ -604,7 +604,6 @@ const CotizacionesView = {
                     inputId: 'pos-cart-precio-clave',
                     name: 'onneb-cart-precio-operador-pass',
                     label: 'Clave de operador',
-                    placeholder: 'Clave de operador',
                   })
                 : ''
             }

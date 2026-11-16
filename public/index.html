@@ -140,6 +140,12 @@
   <script src="/js/pace-init.js"></script>
   <div id="app" class="app-shell">
     <section id="view-login" class="view view-active login-style-tema" data-view="login">
+      <div id="login-custom-bg" class="login-custom-bg" hidden aria-hidden="true"></div>
+      <button type="button" id="btn-login-custom-bg" class="login-custom-bg-btn" hidden
+        title="Imagen de fondo (Shift+clic quita)" aria-label="Elegir imagen de fondo del login">
+        <i class="fa-solid fa-image" aria-hidden="true"></i>
+      </button>
+      <input type="file" id="login-custom-bg-file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
       <div class="login-scene login-style-decor" id="login-theme-scene" aria-hidden="true">
         <div class="login-orb login-orb-a"></div>
         <div class="login-orb login-orb-b"></div>
@@ -686,6 +692,7 @@
   <script src="/js/login-logo-fly.js"></script>
   <script src="/vendor/parallax/parallax.min.js"></script>
   <script src="/js/login-parallax.js"></script>
+  <script src="/js/login-default-bg.js"></script>
   <script src="/js/login-style.js"></script>
   <script src="/js/hourly-voice.js"></script>
   <script src="/js/catalogos.js"></script>

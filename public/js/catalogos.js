@@ -94,6 +94,10 @@ const CatalogosUI = {
     formClass = '',
   } = {}) {
     const extraClass = formClass ? ` ${formClass}` : '';
+    const ph =
+      placeholder != null && String(placeholder).trim() !== ''
+        ? ` placeholder="${this.escapeAttr(placeholder)}"`
+        : '';
     return `
       <form class="catalogo-form text-start secret-input-modal${extraClass}" autocomplete="off" novalidate
         onsubmit="return false">
@@ -103,7 +107,8 @@ const CatalogosUI = {
           type="text"
           id="${this.escapeAttr(inputId)}"
           class="form-control form-control-sm config-pass-mask"
-          autocomplete="new-password"
+          autocomplete="off"
+          aria-autocomplete="none"
           autocapitalize="off"
           autocorrect="off"
           spellcheck="false"
@@ -113,7 +118,8 @@ const CatalogosUI = {
           data-bwignore="true"
           data-form-type="other"
           name="${this.escapeAttr(name)}"
-          placeholder="${this.escapeAttr(placeholder)}"
+          readonly
+          ${ph}
         >
         ${afterInput}
       </form>`;
@@ -125,17 +131,22 @@ const CatalogosUI = {
   secretInputFieldHtml({
     inputId,
     label = 'Clave de administrador',
-    placeholder = 'Clave de administrador',
+    placeholder = '',
     name = 'onneb-secret-auth',
     inputClass = 'form-control form-control-sm',
   } = {}) {
+    const ph =
+      placeholder != null && String(placeholder).trim() !== ''
+        ? ` placeholder="${this.escapeAttr(placeholder)}"`
+        : '';
     return `
         <label class="form-label small mb-0" for="${this.escapeAttr(inputId)}">${label}</label>
         <input
           type="text"
           id="${this.escapeAttr(inputId)}"
           class="${this.escapeAttr(inputClass)} config-pass-mask"
-          autocomplete="new-password"
+          autocomplete="off"
+          aria-autocomplete="none"
           autocapitalize="off"
           autocorrect="off"
           spellcheck="false"
@@ -145,8 +156,15 @@ const CatalogosUI = {
           data-bwignore="true"
           data-form-type="other"
           name="${this.escapeAttr(name)}"
-          placeholder="${this.escapeAttr(placeholder)}"
+          readonly
+          ${ph}
         >`;
+  },
+
+  /** Quita readonly del anti-autofill para permitir teclear (idempotente). */
+  prepareSecretInputForTyping(input) {
+    if (!input) return;
+    input.removeAttribute('readonly');
   },
 
   /** Enfoca el input y permite confirmar con Enter sin ocultar el botón Aceptar/Continuar. */
@@ -154,7 +172,10 @@ const CatalogosUI = {
     const form = Swal.getPopup()?.querySelector('.secret-input-modal');
     form?.setAttribute('autocomplete', 'off');
     const input = this.wireSecretInput(inputId, { onInput, enterConfirmsSwal: true });
-    input?.focus();
+    if (input) {
+      this.prepareSecretInputForTyping(input);
+      input.focus({ preventScroll: true });
+    }
     return input;
   },
 
@@ -162,7 +183,19 @@ const CatalogosUI = {
     const input = document.getElementById(inputId);
     const form = input?.closest('form');
     form?.setAttribute('autocomplete', 'off');
-    input?.setAttribute('autocomplete', 'new-password');
+    if (input) {
+      input.setAttribute('autocomplete', 'off');
+      input.setAttribute('aria-autocomplete', 'none');
+      input.setAttribute('name', `onneb-secret-${Date.now()}`);
+      input.removeAttribute('title');
+      if (!input.dataset.onnebSecretWired) {
+        input.dataset.onnebSecretWired = '1';
+        const unlock = () => this.prepareSecretInputForTyping(input);
+        input.addEventListener('focus', unlock);
+        input.addEventListener('mousedown', unlock);
+        input.addEventListener('pointerdown', unlock);
+      }
+    }
     input?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && enterConfirmsSwal && typeof Swal !== 'undefined') {
         e.preventDefault();
@@ -354,7 +387,6 @@ const CatalogosUI = {
         ${this.secretInputFormHtml({
           inputId: 'config-pass-input',
           label: 'Clave',
-          placeholder: 'Clave de administrador',
           name: 'onneb-admin-auth',
           formClass: 'config-pass-modal',
           beforeInput: `<p class="small text-muted mb-2 mb-sm-3">${text}</p>`,

@@ -408,48 +408,6 @@ const DocOpciones = {
   },
 
   /**
-   * Diálogo con serie/número y botón para abrir la factura FEL (además del formato online configurado).
-   */
-  async mostrarResumenTrasCertificarFel({ felUuid, serie, numero, coddoc, correlativo } = {}) {
-    const uuid = String(felUuid || '').trim();
-    if (!uuid || typeof Swal === 'undefined' || typeof CatalogosUI === 'undefined') return;
-
-    const esc = (v) =>
-      String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-
-    const docLabel = [coddoc, correlativo != null ? `#${correlativo}` : ''].filter(Boolean).join(' ');
-    const serieNo = [serie, numero].filter((x) => String(x || '').trim()).join(' · ');
-    let felUrl = '';
-    try {
-      const base = await this.fetchUrlFel();
-      felUrl = this.joinFelUrl(base, uuid) || '';
-    } catch {
-      felUrl = '';
-    }
-
-    const result = await Swal.fire({
-      ...CatalogosUI.modalBase({ customClass: { confirmButton: 'btn-modal-guardar' } }),
-      icon: 'success',
-      title: 'Factura certificada (FEL)',
-      html: `
-        ${docLabel ? `<p class="mb-2 text-muted small">${esc(docLabel)}</p>` : ''}
-        ${serieNo ? `<p class="mb-2"><strong>Serie / número SAT:</strong> ${esc(serieNo)}</p>` : ''}
-        <p class="small text-muted mb-0 text-break">UUID: ${esc(uuid)}</p>
-      `,
-      confirmButtonText: 'Cerrar',
-      showDenyButton: Boolean(felUrl),
-      denyButtonText: felUrl ? 'Ver factura FEL' : undefined,
-    });
-    if (result.isDenied && felUrl) {
-      window.open(felUrl, '_blank', 'noopener,noreferrer');
-    }
-  },
-
-  /**
    * Certifica sin confirmación y aplica la visualización de formatos configurada.
    * @param {string} coddoc
    * @param {number|string} correlativo
@@ -457,19 +415,12 @@ const DocOpciones = {
    */
   async certificarYMostrarFormatos(coddoc, correlativo, opts = {}) {
     try {
-      const data = await this.certificar(coddoc, correlativo, { quiet: true });
+      const data = await this.certificar(coddoc, correlativo);
       const fel = data.fel || {};
       const felUuid = String(fel.uuid || fel.UUID || data.FEL_UUDI || '').trim();
       await this.mostrarFormatosTrasCertificar({
         felUuid,
         onImprimirSistema: opts.onImprimirSistema,
-      });
-      await this.mostrarResumenTrasCertificarFel({
-        felUuid,
-        serie: fel.serie,
-        numero: fel.numero,
-        coddoc,
-        correlativo,
       });
       if (typeof opts.onCertificado === 'function') {
         opts.onCertificado(data);
