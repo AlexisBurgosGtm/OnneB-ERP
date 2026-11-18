@@ -9,6 +9,8 @@ const CuentasPorCobrarView = {
   _sumTotal: 0,
   _truncated: false,
   _filterQuery: '',
+  _filterRuta: '',
+  _rutas: [],
   _listaModo: 'todas',
   _vistaTipo: 'lista',
   _calYear: null,
@@ -437,6 +439,8 @@ const CuentasPorCobrarView = {
     const params = { _: String(Date.now()) };
     const q = this._filterQuery.trim();
     if (q) params.q = q;
+    const ruta = String(this._filterRuta || '').trim();
+    if (ruta) params.codruta = ruta;
     if (this._vistaTipo === 'lista' && this._listaModo === 'vencidas') params.vencidas = '1';
     const data = await F.fetchJson(this.apiUrl(params), { cache: 'no-store' });
     this._rows = data.rows || [];
@@ -510,13 +514,14 @@ const CuentasPorCobrarView = {
       const msg = this._vistaTipo === 'lista' && this._listaModo === 'vencidas'
         ? 'No hay facturas vencidas con saldo pendiente'
         : 'No hay facturas al crédito con saldo pendiente';
-      return `<tr><td colspan="9" class="text-center text-muted py-4">${msg}</td></tr>`;
+      return `<tr><td colspan="10" class="text-center text-muted py-4">${msg}</td></tr>`;
     }
     return rows
       .map((r) => {
         const vencido = this.isVencido(r);
         const rowCls = vencido ? 'cxp-row-vencido' : '';
         return `<tr class="cxp-row ${rowCls}" data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}" role="button" tabindex="0">
+          <td class="small text-muted">${this.escapeHtml(r.DESRUTA || '—')}</td>
           <td class="small">${this.escapeHtml(r.EMPLEADO || r.VENDEDOR || '—')}</td>
           <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
           <td class="text-nowrap${vencido ? ' text-danger fw-semibold' : ''}">${this.escapeHtml(this.formatFecha(r.VENCIMIENTO))}</td>
@@ -1336,6 +1341,7 @@ const CuentasPorCobrarView = {
             <table class="table table-sm table-hover table-striped mb-0 cxp-table">
               <thead class="table-light sticky-top">
                 <tr>
+                  <th>Ruta</th>
                   <th>Empleado</th>
                   <th>Fecha</th>
                   <th>Vence</th>
@@ -1350,7 +1356,7 @@ const CuentasPorCobrarView = {
               <tbody id="cxp-tbody">${this.renderTableBodyHtml()}</tbody>
               <tfoot class="table-light">
                 <tr>
-                  <td colspan="8" class="text-end fw-semibold">Doc. saldo (listado)</td>
+                  <td colspan="9" class="text-end fw-semibold">Doc. saldo (listado)</td>
                   <td class="text-end fw-bold text-primary">${this.escapeHtml(this.formatMoney(this._sumSaldo))}</td>
                 </tr>
               </tfoot>
@@ -1651,6 +1657,20 @@ const CuentasPorCobrarView = {
         <div class="card shadow-sm mb-3">
           <div class="card-body py-2">
             <div class="cxp-lista-tools">
+              <div class="cxp-lista-tools-ruta">
+                <label class="form-label small mb-1" for="cxp-filter-ruta">Ruta</label>
+                <select class="form-select form-select-sm" id="cxp-filter-ruta">
+                  <option value="">Todas</option>
+                  ${(this._rutas || [])
+                    .map(
+                      (r) =>
+                        `<option value="${this.escapeHtml(r.CODRUTA)}"${
+                          String(this._filterRuta) === String(r.CODRUTA) ? ' selected' : ''
+                        }>${this.escapeHtml(r.DESRUTA || r.CODRUTA)}</option>`
+                    )
+                    .join('')}
+                </select>
+              </div>
               <div class="cxp-lista-tools-search">
                 <div class="input-group input-group-sm">
                   <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -1727,6 +1747,8 @@ const CuentasPorCobrarView = {
       const params = { format: 'xlsx', _: String(Date.now()) };
       const q = this._filterQuery.trim();
       if (q) params.q = q;
+      const ruta = String(this._filterRuta || '').trim();
+      if (ruta) params.codruta = ruta;
       if (this._listaModo === 'vencidas') params.vencidas = '1';
       const res = await fetch(this.apiUrl(params), { cache: 'no-store' });
       if (!res.ok) {
@@ -2860,6 +2882,19 @@ const CuentasPorCobrarView = {
   },
 
   bindEvents() {
+    this._container?.querySelector('#cxp-filter-ruta')?.addEventListener('change', async (e) => {
+      this._filterRuta = e.target.value || '';
+      try {
+        await this.fetchDocumentos();
+        const tbody = this._container?.querySelector('#cxp-tbody');
+        if (tbody) tbody.innerHTML = this.renderTableBodyHtml();
+        const foot = this._container?.querySelector('.cxp-table tfoot td.text-primary');
+        if (foot) foot.textContent = this.formatMoney(this._sumSaldo);
+      } catch (err) {
+        F.toast(err.message || 'Error al filtrar', 'error');
+      }
+    });
+
     const search = this._container?.querySelector('#cxp-search');
     const applySearch = async () => {
       if (!search) return;
@@ -3080,6 +3115,16 @@ const CuentasPorCobrarView = {
     });
   },
 
+  async fetchRutas() {
+    const emp = F.getEmpNit();
+    if (!emp) return [];
+    const data = await F.fetchJson(`/api/rutas?empnit=${encodeURIComponent(emp)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    this._rutas = data.rows || [];
+    return this._rutas;
+  },
+
   async load(container) {
     this._container = container;
     container.classList.remove('align-items-center', 'justify-content-center');
@@ -3098,6 +3143,7 @@ const CuentasPorCobrarView = {
     try {
       this.initCalMonth();
       this.initSaldoMes();
+      await this.fetchRutas();
       await this.fetchDocumentos();
       container.innerHTML = this.renderShell();
       this.bindEvents();

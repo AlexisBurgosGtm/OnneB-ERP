@@ -11,6 +11,8 @@ const ReportesVentasView = {
   _data: null,
   _filters: { documentos: '', productos: '', marcas: '' },
 
+  FPAGO_KEYS: ['FPAGO_EFECTIVO', 'FPAGO_TARJETA', 'FPAGO_DEPOSITO', 'FPAGO_CHEQUE'],
+
   escapeHtml(value) {
     if (value === null || value === undefined) return '';
     return String(value)
@@ -67,6 +69,20 @@ const ReportesVentasView = {
     return (rows || []).reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
   },
 
+  concreLabel(concre) {
+    return String(concre || 'CON').trim().toUpperCase() === 'CRE' ? 'Crédito' : 'Contado';
+  },
+
+  sumFpagoTotals(rows) {
+    const acc = { FPAGO_EFECTIVO: 0, FPAGO_TARJETA: 0, FPAGO_DEPOSITO: 0, FPAGO_CHEQUE: 0 };
+    for (const r of rows || []) {
+      for (const k of this.FPAGO_KEYS) {
+        acc[k] += Number(r[k]) || 0;
+      }
+    }
+    return acc;
+  },
+
   pctFromTotals(importe, utilidad) {
     const i = Number(importe);
     const u = Number(utilidad);
@@ -80,18 +96,28 @@ const ReportesVentasView = {
     const rowCls = [neg ? 'repven-row-dev' : '', anulado ? 'repven-row-anulado' : '']
       .filter(Boolean)
       .join(' ');
+    const concre = String(r.CONCRE || 'CON').toUpperCase();
+    const concreBadge =
+      concre === 'CRE'
+        ? '<span class="badge text-bg-danger">Crédito</span>'
+        : '<span class="badge text-bg-primary">Contado</span>';
     return `
           <tr class="${rowCls}">
             <td class="text-nowrap">${this.escapeHtml(this.formatFecha(r.FECHA))}</td>
             <td>${this.escapeHtml(r.TIPODOC || '—')}</td>
             <td>${this.escapeHtml(r.CODDOC || '—')}</td>
             <td class="text-end">${this.escapeHtml(r.CORRELATIVO ?? '—')}</td>
+            <td class="text-center">${concreBadge}</td>
             <td>${this.escapeHtml(r.CLIENTE || '—')}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(r.TOTALCOSTO))}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(r.IMPORTE))}</td>
             <td class="text-end">${this.escapeHtml(this.formatMoney(r.UTILIDAD))}</td>
             <td class="text-end">${this.escapeHtml(this.formatPct(r.PCT_UTILIDAD))}</td>
             <td class="text-center">${this.statusHtml(r.STATUS)}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.FPAGO_EFECTIVO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.FPAGO_TARJETA))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.FPAGO_DEPOSITO))}</td>
+            <td class="text-end">${this.escapeHtml(this.formatMoney(r.FPAGO_CHEQUE))}</td>
           </tr>`;
   },
 
@@ -148,6 +174,8 @@ const ReportesVentasView = {
       pctUtilidad: null,
       docsVenta: 0,
       docsDev: 0,
+      netoContado: 0,
+      netoCredito: 0,
     };
   },
 
@@ -238,6 +266,16 @@ const ReportesVentasView = {
           </div>
           <div class="repven-card-sub text-muted">Neto − costo</div>
         </div>
+        <div class="repven-card repven-card-con">
+          <div class="repven-card-label">Total contado</div>
+          <div class="repven-card-value">${this.escapeHtml(this.formatMoney(r.netoContado))}</div>
+          <div class="repven-card-sub text-muted">Importe neto CON</div>
+        </div>
+        <div class="repven-card repven-card-cre">
+          <div class="repven-card-label">Total crédito</div>
+          <div class="repven-card-value">${this.escapeHtml(this.formatMoney(r.netoCredito))}</div>
+          <div class="repven-card-sub text-muted">Importe neto CRE</div>
+        </div>
       </div>`;
   },
 
@@ -248,6 +286,7 @@ const ReportesVentasView = {
       'CODDOC',
       'CORRELATIVO',
       'CLIENTE',
+      'CONCRE',
       'TIPODOC',
       'DESDOC',
       'TOTALCOSTO',
@@ -255,13 +294,15 @@ const ReportesVentasView = {
       'UTILIDAD',
       'PCT_UTILIDAD',
       'STATUS',
+      ...this.FPAGO_KEYS,
     ], q);
     const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
     const totalI = this.sumMoneyRows(rows, 'IMPORTE');
     const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
     const totalPct = this.pctFromTotals(totalI, totalU);
+    const fpagoTot = this.sumFpagoTotals(rows);
     const body = !rows.length
-      ? `<tr><td colspan="10" class="text-center text-muted py-3">Sin documentos</td></tr>`
+      ? `<tr><td colspan="15" class="text-center text-muted py-3">Sin documentos</td></tr>`
       : rows.map((r) => this.documentoRowHtml(r)).join('');
 
     return `
@@ -274,23 +315,32 @@ const ReportesVentasView = {
               <th>Tipo</th>
               <th>Coddoc</th>
               <th class="text-end">Correlativo</th>
+              <th class="text-center">Pago</th>
               <th>Cliente</th>
               <th class="text-end">Total costo</th>
               <th class="text-end">Importe</th>
               <th class="text-end">Utilidad</th>
               <th class="text-end">%</th>
               <th class="text-center">Status</th>
+              <th class="text-end">Efectivo</th>
+              <th class="text-end">Tarjeta</th>
+              <th class="text-end">Depósito</th>
+              <th class="text-end">Cheque</th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
           <tfoot>
             <tr>
-              <td colspan="5" class="text-end fw-semibold">Totales (vista filtrada)</td>
+              <td colspan="6" class="text-end fw-semibold">Totales (vista filtrada)</td>
               <td class="text-end fw-semibold" id="repven-total-docs-costo">${this.escapeHtml(this.formatMoney(totalC))}</td>
               <td class="text-end fw-semibold" id="repven-total-docs">${this.escapeHtml(this.formatMoney(totalI))}</td>
               <td class="text-end fw-semibold" id="repven-total-docs-util">${this.escapeHtml(this.formatMoney(totalU))}</td>
               <td class="text-end fw-semibold" id="repven-total-docs-pct">${this.escapeHtml(this.formatPct(totalPct))}</td>
               <td></td>
+              <td class="text-end fw-semibold" id="repven-total-fpago-efe">${this.escapeHtml(this.formatMoney(fpagoTot.FPAGO_EFECTIVO))}</td>
+              <td class="text-end fw-semibold" id="repven-total-fpago-tar">${this.escapeHtml(this.formatMoney(fpagoTot.FPAGO_TARJETA))}</td>
+              <td class="text-end fw-semibold" id="repven-total-fpago-dep">${this.escapeHtml(this.formatMoney(fpagoTot.FPAGO_DEPOSITO))}</td>
+              <td class="text-end fw-semibold" id="repven-total-fpago-che">${this.escapeHtml(this.formatMoney(fpagoTot.FPAGO_CHEQUE))}</td>
             </tr>
           </tfoot>
         </table>
@@ -474,15 +524,17 @@ const ReportesVentasView = {
 
     if (this._tab === 'documentos') {
       const rows = this.filterRows(this._data.documentos || [], [
-        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'TIPODOC', 'DESDOC',
+        'FECHA', 'CODDOC', 'CORRELATIVO', 'CLIENTE', 'CONCRE', 'TIPODOC', 'DESDOC',
         'TOTALCOSTO', 'IMPORTE', 'UTILIDAD', 'PCT_UTILIDAD', 'STATUS',
+        ...this.FPAGO_KEYS,
       ], this._filters.documentos);
       const totalC = this.sumMoneyRows(rows, 'TOTALCOSTO');
       const totalI = this.sumMoneyRows(rows, 'IMPORTE');
       const totalU = this.sumMoneyRows(rows, 'UTILIDAD');
       const totalPct = this.pctFromTotals(totalI, totalU);
+      const fpagoTot = this.sumFpagoTotals(rows);
       tbody.innerHTML = !rows.length
-        ? `<tr><td colspan="10" class="text-center text-muted py-3">Sin documentos</td></tr>`
+        ? `<tr><td colspan="15" class="text-center text-muted py-3">Sin documentos</td></tr>`
         : rows.map((r) => this.documentoRowHtml(r)).join('');
       el.querySelector('#repven-total-docs-costo')?.replaceChildren(document.createTextNode(this.formatMoney(totalC)));
       const tot = el.querySelector('#repven-total-docs');
@@ -490,6 +542,14 @@ const ReportesVentasView = {
       el.querySelector('#repven-total-docs-util')?.replaceChildren(document.createTextNode(this.formatMoney(totalU)));
       const pctEl = el.querySelector('#repven-total-docs-pct');
       if (pctEl) pctEl.textContent = this.formatPct(totalPct);
+      const setTot = (id, val) => {
+        const cell = el.querySelector(id);
+        if (cell) cell.textContent = this.formatMoney(val);
+      };
+      setTot('#repven-total-fpago-efe', fpagoTot.FPAGO_EFECTIVO);
+      setTot('#repven-total-fpago-tar', fpagoTot.FPAGO_TARJETA);
+      setTot('#repven-total-fpago-dep', fpagoTot.FPAGO_DEPOSITO);
+      setTot('#repven-total-fpago-che', fpagoTot.FPAGO_CHEQUE);
       return;
     }
 

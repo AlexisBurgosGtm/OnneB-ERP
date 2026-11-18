@@ -26,6 +26,15 @@ const CatalogosUI = {
     `;
   },
 
+  btnHistorial(id, dataKey = 'empnit') {
+    const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
+    return `
+      <button type="button" class="btn btn-catalogo-historial" ${attr} aria-label="Historial" title="Historial">
+        <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Historial
+      </button>
+    `;
+  },
+
   btnEditar(id, dataKey = 'empnit') {
     const attr = id !== undefined && id !== null && id !== '' ? `data-${dataKey}="${this.escapeAttr(id)}"` : '';
     return `
@@ -46,6 +55,10 @@ const CatalogosUI = {
 
   accionesRow(id, dataKey = 'empnit') {
     return `<div class="catalogo-acciones">${this.btnEditar(id, dataKey)}${this.btnEliminar(id, dataKey)}</div>`;
+  },
+
+  accionesRowConHistorial(id, dataKey = 'empnit') {
+    return `<div class="catalogo-acciones">${this.btnHistorial(id, dataKey)}${this.btnEditar(id, dataKey)}${this.btnEliminar(id, dataKey)}</div>`;
   },
 
   /** Opciones base modales: Cancelar izquierda, confirmar derecha */

@@ -16,6 +16,9 @@ const ComprasView = {
   _searchTimer: null,
   _cartBusy: false,
   _urlFel: '',
+  _ocmModalOpen: false,
+  _ocmList: [],
+  _ocmFilter: '',
 
   FEL_URL_OPCION: 'URL FEL',
   COBRO_PREDETERMINADO_OPCION: 'COBRO PREDETERMINADO',
@@ -321,20 +324,16 @@ const ComprasView = {
     }
   },
 
-  resolveFinalizarFacDefaults(h, key) {
-    const seriefacStored = String(h?.SERIEFAC ?? '').trim();
-    const nofacStored = String(h?.NOFAC ?? '').trim();
+  resolveFinalizarFacDefaults(h) {
     return {
-      seriefac: seriefacStored || String(key?.coddoc ?? '').trim(),
-      nofac: nofacStored || (key?.correlativo != null ? String(key.correlativo) : ''),
+      felSerie: String(h?.FEL_SERIE ?? '').trim(),
+      felNumero: String(h?.FEL_NUMERO ?? '').trim(),
     };
   },
 
-  readFinalizarFormForSubmit(key) {
-    let seriefac = document.getElementById('compras-finalizar-serie')?.value?.trim() || '';
-    let nofac = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
-    if (!seriefac) seriefac = String(key?.coddoc ?? '').trim();
-    if (!nofac) nofac = key?.correlativo != null ? String(key.correlativo) : '';
+  readFinalizarFormForSubmit() {
+    const felSerie = document.getElementById('compras-finalizar-serie')?.value?.trim() || '';
+    const felNumero = document.getElementById('compras-finalizar-num')?.value?.trim() || '';
     const felUudi = document.getElementById('compras-finalizar-fel-uudi')?.value?.trim() || '';
     const concre = document.getElementById('compras-finalizar-concre')?.value || 'CON';
     const venc = document.getElementById('compras-finalizar-venc')?.value?.trim() || '';
@@ -345,8 +344,8 @@ const ComprasView = {
     }
     Swal.resetValidationMessage?.();
     return {
-      seriefac,
-      nofac,
+      felSerie,
+      felNumero,
       felUudi,
       concre,
       vencimiento: concre === 'CRE' ? venc : null,
@@ -683,7 +682,7 @@ const ComprasView = {
       this.mostrarConfirmacionCargarCostos();
     });
     document.getElementById('compras-finalizar-btn-submit')?.addEventListener('click', () => {
-      const value = this.readFinalizarFormForSubmit(key);
+      const value = this.readFinalizarFormForSubmit();
       if (!value) return;
       finish(value);
     });
@@ -735,9 +734,9 @@ const ComprasView = {
     const proveedor = this.escapeHtml(this.proveedorLabel(h));
     const dir = this.escapeHtml(h.DOC_DIRCLIE || h.PROV_DIR || '—');
     const obsVal = this.escapeHtml(h.OBS || '');
-    const facDefaults = this.resolveFinalizarFacDefaults(h, key);
-    const seriefacVal = this.escapeHtml(facDefaults.seriefac);
-    const nofacVal = this.escapeHtml(facDefaults.nofac);
+    const facDefaults = this.resolveFinalizarFacDefaults(h);
+    const felSerieVal = this.escapeHtml(facDefaults.felSerie);
+    const felNumeroVal = this.escapeHtml(facDefaults.felNumero);
     const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
     const concreVal = await this.resolveDefaultConcre(h);
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
@@ -774,12 +773,12 @@ const ComprasView = {
             <div class="col-md-4">
               <label class="form-label small mb-0" for="compras-finalizar-serie">Serie factura</label>
               <input type="text" id="compras-finalizar-serie" class="form-control form-control-sm"
-                value="${seriefacVal}" autocomplete="off" placeholder="${this.escapeHtml(key.coddoc)}">
+                value="${felSerieVal}" autocomplete="off" placeholder="Serie SAT">
             </div>
             <div class="col-md-4">
               <label class="form-label small mb-0" for="compras-finalizar-num">Número factura</label>
               <input type="text" id="compras-finalizar-num" class="form-control form-control-sm"
-                value="${nofacVal}" autocomplete="off" placeholder="${this.escapeHtml(String(key.correlativo))}">
+                value="${felNumeroVal}" autocomplete="off" placeholder="Número SAT">
             </div>
             <div class="col-md-4">
               <label class="form-label small mb-0" for="compras-finalizar-fel-uudi">ID Electronico</label>
@@ -856,8 +855,8 @@ const ComprasView = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        SERIEFAC: value.seriefac,
-        NOFAC: value.nofac,
+        FEL_SERIE: value.felSerie,
+        FEL_NUMERO: value.felNumero,
         FEL_UUDI: value.felUudi,
         CONCRE: value.concre,
         VENCIMIENTO: value.vencimiento,
@@ -1024,16 +1023,21 @@ const ComprasView = {
         <label class="form-label small mb-0">Medida</label>
         <select id="compras-swal-medida" class="form-select form-select-sm">${options}</select>
         <div class="row g-2 mt-2 align-items-end">
-          <div class="col-6">
+          <div class="col-4">
             <label class="form-label small mb-0" for="compras-swal-cant">Cantidad</label>
             <input type="number" id="compras-swal-cant" class="form-control form-control-sm" value="1" min="0.01" step="any">
           </div>
-          <div class="col-6">
-            <label class="form-label small mb-0" for="compras-swal-costo">Costo</label>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="compras-swal-costo">Costo unit.</label>
             <input type="number" id="compras-swal-costo" class="form-control form-control-sm" value="${defaultCosto}" min="0" step="any">
           </div>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="compras-swal-total">Total</label>
+            <input type="number" id="compras-swal-total" class="form-control form-control-sm" value="${defaultCosto}" min="0" step="any"
+              title="Cantidad × costo; al cambiar el total se recalcula el costo unitario">
+          </div>
         </div>
-        <p class="small text-muted mb-0 mt-2 text-end" id="compras-swal-total">Total: ${this.escapeHtml(this.formatMoney(defaultCosto))}</p>
+        <p class="small text-muted mb-0 mt-1 text-end">Puede ingresar el total de la línea y el costo unitario se ajustará.</p>
       `,
       showCancelButton: true,
       confirmButtonText: CatalogosUI.guardarButtonHtml('Agregar'),
@@ -1043,22 +1047,35 @@ const ComprasView = {
         const medSel = document.getElementById('compras-swal-medida');
         const costInp = document.getElementById('compras-swal-costo');
         const cantInp = document.getElementById('compras-swal-cant');
-        const totalEl = document.getElementById('compras-swal-total');
-        const updateTotal = () => {
+        const totalInp = document.getElementById('compras-swal-total');
+        const roundMoney = (n) => Math.round(n * 1000) / 1000;
+        const updateTotalFromQtyCost = () => {
           const cant = Number(cantInp?.value) || 0;
           const cost = Number(costInp?.value) || 0;
-          if (totalEl) totalEl.textContent = `Total: ${this.formatMoney(cant * cost)}`;
+          if (totalInp) totalInp.value = String(roundMoney(cant * cost));
+        };
+        const updateCostFromTotal = () => {
+          const cant = Number(cantInp?.value) || 0;
+          const total = Number(totalInp?.value);
+          if (!totalInp || !costInp || !Number.isFinite(total) || cant <= 0) return;
+          costInp.value = String(roundMoney(total / cant));
         };
         const syncCostoFromMedida = () => {
           const med = medSel?.value;
           if (med && costInp) costInp.value = String(costByMedida[med] ?? 0);
-          updateTotal();
+          updateTotalFromQtyCost();
         };
         medSel?.addEventListener('change', syncCostoFromMedida);
-        cantInp?.addEventListener('input', updateTotal);
-        costInp?.addEventListener('input', updateTotal);
+        cantInp?.addEventListener('input', updateTotalFromQtyCost);
+        costInp?.addEventListener('input', updateTotalFromQtyCost);
+        totalInp?.addEventListener('input', updateCostFromTotal);
         PosProductKeyboardUI.focusInput(cantInp);
-        PosProductKeyboardUI.wireModalQtyFlow({ cantInput: cantInp, priceInput: costInp, popup });
+        PosProductKeyboardUI.wireModalQtyFlow({
+          cantInput: cantInp,
+          priceInput: costInp,
+          totalInput: totalInp,
+          popup,
+        });
       },
       preConfirm: () => {
         const cant = Number(document.getElementById('compras-swal-cant')?.value);
@@ -1364,7 +1381,11 @@ const ComprasView = {
         <div class="pos-list-header">
           <h2 class="pos-list-title">Seleccione una compra o cree una nueva</h2>
           <p class="pos-list-sub text-muted mb-0">${count} compra(s) · ${this.escapeHtml(this.listFechaLabel())}</p>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="btn-compras-tomar-ocm">
+            <i class="fa-solid fa-file-import me-1"></i>Tomar datos (orden de compra)
+          </button>
         </div>
+        <div id="compras-ocm-modal-root"></div>
         <div class="fac-list-toolbar mb-3">
           <div class="fac-list-toolbar-fecha">
             <label class="form-label small mb-1" for="compras-list-fecha">Fecha</label>
@@ -1554,6 +1575,9 @@ const ComprasView = {
     });
 
     this._container?.querySelector('#btn-compras-list-nuevo')?.addEventListener('click', () => this.onNuevaCompra());
+    this._container?.querySelector('#btn-compras-tomar-ocm')?.addEventListener('click', () => {
+      this.openOcmModal().catch((err) => F.toast(err.message, 'error'));
+    });
 
     PosDocSearchUI.bindDocKeyboard(this, {
       isDetail: () => false,
@@ -1840,6 +1864,132 @@ const ComprasView = {
     } catch (err) {
       F.toast(err.message || 'Error al crear compra', 'error');
     }
+  },
+
+  filteredOcmList() {
+    const q = String(this._ocmFilter || '').trim().toLowerCase();
+    if (!q) return this._ocmList || [];
+    return (this._ocmList || []).filter((r) => {
+      const hay = [r.CODDOC, r.CORRELATIVO, r.DOC_NOMCLIE, r.TOTALPRECIO]
+        .map((v) => String(v ?? '').toLowerCase())
+        .join(' ');
+      return hay.includes(q);
+    });
+  },
+
+  renderOcmModalHtml() {
+    if (!this._ocmModalOpen) return '';
+    const rows = this.filteredOcmList();
+    const body = !rows.length
+      ? '<p class="text-muted small text-center py-4 mb-0">No hay órdenes de compra (OCM) operadas disponibles.</p>'
+      : `<div class="table-responsive"><table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr>
+            <th>Documento</th><th>Fecha</th><th>Proveedor</th><th class="text-end">Importe</th>
+          </tr></thead><tbody>${rows
+            .map(
+              (r) => `<tr class="compras-ocm-row" role="button" tabindex="0"
+                data-coddoc="${this.escapeHtml(r.CODDOC)}" data-correlativo="${this.escapeHtml(r.CORRELATIVO)}">
+                <td class="fw-semibold">${this.escapeHtml(r.CODDOC)} #${this.escapeHtml(r.CORRELATIVO)}</td>
+                <td class="text-nowrap">${this.escapeHtml(this.formatFechaCompra(r))}</td>
+                <td>${this.escapeHtml(r.DOC_NOMCLIE || '—')}</td>
+                <td class="text-end fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+              </tr>`
+            )
+            .join('')}</tbody></table></div>`;
+    return `<div class="fac-env-modal-overlay" id="compras-ocm-overlay" role="dialog" aria-modal="true">
+      <div class="fac-env-modal card shadow-lg border-0">
+        <div class="card-header bg-white border-0 pb-0">
+          <div class="d-flex justify-content-between gap-2">
+            <h5 class="mb-1"><i class="fa-solid fa-file-import me-2 text-primary"></i>Tomar datos — Orden de compra</h5>
+            <button type="button" class="btn btn-sm btn-light" id="btn-compras-ocm-cerrar"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <input type="search" class="form-control form-control-sm mt-2" id="compras-ocm-search"
+            placeholder="Buscar…" value="${this.escapeHtml(this._ocmFilter)}">
+        </div>
+        <div class="card-body pt-2">${body}</div>
+      </div>
+    </div>`;
+  },
+
+  mountOcmModalInDom() {
+    const root = this._container?.querySelector('#compras-ocm-modal-root');
+    if (root) root.innerHTML = this.renderOcmModalHtml();
+    this.bindOcmModalEvents();
+  },
+
+  bindOcmModalEvents() {
+    this._container?.querySelector('#btn-compras-ocm-cerrar')?.addEventListener('click', () => this.closeOcmModal());
+    this._container?.querySelector('#compras-ocm-overlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'compras-ocm-overlay') this.closeOcmModal();
+    });
+    this._container?.querySelector('#compras-ocm-search')?.addEventListener('input', (e) => {
+      this._ocmFilter = e.target.value;
+      this.mountOcmModalInDom();
+    });
+    this._container?.querySelectorAll('.compras-ocm-row').forEach((row) => {
+      const pick = () => {
+        const coddoc = row.getAttribute('data-coddoc');
+        const correlativo = row.getAttribute('data-correlativo');
+        this.confirmarOcm(coddoc, correlativo).catch((err) => F.toast(err.message, 'error'));
+      };
+      row.addEventListener('click', pick);
+      row.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          pick();
+        }
+      });
+    });
+  },
+
+  closeOcmModal() {
+    this._ocmModalOpen = false;
+    this._ocmFilter = '';
+    const root = this._container?.querySelector('#compras-ocm-modal-root');
+    if (root) root.innerHTML = '';
+  },
+
+  async openOcmModal() {
+    const data = await F.fetchJson(
+      this.apiUrl('/ordenes-ocm', { _: String(Date.now()) }),
+      { cache: 'no-store' }
+    );
+    this._ocmList = data.rows || [];
+    this._ocmModalOpen = true;
+    this._ocmFilter = '';
+    this.mountOcmModalInDom();
+  },
+
+  async confirmarOcm(coddoc, correlativo) {
+    const row = (this._ocmList || []).find(
+      (r) => String(r.CODDOC) === String(coddoc) && String(r.CORRELATIVO) === String(correlativo)
+    );
+    const ok = await CatalogosUI.fireConfirm({
+      title: '¿Crear compra desde orden?',
+      html: `<p class="mb-0">Se cargará proveedor y productos de <strong>${this.escapeHtml(coddoc)}-${this.escapeHtml(correlativo)}</strong>
+        (${this.escapeHtml(row?.DOC_NOMCLIE || '—')})</p>`,
+      icon: 'question',
+      confirmText: 'Sí, cargar',
+    });
+    if (!ok) return;
+    if (this._container?.querySelector('#compras-list-coddoc')) {
+      DocTipoSelect.syncFromDom(this._container, 'compras-list-coddoc', this);
+    }
+    const res = await F.fetchJson(this.apiUrl('/compras/desde-ocm'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        CODDOC_OCM: coddoc,
+        CORRELATIVO_OCM: correlativo,
+        CODDOC_COM: this.activeCoddoc(),
+        USUARIO: this.usuario(),
+      }),
+    });
+    this.closeOcmModal();
+    const h = res.compra?.header;
+    if (!h) throw new Error('No se recibió la compra');
+    F.toast(`Compra ${h.CODDOC}-${h.CORRELATIVO} creada desde OCM`, 'success');
+    await this.showEditor(h.CODDOC, h.CORRELATIVO, { focusProductSearch: true });
   },
 
   async load(container) {

@@ -32,6 +32,7 @@ const ConfigGeneralView = {
     ESTILO_DEL_LOGIN: 'ESTILO DEL LOGIN',
     OBLIGA_FECHA_SERVIDOR_FACTURAS: 'OBLIGA FECHA SERVIDOR EN FAC FEL NC',
     PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS: 'PERMITE MOVER BOTON FINALIZAR EN DOCS',
+    BLOQUEA_CONTADO_CREDITO_EN_VENTAS: 'BLOQUEA CONTADO CREDITO EN VENTAS',
   },
 
   TEXT_CARDS: [
@@ -77,6 +78,14 @@ const ConfigGeneralView = {
       title: 'Solicita clave del vendedor en ventas',
       icon: 'fa-user-lock',
       fallbackDesc: 'Exige clave del vendedor al registrar ventas',
+    },
+    {
+      opcion: 'BLOQUEA CONTADO CREDITO EN VENTAS',
+      title: 'Bloquea contado/crédito en ventas',
+      icon: 'fa-lock',
+      fallbackDesc:
+        'En Sí, usuarios que no son administrador no pueden cambiar contado/crédito en cotizaciones, pedidos y facturas; se usa el tipo de cobro predeterminado.',
+      defaultValue: 'NO',
     },
     {
       opcion: 'IMPRIME TICKET AL GUARDAR VENTA',
@@ -472,8 +481,13 @@ const ConfigGeneralView = {
       'LIMITA EFECTIVO DISPONIBLE EN VALES CAJA': 'operacion',
       'CONTROL ASISTENCIA ALMUERZO': 'operacion',
       'DICE LA HORA EN VOZ ALTA': 'operacion',
+      'BLOQUEA CONTADO CREDITO EN VENTAS': 'operacion',
     };
     return map[opcion] || 'operacion';
+  },
+
+  _bloqueaConcreOpcion() {
+    return this.SETTING_OPCION.BLOQUEA_CONTADO_CREDITO_EN_VENTAS;
   },
 
   tabForText(opcion) {
@@ -1298,13 +1312,20 @@ const ConfigGeneralView = {
     this.TEXT_CARDS.filter((c) => this.tabForText(c.opcion) === tabId).forEach((card) => {
       parts.push(this.renderTextCard(card, this._textMeta[card.opcion] || {}));
     });
-    this.SINO_OPTIONS.filter((opt) => this.tabForSino(opt.opcion) === tabId).forEach((opt) => {
+    const bloqueaOp = this._bloqueaConcreOpcion();
+    this.SINO_OPTIONS.filter(
+      (opt) => this.tabForSino(opt.opcion) === tabId && opt.opcion !== bloqueaOp
+    ).forEach((opt) => {
       parts.push(this.renderSinoCard(opt, this._sinoMeta[opt.opcion] || {}));
     });
     if (tabId === 'operacion') {
       this.CONCRE_OPTIONS.forEach((opt) => {
         parts.push(this.renderConcreCard(opt, this._concreMeta[opt.opcion] || {}));
       });
+      const bloqueaOpt = this.SINO_OPTIONS.find((o) => o.opcion === bloqueaOp);
+      if (bloqueaOpt) {
+        parts.push(this.renderSinoCard(bloqueaOpt, this._sinoMeta[bloqueaOp] || {}));
+      }
       this.FORMATO_OPTIONS.forEach((opt) => {
         parts.push(this.renderFormatoCard(opt, this._formatoMeta[opt.opcion] || {}));
       });

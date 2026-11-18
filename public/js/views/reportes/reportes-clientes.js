@@ -291,7 +291,11 @@ const ReportesClientesView = {
     const titulo = d.doc_nomclie || d.doc_nit || 'Cliente';
 
     return `
-      <div class="repcli-hero">
+      <div class="repcli-hero position-relative">
+        <button type="button" class="btn btn-sm btn-outline-secondary rep-hero-print-btn position-absolute top-0 end-0"
+          title="Imprimir detalle del cliente">
+          <i class="fa-solid fa-print"></i>
+        </button>
         <div class="repcli-hero-title">${this.escapeHtml(titulo)}</div>
         <div class="repcli-hero-nit">${this.escapeHtml(d.doc_nit || '')}</div>
         <div class="repcli-kpi-row">
@@ -634,6 +638,105 @@ const ReportesClientesView = {
     }
   },
 
+  buildDetallePrintHtml() {
+    const d = this._detalle;
+    if (!d) return '';
+    const r = d.resumen || {};
+    const share =
+      Number(this._totales?.precio) > 0
+        ? ((Number(r.precio) || 0) / Number(this._totales.precio)) * 100
+        : 0;
+    const titulo = d.doc_nomclie || d.doc_nit || 'Cliente';
+    const kpis = [
+      { label: 'Venta', value: this.formatMoney(r.precio) },
+      { label: 'Costo', value: this.formatMoney(r.costo) },
+      { label: 'Utilidad', value: this.formatMoney(r.utilidad ?? this.utilidadOf(r.precio, r.costo)) },
+      { label: 'Unidades', value: this.formatQty(r.unidades) },
+      { label: 'Precio prom.', value: this.formatMoney(r.precioPromedio) },
+      { label: 'Ticket prom.', value: this.formatMoney(r.ticketPromedio) },
+      { label: 'Productos', value: r.numProductos ?? 0 },
+      { label: 'Facturas', value: r.numDocumentos ?? 0 },
+      { label: 'Participación', value: this.formatPct(share) },
+    ];
+    let out = ReportesDetallePrint.hero(titulo, d.doc_nit || '', kpis);
+    const serie = d.serie || [];
+    out += ReportesDetallePrint.section(
+      'Unidades vs compras por fecha',
+      ReportesDetallePrint.table(
+        [{ text: 'Fecha' }, { text: 'Unidades', align: 'end' }, { text: 'Ventas', align: 'end' }],
+        serie.map((row) => [this.formatFecha(row.FECHA), this.formatQty(row.UNIDADES), this.formatMoney(row.MONTO)])
+      )
+    );
+    const docs = d.documentos || [];
+    out += ReportesDetallePrint.section(
+      'Documentos',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Fecha' },
+          { text: 'Tipo' },
+          { text: 'Documento' },
+          { text: 'FEL' },
+          { text: 'Costo', align: 'end' },
+          { text: 'Venta', align: 'end' },
+          { text: 'Utilidad', align: 'end' },
+        ],
+        docs.map((row) => {
+          const util = row.UTILIDAD ?? this.utilidadOf(row.TOTALPRECIO, row.TOTALCOSTO);
+          const fel = row.FEL_SERIE || row.FEL_NUMERO ? `${row.FEL_SERIE || ''}-${row.FEL_NUMERO || ''}` : '—';
+          return [
+            this.formatFecha(row.FECHA),
+            row.TIPODOC || '—',
+            `${row.CODDOC || ''} #${row.CORRELATIVO ?? ''}`,
+            fel,
+            this.formatMoney(row.TOTALCOSTO),
+            this.formatMoney(row.TOTALPRECIO),
+            this.formatMoney(util),
+          ];
+        })
+      )
+    );
+    const productos = d.productos || [];
+    out += ReportesDetallePrint.section(
+      'Productos comprados',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Cód.' },
+          { text: 'Producto' },
+          { text: 'Unidades', align: 'end' },
+          { text: 'Costo', align: 'end' },
+          { text: 'Venta', align: 'end' },
+          { text: 'Utilidad', align: 'end' },
+        ],
+        productos.map((row) => {
+          const util = row.UTILIDAD ?? this.utilidadOf(row.TOTALPRECIO, row.TOTALCOSTO);
+          return [
+            row.CODPROD || '—',
+            row.DESPROD || '—',
+            this.formatQty(row.TOTALUNIDADES),
+            this.formatMoney(row.TOTALCOSTO),
+            this.formatMoney(row.TOTALPRECIO),
+            this.formatMoney(util),
+          ];
+        })
+      )
+    );
+    return out;
+  },
+
+  async printDetalleReport() {
+    if (!this._detalle) {
+      F.toast('Seleccione un cliente', 'warning');
+      return;
+    }
+    await ReportesDetallePrint.printLetterReport({
+      reportTitle: 'Reportes Clientes',
+      desde: this._desde,
+      hasta: this._hasta,
+      formatFecha: (v) => this.formatFecha(v),
+      buildBody: () => this.buildDetallePrintHtml(),
+    });
+  },
+
   async imprimirDocumento(coddoc, correlativo, row) {
     if (!coddoc || correlativo === undefined || correlativo === null || correlativo === '') {
       F.toast('Documento incompleto para imprimir', 'warning');
@@ -672,6 +775,11 @@ const ReportesClientesView = {
     });
 
     this._container?.addEventListener('click', (e) => {
+      const heroBtn = e.target.closest('.rep-hero-print-btn');
+      if (heroBtn && this._container.contains(heroBtn)) {
+        this.printDetalleReport().catch((err) => F.toast(err.message || 'No se pudo imprimir', 'error'));
+        return;
+      }
       const btn = e.target.closest('.repcli-print-btn');
       if (!btn || !this._container.contains(btn)) return;
       const tr = btn.closest('tr');

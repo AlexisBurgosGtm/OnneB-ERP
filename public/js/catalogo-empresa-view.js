@@ -162,7 +162,11 @@ function createCatalogoEmpresaView(cfg) {
           const cells = cfg.tableColumns
             .map((c) => `<td>${this.formatCell(row[c.key], c)}</td>`)
             .join('');
-          return `<tr>${cells}<td class="text-end">${CatalogosUI.accionesRow(row[cfg.idKey], cfg.dataAttr)}</td></tr>`;
+          const acciones =
+            typeof cfg.renderRowActions === 'function'
+              ? cfg.renderRowActions(row[cfg.idKey], row)
+              : CatalogosUI.accionesRow(row[cfg.idKey], cfg.dataAttr);
+          return `<tr>${cells}<td class="text-end">${acciones}</td></tr>`;
         })
         .join('');
     },
@@ -315,6 +319,9 @@ function createCatalogoEmpresaView(cfg) {
       this._container.querySelectorAll('.btn-catalogo-eliminar').forEach((btn) => {
         btn.addEventListener('click', () => this.onEliminar(btn.dataset[attr]));
       });
+      if (typeof cfg.bindExtraRowActions === 'function') {
+        cfg.bindExtraRowActions.call(this);
+      }
     },
 
     bindSearch() {

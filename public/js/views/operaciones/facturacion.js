@@ -574,6 +574,9 @@ const FacturacionView = {
   },
 
   async resolveDefaultConcre(h) {
+    if (this._config?.cobroPredeterminado && typeof DocConcreConfig !== 'undefined') {
+      return DocConcreConfig.defaultConcre(this._config);
+    }
     try {
       return await this.fetchCobroPredeterminado();
     } catch {
@@ -911,7 +914,10 @@ const FacturacionView = {
     const nomRaw = (h.DOC_NOMCLIE || h.CLI_NOMBRE || '').trim();
     const dirRaw = (h.DOC_DIRCLIE || h.CLI_DIR || '').trim();
     const obsVal = this.escapeHtml(h.OBS || '');
-    const concreVal = await this.resolveDefaultConcre(h);
+    const concreVal =
+      typeof DocConcreConfig !== 'undefined'
+        ? DocConcreConfig.effectiveConcre(h, this._config)
+        : await this.resolveDefaultConcre(h);
     const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayIsoDate();
     const totalPrecio = this.docTotalPrecio(h);
     const entregaHtml =
@@ -1010,6 +1016,9 @@ const FacturacionView = {
         };
         concreSel?.addEventListener('change', toggleVenc);
         toggleVenc();
+        if (typeof DocConcreConfig !== 'undefined') {
+          DocConcreConfig.lockFinalizarSelect(concreSel, this._config, concreVal);
+        }
         if (typeof DocEntrega !== 'undefined') DocEntrega.bindToggle('fac');
         this.bindFinalizarFpagoToggle(totalPrecio);
         document.getElementById('fac-finalizar-nomclie')?.focus();

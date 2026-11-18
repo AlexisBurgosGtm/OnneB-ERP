@@ -638,11 +638,10 @@
     const loadingMsg = loginRemoteMode ? 'Cargando sedes remotas…' : 'Cargando empresas locales…';
     setLoginEmpresasLoading(true, loadingMsg);
     try {
-      const data = await fetchEmpresasForLogin();
-      let biometricOk = false;
-      if (!loginRemoteMode) {
-        biometricOk = await fetchBiometricConfig();
-      }
+      const [data, biometricOk] = await Promise.all([
+        fetchEmpresasForLogin(),
+        loginRemoteMode ? Promise.resolve(false) : fetchBiometricConfig(),
+      ]);
       permiteBiometricoLogin = biometricOk;
       updateLoginPasskeyButton();
       const rows = (data.rows || [])
@@ -929,6 +928,16 @@
 
   function loadInicioDefault() {
     if (!mainContent) return;
+    if (
+      typeof TipoEmpleadoAccess !== 'undefined' &&
+      TipoEmpleadoAccess.isBiExclusive()
+    ) {
+      if (typeof TipoEmpleadoAccess.applyShellLayout === 'function') {
+        TipoEmpleadoAccess.applyShellLayout();
+      }
+      navigateToMenu('business-intelligence');
+      return;
+    }
     // Sin licencia activa: solo la vista Licencia.
     if (
       typeof LicenseAccess !== 'undefined' &&
@@ -952,6 +961,7 @@
 
   const menuLabels = {
     inicio: 'Inicio',
+    'business-intelligence': 'Business Intelligence',
     'pedidos-mostrador': 'Pedidos de Mostrador',
     'vendedor-pedidos': 'Vendedor — pedidos',
     'comandas-restaurante': 'Comandas Restaurante',
@@ -968,6 +978,7 @@
     'vales-caja': 'Vales de Caja',
     'corte-caja': 'Corte de Caja',
     cotizaciones: 'Cotizaciones',
+    'ordenes-compra': 'Órdenes de Compra',
     'fraccionamiento-fac': 'Fraccionamiento Facturas',
     tareas: 'Tareas',
     embarques: 'Embarques (picking)',
@@ -1101,6 +1112,11 @@
         host.classList.add('align-items-center', 'justify-content-center');
         host.innerHTML = '<p class="text-muted mb-0">Inicio</p>';
       }
+    } else if (key === 'business-intelligence' && typeof BusinessIntelligenceView !== 'undefined') {
+      host.className = 'main-content main-content--bi flex-grow-1 d-flex p-0 overflow-hidden';
+      BusinessIntelligenceView.load(host);
+    } else if (key === 'ordenes-compra' && typeof OrdenesCompraView !== 'undefined') {
+      OrdenesCompraView.load(host);
     } else if (key === 'compras' && typeof ComprasView !== 'undefined') {
       ComprasView.load(host);
     } else if (key === 'pedidos-mostrador' && typeof PosView !== 'undefined') {
@@ -1441,18 +1457,31 @@
     }
   });
 
+  function deferSocketInit() {
+    window.setTimeout(() => {
+      initSocket();
+      if (F.isLoggedIn()) registerSocketSession();
+    }, 0);
+  }
+
   async function bootApp() {
     if (typeof OnnebThemes !== 'undefined') OnnebThemes.init();
 
-    try {
-      await F.loadRuntime();
-    } catch (err) {
-      console.warn('[App] runtime/TOKEN:', err?.message || err);
-    }
-
     ensureLoginView();
-    await refreshLoginRemoteButtonVisibility();
-    await loadLoginEmpresas();
+
+    /** Combo de empresas no depende de TOKEN, socket ni IndexedDB. */
+    const empresasTask = loadLoginEmpresas();
+
+    void (async () => {
+      try {
+        await F.loadRuntime();
+      } catch (err) {
+        console.warn('[App] runtime/TOKEN:', err?.message || err);
+      }
+      await refreshLoginRemoteButtonVisibility();
+    })();
+
+    await empresasTask;
 
     if (F.isLoggedIn()) {
       updateHeaderSessionInfo();
@@ -1465,19 +1494,18 @@
     }
 
     if (buildCounterEl) {
-      await loadBuildCounter();
-      startBuildCounterPoll();
+      loadBuildCounter()
+        .then(() => startBuildCounterPoll())
+        .catch((err) => console.warn('[App] build counter:', err?.message || err));
     }
 
-    try {
-      await OnnebDb.init();
-    } catch (err) {
+    void OnnebDb.init().catch((err) => {
       console.warn('[DB] init:', err);
-    }
+    });
 
-    initSocket();
+    deferSocketInit();
+
     if (F.isLoggedIn()) {
-      registerSocketSession();
       if (typeof TipoEmpleadoAccess !== 'undefined') {
         try {
           await TipoEmpleadoAccess.refreshMenuAccess();

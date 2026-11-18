@@ -47,7 +47,9 @@ const {
   effectivePermiteCambiarPrecioPedidos,
   getSettingSolicitaClaveCambiarPrecios,
   SETTING_OPCION,
+  getSettingConcre,
 } = require('../lib/settings');
+const { enforceConcreVentasPolicy } = require('../lib/concre-ventas-policy');
 const {
   assertPermiteCambioFechaDocumento,
   resolveFechaAltaDocumentoAsync,
@@ -736,6 +738,11 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
     );
+    const bloqueaContadoCreditoVentas = await getSettingSino(
+      pool,
+      SETTING_OPCION.BLOQUEA_CONTADO_CREDITO_EN_VENTAS
+    );
+    const cobroPredeterminado = await getSettingConcre(pool, SETTING_OPCION.COBRO_PREDETERMINADO);
     res.json({
       empnit,
       grupo: grupoId,
@@ -755,6 +762,8 @@ router.get('/config', async (req, res) => {
       muestraPesoEnDocumentos,
       permiteFraccionamientoFacturas,
       permiteMoverBotonFinalizarEnDocumentos,
+      bloqueaContadoCreditoVentas,
+      cobroPredeterminado,
     });
   } catch (err) {
     console.warn('[API GET /facturacion/config]', err.message);
@@ -1292,6 +1301,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const updates = [];
+    let concrePatch;
     const request = pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -1319,12 +1329,13 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       updates.push('OBS = @OBS');
     }
     if (req.body?.CONCRE !== undefined) {
-      const concre = String(req.body.CONCRE || 'CON').trim().toUpperCase();
-      if (concre !== 'CON' && concre !== 'CRE') {
-        return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
+      try {
+        concrePatch = await enforceConcreVentasPolicy(pool, empnit, req, req.body.CONCRE);
+      } catch (policyErr) {
+        return res.status(policyErr.statusCode || 403).json({ error: policyErr.message });
       }
-      request.input('CONCRE', sql.VarChar, concre);
-      updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concre === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
+      request.input('CONCRE', sql.VarChar, concrePatch);
+      updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concrePatch === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
     }
     if (req.body?.CODVEN !== undefined) {
       const raw = req.body.CODVEN;
@@ -1387,7 +1398,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
           txnReq.input('OBS', sql.VarChar, String(req.body.OBS || ''));
         }
         if (req.body?.CONCRE !== undefined) {
-          txnReq.input('CONCRE', sql.VarChar, String(req.body.CONCRE || 'CON').trim().toUpperCase());
+          txnReq.input('CONCRE', sql.VarChar, concrePatch);
         }
         if (req.body?.CODVEN !== undefined) {
           const raw = req.body.CODVEN;
@@ -1898,9 +1909,12 @@ router.post('/pedidos/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (entregaFinalize.error) {
     return res.status(400).json({ error: entregaFinalize.error });
   }
-  const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
-  if (concre !== 'CON' && concre !== 'CRE') {
-    return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
+  let concre;
+  try {
+    const poolEarly = await req.app.locals.getDbPool();
+    concre = await enforceConcreVentasPolicy(poolEarly, empnit, req, req.body?.CONCRE);
+  } catch (policyErr) {
+    return res.status(policyErr.statusCode || 403).json({ error: policyErr.message });
   }
   const vencParts = concre === 'CRE' ? parseFechaInput(req.body?.VENCIMIENTO) : null;
   if (concre === 'CRE' && !vencParts) {

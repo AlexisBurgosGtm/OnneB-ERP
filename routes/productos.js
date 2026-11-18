@@ -205,6 +205,38 @@ function readProductBody(body, { includeCodprod = false } = {}) {
   return data;
 }
 
+function applyProductSaveDefaults(data, codprodRef, { forCreate = false } = {}) {
+  const setIntDefault = (key, fallback) => {
+    if (!forCreate && !Object.hasOwn(data, key)) return;
+    if (data[key] == null || !Number.isFinite(Number(data[key]))) data[key] = fallback;
+  };
+  setIntDefault('UXC', 1);
+  setIntDefault('INVMINIMO', 0);
+  setIntDefault('INVMAXIMO', 0);
+  if (forCreate || Object.hasOwn(data, 'CODPROD2')) {
+    const alt = String(data.CODPROD2 ?? '').trim();
+    if (!alt) {
+    const cp = String(codprodRef ?? data.CODPROD ?? '').trim();
+      if (cp) data.CODPROD2 = cp;
+    }
+  }
+}
+
+function validateProductClasificacion(data, { forCreate = false } = {}) {
+  const checks = [
+    ['CODMARCA', 'Marca'],
+    ['CODCLAUNO', 'Fabricante'],
+    ['CODCLATRES', 'Ubicación'],
+    ['CODCLADOS', 'Proveedor'],
+  ];
+  for (const [key, label] of checks) {
+    if (!forCreate && data[key] === undefined) continue;
+    const n = Number(data[key]);
+    if (!Number.isFinite(n) || n <= 0) return `${label} es obligatorio`;
+  }
+  return null;
+}
+
 function readPrecioBody(body) {
   const data = {};
   for (const name of PRECIO_BODY_FIELDS) {
@@ -879,6 +911,9 @@ router.post('/', async (req, res) => {
   const data = readProductBody(req.body, { includeCodprod: true });
   if (!data.CODPROD) return res.status(400).json({ error: 'CODPROD es obligatorio' });
   if (!data.DESPROD) return res.status(400).json({ error: 'DESPROD es obligatorio' });
+  applyProductSaveDefaults(data, data.CODPROD, { forCreate: true });
+  const clasifErr = validateProductClasificacion(data, { forCreate: true });
+  if (clasifErr) return res.status(400).json({ error: clasifErr });
   data.HABILITADO = normalizeHabilitado(data.HABILITADO, 'SI');
   try {
     const pool = await req.app.locals.getDbPool();
@@ -979,6 +1014,9 @@ router.put('/:codprod', async (req, res) => {
   if (data.DESPROD !== undefined && !data.DESPROD) {
     return res.status(400).json({ error: 'DESPROD es obligatorio' });
   }
+  applyProductSaveDefaults(data, codprod);
+  const clasifErr = validateProductClasificacion(data);
+  if (clasifErr) return res.status(400).json({ error: clasifErr });
   try {
     const pool = await req.app.locals.getDbPool();
     const { productoUsaLotesColumnExists } = require('../lib/lote-schema');

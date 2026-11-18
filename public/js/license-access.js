@@ -62,6 +62,13 @@ const LicenseAccess = {
     const key = String(menuKey || '').trim();
     if (key === 'licencia') return true;
     if (key === 'updater' && this.isSuperUser()) return true;
+    if (
+      key === 'business-intelligence' &&
+      typeof TipoEmpleadoAccess !== 'undefined' &&
+      TipoEmpleadoAccess.isBiExclusive()
+    ) {
+      return true;
+    }
     return false;
   },
 

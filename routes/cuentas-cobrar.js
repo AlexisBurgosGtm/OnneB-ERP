@@ -84,6 +84,8 @@ function mapRow(r) {
     EMPLEADO: String(r.EMPLEADO ?? r.NOMEMPLEADO ?? r.VENDEDOR ?? '').trim(),
     CODVEN: r.CODVEN ?? null,
     CODCLIENTE: r.CODCLIENTE ?? null,
+    CODRUTA: r.CODRUTA ?? null,
+    DESRUTA: String(r.DESRUTA ?? '').trim(),
     TOTALPRECIO: toNumber(r.TOTALPRECIO),
     DOC_SALDO: docSaldo,
     DOC_ABONO: docAbono,
@@ -160,6 +162,8 @@ router.get('/documentos', async (req, res) => {
 
   const q = String(req.query.q || '').trim();
   const qLike = q ? `%${q}%` : null;
+  const codrutaRaw = parseInt(req.query.codruta, 10);
+  const codrutaFilter = Number.isFinite(codrutaRaw) && codrutaRaw > 0 ? codrutaRaw : null;
   const soloVencidas = wantsVencidas(req.query);
   const asExcel = wantsXlsx(req.query);
   const hasParty = req.query.codcliente !== undefined && String(req.query.codcliente) !== '';
@@ -180,6 +184,7 @@ router.get('/documentos', async (req, res) => {
       FROM dbo.DOCUMENTOS d
       INNER JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
       LEFT JOIN dbo.CLIENTES c ON d.EMPNIT = c.EMPNIT AND d.CODCLIENTE = c.CODCLIENTE
+      LEFT JOIN dbo.Rutas r ON c.EMPNIT = r.EMPNIT AND c.CODRUTA = r.CODRUTA
     `;
     const sqlEmpleadoNombre = `ISNULL((
       SELECT TOP 1 e.NOMEMPLEADO
@@ -196,6 +201,7 @@ router.get('/documentos', async (req, res) => {
         AND ${SQL_DOC_SALDO_PENDIENTE_POSITIVO}
         ${soloVencidas ? SQL_SOLO_VENCIDAS : ''}
         ${partyWhere}
+        AND (@codruta IS NULL OR c.CODRUTA = @codruta)
         AND (
           @q IS NULL OR @q = ''
           OR CAST(d.CORRELATIVO AS VARCHAR(30)) LIKE @qLike
@@ -213,7 +219,8 @@ router.get('/documentos', async (req, res) => {
       request
         .input('EMPNIT', sql.VarChar, empnit)
         .input('q', sql.NVarChar, q || null)
-        .input('qLike', sql.NVarChar, qLike);
+        .input('qLike', sql.NVarChar, qLike)
+        .input('codruta', sql.Int, codrutaFilter);
       if (partyFilter) bindPartyFilter(request, sql, partyFilter);
       return request;
     };
@@ -241,6 +248,8 @@ router.get('/documentos', async (req, res) => {
         d.DOC_NOMCLIE,
         d.DOC_NIT,
         c.NEGOCIO,
+        c.CODRUTA,
+        ISNULL(r.DESRUTA, '') AS DESRUTA,
         ${sqlEmpleadoNombre} AS NOMEMPLEADO,
         ${sqlEmpleadoNombre} AS EMPLEADO,
         ${sqlEmpleadoNombre} AS VENDEDOR,
@@ -274,6 +283,7 @@ router.get('/documentos', async (req, res) => {
         filename: `cuentas_cobrar_${soloVencidas ? 'vencidas' : 'todas'}_${safeEmp}.xlsx`,
         sheetName: soloVencidas ? 'Vencidas' : 'Todas',
         columns: [
+          { header: 'Ruta', key: 'DESRUTA', width: 18 },
           { header: 'Empleado', key: 'EMPLEADO', width: 22 },
           { header: 'Fecha', key: 'FECHA', width: 14, type: 'date' },
           { header: 'Vence', key: 'VENCIMIENTO', width: 14, type: 'date' },

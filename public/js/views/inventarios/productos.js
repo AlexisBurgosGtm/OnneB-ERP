@@ -642,10 +642,10 @@ const ProductosView = {
 
     const clasificaciones = `
       <div class="row productos-form-grid g-2">
-        ${this.formFieldColFull(this.selectField('CODMARCA', 'Marca', L.marcas, r.CODMARCA))}
-        ${this.formFieldColFull(this.selectField('CODCLADOS', 'Proveedor', L.proveedores, r.CODCLADOS))}
-        ${this.formFieldColFull(this.selectField('CODCLAUNO', 'Fabricante', L.fabricantes, r.CODCLAUNO))}
-        ${this.formFieldColFull(this.selectField('CODCLATRES', 'Ubicación', L.ubicaciones, r.CODCLATRES))}
+        ${this.formFieldColFull(this.selectField('CODMARCA', 'Marca', L.marcas, r.CODMARCA, true))}
+        ${this.formFieldColFull(this.selectField('CODCLADOS', 'Proveedor', L.proveedores, r.CODCLADOS, true))}
+        ${this.formFieldColFull(this.selectField('CODCLAUNO', 'Fabricante', L.fabricantes, r.CODCLAUNO, true))}
+        ${this.formFieldColFull(this.selectField('CODCLATRES', 'Ubicación', L.ubicaciones, r.CODCLATRES, true))}
       </div>
     `;
 
@@ -727,12 +727,37 @@ const ProductosView = {
     };
   },
 
+  applyProductSaveDefaults(data, codprodRef) {
+    const out = { ...data };
+    if (out.UXC == null || !Number.isFinite(Number(out.UXC))) out.UXC = 1;
+    if (out.INVMINIMO == null || !Number.isFinite(Number(out.INVMINIMO))) out.INVMINIMO = 0;
+    if (out.INVMAXIMO == null || !Number.isFinite(Number(out.INVMAXIMO))) out.INVMAXIMO = 0;
+    const alt = String(out.CODPROD2 ?? '').trim();
+    if (!alt) {
+      const cp = String(codprodRef ?? out.CODPROD ?? '').trim();
+      if (cp) out.CODPROD2 = cp;
+    }
+    return out;
+  },
+
   validateProductForm(data, isEdit) {
     if (!isEdit && !data.CODPROD) return 'El código de producto es obligatorio';
     if (!data.DESPROD) return 'La descripción es obligatoria';
     const costo = Number(data.COSTO);
     if (!Number.isFinite(costo) || costo <= 0) {
       return 'El costo debe ser mayor a cero';
+    }
+    const reqInt = [
+      ['CODMARCA', 'Marca'],
+      ['CODCLAUNO', 'Fabricante'],
+      ['CODCLATRES', 'Ubicación'],
+      ['CODCLADOS', 'Proveedor'],
+    ];
+    for (const [key, label] of reqInt) {
+      const n = Number(data[key]);
+      if (!Number.isFinite(n) || n <= 0) {
+        return `Seleccione ${label.toLowerCase()}`;
+      }
     }
     return null;
   },
@@ -1778,7 +1803,9 @@ const ProductosView = {
   async onFormGuardar() {
     if (this._savingForm) return;
     const isEdit = this._formMode === 'edit';
-    const data = this.readProductForm();
+    let data = this.readProductForm();
+    const codprodRef = isEdit ? this._formCodprod : data.CODPROD;
+    data = this.applyProductSaveDefaults(data, codprodRef);
     const errMsg = this.validateProductForm(data, isEdit);
     if (errMsg) {
       F.alert('Validación', errMsg, 'warning');

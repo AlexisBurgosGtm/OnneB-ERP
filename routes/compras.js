@@ -125,6 +125,46 @@ async function assertCompraSerieNofacUnique(
   throw err;
 }
 
+/** Serie y número de factura del proveedor (DOCUMENTOS.FEL_SERIE / FEL_NUMERO). */
+async function assertCompraFelSerieNumeroUnique(
+  requestable,
+  empnit,
+  felSerie,
+  felNumero,
+  excludeCoddoc,
+  excludeCorrelativo
+) {
+  const s = String(felSerie || '').trim();
+  const n = String(felNumero || '').trim();
+  if (!s || !n) return;
+
+  const result = await requestable
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('FEL_SERIE', sql.VarChar, s)
+    .input('FEL_NUMERO', sql.VarChar, n)
+    .input('CODDOC', sql.VarChar, excludeCoddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), excludeCorrelativo)
+    .query(`
+      SELECT TOP 1 d.CODDOC, d.CORRELATIVO
+      FROM dbo.DOCUMENTOS d
+      INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
+      WHERE d.EMPNIT = @EMPNIT
+        AND t.TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN})
+        AND ISNULL(d.STATUS, '') <> '${STATUS_ANULADO}'
+        AND LTRIM(RTRIM(ISNULL(d.FEL_SERIE, ''))) = @FEL_SERIE
+        AND LTRIM(RTRIM(ISNULL(d.FEL_NUMERO, ''))) = @FEL_NUMERO
+        AND NOT (d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO)
+    `);
+  if (!result.recordset.length) return;
+  const row = result.recordset[0];
+  const err = new Error(
+    `Ya existe la compra ${row.CODDOC} #${row.CORRELATIVO} con serie "${s}" y número "${n}"`
+  );
+  err.statusCode = 409;
+  throw err;
+}
+
 async function loadSerieNofacActual(requestable, empnit, coddoc, correlativo) {
   const result = await requestable
     .request()
@@ -1467,10 +1507,14 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
   const felUudi = req.body?.FEL_UUDI !== undefined ? String(req.body.FEL_UUDI || '').trim() : null;
-  let seriefac = String(req.body?.SERIEFAC || '').trim();
-  let nofac = String(req.body?.NOFAC || '').trim();
-  if (!seriefac) seriefac = coddoc;
-  if (!nofac) nofac = String(correlativo);
+  const felSerie =
+    req.body?.FEL_SERIE !== undefined
+      ? String(req.body.FEL_SERIE || '').trim()
+      : String(req.body?.SERIEFAC || '').trim();
+  const felNumero =
+    req.body?.FEL_NUMERO !== undefined
+      ? String(req.body.FEL_NUMERO || '').trim()
+      : String(req.body?.NOFAC || '').trim();
   const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
   if (concre !== 'CON' && concre !== 'CRE') {
     return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
@@ -1483,7 +1527,7 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     try {
-      await assertCompraSerieNofacUnique(pool, empnit, seriefac, nofac, coddoc, correlativo);
+      await assertCompraFelSerieNumeroUnique(pool, empnit, felSerie, felNumero, coddoc, correlativo);
     } catch (dupErr) {
       if (dupErr.statusCode) return res.status(dupErr.statusCode).json({ error: dupErr.message });
       throw dupErr;
@@ -1496,8 +1540,6 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
         .input('EMPNIT', sql.VarChar, empnit)
         .input('CODDOC', sql.VarChar, coddoc)
         .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
-        .input('SERIEFAC', sql.VarChar, seriefac)
-        .input('NOFAC', sql.VarChar, nofac)
         .input('CONCRE', sql.VarChar, concre)
         .input('TIPOPAGO', sql.VarChar, concre === 'CRE' ? 'CREDITO' : 'CONTADO');
       let vencSql = '';
@@ -1511,12 +1553,21 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
       if (felUudi !== null) {
         txnUpd.input('FEL_UUDI', sql.VarChar, felUudi);
       }
+      let felExtraSql = '';
+      if (req.body?.FEL_SERIE !== undefined || req.body?.SERIEFAC !== undefined) {
+        txnUpd.input('FEL_SERIE', sql.VarChar, felSerie);
+        felExtraSql += ', FEL_SERIE = @FEL_SERIE';
+      }
+      if (req.body?.FEL_NUMERO !== undefined || req.body?.NOFAC !== undefined) {
+        txnUpd.input('FEL_NUMERO', sql.VarChar, felNumero);
+        felExtraSql += ', FEL_NUMERO = @FEL_NUMERO';
+      }
       const obsSql = obs !== null ? ', OBS = @OBS' : '';
       const felSql = felUudi !== null ? ', FEL_UUDI = @FEL_UUDI' : '';
       await txnUpd.query(`
         UPDATE dbo.DOCUMENTOS
-        SET SERIEFAC = @SERIEFAC, NOFAC = @NOFAC, CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO
-          ${vencSql}${obsSql}${felSql}
+        SET CONCRE = @CONCRE, TIPOPAGO = @TIPOPAGO
+          ${vencSql}${obsSql}${felSql}${felExtraSql}
         WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
           AND ${SQL_STATUS_EDITABLE}
       `);
@@ -1663,6 +1714,220 @@ router.delete('/compras/:coddoc/:correlativo', async (req, res) => {
       return res.status(401).json({ error: err.message });
     }
     console.warn('[API DELETE /compras/compras]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const SQL_COMPRA_VINCULADA_OCM = `
+  f.EMPNIT = d.EMPNIT
+  AND f.SERIEFAC = d.CODDOC
+  AND TRY_CAST(LTRIM(RTRIM(f.NOFAC)) AS DECIMAL(18, 0)) = d.CORRELATIVO
+`;
+
+router.get('/ordenes-ocm', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const q = String(req.query.q || '').trim();
+  const qLike = q ? `%${q}%` : null;
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const result = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('q', sql.NVarChar, q || null)
+      .input('qLike', sql.NVarChar, qLike)
+      .query(`
+        SELECT
+          d.CODDOC,
+          d.CORRELATIVO,
+          t.TIPODOC,
+          d.FECHA,
+          d.HORA,
+          d.MINUTO,
+          d.DOC_NOMCLIE,
+          ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
+          d.CODCLIENTE AS CODPROV,
+          (SELECT COUNT(*) FROM dbo.DOCPRODUCTOS l
+           WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO) AS LINEAS
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT
+          AND t.TIPODOC = 'OCM'
+          AND d.STATUS = '${STATUS_OPERADO}'
+          AND (
+            @q IS NULL OR @q = ''
+            OR CAST(d.CORRELATIVO AS VARCHAR(30)) LIKE @qLike
+            OR d.CODDOC LIKE @qLike
+            OR d.DOC_NOMCLIE LIKE @qLike
+          )
+          AND EXISTS (
+            SELECT 1 FROM dbo.DOCPRODUCTOS l
+            WHERE l.EMPNIT = d.EMPNIT AND l.CODDOC = d.CODDOC AND l.CORRELATIVO = d.CORRELATIVO
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.DOCUMENTOS f
+            JOIN dbo.TIPODOCUMENTOS tf ON f.CODDOC = tf.CODDOC AND f.EMPNIT = tf.EMPNIT
+            WHERE ${SQL_COMPRA_VINCULADA_OCM}
+              AND tf.TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN})
+              AND f.STATUS <> '${STATUS_ANULADO}'
+          )
+        ORDER BY d.FECHA DESC, d.HORA DESC, d.MINUTO DESC, d.ID DESC
+      `);
+    res.json({ rows: normalizeDocumentoRows(result.recordset) });
+  } catch (err) {
+    console.warn('[API GET /compras/ordenes-ocm]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/compras/desde-ocm', async (req, res) => {
+  if (!isDbConfigured()) return res.status(503).json({ error: 'Base de datos no configurada' });
+  const empnit = requireEmpNit(req, res);
+  if (!empnit) return;
+  const ocmCoddoc = String(req.body?.CODDOC_OCM || req.body?.CODDOC || '').trim();
+  const ocmCorrelativo = parseCorrelativo(req.body?.CORRELATIVO_OCM ?? req.body?.CORRELATIVO);
+  const coddocComPref = String(req.body?.CODDOC_COM || '').trim();
+  const usuario = String(req.body?.USUARIO || 'COMPRAS').trim();
+  if (!ocmCoddoc || ocmCorrelativo === null) {
+    return res.status(400).json({ error: 'CODDOC_OCM y CORRELATIVO_OCM son obligatorios' });
+  }
+  try {
+    const pool = await req.app.locals.getDbPool();
+    const ocm = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('CODDOC', sql.VarChar, ocmCoddoc)
+      .input('CORRELATIVO', sql.Decimal(18, 0), ocmCorrelativo)
+      .query(`
+        SELECT d.*, t.TIPODOC
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT AND d.CODDOC = @CODDOC AND d.CORRELATIVO = @CORRELATIVO
+          AND t.TIPODOC = 'OCM' AND d.STATUS = '${STATUS_OPERADO}'
+      `);
+    if (!ocm.recordset.length) {
+      return res.status(404).json({ error: 'Orden de compra no encontrada o no está operada' });
+    }
+    const ocmRow = ocm.recordset[0];
+    const dup = await pool
+      .request()
+      .input('EMPNIT', sql.VarChar, empnit)
+      .input('SERIEFAC', sql.VarChar, ocmCoddoc)
+      .input('CORR', sql.Decimal(18, 0), ocmCorrelativo)
+      .query(`
+        SELECT TOP 1 d.CODDOC, d.CORRELATIVO
+        FROM dbo.DOCUMENTOS d
+        JOIN dbo.TIPODOCUMENTOS t ON d.CODDOC = t.CODDOC AND d.EMPNIT = t.EMPNIT
+        WHERE d.EMPNIT = @EMPNIT AND t.TIPODOC IN (${SQL_TIPODOC_COMPRAS_IN})
+          AND d.SERIEFAC = @SERIEFAC AND TRY_CAST(LTRIM(RTRIM(d.NOFAC)) AS DECIMAL(18, 0)) = @CORR
+          AND d.STATUS <> '${STATUS_ANULADO}'
+      `);
+    if (dup.recordset.length) {
+      const d = dup.recordset[0];
+      return res.status(409).json({ error: `Ya existe compra ${d.CODDOC}-${d.CORRELATIVO} para esta orden` });
+    }
+    const tipo = await getTipoDocCom(pool, empnit, coddocComPref);
+    if (!tipo) {
+      return res.status(400).json({ error: 'No hay tipo COM/COP activo' });
+    }
+    const coddocCom = tipo.CODDOC;
+    const parts = nowParts();
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+    try {
+      const correlativoCom = await allocateCorrelativo(transaction, empnit, coddocCom);
+      await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ANIO', sql.Int, parts.anio)
+        .input('MES', sql.Int, parts.mes)
+        .input('DIA', sql.Int, parts.dia)
+        .input('FECHA', sql.Date, parts.fecha)
+        .input('HORA', sql.Int, parts.hora)
+        .input('MINUTO', sql.Int, parts.minuto)
+        .input('CODDOC', sql.VarChar, coddocCom)
+        .input('CORRELATIVO', sql.Decimal(18, 0), correlativoCom)
+        .input('CODCLIENTE', sql.Int, ocmRow.CODCLIENTE || ocmRow.CODPROV || 1)
+        .input('DOC_NIT', sql.VarChar, String(ocmRow.DOC_NIT || 'CF'))
+        .input('DOC_NOMCLIE', sql.VarChar, String(ocmRow.DOC_NOMCLIE || ''))
+        .input('DOC_DIRCLIE', sql.VarChar, String(ocmRow.DOC_DIRCLIE || 'SN'))
+        .input('USUARIO', sql.VarChar, usuario)
+        .input('OBS', sql.VarChar, String(ocmRow.OBS || ''))
+        .input('SERIEFAC', sql.VarChar, ocmCoddoc)
+        .input('NOFAC', sql.VarChar, String(ocmCorrelativo))
+        .input('CONCRE', sql.VarChar, String(ocmRow.CONCRE || 'CON'))
+        .query(`
+          INSERT INTO dbo.DOCUMENTOS (
+            EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
+            CODCLIENTE, DOC_NIT, DOC_NOMCLIE, DOC_DIRCLIE,
+            TOTALCOSTO, TOTALPRECIO, CODEMBARQUE, STATUS, USUARIO, CONCRE, CORTE,
+            MARCA, OBS, DOC_SALDO, DOC_ABONO, OBSMARCA, TOTALDESCUENTO, CODCAJA,
+            DIRENTREGA, NOGUIA, VALORENTREGA, TOTALEXENTO, TIPOPAGO, NODOCPAGO,
+            VENCIMIENTO, DIASCREDITO, TOTALIVA, TOTALSINIVA, PAGO, VUELTO,
+            SERIEFAC, NOFAC
+          ) VALUES (
+            @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
+            @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE,
+            0, 0, '${CODEMBARQUE_COMPRAS}', '${STATUS_OPERADO}', @USUARIO, @CONCRE, 'NO',
+            'SN', @OBS, 0, 0, 'SN', 0, 1,
+            'SN', 'SN', 0, 0,
+            CASE WHEN @CONCRE = 'CRE' THEN 'CREDITO' ELSE 'CONTADO' END, 'SN',
+            @FECHA, 0, 0, 0, 0, 0,
+            @SERIEFAC, @NOFAC
+          )
+        `);
+      const tipom = await getTipomDocumento(transaction, empnit, coddocCom);
+      const ent = valoresEntregadosIniciales(coddocCom, 0, 0, 0);
+      await transaction
+        .request()
+        .input('EMPNIT', sql.VarChar, empnit)
+        .input('ANIO', sql.Int, parts.anio)
+        .input('MES', sql.Int, parts.mes)
+        .input('DIA', sql.Int, parts.dia)
+        .input('CODDOC_SRC', sql.VarChar, ocmCoddoc)
+        .input('CORR_SRC', sql.Decimal(18, 0), ocmCorrelativo)
+        .input('CODDOC_DST', sql.VarChar, coddocCom)
+        .input('CORR_DST', sql.Decimal(18, 0), correlativoCom)
+        .input('TIPOM', sql.Int, tipom)
+        .input('ENT_U', sql.Float, ent.unidades)
+        .input('ENT_C', sql.Decimal(18, 3), ent.costo)
+        .input('ENT_P', sql.Decimal(18, 3), ent.precio)
+        .query(`
+          INSERT INTO dbo.DOCPRODUCTOS (
+            EMPNIT, ANIO, MES, DIA, CODDOC, CORRELATIVO, CODPROD, DESPROD, CODMEDIDA,
+            CANTIDAD, CANTIDADBONIF, EQUIVALE, TOTALUNIDADES, TOTALBONIF,
+            COSTO, PRECIO, TOTALCOSTO, TOTALPRECIO,
+            ENTREGADOS_TOTALUNIDADES, ENTREGADOS_TOTALCOSTO, ENTREGADOS_TOTALPRECIO,
+            COSTOANTERIOR, COSTOPROMEDIO, CODBODEGAENTRADA, CODBODEGASALIDA,
+            DESCUENTO, PORCDESCUENTO, NOSERIE, EXENTO, OBS,
+            TIPOPROD, TIPOPRECIO, PESO, TOTALPESO, TIPOM, LASTUPDATE, BONO
+          )
+          SELECT
+            l.EMPNIT, @ANIO, @MES, @DIA, @CODDOC_DST, @CORR_DST,
+            l.CODPROD, l.DESPROD, l.CODMEDIDA,
+            l.CANTIDAD, ISNULL(l.CANTIDADBONIF, 0), l.EQUIVALE, l.TOTALUNIDADES, ISNULL(l.TOTALBONIF, 0),
+            l.COSTO, l.PRECIO, l.TOTALCOSTO, l.TOTALPRECIO,
+            @ENT_U, @ENT_C, @ENT_P,
+            ISNULL(l.COSTOANTERIOR, 0), ISNULL(l.COSTOPROMEDIO, 0),
+            ISNULL(l.CODBODEGAENTRADA, 0), ISNULL(l.CODBODEGASALIDA, 0),
+            ISNULL(l.DESCUENTO, 0), ISNULL(l.PORCDESCUENTO, 0), ISNULL(l.NOSERIE, 'SN'), ISNULL(l.EXENTO, 0), ISNULL(l.OBS, 'SN'),
+            ISNULL(l.TIPOPROD, 'P'), ISNULL(l.TIPOPRECIO, 'P'), ISNULL(l.PESO, 0), ISNULL(l.TOTALPESO, 0),
+            @TIPOM, CAST(GETDATE() AS DATE), ISNULL(l.BONO, 0)
+          FROM dbo.DOCPRODUCTOS l
+          WHERE l.EMPNIT = @EMPNIT AND l.CODDOC = @CODDOC_SRC AND l.CORRELATIVO = @CORR_SRC
+        `);
+      await recalcDocumentTotals(transaction, empnit, coddocCom, correlativoCom);
+      await transaction.commit();
+      const compra = await loadCompra(pool, empnit, coddocCom, correlativoCom);
+      res.status(201).json({ compra });
+    } catch (inner) {
+      await transaction.rollback();
+      throw inner;
+    }
+  } catch (err) {
+    console.warn('[API POST /compras/compras/desde-ocm]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

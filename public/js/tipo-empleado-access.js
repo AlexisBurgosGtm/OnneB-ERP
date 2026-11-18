@@ -11,6 +11,7 @@ const TipoEmpleadoAccess = {
   TIPO_TRANSPORTE: 6,
   TIPO_CONTABILIDAD: 7,
   TIPO_CAJERO: 8,
+  TIPO_BI: 9,
 
   ALL_MENUS: [
     'inicio',
@@ -30,6 +31,7 @@ const TipoEmpleadoAccess = {
     'gastos',
     'corte-caja',
     'cotizaciones',
+    'ordenes-compra',
     'fraccionamiento-fac',
     'tareas',
     'embarques',
@@ -89,6 +91,7 @@ const TipoEmpleadoAccess = {
     'impresion-xml-fel',
     'control-fletes',
     'reportes-pendientes-facturar',
+    'business-intelligence',
     'subir-catalogo',
     'descargar-catalogo',
     'traslados-en-transito',
@@ -149,6 +152,7 @@ const TipoEmpleadoAccess = {
       'gastos',
       'corte-caja',
       'cotizaciones',
+    'ordenes-compra',
       'fraccionamiento-fac',
       'tareas',
       'embarques',
@@ -230,6 +234,7 @@ const TipoEmpleadoAccess = {
       'vendedor-pedidos',
       'comandas-restaurante',
       'cotizaciones',
+    'ordenes-compra',
       'fraccionamiento-fac',
       'tareas',
       'inventario',
@@ -287,6 +292,7 @@ const TipoEmpleadoAccess = {
       'bancos',
       'cuentas-bancarias',
     ],
+    9: ['business-intelligence'],
     8: [
       'inicio',
       'facturacion',
@@ -315,6 +321,10 @@ const TipoEmpleadoAccess = {
       }
       if (!Array.isArray(val)) continue;
       const menus = val.map((m) => String(m || '').trim()).filter((m) => this.ALL_MENUS.includes(m));
+      if (cod === this.TIPO_BI) {
+        next[cod] = ['business-intelligence'];
+        continue;
+      }
       if (!menus.includes('inicio')) menus.unshift('inicio');
       // Admin con lista casi completa → acceso total (incluye menús nuevos)
       if (cod === this.TIPO_ADMIN) {
@@ -345,6 +355,11 @@ const TipoEmpleadoAccess = {
 
   getSessionUser() {
     return F.session('user') || {};
+  },
+
+  isBiExclusive(codtipo) {
+    const cod = codtipo === undefined ? this.getCodTipo() : Number(codtipo);
+    return cod === this.TIPO_BI;
   },
 
   getCodTipo(sessionUser) {
@@ -385,6 +400,9 @@ const TipoEmpleadoAccess = {
   canAccessMenu(menuKey, sessionUser) {
     const key = String(menuKey || '').trim();
     if (!key) return false;
+    if (this.isBiExclusive(this.getCodTipo(sessionUser))) {
+      return key === 'business-intelligence';
+    }
     if (key === 'licencia') return true;
     // Super usuario: Actualizador BD siempre, aunque no esté en la licencia.
     if (key === 'updater') {
@@ -420,11 +438,37 @@ const TipoEmpleadoAccess = {
       6: 'TRANSPORTE',
       7: 'CONTABILIDAD',
       8: 'CAJERO',
+      9: 'BUSINESS INTELLIGENCE',
     };
     return fallback[codtipo] || 'Empleado';
   },
 
+  applyShellLayout() {
+    const bi = this.isBiExclusive();
+    document.body.classList.toggle('onneb-bi-shell', bi);
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.hidden = bi;
+    if (overlay) overlay.hidden = bi;
+    const menuToggle = document.getElementById('btn-menu-toggle');
+    const menuFab = document.getElementById('btn-menu-fab');
+    const tabsBar = document.getElementById('view-tabs-bar');
+    if (menuToggle) menuToggle.hidden = bi;
+    if (menuFab) {
+      menuFab.hidden = bi;
+      menuFab.classList.remove('is-visible');
+    }
+    if (tabsBar && bi) tabsBar.hidden = true;
+    if (typeof FavoritosFab !== 'undefined') {
+      FavoritosFab.setVisible(!bi);
+    }
+    const mainLayout = document.querySelector('#view-main .main-layout');
+    if (mainLayout) mainLayout.classList.toggle('main-layout--bi-full', bi);
+  },
+
   applySidebarVisibility() {
+    this.applyShellLayout();
+    if (this.isBiExclusive()) return;
     const allowed = this.allowedMenus(this.getCodTipo());
     const tipEmpresa =
       typeof F !== 'undefined' && typeof F.getCodTipoEmpresa === 'function'
@@ -476,6 +520,16 @@ const TipoEmpleadoAccess = {
   },
 
   resetSidebarVisibility() {
+    document.body.classList.remove('onneb-bi-shell');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.hidden = false;
+    if (overlay) overlay.hidden = false;
+    const menuToggle = document.getElementById('btn-menu-toggle');
+    const menuFab = document.getElementById('btn-menu-fab');
+    if (menuToggle) menuToggle.hidden = false;
+    if (menuFab) menuFab.hidden = false;
+    document.querySelector('#view-main .main-layout')?.classList.remove('main-layout--bi-full');
     document.querySelectorAll('.sidebar-link[data-menu]').forEach((link) => {
       const li = link.closest('li');
       if (li) li.hidden = false;

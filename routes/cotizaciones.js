@@ -29,7 +29,12 @@ const {
   effectivePermiteCambiarPrecioPedidos,
   getSettingSolicitaClaveCambiarPrecios,
   SETTING_OPCION,
+  getSettingConcre,
 } = require('../lib/settings');
+const {
+  enforceConcreVentasPolicy,
+  getDefaultConcreVentas,
+} = require('../lib/concre-ventas-policy');
 const { normalizeTipofac, normalizePrioridad } = require('../lib/documento-tipofac-prioridad');
 const {
   resolveEmpleadoCoddocPreferido,
@@ -324,6 +329,11 @@ router.get('/config', async (req, res) => {
       pool,
       SETTING_OPCION.PERMITE_MOVER_BOTON_FINALIZAR_EN_DOCUMENTOS
     );
+    const bloqueaContadoCreditoVentas = await getSettingSino(
+      pool,
+      SETTING_OPCION.BLOQUEA_CONTADO_CREDITO_EN_VENTAS
+    );
+    const cobroPredeterminado = await getSettingConcre(pool, SETTING_OPCION.COBRO_PREDETERMINADO);
     res.json({
       empnit,
       tipodoc: TIPODOC_COTIZACION,
@@ -339,6 +349,8 @@ router.get('/config', async (req, res) => {
       solicitaAutorizaciones,
       muestraDesprod2,
       permiteMoverBotonFinalizarEnDocumentos,
+      bloqueaContadoCreditoVentas,
+      cobroPredeterminado,
     });
   } catch (err) {
     console.warn('[API GET /cotizaciones/config]', err.message);
@@ -466,6 +478,8 @@ router.post('/pedidos', async (req, res) => {
     }
 
     const parts = nowParts();
+    const defaultConcre = await getDefaultConcreVentas(pool);
+    const tipopagoDefault = defaultConcre === 'CRE' ? 'CREDITO' : 'CONTADO';
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -489,6 +503,8 @@ router.post('/pedidos', async (req, res) => {
         .input('USUARIO', sql.VarChar, usuario)
         .input('OBS', sql.VarChar, obs)
         .input('CODVEN', sql.Int, codven)
+        .input('CONCRE', sql.VarChar, defaultConcre)
+        .input('TIPOPAGO', sql.VarChar, tipopagoDefault)
         .query(`
           INSERT INTO dbo.DOCUMENTOS (
             EMPNIT, ANIO, MES, DIA, FECHA, HORA, MINUTO, CODDOC, CORRELATIVO,
@@ -500,9 +516,9 @@ router.post('/pedidos', async (req, res) => {
           ) VALUES (
             @EMPNIT, @ANIO, @MES, @DIA, @FECHA, @HORA, @MINUTO, @CODDOC, @CORRELATIVO,
             @CODCLIENTE, @DOC_NIT, @DOC_NOMCLIE, @DOC_DIRCLIE, @CODVEN,
-            0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, 'CON', 'NO',
+            0, 0, 'MOSTRADOR', '${STATUS_OPERADO}', @USUARIO, @CONCRE, 'NO',
             'SN', @OBS, 0, 0, 'SN', 0, 1,
-            'SN', 'SN', 0, 0, 'CONTADO', 'SN',
+            'SN', 'SN', 0, 0, @TIPOPAGO, 'SN',
             @FECHA, 0, 0, 0, 0, 0
           )
         `);
@@ -530,6 +546,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
   try {
     const pool = await req.app.locals.getDbPool();
     const updates = [];
+    let concrePatch;
     const request = pool
       .request()
       .input('EMPNIT', sql.VarChar, empnit)
@@ -557,12 +574,13 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
       updates.push('OBS = @OBS');
     }
     if (req.body?.CONCRE !== undefined) {
-      const concre = String(req.body.CONCRE || 'CON').trim().toUpperCase();
-      if (concre !== 'CON' && concre !== 'CRE') {
-        return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
+      try {
+        concrePatch = await enforceConcreVentasPolicy(pool, empnit, req, req.body.CONCRE);
+      } catch (policyErr) {
+        return res.status(policyErr.statusCode || 403).json({ error: policyErr.message });
       }
-      request.input('CONCRE', sql.VarChar, concre);
-      updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concre === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
+      request.input('CONCRE', sql.VarChar, concrePatch);
+      updates.push('CONCRE = @CONCRE', `TIPOPAGO = '${concrePatch === 'CRE' ? 'CREDITO' : 'CONTADO'}'`);
     }
     if (req.body?.CODVEN !== undefined) {
       const raw = req.body.CODVEN;
@@ -630,7 +648,7 @@ router.patch('/pedidos/:coddoc/:correlativo', async (req, res) => {
           txnReq.input('OBS', sql.VarChar, String(req.body.OBS || ''));
         }
         if (req.body?.CONCRE !== undefined) {
-          txnReq.input('CONCRE', sql.VarChar, String(req.body.CONCRE || 'CON').trim().toUpperCase());
+          txnReq.input('CONCRE', sql.VarChar, concrePatch);
         }
         if (req.body?.CODVEN !== undefined) {
           const raw = req.body.CODVEN;

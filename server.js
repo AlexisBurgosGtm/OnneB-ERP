@@ -129,6 +129,7 @@ const notasAbonoRouter = require('./routes/notas-abono');
 const notasDebitoRouter = require('./routes/notas-debito');
 const corteCajaRouter = require('./routes/corte-caja');
 const comprasRouter = require('./routes/compras');
+const ordenesCompraRouter = require('./routes/ordenes-compra');
 const { entradasRouter, salidasRouter, trasladosCrearRouter, trasladosRecibirRouter } = require('./routes/inventario-docs');
 const inventarioSaldoRouter = require('./routes/inventario-saldo');
 const documentosRouter = require('./routes/documentos');
@@ -137,6 +138,7 @@ const documentosEliminadosRouter = require('./routes/documentos-eliminados');
 const promocionesRouter = require('./routes/promociones');
 const auditoriaCajasRouter = require('./routes/auditoria-cajas');
 const reportesVentasRouter = require('./routes/reportes-ventas');
+const businessIntelligenceRouter = require('./routes/business-intelligence');
 const reportesClientesRouter = require('./routes/reportes-clientes');
 const reportesProductosRouter = require('./routes/reportes-productos');
 const reportesRestauranteRouter = require('./routes/reportes-restaurante');
@@ -339,6 +341,7 @@ app.use('/api/notas-debito', notasDebitoRouter);
 app.use('/api/corte-caja', corteCajaRouter);
 app.use('/api/vales-caja', valesCajaRouter);
 app.use('/api/compras', comprasRouter);
+app.use('/api/ordenes-compra', ordenesCompraRouter);
 app.use('/api/inventario/ent', entradasRouter);
 app.use('/api/inventario/sal', salidasRouter);
 app.use('/api/traslados/crear', trasladosCrearRouter);
@@ -351,6 +354,7 @@ app.use('/api/documentos-eliminados', documentosEliminadosRouter);
 app.use('/api/promociones', promocionesRouter);
 app.use('/api/auditoria-cajas', auditoriaCajasRouter);
 app.use('/api/reportes-ventas', reportesVentasRouter);
+app.use('/api/business-intelligence', businessIntelligenceRouter);
 app.use('/api/reportes-clientes', reportesClientesRouter);
 app.use('/api/reportes-productos', reportesProductosRouter);
 app.use('/api/reportes-restaurante', reportesRestauranteRouter);
@@ -458,6 +462,15 @@ server.listen(PORT, () => {
   process.once('exit', clearPid);
 
   console.log(`OnneB_pos en http://localhost:${PORT}`);
+  if (isDbConfigured()) {
+    getLocalDbPool()
+      .then(() => {
+        console.log('[DB] pool listo (precalentado)');
+      })
+      .catch((err) => {
+        console.warn('[DB] precalentado:', err?.message || err);
+      });
+  }
   console.log(`Datos locales: ${dataRootFn()}`);
   if (packagedFn()) {
     console.log('Modo: ejecutable empaquetado (.env y Fotos_productos junto al .exe)');

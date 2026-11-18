@@ -270,7 +270,11 @@ const ReportesRestauranteView = {
     const pt = d.productosTotales || {};
     return `
       <div class="represt-detail-panel">
-        <div class="card shadow-sm">
+        <div class="card shadow-sm position-relative">
+          <button type="button" class="btn btn-sm btn-outline-secondary rep-hero-print-btn position-absolute top-0 end-0 m-2"
+            title="Imprimir detalle de la mesa">
+            <i class="fa-solid fa-print"></i>
+          </button>
           <div class="card-body py-2">
             <h3 class="h6 mb-1">${this.escapeHtml(this.mesaLabel(d.mesa))}</h3>
             <div class="small text-muted mb-2">
@@ -433,6 +437,105 @@ const ReportesRestauranteView = {
     }
   },
 
+  buildDetallePrintHtml() {
+    const d = this._detalle;
+    if (!d) return '';
+    const res = d.resumen || {};
+    const kpis = [
+      { label: 'Facturas', value: res.facturas ?? 0 },
+      { label: 'Ventas netas', value: this.formatMoney(res.ventasNetas) },
+      { label: 'Ticket prom.', value: this.formatMoney(res.ticketPromedio) },
+    ];
+    let out = ReportesDetallePrint.hero(this.mesaLabel(d.mesa), '', kpis);
+    const serie = d.serie || [];
+    out += ReportesDetallePrint.section(
+      'Ventas por fecha',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Fecha' },
+          { text: 'Facturas', align: 'end' },
+          { text: 'Ventas', align: 'end' },
+        ],
+        serie.map((row) => [
+          this.formatFecha(row.FECHA),
+          String(row.NUM_FACTURAS ?? '—'),
+          this.formatMoney(row.VENTAS_NETAS),
+        ])
+      )
+    );
+    const docs = d.documentos || [];
+    out += ReportesDetallePrint.section(
+      'Facturas',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Fecha' },
+          { text: 'Hora' },
+          { text: 'Documento' },
+          { text: 'Cliente' },
+          { text: 'Total', align: 'end' },
+        ],
+        docs.map((r) => [
+          this.formatFecha(r.FECHA),
+          this.formatHoraDoc(r),
+          `${r.TIPODOC || ''} ${r.CODDOC || ''} #${r.CORRELATIVO ?? ''}`,
+          r.DOC_NOMCLIE || '—',
+          this.formatMoney(r.TOTALPRECIO),
+        ])
+      )
+    );
+    const prods = d.productos || [];
+    const pt = d.productosTotales || {};
+    out += ReportesDetallePrint.section(
+      'Productos vendidos',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Código' },
+          { text: 'Descripción' },
+          { text: 'Unidades', align: 'end' },
+          { text: 'Costo', align: 'end' },
+          { text: 'Precio', align: 'end' },
+          { text: 'Utilidad', align: 'end' },
+        ],
+        prods.map((p) => {
+          const util = p.UTILIDAD ?? this.utilidadOf(p.TOTALPRECIO, p.TOTALCOSTO);
+          return [
+            p.CODPROD || '—',
+            p.DESPROD || '—',
+            this.formatQty(p.TOTALUNIDADES),
+            this.formatMoney(p.TOTALCOSTO),
+            this.formatMoney(p.TOTALPRECIO),
+            this.formatMoney(util),
+          ];
+        }),
+        prods.length
+          ? [
+              'Total',
+              '',
+              this.formatQty(pt.unidades),
+              this.formatMoney(pt.costo),
+              this.formatMoney(pt.precio),
+              this.formatMoney(pt.utilidad ?? this.utilidadOf(pt.precio, pt.costo)),
+            ]
+          : null
+      )
+    );
+    return out;
+  },
+
+  async printDetalleReport() {
+    if (!this._detalle || !this._selectedMesaId) {
+      F.toast('Seleccione una mesa', 'warning');
+      return;
+    }
+    await ReportesDetallePrint.printLetterReport({
+      reportTitle: 'Reportes de Restaurante',
+      desde: this._desde,
+      hasta: this._hasta,
+      formatFecha: (v) => this.formatFecha(v),
+      buildBody: () => this.buildDetallePrintHtml(),
+    });
+  },
+
   bindEvents() {
     if (!this._container) return;
     this._container.querySelector('#represt-refresh')?.addEventListener('click', () => {
@@ -444,6 +547,12 @@ const ReportesRestauranteView = {
       this._filterMesas = ev.target.value || '';
       const list = this._container.querySelector('#represt-mesa-list');
       if (list) list.innerHTML = this.renderMesaCards();
+    });
+    this._container.addEventListener('click', (ev) => {
+      const heroBtn = ev.target.closest('.rep-hero-print-btn');
+      if (heroBtn && this._container.contains(heroBtn) && this._selectedMesaId && this._detalle) {
+        this.printDetalleReport().catch((err) => F.toast(err.message || 'No se pudo imprimir', 'error'));
+      }
     });
     this._container.querySelector('#represt-mesa-list')?.addEventListener('click', (ev) => {
       const card = ev.target.closest('[data-mesa-id]');

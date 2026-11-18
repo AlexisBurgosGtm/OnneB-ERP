@@ -30,6 +30,7 @@ const DocOpciones = {
     FNA: { menu: 'notas-abono', view: () => NotasAbonoView },
     DVP: { menu: 'notas-debito', view: () => NotasDebitoView },
     COM: { menu: 'compras', view: () => ComprasView },
+    OCM: { menu: 'ordenes-compra', view: () => OrdenesCompraView },
     ENT: { menu: 'entradas-inventario', view: () => EntradasInventarioView },
     SAL: { menu: 'salidas-inventario', view: () => SalidasInventarioView },
   },

@@ -121,6 +121,44 @@ async function minifyPublic() {
   log(`JS minificados: ${count}`);
 }
 
+/** Prefijo PowerShell: RemoteSigned en el usuario actual (suele no pedir administrador). */
+const PS1_POLICY_PREAMBLE = `
+# Politica de ejecucion de scripts (usuario actual).
+try {
+  $pol = Get-ExecutionPolicy -Scope CurrentUser -ErrorAction SilentlyContinue
+  if ($pol -in @('Undefined', 'Restricted', 'AllSigned')) {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
+    Write-Host 'ExecutionPolicy: RemoteSigned (CurrentUser).'
+  }
+} catch {
+  Write-Warning "No se pudo cambiar ExecutionPolicy: $($_.Exception.Message)"
+  Write-Warning 'Use el archivo .cmd del mismo nombre o: powershell -ExecutionPolicy Bypass -File .\\script.ps1'
+}
+`.trim();
+
+function ps1WithPolicy(body) {
+  return `${PS1_POLICY_PREAMBLE}\n\n${String(body).trim()}\n`;
+}
+
+function writePs1CmdLauncher(ps1FileName) {
+  const base = ps1FileName.replace(/\.ps1$/i, '');
+  const lines = [
+    '@echo off',
+    'setlocal',
+    'cd /d "%~dp0"',
+    `echo Ejecutando ${ps1FileName} ...`,
+    `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0${ps1FileName}" %*`,
+    'set ERR=%ERRORLEVEL%',
+    'if not "%ERR%"=="0" (',
+    '  echo Finalizo con error %ERR%.',
+    '  pause',
+    ')',
+    'exit /b %ERR%',
+    '',
+  ];
+  fs.writeFileSync(path.join(OUT, `${base}.cmd`), `${lines.join('\r\n')}\r\n`, 'utf8');
+}
+
 function writeInstallFiles() {
   ensureDir(path.join(OUT, 'Fotos_productos'));
   ensureDir(path.join(OUT, 'EMPLEADOS'));
@@ -176,7 +214,8 @@ function writeInstallFiles() {
 
   fs.writeFileSync(
     path.join(OUT, 'install-service.ps1'),
-    `# Ejecutar como Administrador en esta carpeta (dist-client).
+    ps1WithPolicy(`# Ejecutar como Administrador en esta carpeta (dist-client).
+# Recomendado: install-service.cmd (evita bloqueo de scripts en PowerShell).
 # 1) Descargar WinSW-x64.exe: https://github.com/winsw/winsw/releases
 # 2) Renombrarlo a ${SERVICE_ID}.exe (junto a este script y al XML).
 # 3) Tener .env en esta misma carpeta (copiar desde .env.example).
@@ -192,25 +231,26 @@ if (-not (Test-Path $Wrapper)) {
 }
 & $Wrapper install
 & $Wrapper start
-Write-Host 'Servicio instalado y arrancado. Abra http://localhost:${DEFAULT_PORT}'
-`,
+Write-Host 'Servicio instalado y arrancado. Abra http://localhost:${DEFAULT_PORT}'`),
     'utf8'
   );
+  writePs1CmdLauncher('install-service.ps1');
 
   fs.writeFileSync(
     path.join(OUT, 'uninstall-service.ps1'),
-    `$ErrorActionPreference = 'Stop'
+    ps1WithPolicy(`$ErrorActionPreference = 'Stop'
 $Wrapper = Join-Path $PSScriptRoot '${SERVICE_ID}.exe'
 if (Test-Path $Wrapper) { & $Wrapper stop; & $Wrapper uninstall }
-Write-Host 'Servicio desinstalado.'
-`,
+Write-Host 'Servicio desinstalado.'`),
     'utf8'
   );
+  writePs1CmdLauncher('uninstall-service.ps1');
 
   fs.writeFileSync(
     path.join(OUT, 'open-firewall-port.ps1'),
-    `# Permite conexiones entrantes TCP al puerto del ERP (LAN, ZeroTier, etc.).
+    ps1WithPolicy(`# Permite conexiones entrantes TCP al puerto del ERP (LAN, ZeroTier, etc.).
 # Ejecutar como Administrador en esta carpeta (dist-client).
+# Recomendado: open-firewall-port.cmd
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
@@ -244,10 +284,10 @@ if ($existing) {
 }
 
 Write-Host "Pruebe en esta PC: http://localhost:$Port"
-Write-Host "Desde otra PC (VPN/LAN): http://<IP-de-esta-maquina>:$Port"
-`,
+Write-Host "Desde otra PC (VPN/LAN): http://<IP-de-esta-maquina>:$Port"`),
     'utf8'
   );
+  writePs1CmdLauncher('open-firewall-port.ps1');
 
   fs.writeFileSync(
     path.join(OUT, 'README-INSTALACION.txt'),
@@ -263,6 +303,7 @@ En la MISMA carpeta que ${EXE_NAME} (esta carpeta de instalación).
     .env                  ← AQUÍ (copie desde .env.example)
     ${SERVICE_ID}.xml
     ${SERVICE_ID}.exe     ← WinSW renombrado (opcional, para servicio)
+    install-service.cmd / open-firewall-port.cmd ← recomendados si PowerShell bloquea .ps1
     open-firewall-port.ps1 ← liberar puerto TCP en Windows (acceso remoto)
     Fotos_productos\\      ← fotos productos (no borrar al actualizar)
     EMPLEADOS\\            ← fotos empleados (no borrar)
@@ -286,7 +327,8 @@ Pasos
 1. Copiar .env.example → .env y editar DB_*, TOKEN, PORT=${DEFAULT_PORT}
 2. (Opcional) data\\license.json del generador de licencias
 3. Probar: ejecutar ${EXE_NAME} → http://localhost:${DEFAULT_PORT}
-4. Servicio Windows: install-service.ps1 como Administrador
+4. Servicio Windows: clic derecho → Ejecutar como administrador en install-service.cmd
+   (o install-service.ps1; el script intenta RemoteSigned para el usuario actual)
 
 Acceso remoto (ZeroTier, otra sucursal, etc.)
 ------------------------------------------------
@@ -294,9 +336,8 @@ Si desde otra PC hace ping a la IP pero NO abre http://IP:PUERTO, casi siempre
 falta una regla en el Firewall de Windows de ESTA máquina.
 
 1. Confirme que aquí funciona: http://localhost:PUERTO (mismo PORT del .env)
-2. Ejecute como Administrador (clic derecho → Ejecutar con PowerShell):
-
-     .\\open-firewall-port.ps1
+2. Ejecute como Administrador: open-firewall-port.cmd
+   (o en PowerShell: .\\open-firewall-port.ps1)
 
    El script lee PORT del .env (si no hay .env, usa ${DEFAULT_PORT}) y crea la
    regla entrante TCP. Vuelva a probar desde la otra PC: http://IP:PUERTO

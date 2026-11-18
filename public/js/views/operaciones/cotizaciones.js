@@ -968,6 +968,31 @@ const CotizacionesView = {
     if (prioridadSel && h && document.activeElement !== prioridadSel) {
       prioridadSel.value = String(h.PRIORIDAD || 'BAJA').trim().toUpperCase() || 'BAJA';
     }
+    const concreSel = this._container?.querySelector('#pos-doc-concre');
+    if (concreSel && h && document.activeElement !== concreSel && typeof DocConcreConfig !== 'undefined') {
+      concreSel.value = DocConcreConfig.effectiveConcre(h, this._config);
+      DocConcreConfig.lockFinalizarSelect(concreSel, this._config);
+    }
+  },
+
+  renderConcreField() {
+    if (typeof DocConcreConfig === 'undefined') return '';
+    return DocConcreConfig.renderHeaderField({
+      selectId: 'pos-doc-concre',
+      header: this._pedido?.header,
+      config: this._config,
+    });
+  },
+
+  async ensureConcrePolicy() {
+    if (typeof DocConcreConfig === 'undefined' || !this._config || !this._pedido?.header) return;
+    if (!this.docEditable(this._pedido.header)) return;
+    if (!DocConcreConfig.isLocked(this._config)) return;
+    const expected = DocConcreConfig.effectiveConcre(this._pedido.header, this._config);
+    const actual = DocConcreConfig.normalizeConcre(this._pedido.header.CONCRE);
+    if (actual !== expected) {
+      await this.guardarConcreDocumento(expected, { silent: true });
+    }
   },
 
   renderPrecioCampoSelector(editable) {
@@ -1033,6 +1058,7 @@ const CotizacionesView = {
       '#pos-doc-vendedor',
       '#pos-doc-tipofac',
       '#pos-doc-prioridad',
+      '#pos-doc-concre',
       '#pos-precio-campo',
       '#pos-cliente-nuevo',
       '#pos-btn-agregar-pse',
@@ -1237,6 +1263,7 @@ const CotizacionesView = {
                 ${DocFecha.renderField('pos-doc-fecha', this._pedido?.header)}
                 ${this.renderVendedorField()}
                 ${this.renderTipofacPrioridadFields()}
+                ${this.renderConcreField()}
               </div>
               <div class="pos-header-summary ms-auto text-end">
                 <h3 class="pos-header-total mb-0" id="pos-header-total">Q 0.00</h3>
@@ -1473,6 +1500,14 @@ const CotizacionesView = {
       });
     }
 
+    const concreSel = this._container?.querySelector('#pos-doc-concre');
+    if (concreSel) {
+      concreSel.addEventListener('change', () => {
+        if (concreSel.disabled) return;
+        this.guardarConcreDocumento(concreSel.value).catch((err) => F.toast(err.message, 'error'));
+      });
+    }
+
     const refreshVenBtn = this._container?.querySelector('.btn-refresh-vendedores');
     if (refreshVenBtn) {
       refreshVenBtn.addEventListener('click', () => {
@@ -1674,6 +1709,34 @@ const CotizacionesView = {
     F.toast('Prioridad actualizada', 'success');
   },
 
+  async guardarConcreDocumento(concre, opts = {}) {
+    const key = this.docKey();
+    if (!key || !this.docEditable(this._pedido?.header)) return;
+    const next =
+      typeof DocConcreConfig !== 'undefined'
+        ? DocConcreConfig.normalizeConcre(concre)
+        : String(concre || 'CON').trim().toUpperCase() === 'CRE'
+          ? 'CRE'
+          : 'CON';
+    const actual =
+      typeof DocConcreConfig !== 'undefined'
+        ? DocConcreConfig.normalizeConcre(this._pedido.header?.CONCRE)
+        : String(this._pedido.header?.CONCRE || 'CON').trim().toUpperCase() === 'CRE'
+          ? 'CRE'
+          : 'CON';
+    if (next === actual) return;
+    const empQuery =
+      typeof DocConcreConfig !== 'undefined' ? DocConcreConfig.empleadoQuerySuffix() : '';
+    const url = `/api/cotizaciones/pedidos/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}${empQuery}`;
+    this._pedido = await F.fetchJson(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ CONCRE: next }),
+    });
+    this.renderHeaderInfo();
+    if (!opts.silent) F.toast('Forma de pago actualizada', 'success');
+  },
+
   async aplicarCliente(codcliente) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._pedido?.header)) return;
@@ -1763,6 +1826,7 @@ const CotizacionesView = {
     PosDocSearchUI.resetProductSearch(this, 'pos');
     this.renderAll();
     await this.maybeApplyDefaultVendedor();
+    await this.ensureConcrePolicy();
     if (opts.focusProductSearch) {
       PosDocSearchUI.focusProductSearch(this._container, 'pos');
     }

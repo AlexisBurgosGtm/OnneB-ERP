@@ -225,11 +225,11 @@ function createRetencionesDocView(cfg) {
       const p = this._parties.find((x) => String(x[partyCodeField] ?? x.CODCLIENTE ?? x.CODPROV) === String(code));
       if (!p) return this._doc?.DOC_NOMCLIE || '';
       if (isRecibida) {
-        const nom = String(p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
-        const nit = String(p.NIT || '').trim();
+        const nom = String(p.DOC_NOMCLIE || p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
+        const nit = String(p.DOC_NIT || p.NIT || '').trim();
         return nit ? `${nom} (${nit})` : nom;
       }
-      const nom = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
+      const nom = String(p.DOC_NOMCLIE || p.EMPRESA || p.RAZONSOCIAL || '').trim();
       const nit = String(p.NIT || '').trim();
       return nit ? `${nom} (${nit})` : nom;
     },
@@ -1105,11 +1105,11 @@ function createRetencionesDocView(cfg) {
       );
       if (p) {
         if (isRecibida) {
-          this._doc.DOC_NOMCLIE = String(p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
+          this._doc.DOC_NOMCLIE = String(p.DOC_NOMCLIE || p.NOMBRECLIENTE || p.NEGOCIO || '').trim();
         } else {
-          this._doc.DOC_NOMCLIE = String(p.EMPRESA || p.RAZONSOCIAL || '').trim();
+          this._doc.DOC_NOMCLIE = String(p.DOC_NOMCLIE || p.EMPRESA || p.RAZONSOCIAL || '').trim();
         }
-        this._doc.DOC_NIT = String(p.NIT || '').trim();
+        this._doc.DOC_NIT = String(p.DOC_NIT || p.NIT || '').trim();
       }
       this._provQuery = this.partyLabelText(code);
       const search = document.getElementById(id('prov-search'));
@@ -1186,9 +1186,9 @@ function createRetencionesDocView(cfg) {
         .map((r, idx) => {
           const partyCode = isRecibida ? r.CODCLIENTE : r.CODPROV;
           const partyName = isRecibida
-            ? String(r.NOMBRECLIENTE || r.DOC_NOMCLIE || '').trim()
-            : String(r.EMPRESA || r.DOC_NOMCLIE || '').trim();
-          const nit = String(r.NIT || r.DOC_NIT || '').trim();
+            ? String(r.DOC_NOMCLIE || r.NOMBRECLIENTE || '').trim()
+            : String(r.DOC_NOMCLIE || r.EMPRESA || '').trim();
+          const nit = String(r.DOC_NIT || r.NIT || '').trim();
           const serie = String(r.FEL_SERIE || r.SERIEFAC || '').trim();
           const numero = String(r.FEL_NUMERO || r.NOFAC || '').trim();
           const doc = `${r.CODDOC || ''} #${r.CORRELATIVO || ''}`;
@@ -1234,18 +1234,24 @@ function createRetencionesDocView(cfg) {
         return;
       }
 
+      const docNom = String(row.DOC_NOMCLIE || '').trim();
+      const docNit = String(row.DOC_NIT || '').trim();
       const party = isRecibida
         ? {
             CODCLIENTE: code,
-            NOMBRECLIENTE: String(row.NOMBRECLIENTE || row.DOC_NOMCLIE || '').trim(),
+            DOC_NOMCLIE: docNom,
+            DOC_NIT: docNit,
+            NOMBRECLIENTE: String(docNom || row.NOMBRECLIENTE || '').trim(),
             NEGOCIO: String(row.NEGOCIO || '').trim(),
-            NIT: String(row.NIT || row.DOC_NIT || '').trim(),
+            NIT: String(docNit || row.NIT || '').trim(),
           }
         : {
             CODPROV: code,
-            EMPRESA: String(row.EMPRESA || row.DOC_NOMCLIE || '').trim(),
+            DOC_NOMCLIE: docNom,
+            DOC_NIT: docNit,
+            EMPRESA: String(docNom || row.EMPRESA || '').trim(),
             RAZONSOCIAL: String(row.RAZONSOCIAL || '').trim(),
-            NIT: String(row.NIT || row.DOC_NIT || '').trim(),
+            NIT: String(docNit || row.NIT || '').trim(),
           };
 
       const existing = (this._parties || []).find(

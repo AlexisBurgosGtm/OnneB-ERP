@@ -99,7 +99,9 @@ router.get('/', async (req, res) => {
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN ISNULL(d.TOTALCOSTO, 0) ELSE 0 END) AS COSTO_VENTAS,
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN ISNULL(d.TOTALCOSTO, 0) ELSE 0 END) AS COSTO_DEVOLUCIONES,
           SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_VENTA_IN}) THEN 1 ELSE 0 END) AS DOCS_VENTA,
-          SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN 1 ELSE 0 END) AS DOCS_DEV
+          SUM(CASE WHEN t.TIPODOC IN (${SQL_TIPODOC_DEV_IN}) THEN 1 ELSE 0 END) AS DOCS_DEV,
+          SUM(CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.CONCRE, 'CON')))) <> 'CRE' THEN (${SQL_DOC_IMPORTE_REPORTE}) ELSE 0 END) AS NETO_CONTADO,
+          SUM(CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.CONCRE, 'CON')))) = 'CRE' THEN (${SQL_DOC_IMPORTE_REPORTE}) ELSE 0 END) AS NETO_CREDITO
         FROM dbo.DOCUMENTOS d
         INNER JOIN dbo.TIPODOCUMENTOS t ON t.EMPNIT = d.EMPNIT AND t.CODDOC = d.CODDOC
         WHERE ${SQL_BASE_WHERE}
@@ -111,6 +113,11 @@ router.get('/', async (req, res) => {
           ISNULL(d.DOC_NOMCLIE, '') AS DOC_NOMCLIE,
           ISNULL(d.TOTALPRECIO, 0) AS TOTALPRECIO,
           ISNULL(d.STATUS, '') AS STATUS,
+          UPPER(LTRIM(RTRIM(ISNULL(d.CONCRE, 'CON')))) AS CONCRE,
+          CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.STATUS, '')))) = 'A' THEN 0 ELSE ISNULL(d.FPAGO_EFECTIVO, 0) END AS FPAGO_EFECTIVO,
+          CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.STATUS, '')))) = 'A' THEN 0 ELSE ISNULL(d.FPAGO_TARJETA, 0) END AS FPAGO_TARJETA,
+          CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.STATUS, '')))) = 'A' THEN 0 ELSE ISNULL(d.FPAGO_DEPOSITO, 0) END AS FPAGO_DEPOSITO,
+          CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(d.STATUS, '')))) = 'A' THEN 0 ELSE ISNULL(d.FPAGO_CHEQUE, 0) END AS FPAGO_CHEQUE,
           UPPER(LTRIM(RTRIM(ISNULL(t.TIPODOC, '')))) AS TIPODOC,
           ISNULL(t.DESDOC, '') AS DESDOC,
           (${SQL_DOC_IMPORTE_REPORTE}) AS IMPORTE,
@@ -163,19 +170,27 @@ router.get('/', async (req, res) => {
     const neto = roundMoney(ventas - devoluciones);
     const netoCosto = roundMoney(costoVentas - costoDevoluciones);
     const utilidad = roundMoney(neto - netoCosto);
+    const netoContado = roundMoney(r.NETO_CONTADO);
+    const netoCredito = roundMoney(r.NETO_CREDITO);
 
     const documentos = normalizeDocumentoRows(docsRes.recordset || []).map((row) => {
       const metrics = mapCostoUtilidad(row.IMPORTE, row.TOTALCOSTO);
+      const concre = String(row.CONCRE || 'CON').trim().toUpperCase();
       return {
         ID: row.ID,
         FECHA: fechaIsoFromRow(row) || null,
         CODDOC: row.CODDOC,
         CORRELATIVO: row.CORRELATIVO,
         CLIENTE: row.DOC_NOMCLIE || '',
+        CONCRE: concre === 'CRE' ? 'CRE' : 'CON',
         TIPODOC: String(row.TIPODOC || '').trim().toUpperCase(),
         DESDOC: row.DESDOC || '',
         TOTALPRECIO: roundMoney(row.TOTALPRECIO),
         STATUS: String(row.STATUS || '').trim().toUpperCase(),
+        FPAGO_EFECTIVO: roundMoney(row.FPAGO_EFECTIVO),
+        FPAGO_TARJETA: roundMoney(row.FPAGO_TARJETA),
+        FPAGO_DEPOSITO: roundMoney(row.FPAGO_DEPOSITO),
+        FPAGO_CHEQUE: roundMoney(row.FPAGO_CHEQUE),
         ...metrics,
       };
     });
@@ -206,6 +221,8 @@ router.get('/', async (req, res) => {
         pctUtilidad: pctUtilidad(neto, utilidad),
         docsVenta: Number(r.DOCS_VENTA) || 0,
         docsDev: Number(r.DOCS_DEV) || 0,
+        netoContado,
+        netoCredito,
       },
       documentos,
       productos,

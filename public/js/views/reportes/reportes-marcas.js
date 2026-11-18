@@ -314,7 +314,11 @@ const ReportesMarcasView = {
     const margenCls = margen >= 0 ? 'positive' : 'negative';
 
     return `
-      <div class="repmar-hero">
+      <div class="repmar-hero position-relative">
+        <button type="button" class="btn btn-sm btn-outline-secondary rep-hero-print-btn position-absolute top-0 end-0"
+          title="Imprimir detalle de la marca">
+          <i class="fa-solid fa-print"></i>
+        </button>
         <div class="repmar-hero-title">${this.escapeHtml(d.desmarca || 'Marca')}</div>
         <div class="repmar-hero-code">Código marca: ${this.escapeHtml(d.codmarca ?? 0)}</div>
         <div class="repmar-kpi-row">
@@ -728,6 +732,137 @@ const ReportesMarcasView = {
     }
   },
 
+  buildDetallePrintHtml() {
+    const d = this._detalle;
+    if (!d) return '';
+    const r = d.resumen || {};
+    const share =
+      Number(this._totales?.ventas) > 0
+        ? ((Number(r.ventas) || 0) / Number(this._totales.ventas)) * 100
+        : 0;
+    const kpis = [
+      { label: 'Ventas netas', value: this.formatMoney(r.ventas) },
+      { label: 'Costo', value: this.formatMoney(r.costo) },
+      { label: 'Utilidad', value: this.formatMoney(r.utilidad ?? this.utilidadOf(r.ventas, r.costo)) },
+      { label: 'Compras', value: this.formatMoney(r.compras) },
+      { label: 'Margen bruto', value: this.formatMoney(r.margen) },
+      { label: 'Uds. venta', value: this.formatQty(r.unidadesVenta) },
+      { label: 'Uds. compra', value: this.formatQty(r.unidadesCompra) },
+      { label: 'Productos', value: r.numProductos ?? 0 },
+      { label: 'Clientes', value: r.numClientes ?? 0 },
+      { label: 'Proveedores', value: r.numProveedores ?? 0 },
+      { label: 'Participación', value: this.formatPct(share) },
+    ];
+    let out = ReportesDetallePrint.hero(
+      d.desmarca || 'Marca',
+      `Código marca: ${d.codmarca ?? 0}`,
+      kpis
+    );
+    const serie = d.serie || [];
+    out += ReportesDetallePrint.section(
+      'Ventas vs compras por fecha',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Fecha' },
+          { text: 'Uds. venta', align: 'end' },
+          { text: 'Ventas', align: 'end' },
+          { text: 'Compras', align: 'end' },
+        ],
+        serie.map((row) => [
+          this.formatFecha(row.FECHA),
+          this.formatQty(row.UNIDADES_VENTA),
+          this.formatMoney(row.VENTAS),
+          this.formatMoney(row.COMPRAS),
+        ])
+      )
+    );
+    const productos = d.productos || [];
+    out += ReportesDetallePrint.section(
+      'Productos de la marca',
+      ReportesDetallePrint.table(
+        [
+          { text: 'Cód.' },
+          { text: 'Producto' },
+          { text: 'Uds. vta', align: 'end' },
+          { text: 'Costo', align: 'end' },
+          { text: 'Venta', align: 'end' },
+          { text: 'Utilidad', align: 'end' },
+          { text: 'Compras', align: 'end' },
+        ],
+        productos.map((row) => {
+          const util = row.UTILIDAD ?? this.utilidadOf(row.VENTAS, row.TOTALCOSTO);
+          return [
+            row.CODPROD || '—',
+            row.DESPROD || '—',
+            this.formatQty(row.UNIDADES_VENTA),
+            this.formatMoney(row.TOTALCOSTO),
+            this.formatMoney(row.VENTAS),
+            this.formatMoney(util),
+            this.formatMoney(row.COMPRAS),
+          ];
+        })
+      )
+    );
+    const clientes = d.clientes || [];
+    out += ReportesDetallePrint.section(
+      'Clientes',
+      ReportesDetallePrint.table(
+        [
+          { text: 'NIT' },
+          { text: 'Cliente' },
+          { text: 'Unidades', align: 'end' },
+          { text: 'Costo', align: 'end' },
+          { text: 'Venta', align: 'end' },
+          { text: 'Utilidad', align: 'end' },
+        ],
+        clientes.map((row) => {
+          const util = row.UTILIDAD ?? this.utilidadOf(row.VENTAS, row.TOTALCOSTO);
+          return [
+            row.DOC_NIT || '—',
+            row.DOC_NOMCLIE || '—',
+            this.formatQty(row.UNIDADES_VENTA),
+            this.formatMoney(row.TOTALCOSTO),
+            this.formatMoney(row.VENTAS),
+            this.formatMoney(util),
+          ];
+        })
+      )
+    );
+    const provs = d.proveedores || [];
+    out += ReportesDetallePrint.section(
+      'Proveedores',
+      ReportesDetallePrint.table(
+        [
+          { text: 'NIT' },
+          { text: 'Proveedor' },
+          { text: 'Unidades', align: 'end' },
+          { text: 'Compras', align: 'end' },
+        ],
+        provs.map((row) => [
+          row.DOC_NIT || '—',
+          row.DOC_NOMCLIE || '—',
+          this.formatQty(row.UNIDADES_COMPRA),
+          this.formatMoney(row.COMPRAS),
+        ])
+      )
+    );
+    return out;
+  },
+
+  async printDetalleReport() {
+    if (!this._detalle) {
+      F.toast('Seleccione una marca', 'warning');
+      return;
+    }
+    await ReportesDetallePrint.printLetterReport({
+      reportTitle: 'Reportes de Marcas',
+      desde: this._desde,
+      hasta: this._hasta,
+      formatFecha: (v) => this.formatFecha(v),
+      buildBody: () => this.buildDetallePrintHtml(),
+    });
+  },
+
   bindEvents() {
     this._container?.querySelector('#btn-repmar-cargar')?.addEventListener('click', () => {
       this.reload().catch((err) => F.toast(err.message, 'error'));
@@ -744,6 +879,14 @@ const ReportesMarcasView = {
       else if (section === 'productos') this.refreshProductosTable();
       else if (section === 'clientes') this.refreshClientesTable();
       else if (section === 'proveedores') this.refreshProveedoresTable();
+    });
+
+    this._container?.addEventListener('click', (e) => {
+      const heroBtn = e.target.closest('.rep-hero-print-btn');
+      if (heroBtn && this._container.contains(heroBtn)) {
+        this.printDetalleReport().catch((err) => F.toast(err.message || 'No se pudo imprimir', 'error'));
+        return;
+      }
     });
 
     this._container?.querySelector('#repmar-list')?.addEventListener('click', (e) => {

@@ -22,26 +22,38 @@ const PosProductKeyboardUI = {
   },
 
   /**
-   * Enter en cantidad → precio (si existe) → botón guardar.
-   * @param {{ cantInput?: HTMLElement, priceInput?: HTMLElement, popup?: HTMLElement }} opts
+   * Enter en cantidad → precio (si existe) → total (opcional) → botón guardar.
+   * @param {{ cantInput?: HTMLElement, priceInput?: HTMLElement, totalInput?: HTMLElement, popup?: HTMLElement }} opts
    */
   wireModalQtyFlow(opts = {}) {
-    const { cantInput, priceInput, popup } = opts;
+    const { cantInput, priceInput, totalInput, popup } = opts;
     if (!cantInput) return;
     const confirmBtn = this.confirmButton(popup);
     if (priceInput) {
       priceInput.removeAttribute('tabindex');
     }
+    totalInput?.removeAttribute('tabindex');
     cantInput.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
       if (priceInput) {
         this.focusInput(priceInput);
+      } else if (totalInput) {
+        this.focusInput(totalInput);
       } else {
         confirmBtn?.focus();
       }
     });
     priceInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (totalInput) {
+        this.focusInput(totalInput);
+      } else {
+        confirmBtn?.focus();
+      }
+    });
+    totalInput?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
       confirmBtn?.focus();
