@@ -324,10 +324,27 @@ const ComprasView = {
     }
   },
 
-  resolveFinalizarFacDefaults(h) {
+  /** Serie/número factura en el editor (DOCUMENTOS.SERIEFAC / NOFAC). */
+  readFacturaFromEditor() {
     return {
-      felSerie: String(h?.FEL_SERIE ?? '').trim(),
-      felNumero: String(h?.FEL_NUMERO ?? '').trim(),
+      seriefac: String(this._container?.querySelector('#compras-seriefac')?.value ?? '').trim(),
+      nofac: String(this._container?.querySelector('#compras-nofac')?.value ?? '').trim(),
+    };
+  },
+
+  /** Valores para el modal finalizar (FEL); hereda lo del editor si existe. */
+  resolveFinalizarFacDefaults(h) {
+    const fromEditor = this.readFacturaFromEditor();
+    const hasEditor = this._container?.querySelector('#compras-seriefac') != null;
+    if (hasEditor) {
+      return {
+        felSerie: fromEditor.seriefac,
+        felNumero: fromEditor.nofac,
+      };
+    }
+    return {
+      felSerie: String(h?.SERIEFAC ?? h?.FEL_SERIE ?? '').trim(),
+      felNumero: String(h?.NOFAC ?? h?.FEL_NUMERO ?? '').trim(),
     };
   },
 
@@ -731,15 +748,23 @@ const ComprasView = {
       return;
     }
 
-    const proveedor = this.escapeHtml(this.proveedorLabel(h));
-    const dir = this.escapeHtml(h.DOC_DIRCLIE || h.PROV_DIR || '—');
-    const obsVal = this.escapeHtml(h.OBS || '');
-    const facDefaults = this.resolveFinalizarFacDefaults(h);
+    try {
+      await this.guardarFacturaCompra({ silent: true });
+    } catch (err) {
+      F.toast(err.message || 'No se pudo guardar serie/número de factura', 'error');
+      return;
+    }
+    const headerAfterFel = this._compra?.header || h;
+
+    const proveedor = this.escapeHtml(this.proveedorLabel(headerAfterFel));
+    const dir = this.escapeHtml(headerAfterFel.DOC_DIRCLIE || headerAfterFel.PROV_DIR || '—');
+    const obsVal = this.escapeHtml(headerAfterFel.OBS || '');
+    const facDefaults = this.resolveFinalizarFacDefaults(headerAfterFel);
     const felSerieVal = this.escapeHtml(facDefaults.felSerie);
     const felNumeroVal = this.escapeHtml(facDefaults.felNumero);
-    const felUudiVal = this.escapeHtml(String(h?.FEL_UUDI ?? '').trim());
-    const concreVal = await this.resolveDefaultConcre(h);
-    const vencDefault = DocFecha.inputValueFromHeader(h) || this.todayInputValue();
+    const felUudiVal = this.escapeHtml(String(headerAfterFel.FEL_UUDI ?? '').trim());
+    const concreVal = await this.resolveDefaultConcre(headerAfterFel);
+    const vencDefault = DocFecha.inputValueFromHeader(headerAfterFel) || this.todayInputValue();
 
     const value = await new Promise((resolve) => {
       let settled = false;
@@ -1212,6 +1237,13 @@ const ComprasView = {
       const inp = this._container.querySelector('#compras-proveedor-search');
       if (inp && !inp.matches(':focus')) inp.value = h.DOC_NOMCLIE || '';
     }
+    if (typeof ProveedorHistorialComprasUI !== 'undefined') {
+      ProveedorHistorialComprasUI.syncButton(
+        this._container,
+        'compras-proveedor-historial',
+        this.hasProveedor(h)
+      );
+    }
     const seriefacInp = this._container?.querySelector('#compras-seriefac');
     const nofacInp = this._container?.querySelector('#compras-nofac');
     if (h) {
@@ -1476,6 +1508,7 @@ const ComprasView = {
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Proveedor</label>
                 <div class="input-group input-group-sm">
+                  ${ProveedorHistorialComprasUI.buttonHtml('compras-proveedor-historial')}
                   <input type="search" class="form-control pos-search-glow" id="compras-proveedor-search"
                     placeholder="Buscar proveedor…" autocomplete="off"${editable ? '' : ' disabled'}>
                   <button type="button" class="btn btn-outline-primary text-nowrap" id="compras-proveedor-nuevo"
@@ -1599,6 +1632,10 @@ const ComprasView = {
       onFinalizar: () => this.finalizarCompra(),
     });
 
+    this._container?.querySelector('#compras-proveedor-historial')?.addEventListener('click', () => {
+      this.openHistorialProveedor().catch((err) => F.toast(err.message, 'error'));
+    });
+
     this._container?.querySelector('#compras-proveedor-nuevo')?.addEventListener('click', () => {
       this.onNuevoProveedor().catch((err) => F.toast(err.message, 'error'));
     });
@@ -1658,9 +1695,7 @@ const ComprasView = {
     }
 
     const saveFactura = F.debounce(() => {
-      const seriefac = this._container?.querySelector('#compras-seriefac')?.value ?? '';
-      const nofac = this._container?.querySelector('#compras-nofac')?.value ?? '';
-      this.guardarFacturaCompra(seriefac, nofac).catch((err) => F.toast(err.message, 'error'));
+      this.guardarFacturaCompra().catch((err) => F.toast(err.message, 'error'));
     }, 400);
     this._container?.querySelector('#compras-seriefac')?.addEventListener('change', saveFactura);
     this._container?.querySelector('#compras-nofac')?.addEventListener('change', saveFactura);
@@ -1769,12 +1804,13 @@ const ComprasView = {
     F.toast('Fecha actualizada', 'success');
   },
 
-  async guardarFacturaCompra(seriefac, nofac) {
+  async guardarFacturaCompra(opts = {}) {
     const key = this.docKey();
     if (!key || !this.docEditable(this._compra?.header)) return;
     const h = this._compra.header;
-    const s = String(seriefac ?? '').trim();
-    const n = String(nofac ?? '').trim();
+    const { seriefac, nofac } = this.readFacturaFromEditor();
+    const s = seriefac;
+    const n = nofac;
     if (s === String(h.SERIEFAC || '').trim() && n === String(h.NOFAC || '').trim()) return;
     const url = `/api/compras/compras/${encodeURIComponent(key.coddoc)}/${key.correlativo}?empnit=${encodeURIComponent(F.getEmpNit())}`;
     this._compra = await F.fetchJson(url, {
@@ -1783,6 +1819,7 @@ const ComprasView = {
       body: JSON.stringify({ SERIEFAC: s, NOFAC: n }),
     });
     this.renderHeaderInfo();
+    if (!opts.silent) F.toast('Factura actualizada', 'success');
   },
 
   async aplicarProveedor(codprov) {
@@ -1796,6 +1833,21 @@ const ComprasView = {
     });
     this.renderHeaderInfo();
     F.toast('Proveedor actualizado', 'success');
+  },
+
+  async openHistorialProveedor() {
+    const h = this._compra?.header;
+    if (!this.hasProveedor(h)) {
+      F.toast('Seleccione un proveedor primero', 'warning');
+      return;
+    }
+    const codprov = Number(h.CODPROV ?? h.CODCLIENTE);
+    await ProveedorHistorialComprasUI.open({
+      codprov,
+      proveedorNombre: h.DOC_NOMCLIE || this.proveedorLabel(h),
+      apiBase: '/api/compras',
+      tipodocs: 'COM,COP',
+    });
   },
 
   async onNuevoProveedor() {

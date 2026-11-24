@@ -2079,7 +2079,7 @@ const FacturacionView = {
       rows.length === 0
         ? `<div class="fac-env-modal-empty text-muted text-center py-4">
             <i class="fa-solid fa-inbox fa-2x mb-2 opacity-50"></i>
-            <p class="mb-0 small">No hay pedidos (ENV), cotizaciones (COT) ni comandas (CRS) operados disponibles.</p>
+            <p class="mb-0 small">No hay pedidos (ENV), cotizaciones (COT), recetas (REC) ni comandas (CRS) operados disponibles.</p>
           </div>`
         : `<div class="table-responsive fac-env-modal-table-wrap">
             <table class="table table-sm table-hover align-middle mb-0 fac-env-modal-table">
@@ -2133,7 +2133,7 @@ const FacturacionView = {
                 <h5 class="fac-env-modal-title mb-1" id="fac-pedido-env-title">
                   <i class="fa-solid fa-file-import me-2 text-primary"></i>Tomar datos
                 </h5>
-                <p class="small text-muted mb-0">Seleccione un pedido (ENV), cotización (COT) o comanda (CRS) operado para cargarlo en facturación.${
+                <p class="small text-muted mb-0">Seleccione un pedido (ENV), cotización (COT), receta (REC) o comanda (CRS) operado para cargarlo en facturación.${
                   showTipofac
                     ? ' El <strong>TIPOFAC</strong> del documento define si se crea FAC, FEF o FEC.'
                     : ''

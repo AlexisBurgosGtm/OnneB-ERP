@@ -2,6 +2,198 @@
   max-width: 72rem;
 }
 
+.cons-pac-wrap {
+  position: relative;
+  padding-bottom: 4.5rem;
+}
+
+.swal2-popup.cons-pac-modal .cons-pac-modal-grid .card {
+  background: var(--app-surface, #fff);
+}
+
+.cons-cons-wrap {
+  padding-bottom: 4.5rem;
+}
+
+.cons-cons-list-acciones .btn {
+  white-space: nowrap;
+}
+
+.cons-cons-edad-display {
+  min-height: calc(1.5em + 0.5rem + 2px);
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.cons-cons-acciones-cell {
+  min-width: 13rem;
+}
+
+.cons-cons-list-toolbar .form-select {
+  min-width: 7rem;
+}
+
+.cons-cons-list-totals .cons-cons-total-chip {
+  min-width: 7.5rem;
+}
+
+.cons-cons-total-card {
+  background: var(--app-surface, #fff);
+}
+
+.cons-cons-tipo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--app-border, #dee2e6);
+  border-radius: 0.65rem;
+  background: var(--app-surface, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.cons-cons-tipo-card:hover {
+  border-color: var(--onneb-brand, #1e3a5f);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.cons-cons-tipo-icon {
+  font-size: 1.35rem;
+  color: var(--onneb-brand, #1e3a5f);
+  margin-bottom: 0.25rem;
+}
+
+.cons-cons-pac-results {
+  z-index: 30;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cons-cons-receta-card {
+  min-height: 280px;
+}
+
+.main-content.align-items-stretch > .cons-consultas-editor,
+.main-content.align-items-stretch .cons-consultas-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.cons-cons-editor-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.cons-cons-editor-row > [class*='col-'] {
+  min-height: 0;
+  height: 100%;
+}
+
+.cons-cons-editor-left {
+  max-height: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  padding-bottom: 5.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cons-cons-editor-right {
+  max-height: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cons-cons-editor-right .cons-cons-receta-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cons-cons-compact .card-body {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.cons-cons-compact .form-label {
+  margin-bottom: 0.1rem;
+  font-size: 0.72rem;
+}
+
+.cons-cons-compact .form-control,
+.cons-cons-compact textarea.form-control {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.45rem;
+}
+
+.cons-receta-search {
+  z-index: 20;
+}
+
+.cons-receta-prod-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 40;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 2px;
+  background: var(--app-surface, #fff);
+}
+
+.cons-receta-cart-wrap {
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+}
+
+.swal2-popup.cons-cons-historial-modal .table th {
+  font-size: 0.75rem;
+}
+
+.btn-consulta-guardar-fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 9999;
+  width: 4rem;
+  height: 4rem;
+  border: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  color: var(--btn-fg-guardar, #fff);
+  background: linear-gradient(145deg, #3b82f6, #2563eb);
+  box-shadow: 0 6px 22px rgba(37, 99, 235, 0.45), 0 3px 10px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-consulta-guardar-fab:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.04);
+  color: var(--btn-fg-guardar, #fff);
+}
+
+.btn-consulta-guardar-fab:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .crm-cal-wrap .card-body {
   padding: 1rem;
 }

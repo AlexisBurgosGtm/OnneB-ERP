@@ -373,6 +373,20 @@
             </div>
             <div class="accordion-item">
               <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseConsultorio" aria-expanded="false" aria-controls="collapseConsultorio">
+                  <i class="fa-solid fa-user-doctor sidebar-icon" aria-hidden="true"></i>
+                  <span>CONSULTORIO</span>
+                </button>
+              </h2>
+              <div id="collapseConsultorio" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                <ul class="sidebar-submenu list-unstyled mb-0">
+                  <li><a href="#" class="sidebar-link" data-menu="consultorio-consultas"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i> Consultas</a></li>
+                  <li><a href="#" class="sidebar-link" data-menu="consultorio-pacientes"><i class="fa-solid fa-user-injured" aria-hidden="true"></i> Pacientes</a></li>
+                </ul>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header">
                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDespacho" aria-expanded="false" aria-controls="collapseDespacho">
                   <i class="fa-solid fa-truck sidebar-icon" aria-hidden="true"></i>
                   <span>DESPACHO</span>
@@ -757,6 +771,7 @@
   <script src="/js/pos-doc-search-ui.js"></script>
   <script src="/js/doc-finalizar-fab.js"></script>
   <script src="/js/cliente-historial-precios-ui.js"></script>
+  <script src="/js/proveedor-historial-compras-ui.js"></script>
   <script src="/js/doc-tipo-select.js"></script>
   <script src="/js/views/operaciones/pos.js"></script>
   <script src="/js/views/operaciones/comandas-restaurante.js"></script>
@@ -846,6 +861,11 @@
   <script src="/js/views/distribuidoras/asignacion-pedidos.js"></script>
   <script src="/js/views/crm/crm-visitas.js"></script>
   <script src="/js/views/crm/crm-eventos.js"></script>
+  <script src="/js/consultorio-receta-panel.js"></script>
+  <script src="/js/consultorio-receta-print.js"></script>
+  <script src="/js/views/consultorio/consultorio-consultas.js"></script>
+  <script src="/js/consultorio-edad.js"></script>
+  <script src="/js/views/consultorio/consultorio-pacientes.js"></script>
   <script src="/js/views/despacho/pendientes-entrega.js"></script>
   <script src="/js/views/despacho/despachos-en-cocina.js"></script>
   <script src="/js/db.js"></script>

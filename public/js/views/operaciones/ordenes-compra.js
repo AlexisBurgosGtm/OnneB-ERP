@@ -1126,6 +1126,13 @@ const OrdenesCompraView = {
       const inp = this._container.querySelector('#ocm-proveedor-search');
       if (inp && !inp.matches(':focus')) inp.value = h.DOC_NOMCLIE || '';
     }
+    if (typeof ProveedorHistorialComprasUI !== 'undefined') {
+      ProveedorHistorialComprasUI.syncButton(
+        this._container,
+        'ocm-proveedor-historial',
+        this.hasProveedor(h)
+      );
+    }
     const fechaInp = this._container?.querySelector('#ocm-doc-fecha');
     if (fechaInp && h && !fechaInp.matches(':focus')) {
       fechaInp.value = DocFecha.inputValueFromHeader(h);
@@ -1380,6 +1387,7 @@ const OrdenesCompraView = {
               <div class="pos-cliente-wrap mb-2 position-relative">
                 <label class="form-label small mb-1">Proveedor</label>
                 <div class="input-group input-group-sm">
+                  ${ProveedorHistorialComprasUI.buttonHtml('ocm-proveedor-historial')}
                   <input type="search" class="form-control pos-search-glow" id="ocm-proveedor-search"
                     placeholder="Buscar proveedor…" autocomplete="off"${editable ? '' : ' disabled'}>
                   <button type="button" class="btn btn-outline-primary text-nowrap" id="ocm-proveedor-nuevo"
@@ -1486,6 +1494,10 @@ const OrdenesCompraView = {
       getEditable: () => this.docEditable(this._compra?.header),
       onNuevo: () => this.onNuevaOrden(),
       onFinalizar: () => this.finalizarOrden(),
+    });
+
+    this._container?.querySelector('#ocm-proveedor-historial')?.addEventListener('click', () => {
+      this.openHistorialProveedor().catch((err) => F.toast(err.message, 'error'));
     });
 
     this._container?.querySelector('#ocm-proveedor-nuevo')?.addEventListener('click', () => {
@@ -1675,6 +1687,21 @@ const OrdenesCompraView = {
     });
     this.renderHeaderInfo();
     F.toast('Proveedor actualizado', 'success');
+  },
+
+  async openHistorialProveedor() {
+    const h = this._compra?.header;
+    if (!this.hasProveedor(h)) {
+      F.toast('Seleccione un proveedor primero', 'warning');
+      return;
+    }
+    const codprov = Number(h.CODPROV ?? h.CODCLIENTE);
+    await ProveedorHistorialComprasUI.open({
+      codprov,
+      proveedorNombre: h.DOC_NOMCLIE || this.proveedorLabel(h),
+      apiBase: '/api/ordenes-compra',
+      tipodocs: 'COM,COP',
+    });
   },
 
   async onNuevoProveedor() {

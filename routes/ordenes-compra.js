@@ -51,6 +51,8 @@ const {
 const { valoresEntregadosIniciales } = require('../lib/documentos-entregado');
 
 const router = express.Router();
+const { attachProveedorHistorialComprasRoutes } = require('../lib/proveedor-historial-compras-routes');
+attachProveedorHistorialComprasRoutes(router, { defaultTipodocs: ['COM', 'COP'] });
 
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;

@@ -53,6 +53,50 @@ const NotasDebitoView = {
     return DocFecha.formatDisplay(row);
   },
 
+  renderReferenciaDocumentosTable(rows, rowClass, terceroVacío) {
+    if (!rows?.length) {
+      return '<p class="small text-muted text-center py-3 mb-0">Sin resultados</p>';
+    }
+    const body = rows
+      .map((r) => {
+        const felSerie = String(r?.FEL_SERIE || '').trim();
+        const felNum = String(r?.FEL_NUMERO || '').trim();
+        const fel = felSerie || felNum ? `${felSerie || '—'}-${felNum || '—'}` : '—';
+        const nombre = String(r?.DOC_NOMCLIE || terceroVacío).trim() || terceroVacío;
+        const saldo = Number(r?.DOC_SALDO ?? 0);
+        return `
+          <tr class="${rowClass}" role="option" style="cursor: pointer;"
+            data-serie="${this.escapeHtml(r.CODDOC || '')}"
+            data-corr="${this.escapeHtml(r.CORRELATIVO || '')}"
+            data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}"
+            title="Doble clic para crear la nota">
+            <td class="small text-nowrap fw-semibold">${this.escapeHtml(r.CODDOC || '')}-${this.escapeHtml(r.CORRELATIVO || '')}</td>
+            <td class="small"><span class="badge bg-secondary">${this.escapeHtml(r.TIPODOC || '')}</span></td>
+            <td class="small text-nowrap">${this.escapeHtml(this.formatFechaPedido(r))}</td>
+            <td class="small text-truncate" style="max-width: 10rem" title="${this.escapeHtml(nombre)}">${this.escapeHtml(nombre)}</td>
+            <td class="small text-nowrap">${this.escapeHtml(fel)}</td>
+            <td class="small text-end text-nowrap">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</td>
+            <td class="small text-end text-nowrap fw-semibold text-danger">${this.escapeHtml(this.formatMoney(saldo))}</td>
+          </tr>`;
+      })
+      .join('');
+    return `
+      <table class="table table-sm table-hover mb-0 nc-ref-doc-table">
+        <thead class="table-light">
+          <tr class="small">
+            <th>Documento</th>
+            <th>Tipo</th>
+            <th>Fecha</th>
+            <th>Proveedor</th>
+            <th>FEL</th>
+            <th class="text-end">Total</th>
+            <th class="text-end">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>`;
+  },
+
   formatHoraPedido(row) {
     if (row?.HORA == null || row?.HORA === '') return '—';
     const h = String(Number(row.HORA)).padStart(2, '0');
@@ -400,31 +444,7 @@ const NotasDebitoView = {
 
         const renderRows = (rows) => {
           if (!box) return;
-          if (!rows.length) {
-            box.innerHTML = '<p class="small text-muted text-center py-3 mb-0">Sin resultados</p>';
-            return;
-          }
-          box.innerHTML = rows.map((r) => `
-            <div class="list-group-item list-group-item-action border-0 border-bottom rounded-0 nd-ref-row"
-              role="option"
-              style="cursor: pointer;"
-              data-serie="${this.escapeHtml(r.CODDOC || '')}"
-              data-corr="${this.escapeHtml(r.CORRELATIVO || '')}"
-              data-tipodoc="${this.escapeHtml(r.TIPODOC || '')}"
-              title="Doble clic para crear la nota">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <div>
-                  <strong>${this.escapeHtml(r.CODDOC || '')}-${this.escapeHtml(r.CORRELATIVO || '')}</strong>
-                  <span class="badge bg-secondary ms-1">${this.escapeHtml(r.TIPODOC || '')}</span>
-                  <div class="small text-muted">${this.escapeHtml(r.DOC_NOMCLIE || 'Sin proveedor')}</div>
-                </div>
-                <div class="text-end small">
-                  <div>${this.escapeHtml(this.formatFechaPedido(r))}</div>
-                  <div class="fw-semibold">${this.escapeHtml(this.formatMoney(r.TOTALPRECIO))}</div>
-                </div>
-              </div>
-            </div>
-          `).join('');
+          box.innerHTML = this.renderReferenciaDocumentosTable(rows, 'nd-ref-row', 'Sin proveedor');
         };
 
         const fetchRows = F.debounce(async () => {

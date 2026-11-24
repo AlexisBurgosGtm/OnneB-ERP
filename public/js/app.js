@@ -984,6 +984,8 @@
     embarques: 'Embarques (picking)',
     'crm-visitas': 'Visitas',
     'crm-eventos': 'Eventos',
+    'consultorio-consultas': 'Consultas',
+    'consultorio-pacientes': 'Pacientes',
     'asignacion-pedidos': 'Asignación de Facturas',
     'pendientes-entrega': 'Pendientes Entrega',
     'despachos-en-cocina': 'Despachos en Cocina',
@@ -1162,6 +1164,10 @@
       CrmVisitasView.load(host);
     } else if (key === 'crm-eventos' && typeof CrmEventosView !== 'undefined') {
       CrmEventosView.load(host);
+    } else if (key === 'consultorio-consultas' && typeof ConsultorioConsultasView !== 'undefined') {
+      ConsultorioConsultasView.load(host);
+    } else if (key === 'consultorio-pacientes' && typeof ConsultorioPacientesView !== 'undefined') {
+      ConsultorioPacientesView.load(host);
     } else if (key === 'pendientes-entrega' && typeof PendientesEntregaView !== 'undefined') {
       PendientesEntregaView.load(host);
     } else if (key === 'despachos-en-cocina' && typeof DespachosEnCocinaView !== 'undefined') {

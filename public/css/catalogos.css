@@ -212,11 +212,33 @@
 }
 
 /* Modal montado en body: por encima del layout con transform */
-#asig-ped-edit-fac-modal {
+#asig-ped-edit-fac-modal,
+#proveedor-hist-compras-modal,
+#prov-historial-compras-modal {
   z-index: 1065;
 }
 body.modal-open .modal-backdrop {
   z-index: 1060;
+}
+
+#proveedor-hist-compras-modal .modal-content,
+#prov-historial-compras-modal .modal-content {
+  background-color: var(--app-surface, var(--bs-body-bg, #fff));
+  color: var(--app-text, var(--bs-body-color, #212529));
+  border: 1px solid var(--app-border, var(--bs-border-color, #dee2e6));
+}
+
+#proveedor-hist-compras-modal .modal-header,
+#proveedor-hist-compras-modal .modal-footer,
+#prov-historial-compras-modal .modal-header,
+#prov-historial-compras-modal .modal-footer {
+  border-color: var(--app-border, var(--bs-border-color, #dee2e6));
+}
+
+#proveedor-hist-compras-modal .modal-body,
+#prov-historial-compras-modal .modal-body {
+  background-color: var(--app-surface, var(--bs-body-bg, #fff));
+  color: inherit;
 }
 
 .tipo-documentos-wrap .tipo-documentos-filters {

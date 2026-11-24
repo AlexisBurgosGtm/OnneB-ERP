@@ -51,6 +51,8 @@ const {
 const { valoresEntregadosIniciales } = require('../lib/documentos-entregado');
 
 const router = express.Router();
+const { attachProveedorHistorialComprasRoutes } = require('../lib/proveedor-historial-compras-routes');
+attachProveedorHistorialComprasRoutes(router, { defaultTipodocs: ['COM', 'COP'] });
 
 const DEFAULT_LIMIT = 40;
 const SEARCH_LIMIT = 80;
@@ -181,6 +183,27 @@ async function loadSerieNofacActual(requestable, empnit, coddoc, correlativo) {
   return {
     SERIEFAC: String(row?.SERIEFAC || '').trim(),
     NOFAC: String(row?.NOFAC || '').trim(),
+  };
+}
+
+async function loadFelSerieNumeroActual(requestable, empnit, coddoc, correlativo) {
+  const result = await requestable
+    .request()
+    .input('EMPNIT', sql.VarChar, empnit)
+    .input('CODDOC', sql.VarChar, coddoc)
+    .input('CORRELATIVO', sql.Decimal(18, 0), correlativo)
+    .query(`
+      SELECT LTRIM(RTRIM(ISNULL(FEL_SERIE, ''))) AS FEL_SERIE,
+             LTRIM(RTRIM(ISNULL(FEL_NUMERO, ''))) AS FEL_NUMERO,
+             LTRIM(RTRIM(ISNULL(FEL_UUDI, ''))) AS FEL_UUDI
+      FROM dbo.DOCUMENTOS
+      WHERE EMPNIT = @EMPNIT AND CODDOC = @CODDOC AND CORRELATIVO = @CORRELATIVO
+    `);
+  const row = result.recordset[0];
+  return {
+    FEL_SERIE: String(row?.FEL_SERIE || '').trim(),
+    FEL_NUMERO: String(row?.FEL_NUMERO || '').trim(),
+    FEL_UUDI: String(row?.FEL_UUDI || '').trim(),
   };
 }
 
@@ -798,6 +821,18 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
       request.input('NOFAC', sql.VarChar, String(req.body.NOFAC || '').trim());
       updates.push('NOFAC = @NOFAC');
     }
+    if (req.body?.FEL_SERIE !== undefined) {
+      request.input('FEL_SERIE', sql.VarChar, String(req.body.FEL_SERIE || '').trim());
+      updates.push('FEL_SERIE = @FEL_SERIE');
+    }
+    if (req.body?.FEL_NUMERO !== undefined) {
+      request.input('FEL_NUMERO', sql.VarChar, String(req.body.FEL_NUMERO || '').trim());
+      updates.push('FEL_NUMERO = @FEL_NUMERO');
+    }
+    if (req.body?.FEL_UUDI !== undefined) {
+      request.input('FEL_UUDI', sql.VarChar, String(req.body.FEL_UUDI || '').trim());
+      updates.push('FEL_UUDI = @FEL_UUDI');
+    }
 
     const fechaParts = req.body?.FECHA !== undefined ? parseFechaInput(req.body.FECHA) : null;
     if (req.body?.FECHA !== undefined && !fechaParts) {
@@ -813,6 +848,20 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
       const nofac = req.body?.NOFAC !== undefined ? String(req.body.NOFAC || '').trim() : actual.NOFAC;
       try {
         await assertCompraSerieNofacUnique(pool, empnit, seriefac, nofac, coddoc, correlativo);
+      } catch (dupErr) {
+        if (dupErr.statusCode) return res.status(dupErr.statusCode).json({ error: dupErr.message });
+        throw dupErr;
+      }
+    }
+
+    if (req.body?.FEL_SERIE !== undefined || req.body?.FEL_NUMERO !== undefined) {
+      const actualFel = await loadFelSerieNumeroActual(pool, empnit, coddoc, correlativo);
+      const felSerie =
+        req.body?.FEL_SERIE !== undefined ? String(req.body.FEL_SERIE || '').trim() : actualFel.FEL_SERIE;
+      const felNumero =
+        req.body?.FEL_NUMERO !== undefined ? String(req.body.FEL_NUMERO || '').trim() : actualFel.FEL_NUMERO;
+      try {
+        await assertCompraFelSerieNumeroUnique(pool, empnit, felSerie, felNumero, coddoc, correlativo);
       } catch (dupErr) {
         if (dupErr.statusCode) return res.status(dupErr.statusCode).json({ error: dupErr.message });
         throw dupErr;
@@ -848,6 +897,15 @@ router.patch('/compras/:coddoc/:correlativo', async (req, res) => {
         }
         if (req.body?.NOFAC !== undefined) {
           txnReq.input('NOFAC', sql.VarChar, String(req.body.NOFAC || '').trim());
+        }
+        if (req.body?.FEL_SERIE !== undefined) {
+          txnReq.input('FEL_SERIE', sql.VarChar, String(req.body.FEL_SERIE || '').trim());
+        }
+        if (req.body?.FEL_NUMERO !== undefined) {
+          txnReq.input('FEL_NUMERO', sql.VarChar, String(req.body.FEL_NUMERO || '').trim());
+        }
+        if (req.body?.FEL_UUDI !== undefined) {
+          txnReq.input('FEL_UUDI', sql.VarChar, String(req.body.FEL_UUDI || '').trim());
         }
         const result = await txnReq.query(`
           UPDATE dbo.DOCUMENTOS SET ${updates.join(', ')}
@@ -1507,14 +1565,8 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
   if (!coddoc || correlativo === null) return res.status(400).json({ error: 'Documento inválido' });
   const obs = req.body?.OBS !== undefined ? String(req.body.OBS || '').trim() : null;
   const felUudi = req.body?.FEL_UUDI !== undefined ? String(req.body.FEL_UUDI || '').trim() : null;
-  const felSerie =
-    req.body?.FEL_SERIE !== undefined
-      ? String(req.body.FEL_SERIE || '').trim()
-      : String(req.body?.SERIEFAC || '').trim();
-  const felNumero =
-    req.body?.FEL_NUMERO !== undefined
-      ? String(req.body.FEL_NUMERO || '').trim()
-      : String(req.body?.NOFAC || '').trim();
+  const felSerie = String(req.body?.FEL_SERIE ?? '').trim();
+  const felNumero = String(req.body?.FEL_NUMERO ?? '').trim();
   const concre = String(req.body?.CONCRE || 'CON').trim().toUpperCase();
   if (concre !== 'CON' && concre !== 'CRE') {
     return res.status(400).json({ error: 'CONCRE debe ser CON o CRE' });
@@ -1554,14 +1606,9 @@ router.post('/compras/:coddoc/:correlativo/finalizar', async (req, res) => {
         txnUpd.input('FEL_UUDI', sql.VarChar, felUudi);
       }
       let felExtraSql = '';
-      if (req.body?.FEL_SERIE !== undefined || req.body?.SERIEFAC !== undefined) {
-        txnUpd.input('FEL_SERIE', sql.VarChar, felSerie);
-        felExtraSql += ', FEL_SERIE = @FEL_SERIE';
-      }
-      if (req.body?.FEL_NUMERO !== undefined || req.body?.NOFAC !== undefined) {
-        txnUpd.input('FEL_NUMERO', sql.VarChar, felNumero);
-        felExtraSql += ', FEL_NUMERO = @FEL_NUMERO';
-      }
+      txnUpd.input('FEL_SERIE', sql.VarChar, felSerie);
+      txnUpd.input('FEL_NUMERO', sql.VarChar, felNumero);
+      felExtraSql += ', FEL_SERIE = @FEL_SERIE, FEL_NUMERO = @FEL_NUMERO';
       const obsSql = obs !== null ? ', OBS = @OBS' : '';
       const felSql = felUudi !== null ? ', FEL_UUDI = @FEL_UUDI' : '';
       await txnUpd.query(`

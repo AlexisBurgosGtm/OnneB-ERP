@@ -29,6 +29,10 @@
     "seed:updater:documentos-mesa-restaurante": "node scripts/seed-update-query-documentos-mesa-restaurante.js",
     "seed:updater:documentos-lat-long": "node scripts/seed-update-query-documentos-lat-long.js",
     "seed:updater:empresas-regimen-fel": "node scripts/seed-update-query-empresas-regimen-fel.js",
+    "seed:updater:consultorio-pacientes": "node scripts/seed-update-query-consultorio-pacientes.js",
+    "seed:updater:consultorio-pacientes-fecha-nac": "node scripts/seed-update-query-consultorio-pacientes-fecha-nac.js",
+    "seed:updater:consultorio-consultas": "node scripts/seed-update-query-consultorio-consultas.js",
+    "seed:updater:consultorio-receta": "node scripts/seed-update-query-consultorio-receta.js",
     "dist:client": "node scripts/dist-client.js",
     "test": "nodemon server.js"
   },
